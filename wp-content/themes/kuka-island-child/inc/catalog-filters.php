@@ -88,7 +88,7 @@ function kuka_island_catalog_controls(): void {
 		<button type="button" class="kuka-filter-trigger" data-panel-trigger="kuka-catalog-filters" aria-controls="kuka-catalog-filters" aria-expanded="false"><?php esc_html_e( 'Filtrele', 'kuka-island' ); ?> <span aria-hidden="true">+</span></button>
 	</div>
 	<?php kuka_island_active_filters(); ?>
-	<div class="kuka-panel-overlay" data-panel-overlay hidden></div>
+	<div class="kuka-panel-overlay kuka-panel-overlay--light" data-panel-overlay hidden></div>
 	<aside id="kuka-catalog-filters" class="kuka-catalog-filters" role="dialog" aria-modal="true" aria-labelledby="kuka-filter-title" aria-hidden="true" inert>
 		<div class="kuka-panel-head"><span id="kuka-filter-title"><?php esc_html_e( 'Filtrele', 'kuka-island' ); ?></span><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Filtreleri kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
 		<form method="get" action="<?php echo esc_url( $base_url ); ?>" class="kuka-filter-form">
