@@ -209,6 +209,7 @@ update_option( 'woocommerce_price_decimal_sep', ',' );
 update_option( 'woocommerce_default_country', 'TR' );
 update_option( 'woocommerce_calc_taxes', 'no' );
 update_option( 'woocommerce_enable_guest_checkout', 'yes' );
+update_option( 'woocommerce_coming_soon', 'no' );
 update_option( 'woocommerce_enable_signup_and_login_from_checkout', 'no' );
 update_option( 'woocommerce_checkout_privacy_policy_text', 'Kişisel verileriniz siparişinizi işlemek, site deneyiminizi desteklemek ve [privacy_policy] sayfamızda açıklanan diğer amaçlar için kullanılacaktır.' );
 update_option( 'woocommerce_custom_orders_table_enabled', 'yes' );
