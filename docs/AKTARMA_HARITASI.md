@@ -1,6 +1,6 @@
 # Faz 3 Aktarma Haritası
 
-> Faz 3C kapanışı: override bütçesi yine iki dosyadır. Sepet ve hesap panelleri child theme markup/hook katmanında; tüm yan panel erişilebilirliği tek `storefront.js` altyapısında kalır. Sepet verisi ve kimlik doğrulama WooCommerce'tir.
+> Faz 3D kapanışı: override bütçesi yine iki dosyadır. Sepet, hesap, mobil menü, filtre ve ürün lightbox erişilebilirliği tek `storefront.js` altyapısındadır. Sepet verisi, stok ve kimlik doğrulama WooCommerce'tir.
 
 Bu belge prototipin React/Next yapısını üretim WordPress katmanlarına çevirmek için minimum override planıdır. Faz 2'de yalnız token katmanı taşındı; aşağıdaki bileşen portları yapılmadı.
 
@@ -91,4 +91,12 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Sepet markup'ı `inc/storefront-panels.php` içindedir. Adet/kaldırma native WooCommerce sepet formuna nonce ile POST edilir; `woocommerce_add_to_cart_fragments` panel gövdesini ve header sayacını yeniler. JS'siz ekleme `/sepet` sayfasına yönlenir.
 - Hesap paneli `woocommerce_login_form()` ve WooCommerce endpoint URL'lerini kullanır. Başarısız girişte Türkçe metinli `role="alert"` paneli yeniden açar; kayıt seçeneği native Hesabım sayfasında aktiftir.
 - `--duration-micro` 240 ms, `--duration-panel` 420 ms'tir. Menü çizgisi ve giriş hareketi `--ease-out`, buton/chip/durum değişimleri `--ease-standard` kullanır. Reduced-motion global olarak sıfırlar.
-- Filtreye özel açık `paper` örtü ürün görsellerinde `filter` uygulamaz. Menü, sepet ve hesap koyu `ink` örtüyü korur.
+- Dört yan panelin tamamı açık `paper` %55 örtü kullanır; ürün görsellerinde `filter` uygulanmaz.
+
+## Faz 3D sadakat ve panel tamamlama
+
+- Ana sayfa kategori/kesim indeksi `product_cat` ve `pa_kesim` kayıtlarından sunucu tarafında üretilir. Karttaki swatch, SKU ve beden/stok satırı WooCommerce varyasyon verisidir; iki kart katmanı Site Görünümü'nden ayrı ayrı kapatılabilir.
+- Kök `html/body` yatay taşma maskelemesi kaldırıldı. Beş rota 320–1920 aralığındaki altı hedef genişlikte 30/30 kez sıfır taşmayla ölçüldü; ürün bilgi paneli 1280'de `top:80px` sticky eşiğinde kalır.
+- Ürün lightbox tetikleyicileri `data-panel-trigger` sözleşmesine geçti. `product.js` yalnız galeri/zoom durumunu tutar; `inert`, Tab, Escape ve odak dönüşü `storefront.js` sorumluluğudur.
+- Site Görünümü sekiz gruba tamamlandı. Marka, duyuru bağlantıları, bölüm kaynakları/görünürlüğü, kart anahtarları, footer bağlantıları, kargo durum metinleri ve hesap karşılama metni doğrulanmış varsayılanlarla ön yüze bağlıdır.
+- `Kuka Island` Gutenberg kategorisinde iki `templateLock:all` desen bulunur. Günlük `kuka_manager` kullanıcısı `shop_manager` rolündedir; menüsü içerik, medya, WooCommerce, ürünler, raporlar ve Site Görünümü işlerine odaklıdır.

@@ -710,17 +710,12 @@ Tek oran site geneline uygulanmaz. Yalnızca ürün kartlarında tek oran zorunl
 
 **Uyarı:** Ürün kartı oranı WooCommerce görsel kırpma ayarında tanımlanır. Sonradan değiştirmek tüm görsellerin yeniden üretilmesi demektir. Faz 1'de kesinleştirilir.
 
-### 11.6 Test edilecek imza öğeleri
+### 11.6 Onaylanan imza öğeleri
 
-Birinci tasarım hipotezi: **ürün kartındaki beden/stok satırı.**
+- **Ürün kartı envanter satırı kalıcı gereksinimdir:** SKU solda; beden dizisi sağda; tükenen bedenler üstü çizili. Renk swatch'ları görselin sağ üstündedir ve seçili renk işaretlenir. Swatch ile beden/stok katmanı müşteri tercihi için ayrı görünürlük anahtarına sahiptir.
+- **Ana sayfa kesim indeksi kalıcı gereksinimdir:** `FORMUNU BUL` etiketi, dört kategori satırı, numara/kategori/kesim/ok anatomisi ve hover zemini korunur. Kesimler koddan değil `pa_kesim` verisinden türetilir.
 
-Ürün adının altında mono bir satır; kesim adı, SKU, renk adı ve beden dizisi. Tükenen bedenler üstü çizili.
-
-Amaç, kullanıcının stokta olmayan bedene gitmeden önce bilgi almasıdır. Bunun dönüşüm veya iade üzerindeki etkisi kanıtlanmış kabul edilmez. Mobilde kartı kalabalıklaştırırsa yalnızca ürün detayında veya etkileşim sonrası gösterilir.
-
-İkinci tasarım hipotezi: katalog yeterince genişse ana sayfada **kesim indeksi** kullanılmasıdır (§10.1, madde 4). Gerçek katalog küçükse standart kategori vitrini daha doğru olabilir.
-
-Bu iki fikir Faz 1 prototipinde masaüstü ve mobilde test edilir. Müşteri onayı olmadan kalıcı gereksinim veya tamamlanma kriteri sayılmaz.
+Bu maddeler 4 Ağustos 2026 müşteri onayıyla hipotez statüsünden çıkarılmıştır.
 
 ### 11.7 Animasyon
 
@@ -1589,6 +1584,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-04 | Kesim indeksi ile kart swatch/SKU/beden-stok anatomisi kalıcı gereksinimdir | Müşteri iki Faz 1 hipotezini onayladı; veriler WooCommerce taksonomi/varyasyonlarından gelir ve kartın iki yoğun katmanı panelden kapatılabilir |
+| 2026-08-04 | Beş dialog yüzeyi tek `storefront.js` erişilebilirlik altyapısını kullanır | İkinci lightbox odak tuzağını kaldırmak; Escape, Tab, inert ve odak dönüşünü tek bakım noktasında tutmak |
+| 2026-08-04 | Tüm yan paneller açık `paper` %55 örtü kullanır | Arka plandaki ürün renklerini kaybetmeden panel odağını korumak |
+| 2026-08-04 | Günlük panel kullanıcısı Shop Manager, içerik düzenleri iki kilitli Gutenberg desenidir | Teknik olmayan kullanıcının ürün/sipariş/içerik işlerini yaparken tasarım iskeletini bozmamasını sağlamak |
 | 2026-08-04 | Üretim geliştirmesinin kanonik deposu `kukaisland-canli`; bu PLAN kanonik kopyadır | Prototip salt okunur referans olarak donduruldu; WordPress/WooCommerce kodu ayrı ve devredilebilir kalır |
 | 2026-08-04 | Marka paleti beyaz + bej olarak güncellendi | Logo ölçümündeki `paper #FBF8F2`, `ink #3C2A12` ve sıcak yardımcı renkler AA kontrastla doğrulandı; soğuk prototip paleti üretime taşınmadı |
 | 2026-08-04 | Kesim `pa_kesim` global niteliğidir | WooCommerce Attribute Filter bloklarıyla doğal çalışır; kesim landing page'i gerçek liste/SEO değeri gelene kadar açılmaz |
@@ -1755,6 +1754,8 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Tema/eklenti i18n hazırlığı, POT katalogları ve gelecekteki `/en/` URL varsayımı kaydedildi
 - [x] Faz 3B bileşen aktarımı tamamlandı: gerçek header/footer, WordPress menüsü, editoryal kart/galeri, Pro'suz swatch/filtre, token disiplini ve responsive tarayıcı QA
 - [x] Faz 3C panelleri tamamlandı: Woo fragment sepeti, Woo hesap/giriş paneli, ortak erişilebilir panel altyapısı, mikro etkileşimler ve açık filtre örtüsü
+- [x] Faz 3D sadakat denetimi tamamlandı: 24/24 sapma düzeltildi; kesim indeksi ve kart envanter katmanı kalıcılaştırıldı; sticky/overflow ve ortak lightbox doğrulandı
+- [x] Faz 4 paneli tamamlandı: sekiz Site Görünümü grubu, 72 görünür alan, iki kilitli desen, Shop Manager hesabı/menüsü ve panel rehberi hazır
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
 
