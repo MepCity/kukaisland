@@ -138,6 +138,20 @@
   margin: 0 !important;
 }
 
+.kuka-home-products--carousel .woocommerce ul.products {
+  display: grid;
+  grid-auto-columns: minmax(min(78vw, var(--measure-copy)), 1fr);
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline mandatory;
+}
+
+.kuka-home-products--carousel .kuka-product-card {
+  scroll-snap-align: start;
+}
+
 .kuka-product-card__visual {
   position: relative;
   aspect-ratio: var(--ratio-product-card);
