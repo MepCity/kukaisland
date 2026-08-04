@@ -369,6 +369,11 @@ samp,
   text-transform: uppercase;
 }
 
+.kuka-panel-head [data-panel-close]:focus-visible {
+  outline: 0 !important;
+  border-bottom: 1px solid currentColor;
+}
+
 .kuka-mobile-menu nav {
   height: calc(100% - var(--header-height));
   overflow-y: auto;
