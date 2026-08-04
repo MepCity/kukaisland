@@ -252,7 +252,7 @@
   background: var(--color-paper);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--duration-slow) var(--ease-standard), visibility 0s linear var(--duration-slow);
+  transition: opacity var(--duration-panel) var(--ease-standard), visibility 0s linear var(--duration-panel);
 }
 
 .kuka-product-lightbox.is-open {

@@ -144,6 +144,11 @@
   background: transparent;
   border: 0;
   text-align: center;
+  transition: background var(--duration-micro) var(--ease-standard);
+}
+
+.kuka-cart-panel__quantity button:hover {
+  background: var(--color-sand);
 }
 
 .kuka-cart-panel__quantity input {
@@ -237,6 +242,11 @@
   padding-block: var(--space-2);
   border-bottom: 1px solid var(--color-line);
   text-decoration: none;
+  transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard);
+}
+
+.kuka-account-panel__content nav a:hover {
+  background: var(--color-sand);
 }
 
 .kuka-account-panel .woocommerce-form-login {

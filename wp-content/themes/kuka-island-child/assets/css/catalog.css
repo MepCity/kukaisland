@@ -61,9 +61,14 @@
   gap: var(--space-3);
   padding-inline: var(--space-2);
   background: transparent;
-  border: 1px solid var(--color-ink);
+  border: 1px solid var(--color-line);
   font-size: var(--text-caption);
   text-transform: uppercase;
+  transition: background var(--duration-micro) var(--ease-standard), border-color var(--duration-micro) var(--ease-standard);
+}
+
+.kuka-filter-trigger:hover {
+  background: var(--color-sand);
 }
 
 .kuka-active-filters {
@@ -81,6 +86,11 @@
   padding-left: var(--space-1-5);
   border: 1px solid var(--color-line);
   font-size: var(--text-caption);
+  transition: background var(--duration-micro) var(--ease-standard), border-color var(--duration-micro) var(--ease-standard);
+}
+
+.kuka-active-filters span:hover {
+  background: var(--color-sand);
 }
 
 .kuka-active-filters a {
@@ -364,6 +374,7 @@
   padding: var(--space-1);
   border: 1px solid var(--color-line);
   cursor: pointer;
+  transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard), border-color var(--duration-micro) var(--ease-standard);
 }
 
 .kuka-filter-options input:checked + .kuka-filter-label,
@@ -374,7 +385,7 @@
 }
 
 .kuka-filter-options label:has(input:focus-visible) {
-  outline: var(--focus-outline-width) solid var(--color-ink);
+  outline: var(--focus-outline-width) solid var(--focus-color);
   outline-offset: var(--space-0-5);
 }
 
@@ -414,9 +425,10 @@
   min-height: var(--control-large);
   display: grid;
   place-items: center;
-  border: 1px solid var(--color-ink);
+  border: 1px solid var(--color-line);
   font-size: var(--text-caption);
   text-decoration: none;
+  transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard), border-color var(--duration-micro) var(--ease-standard);
 }
 
 .kuka-filter-foot a {
@@ -426,6 +438,16 @@
 .kuka-filter-foot button {
   background: var(--color-ink);
   color: var(--color-white);
+  border-color: var(--color-ink);
+}
+
+.kuka-filter-foot a:hover {
+  background: var(--color-sand);
+}
+
+.kuka-filter-foot button:hover {
+  background: var(--color-ink-soft);
+  border-color: var(--color-ink-soft);
 }
 
 .kuka-empty-catalog {
