@@ -24,12 +24,10 @@ Bu bağlantı, Kuka Island'ın görsel yönünü ve alışveriş akışını de�
 
 İlk canlı sürümden sonraki fazlarda değerlendirilecek işler: e-Fatura; pazaryeri bağlantıları; özel kargo API'si; iade/değişim portalı; çoklu dil ve para birimi; ERP/muhasebe bağlantısı; profesyonel çekimin üretilmesi; ürün yorumları ve puanlama; takım set indirimi; ana sayfa videosu; ürün açıklama metinlerinin yazılması; ayrıca anlaşılmadıkça logo ve tam kurumsal kimlik tasarımı; özel mobil uygulama; sadakat/puan ve abonelik sistemi; gelişmiş pazarlama otomasyonları; devir sonrası sürekli bakım/destek. Bunlar iptal edilmiş değildir; sonraki fazların kapsamıdır. Yüzlerce ürünün elle temizlenmesi/girilmesi, kurala aykırı fotoğrafların elle eşleştirilmesi, sınırsız revizyon ve referans sitelerin birebir kopyalanması da mevcut kapsamda değildir.
 
-## Onaya bağlı tasarım hipotezleri
+## Onaylanan tasarım gereksinimleri
 
-- Ana sayfadaki kesim/kategori indeksi, ürün keşfini hızlandırdığı varsayımıyla gösterilir.
-- Ürün kartındaki beden ve stok satırı, hızlı karar vermeyi kolaylaştırdığı varsayımıyla gösterilir.
-
-Bu iki yaklaşım [Hipotez Sunumu](HIPOTEZ_SUNUMU.md) üzerinden ayrı ayrı onaylanacaktır. Onaylanmayan yaklaşım prototipten kaldırılacak veya onaylanan sade yönle değiştirilecektir.
+- Ana sayfadaki kesim/kategori indeksi kalıcı gereksinimdir; içerik gerçek kategori ve `pa_kesim` verisinden gelir.
+- Ürün kartındaki swatch, SKU ve beden/stok satırı kalıcı gereksinimdir. Swatch ve beden/stok katmanı müşteri isterse Site Görünümü'nden ayrı ayrı kapatılabilir.
 # Faz 2 ekleri
 
 - Dikey poster logo 64 px header'a uygun değildir. Müşteriden SVG, yatay lockup, açık/koyu varyant ve favicon bekleniyor; o zamana kadar tipografik `KUKA ISLAND` wordmark kullanılır.
@@ -41,7 +39,7 @@ Bu iki yaklaşım [Hipotez Sunumu](HIPOTEZ_SUNUMU.md) üzerinden ayrı ayrı ona
 ## Faz 3B kapsam sınırı
 
 - Favoriler, off-canvas sepet, beden rehberi modalı ve mega menü bu turda yapılmadı; ilk ikisi ayrı veri/hesap ve sepet senkronizasyonu, diğerleri ayrı erişilebilir panel ve içerik kararı gerektirir.
-- Kesim indeksi ile kart beden/stok satırı onaylanmamış tasarım hipotezidir; katalog yoğunluğu ve gerçek kesim listesi görülmeden üretime eklenmedi.
+- Gerçek müşteri kesim listesi teslim edilmedi; indeks mevcut `pa_kesim` terimleriyle çalışır ve yeni terimler eklendikçe otomatik güncellenir.
 - Takım ürünlerde bağımsız iki beden ve ayrı paket fiyatı, ücretsiz çözümün stok/fiyat koşullarını karşılamadığı için ürün eşleştirme bağlantısı düzeyinde kalır.
 - Gerçek yedi fotoğraflı müşteri ürünü teslim edilmedi. Galeri 2–4 görselli pilot medya ve görsel sayısından bağımsız DOM sözleşmesiyle doğrulandı; yedi gerçek fotoğraflı kabul turu açıktır.
 - iyzico sandbox anahtarları bulunmadığından gerçek tahsilat/3D dönüşü test edilmedi. Ödeme yöntemleri korunmuştur; yalnız `#iyzico-bpo1[data-type="page-overlay"]` yüzen promosyonu, eklentide kapatma ayarı bulunmadığı için child CSS ile gizlenir.
