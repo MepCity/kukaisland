@@ -14,11 +14,88 @@ add_action(
 		add_theme_support( 'title-tag' );
 		add_theme_support( 'post-thumbnails' );
 		add_theme_support( 'woocommerce' );
-		add_theme_support( 'wc-product-gallery-zoom' );
-		add_theme_support( 'wc-product-gallery-lightbox' );
-		add_theme_support( 'wc-product-gallery-slider' );
+		register_nav_menus(
+			array(
+				'primary' => __( 'Ana mağaza menüsü', 'kuka-island' ),
+				'footer_categories' => __( 'Footer kategoriler', 'kuka-island' ),
+				'footer_legal' => __( 'Footer yasal', 'kuka-island' ),
+			)
+		);
 	}
 );
+
+/**
+ * Let the child theme's WooCommerce gallery override render unchanged.
+ * Blocksy otherwise replaces the template before WooCommerce can load it.
+ */
+add_filter( 'blocksy:woocommerce:product-view:use-default', '__return_true' );
+
+/**
+ * Translate the parent theme's first breadcrumb without altering the vendor.
+ *
+ * @param array<int, array<string, string>> $items Breadcrumb items.
+ * @return array<int, array<string, string>>
+ */
+function kuka_island_breadcrumb_items( $items ) {
+	if ( isset( $items[0]['name'] ) ) {
+		$items[0]['name'] = __( 'Ana sayfa', 'kuka-island' );
+	}
+
+	return $items;
+}
+add_filter( 'blocksy:breadcrumbs:items-array', 'kuka_island_breadcrumb_items' );
+
+/**
+ * Fill the small Turkish gaps left by Blocksy's unavailable language pack
+ * and a newer WooCommerce privacy string.
+ */
+function kuka_island_translation_gaps( string $translation, string $text, string $domain ): string {
+	$maps = array(
+		'blocksy' => array(
+			'Product' => 'Ürün',
+			'Price' => 'Fiyat',
+			'Quantity' => 'Adet',
+			'Subtotal' => 'Ara toplam',
+			'Remove item' => 'Ürünü çıkar',
+			'Remove product' => 'Ürünü çıkar',
+			'Remove %s from cart' => '%s ürününü sepetten çıkar',
+			'Coupon:' => 'Kupon:',
+			'Coupon code' => 'Kupon kodu',
+			'Apply coupon' => 'Kuponu uygula',
+			'Update cart' => 'Sepeti güncelle',
+			'Available on backorder' => 'Ön siparişle temin edilebilir',
+		),
+		'woocommerce' => array(
+			'Your personal data will be used to process your order, support your experience throughout this website, and for other purposes described in our %s.' => 'Kişisel verileriniz siparişinizi işlemek, site deneyiminizi desteklemek ve %s sayfamızda açıklanan diğer amaçlar için kullanılacaktır.',
+		),
+	);
+
+	return $maps[ $domain ][ $text ] ?? $translation;
+}
+add_filter( 'gettext', 'kuka_island_translation_gaps', 10, 3 );
+
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		remove_theme_support( 'wc-product-gallery-slider' );
+		remove_theme_support( 'wc-product-gallery-zoom' );
+		remove_theme_support( 'wc-product-gallery-lightbox' );
+	},
+	100
+);
+
+/** Render one of the five source-matched inline SVG icons. */
+function kuka_island_icon( string $name ): string {
+	$paths = array(
+		'search' => '<circle cx="11" cy="11" r="6.5" stroke="currentColor"/><path d="m16 16 4.5 4.5" stroke="currentColor"/>',
+		'account' => '<circle cx="12" cy="8" r="3.5" stroke="currentColor"/><path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" stroke="currentColor"/>',
+		'bag' => '<path d="M5 8.5h14l-1 12H6l-1-12Z" stroke="currentColor"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9" stroke="currentColor"/>',
+		'menu' => '<path d="M3 7h18M3 17h18" stroke="currentColor"/>',
+		'close' => '<path d="m4 4 16 16M20 4 4 20" stroke="currentColor"/>',
+	);
+	if ( ! isset( $paths[ $name ] ) ) { return ''; }
+	return '<svg class="kuka-icon kuka-icon--' . esc_attr( $name ) . '" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">' . $paths[ $name ] . '</svg>';
+}
 
 /** @return array<string, mixed> */
 function kuka_island_content(): array {
@@ -98,11 +175,21 @@ function kuka_island_child_enqueue_assets(): void {
 				$variation = wc_get_product( $variation_id );
 				if ( $variation instanceof WC_Product_Variation ) {
 					$attributes = $variation->get_attributes();
+					$gallery_ids = array_values( array_unique( array_map( 'intval', array_filter( array_merge( array( $variation->get_image_id() ), (array) $variation->get_meta( '_kuka_variation_gallery_ids' ) ) ) ) ) );
 					$availability[] = array(
 						'color'       => $attributes['pa_renk'] ?? '',
 						'size'        => $attributes['pa_beden'] ?? '',
 						'available'   => $variation->is_in_stock() && $variation->is_purchasable(),
 						'stock'       => $variation->get_stock_quantity(),
+						'id'          => $variation->get_id(),
+						'gallery'     => array_map(
+							static fn( int $id ): array => array(
+								'src'  => wp_get_attachment_image_url( $id, 'large' ),
+								'full' => wp_get_attachment_image_url( $id, 'full' ),
+								'alt'  => get_post_meta( $id, '_wp_attachment_image_alt', true ),
+							),
+							$gallery_ids
+						),
 					);
 				}
 			}
@@ -116,6 +203,10 @@ function kuka_island_child_enqueue_assets(): void {
 			'lowStock' => __( 'Son %d adet', 'kuka-island' ),
 			'soldOut'  => __( 'Tükendi', 'kuka-island' ),
 			'availability' => $availability,
+			'colors'       => array_map(
+				static fn( WP_Term $term ): array => array( 'slug' => $term->slug, 'name' => $term->name, 'hex' => get_term_meta( $term->term_id, 'kuka_swatch_hex', true ) ),
+				get_terms( array( 'taxonomy' => 'pa_renk', 'hide_empty' => false ) )
+			),
 		)
 	);
 }
@@ -135,6 +226,16 @@ add_filter( 'woocommerce_get_image_size_gallery_thumbnail', 'kuka_island_child_g
 
 add_filter( 'loop_shop_per_page', static fn(): int => 12, 20 );
 add_filter( 'loop_shop_columns', static fn(): int => 4, 20 );
+
+add_filter(
+	'woocommerce_breadcrumb_defaults',
+	static function ( array $defaults ): array {
+		$defaults['home'] = __( 'Ana sayfa', 'kuka-island' );
+		return $defaults;
+	}
+);
+
+require_once get_stylesheet_directory() . '/inc/catalog-filters.php';
 
 add_action(
 	'wp_head',
