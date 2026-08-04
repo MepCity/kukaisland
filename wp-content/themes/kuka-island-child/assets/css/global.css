@@ -19,13 +19,11 @@
 }
 
 html {
-  overflow-x: clip;
   scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  overflow-x: clip;
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
@@ -316,7 +314,7 @@ samp,
   position: fixed;
   z-index: var(--layer-overlay);
   inset: 0;
-  background: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  background: color-mix(in srgb, var(--color-paper) 55%, transparent);
 }
 
 .kuka-panel-overlay--light {

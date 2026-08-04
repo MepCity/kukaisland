@@ -33,17 +33,17 @@ $overlay_header = is_front_page();
 		<a class="kuka-icon-button kuka-bag-button" href="<?php echo esc_url( wc_get_cart_url() ); ?>" data-panel-trigger="kuka-cart-panel" aria-label="<?php esc_attr_e( 'Sepeti aç', 'kuka-island' ); ?>" aria-controls="kuka-cart-panel" aria-expanded="false"><?php echo kuka_island_icon( 'bag' ); // phpcs:ignore ?><?php echo kuka_island_cart_count_markup(); // phpcs:ignore ?></a>
 	</div>
 </header>
-<div class="kuka-panel-overlay" data-panel-overlay hidden></div>
+<div class="kuka-panel-overlay kuka-panel-overlay--light" data-panel-overlay hidden></div>
 <aside id="kuka-mobile-menu" class="kuka-mobile-menu" role="dialog" aria-modal="true" aria-labelledby="kuka-mobile-menu-title" aria-hidden="true" inert>
 	<div class="kuka-panel-head"><span id="kuka-mobile-menu-title"><?php esc_html_e( 'Menü', 'kuka-island' ); ?></span><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Menüyü kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
 	<nav aria-label="<?php esc_attr_e( 'Mobil menü', 'kuka-island' ); ?>"><?php wp_nav_menu( array( 'theme_location' => 'primary', 'container' => false, 'items_wrap' => '<ul>%3$s</ul>', 'fallback_cb' => false, 'depth' => 2 ) ); ?></nav>
 </aside>
-<div class="kuka-panel-overlay" data-panel-overlay hidden></div>
+<div class="kuka-panel-overlay kuka-panel-overlay--light" data-panel-overlay hidden></div>
 <aside id="kuka-account-panel" class="kuka-side-panel kuka-account-panel" role="dialog" aria-modal="true" aria-labelledby="kuka-account-panel-title" aria-hidden="true" inert <?php echo kuka_island_account_panel_requires_attention() ? 'data-panel-open-on-load' : ''; ?>>
 	<div class="kuka-panel-head"><span id="kuka-account-panel-title"><?php esc_html_e( 'Hesap', 'kuka-island' ); ?></span><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Hesap panelini kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
 	<?php kuka_island_account_panel_content(); ?>
 </aside>
-<div class="kuka-panel-overlay" data-panel-overlay hidden></div>
+<div class="kuka-panel-overlay kuka-panel-overlay--light" data-panel-overlay hidden></div>
 <aside id="kuka-cart-panel" class="kuka-side-panel kuka-cart-panel" role="dialog" aria-modal="true" aria-labelledby="kuka-cart-panel-title" aria-hidden="true" inert>
 	<div class="kuka-panel-head"><?php echo kuka_island_cart_title_markup(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Sepeti kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
 	<?php kuka_island_cart_panel_content(); ?>
