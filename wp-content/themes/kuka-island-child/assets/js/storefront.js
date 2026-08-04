@@ -52,6 +52,10 @@
     if (trigger) openPanel(trigger);
   });
 
+  const initialPanel = document.querySelector("[data-panel-open-on-load]");
+  const initialTrigger = initialPanel && document.querySelector(`[aria-controls="${initialPanel.id}"]`);
+  if (initialTrigger) window.requestAnimationFrame(() => openPanel(initialTrigger));
+
   document.addEventListener("keydown", (event) => {
     if (!activePanel) return;
     if (event.key === "Escape") {

@@ -667,7 +667,7 @@ samp,
     display: inline-flex;
   }
 
-  .kuka-header-actions > a:not(.kuka-bag-button) {
+  .kuka-header-actions > a:not(.kuka-bag-button):not(.kuka-account-button) {
     display: none;
   }
 

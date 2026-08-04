@@ -218,6 +218,7 @@ update_option( 'woocommerce_single_image_width', '1080' );
 update_option( 'woocommerce_thumbnail_cropping', 'custom' );
 update_option( 'woocommerce_thumbnail_cropping_custom_width', '4' );
 update_option( 'woocommerce_thumbnail_cropping_custom_height', '5' );
+update_option( 'woocommerce_enable_myaccount_registration', 'yes' );
 
 $attribute_ids = array(
 	'renk'  => kuka_seed_attribute( 'Renk', 'renk' ),
