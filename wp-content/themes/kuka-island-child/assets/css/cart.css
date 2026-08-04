@@ -211,6 +211,93 @@
   font-size: var(--text-heading-small);
 }
 
+.kuka-account-panel__content {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-3);
+}
+
+.kuka-account-panel__content h2 {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--text-heading-small);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-heading);
+}
+
+.kuka-account-panel__content nav {
+  border-top: 1px solid var(--color-line);
+}
+
+.kuka-account-panel__content nav a {
+  min-height: var(--control-large);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--color-line);
+  text-decoration: none;
+}
+
+.kuka-account-panel .woocommerce-form-login {
+  padding: 0;
+  border: 0;
+}
+
+.kuka-account-panel .woocommerce-form-login p {
+  margin-bottom: var(--space-2);
+}
+
+.kuka-account-panel .woocommerce-form-login label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-caption);
+}
+
+.kuka-account-panel .woocommerce-form-login input[type="text"],
+.kuka-account-panel .woocommerce-form-login input[type="password"] {
+  width: 100%;
+  min-height: var(--control-large);
+  padding-inline: var(--space-1-5);
+  background: transparent;
+  border: 1px solid var(--color-line);
+}
+
+.kuka-account-panel .woocommerce-form-login__rememberme {
+  min-height: var(--control);
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.kuka-account-panel .woocommerce-form-login__rememberme input {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+
+.kuka-account-panel .lost_password,
+.kuka-account-panel__register {
+  font-size: var(--text-caption);
+}
+
+.kuka-account-panel__errors {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--color-error);
+}
+
+.kuka-account-panel__errors .woocommerce-error {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-ink);
+}
+
+.kuka-account-panel__errors .woocommerce-error::before {
+  display: none;
+}
+
 @media (max-width: 47.5em) {
   .woocommerce .cart-collaterals .cart_totals {
     width: 100%;
