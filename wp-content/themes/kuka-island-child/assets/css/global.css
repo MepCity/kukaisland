@@ -92,7 +92,7 @@ samp,
 }
 
 *:focus-visible {
-  outline: var(--focus-outline-width) solid currentColor !important;
+  outline: var(--focus-outline-width) solid var(--focus-color) !important;
   outline-offset: var(--space-0-5) !important;
 }
 
@@ -206,12 +206,32 @@ samp,
 }
 
 .kuka-desktop-nav a {
+  position: relative;
   color: inherit;
   font-size: var(--text-micro);
   line-height: 1;
   letter-spacing: var(--tracking-label);
   text-decoration: none;
   text-transform: uppercase;
+}
+
+.kuka-desktop-nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: calc(-1 * var(--space-1));
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform var(--duration-micro) var(--ease-out);
+}
+
+.kuka-desktop-nav a:hover::after,
+.kuka-desktop-nav a:focus-visible::after {
+  transform: scaleX(1);
+  transform-origin: left;
 }
 
 .kuka-desktop-nav .sub-menu {
@@ -258,6 +278,12 @@ samp,
   background: transparent;
   border: 0;
   text-decoration: none;
+  transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard);
+}
+
+.kuka-icon-button:hover {
+  background: var(--color-sand);
+  color: var(--color-ink);
 }
 
 .kuka-icon {
@@ -309,7 +335,7 @@ samp,
   width: min(var(--panel-width), 100vw);
   background: var(--color-paper);
   transform: translateX(-105%);
-  transition: transform var(--duration-slow) var(--ease-out), visibility 0s linear var(--duration-slow);
+  transition: transform var(--duration-panel) var(--ease-out), visibility 0s linear var(--duration-panel);
 }
 
 .kuka-mobile-menu.is-open,
@@ -419,6 +445,15 @@ samp,
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
   text-decoration: none;
+  transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard), border-color var(--duration-micro) var(--ease-standard);
+}
+
+.kuka-button:hover,
+.woocommerce a.button:hover,
+.woocommerce button.button:hover,
+.woocommerce input.button:hover {
+  background: var(--color-ink-soft) !important;
+  border-color: var(--color-ink-soft) !important;
 }
 
 .kuka-hero {

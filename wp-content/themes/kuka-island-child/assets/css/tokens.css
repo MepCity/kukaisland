@@ -12,6 +12,7 @@
   --color-image-placeholder: #e4dac9;
   --color-ink-soft: #695a44;
   --color-ink-line: #8b7d67;
+  --focus-color: var(--color-ink-soft);
 
   /* Prototipteki 8 px tabanlı boşluk ölçeği. */
   --space-0-5: 4px;
@@ -81,7 +82,9 @@
   --duration-fast: 180ms;
   --duration-normal: 240ms;
   --duration-slow: 420ms;
-  --duration-image: 650ms;
+  --duration-micro: var(--duration-normal);
+  --duration-panel: var(--duration-slow);
+  --duration-image: var(--duration-normal);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --layer-header: 30;
