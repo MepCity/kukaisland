@@ -1,0 +1,7 @@
+/* Faz 3: WooCommerce ürün arşivi ve 4:5 kart sunumu burada taşınacak. */
+.woocommerce ul.products li.product img {
+  aspect-ratio: var(--ratio-product-card);
+  object-fit: cover;
+  background: var(--color-sand);
+}
+

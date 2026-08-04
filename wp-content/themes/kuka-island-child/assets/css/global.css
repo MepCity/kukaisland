@@ -1,0 +1,40 @@
+@font-face {
+  font-family: "Geist Kuka";
+  src: url("../fonts/geist-sans-latin-ext.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono Kuka";
+  src: url("../fonts/geist-mono-latin-ext.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+code,
+kbd,
+samp,
+.sku {
+  font-family: var(--font-mono);
+}
+
+*:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-ink);
+  outline-offset: var(--space-0-5);
+}
+
+.site-title a {
+  font-size: var(--text-body-large);
+  font-weight: 620;
+  letter-spacing: -0.045em;
+}
+
