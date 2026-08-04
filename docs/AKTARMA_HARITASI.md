@@ -1,6 +1,6 @@
 # Faz 3 Aktarma Haritası
 
-> Faz 3B kapanışı: override bütçesi iki dosyadır. `woocommerce/content-product.php` editoryal kart anatomisini, `woocommerce/single-product/product-image.php` ise Blocksy'nin template öncesi bastığı slider yerine tam çözünürlüğü ertelenen özel galeriyi sağlar. Sepet, checkout ve varyasyon formu hook/CSS/DOM katmanında kalır.
+> Faz 3C kapanışı: override bütçesi yine iki dosyadır. Sepet ve hesap panelleri child theme markup/hook katmanında; tüm yan panel erişilebilirliği tek `storefront.js` altyapısında kalır. Sepet verisi ve kimlik doğrulama WooCommerce'tir.
 
 Bu belge prototipin React/Next yapısını üretim WordPress katmanlarına çevirmek için minimum override planıdır. Faz 2'de yalnız token katmanı taşındı; aşağıdaki bileşen portları yapılmadı.
 
@@ -22,10 +22,10 @@ Soğuk renkler (`#16181A`, `#EEEFEC`, `#E4E6E2`, `#616560`, `#CFD2CC`) taşınma
 
 | Prototip modülü | Enqueue edilen hedef | Taşıma sınırı |
 |---|---|---|
-| `lib/storefront-interactions.ts` (233 satır) | `assets/js/storefront.js` | Panel/Escape/odak döngüsü ve header davranışı uyarlanır; markup seçicileri yeniden bağlanır |
+| `lib/storefront-interactions.ts` (233 satır) | `assets/js/storefront.js` | Mobil menü, filtre, sepet ve hesap için tek panel/Escape/odak döngüsü; `kuka:panel-open` yalnız bu altyapıya niyet bildirir |
 | `lib/catalog-interactions.ts` (56 satır) | `assets/js/catalog.js` | Grid yoğunluğu taşınabilir; filtreleme WooCommerce query/filter bloklarına bırakılır |
 | `lib/product-interactions.ts` (427 satır) | `assets/js/product.js` | Galeri/lightbox sunumu taşınabilir; varyasyon, fiyat, stok ve add-to-cart WooCommerce event/API'sine bağlanır |
-| `lib/cart-interactions.ts` (244 satır) | `assets/js/cart.js` | Çekmece DOM/odak davranışı taşınabilir; localStorage, demo seed ve sepet matematiği taşınmaz |
+| `lib/cart-interactions.ts` (244 satır) | `assets/js/cart.js` | Yalnız WooCommerce sepet formunu asenkron gönderme, fragment yenileme ve `added_to_cart` niyeti taşındı; panel odağı, localStorage, demo seed ve sepet matematiği taşınmadı |
 
 Toplam 960 satır prototip etkileşim kodunun yaklaşık %42'si davranış fikri/odak yönetimi olarak yeniden kullanılabilir; doğrudan kopyalanabilir kod oranı markup ve veri kaynağı değiştiği için yaklaşık %20'dir.
 
@@ -42,7 +42,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 | Sepet satırı/sayfası | `cart/cart.php` | Önce Woo hook'ları; görsel ayrışma büyükse override |
 | Klasik checkout formu | `checkout/form-checkout.php` | Alanlar hook ile; layout gerçekten gerekirse override |
 | Sipariş özeti | `checkout/review-order.php` | Önce CSS/hook; override ertelendi |
-| Header/footer/sepet çekmecesi | Blocksy builder ve child theme hook'ları | WooCommerce override değil |
+| Header/footer/sepet/hesap panelleri | Child header + `inc/storefront-panels.php` | WooCommerce override değil; login formu, cart form handler ve fragment API çekirdektir |
 
 ## Site Görünümü alanları
 
@@ -56,7 +56,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 | `anaSayfaBolumleri` | Bölüm sırası/içeriği | Kaynak türü allowlist; bozuk ilişki bölümü gizler |
 | `navigasyon` | Menü eşlemeleri | WordPress menu ID; varsayılan yardım menüsü |
 | `footer` | Footer ve şirket | Link URL sanitize; şirket yer tutucuları canlıda yayınlanmaz |
-| `ticariMesajlar` | Kargo/değişim/destek | Pozitif sayılar; müşteri onaylı değer fallback'i |
+| `ticariMesajlar` | Kargo/değişim/destek | `commercial.free_shipping_threshold` çekmecede kalan tutarı üretir; pozitif sayı ve müşteri onaylı fallback |
 
 ## İçerik aktarımı
 
@@ -83,3 +83,12 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Renk swatch'ı `pa_renk` terim metasını okur; native varyasyon select'leri erişilebilir yedek ve WooCommerce'in tek doğruluk kaynağı olarak DOM'da kalır.
 - Ürün galerisi ikinci ve son override'dır. Liste görselleri `large`, lightbox görseli yalnız açıldığında `full` kaynaktan oluşturulur.
 - Blocksy parent, WooCommerce ve iyzico dosyaları değiştirilmedi. Blocksy galeri/breadcrumb extension point'leri ve iyzico page-overlay için dar child CSS seçicisi kullanıldı.
+
+## Faz 3C panel ve hareket sınırı
+
+- Mobil menü soldan; filtre, sepet ve hesap sağdan açılır. Sepet/hesap header'ın sağ eylemlerinden geldiği için aynı yönü paylaşır.
+- Dört yan panel `data-panel-trigger`, bitişik `data-panel-overlay`, `role="dialog"`, `aria-modal`, `aria-labelledby` ve kapalıyken `inert` sözleşmesine sahiptir. Açma/kapama, Escape, Tab döngüsü, scroll kilidi ve odak iadesi yalnız `assets/js/storefront.js` içindedir.
+- Sepet markup'ı `inc/storefront-panels.php` içindedir. Adet/kaldırma native WooCommerce sepet formuna nonce ile POST edilir; `woocommerce_add_to_cart_fragments` panel gövdesini ve header sayacını yeniler. JS'siz ekleme `/sepet` sayfasına yönlenir.
+- Hesap paneli `woocommerce_login_form()` ve WooCommerce endpoint URL'lerini kullanır. Başarısız girişte Türkçe metinli `role="alert"` paneli yeniden açar; kayıt seçeneği native Hesabım sayfasında aktiftir.
+- `--duration-micro` 240 ms, `--duration-panel` 420 ms'tir. Menü çizgisi ve giriş hareketi `--ease-out`, buton/chip/durum değişimleri `--ease-standard` kullanır. Reduced-motion global olarak sıfırlar.
+- Filtreye özel açık `paper` örtü ürün görsellerinde `filter` uygulamaz. Menü, sepet ve hesap koyu `ink` örtüyü korur.
