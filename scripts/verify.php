@@ -25,6 +25,7 @@ WP_CLI::line( 'PRICE_SETTINGS=' . get_option( 'woocommerce_currency_pos' ) . '|'
 WP_CLI::line( 'ACTIVE_THEME=' . wp_get_theme()->get_stylesheet() );
 WP_CLI::line( 'HPOS=' . get_option( 'woocommerce_custom_orders_table_enabled' ) );
 WP_CLI::line( 'GUEST_CHECKOUT=' . get_option( 'woocommerce_enable_guest_checkout' ) );
+WP_CLI::line( 'STORE_VISIBILITY=' . ( 'yes' === get_option( 'woocommerce_coming_soon' ) ? 'coming-soon' : 'live' ) );
 WP_CLI::line( 'MYACCOUNT_REGISTRATION=' . get_option( 'woocommerce_enable_myaccount_registration' ) );
 WP_CLI::line( 'IMAGE_CROP=' . get_option( 'woocommerce_thumbnail_cropping_custom_width' ) . ':' . get_option( 'woocommerce_thumbnail_cropping_custom_height' ) );
 WP_CLI::line( 'BIG_IMAGE_THRESHOLD=' . apply_filters( 'big_image_size_threshold', 2560, array(), '', 0 ) );
