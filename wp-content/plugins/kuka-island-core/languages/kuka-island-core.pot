@@ -1,0 +1,325 @@
+# Copyright (C) 2026 MepCity
+# This file is distributed under the same license as the Kuka Island Core plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: Kuka Island Core 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/kuka-island-core\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-08-04T10:53:53+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: kuka-island-core\n"
+
+#. Plugin Name of the plugin
+#: kuka-island-core.php
+msgid "Kuka Island Core"
+msgstr ""
+
+#. Description of the plugin
+#: kuka-island-core.php
+msgid "Kuka Island mağazasının tema bağımsız veri ve entegrasyon iskeleti."
+msgstr ""
+
+#. Author of the plugin
+#: kuka-island-core.php
+msgid "MepCity"
+msgstr ""
+
+#: includes/class-combination-relations.php:18
+msgid "Eşleşen parça ürün ID"
+msgstr ""
+
+#: includes/class-combination-relations.php:21
+msgid "Faz 2 yalnız ilişkiyi saklar; kombin fiyatı ve stok davranışı uygulanmaz."
+msgstr ""
+
+#: includes/class-corporate-billing.php:13
+#: includes/class-site-appearance.php:164
+msgid "Şirket unvanı"
+msgstr ""
+
+#: includes/class-corporate-billing.php:15
+msgid "Fatura türü"
+msgstr ""
+
+#: includes/class-corporate-billing.php:16
+msgid "Bireysel"
+msgstr ""
+
+#: includes/class-corporate-billing.php:16
+msgid "Kurumsal"
+msgstr ""
+
+#: includes/class-corporate-billing.php:18
+msgid "Vergi dairesi"
+msgstr ""
+
+#: includes/class-corporate-billing.php:19
+msgid "VKN (10 hane)"
+msgstr ""
+
+#: includes/class-corporate-billing.php:25
+msgid "Kurumsal fatura için şirket unvanı zorunludur."
+msgstr ""
+
+#: includes/class-corporate-billing.php:26
+msgid "Kurumsal fatura için vergi dairesi zorunludur."
+msgstr ""
+
+#: includes/class-corporate-billing.php:27
+msgid "VKN 10 rakamdan oluşmalıdır."
+msgstr ""
+
+#. translators: %s is the URL of the pre-information form.
+#: includes/class-legal-displays.php:18
+#, php-format
+msgid "<a href=\"%s\" target=\"_blank\" rel=\"noopener\">Ön Bilgilendirme Formu</a>’nu okudum ve kabul ediyorum."
+msgstr ""
+
+#. translators: %s is the URL of the distance sales agreement.
+#: includes/class-legal-displays.php:20
+#, php-format
+msgid "<a href=\"%s\" target=\"_blank\" rel=\"noopener\">Mesafeli Satış Sözleşmesi</a>’ni okudum ve kabul ediyorum."
+msgstr ""
+
+#: includes/class-legal-displays.php:26
+msgid "Ön Bilgilendirme Formu onayı zorunludur."
+msgstr ""
+
+#: includes/class-legal-displays.php:27
+msgid "Mesafeli Satış Sözleşmesi onayı zorunludur."
+msgstr ""
+
+#: includes/class-product-fields.php:29
+msgid "Kuka Island ürün veri modeli alanı."
+msgstr ""
+
+#: includes/class-site-appearance.php:103
+msgid "1. Marka"
+msgstr ""
+
+#: includes/class-site-appearance.php:105
+msgid "Logo medya ID"
+msgstr ""
+
+#: includes/class-site-appearance.php:106
+msgid "Favicon medya ID"
+msgstr ""
+
+#: includes/class-site-appearance.php:107
+msgid "E-posta"
+msgstr ""
+
+#: includes/class-site-appearance.php:108
+msgid "Telefon"
+msgstr ""
+
+#: includes/class-site-appearance.php:109
+msgid "Instagram URL"
+msgstr ""
+
+#: includes/class-site-appearance.php:110
+msgid "Pinterest URL"
+msgstr ""
+
+#: includes/class-site-appearance.php:114
+msgid "2. Duyuru Bandı"
+msgstr ""
+
+#: includes/class-site-appearance.php:116
+msgid "Bandı göster"
+msgstr ""
+
+#: includes/class-site-appearance.php:117
+msgid "Duyurular (satır başına bir, en fazla 3)"
+msgstr ""
+
+#: includes/class-site-appearance.php:121
+msgid "3. Ana Hero"
+msgstr ""
+
+#: includes/class-site-appearance.php:123
+msgid "Hero göster"
+msgstr ""
+
+#: includes/class-site-appearance.php:124
+msgid "Masaüstü görsel medya ID"
+msgstr ""
+
+#: includes/class-site-appearance.php:125
+msgid "Mobil görsel medya ID"
+msgstr ""
+
+#: includes/class-site-appearance.php:126
+msgid "Üst başlık"
+msgstr ""
+
+#: includes/class-site-appearance.php:127
+msgid "Başlık"
+msgstr ""
+
+#: includes/class-site-appearance.php:128
+msgid "Metin"
+msgstr ""
+
+#: includes/class-site-appearance.php:129
+msgid "Buton etiketi"
+msgstr ""
+
+#: includes/class-site-appearance.php:130
+msgid "Buton URL"
+msgstr ""
+
+#: includes/class-site-appearance.php:131
+msgid "Hizalama (left/center/right)"
+msgstr ""
+
+#: includes/class-site-appearance.php:132
+msgid "Metin tonu (light/dark)"
+msgstr ""
+
+#: includes/class-site-appearance.php:136
+msgid "4. Ana Sayfa Bölümleri"
+msgstr ""
+
+#: includes/class-site-appearance.php:138
+msgid "Yeni gelenler başlığı"
+msgstr ""
+
+#: includes/class-site-appearance.php:139
+msgid "Editoryal başlık"
+msgstr ""
+
+#: includes/class-site-appearance.php:140
+msgid "Editoryal metin"
+msgstr ""
+
+#: includes/class-site-appearance.php:141
+msgid "Editoryal görsel medya ID"
+msgstr ""
+
+#: includes/class-site-appearance.php:142
+msgid "Editoryal URL"
+msgstr ""
+
+#: includes/class-site-appearance.php:143
+msgid "Manifesto başlığı"
+msgstr ""
+
+#: includes/class-site-appearance.php:144
+msgid "Manifesto metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:145
+msgid "Hizmet 1"
+msgstr ""
+
+#: includes/class-site-appearance.php:146
+msgid "Hizmet 2"
+msgstr ""
+
+#: includes/class-site-appearance.php:147
+msgid "Hizmet 3"
+msgstr ""
+
+#: includes/class-site-appearance.php:151
+msgid "5. Navigasyon"
+msgstr ""
+
+#: includes/class-site-appearance.php:153
+msgid "Ana menü (Etiket|URL)"
+msgstr ""
+
+#: includes/class-site-appearance.php:154
+msgid "Yardım menüsü (Etiket|URL)"
+msgstr ""
+
+#: includes/class-site-appearance.php:158
+msgid "6. Footer"
+msgstr ""
+
+#: includes/class-site-appearance.php:160
+msgid "Marka metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:161
+msgid "Bülten başlığı"
+msgstr ""
+
+#: includes/class-site-appearance.php:162
+msgid "Bülten metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:163
+msgid "Bülten onay metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:165
+msgid "Şirket adresi"
+msgstr ""
+
+#: includes/class-site-appearance.php:169
+msgid "7. Ticari Bilgiler"
+msgstr ""
+
+#: includes/class-site-appearance.php:171
+msgid "Ücretsiz kargo eşiği (TL)"
+msgstr ""
+
+#: includes/class-site-appearance.php:172
+msgid "Kargo metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:173
+msgid "Sabit kargo metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:174
+msgid "Değişim metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:175
+msgid "Güvenli ödeme metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:176
+msgid "Destek saatleri"
+msgstr ""
+
+#: includes/class-site-appearance.php:184
+#: includes/class-site-appearance.php:185
+msgid "Kuka Island"
+msgstr ""
+
+#: includes/class-site-appearance.php:196
+msgid "Bu sayfaya erişim yetkiniz yok."
+msgstr ""
+
+#: includes/class-site-appearance.php:202
+msgid "Kuka Island / Site Görünümü"
+msgstr ""
+
+#: includes/class-site-appearance.php:203
+msgid "Yalnızca içerik ve ticari metinler burada yönetilir. Renk, tipografi ve ölçüler temanın tasarım sözleşmesindedir."
+msgstr ""
+
+#: includes/class-site-appearance.php:205
+msgid "Site görünümü kaydedildi."
+msgstr ""
+
+#: includes/class-site-appearance.php:220
+msgid "Site görünümünü kaydet"
+msgstr ""
+
+#: includes/class-site-appearance.php:252
+msgid "Bu işlem için yetkiniz yok."
+msgstr ""
+
+#: includes/class-swatch-meta.php:22
+#: includes/class-swatch-meta.php:33
+msgid "Swatch rengi"
+msgstr ""

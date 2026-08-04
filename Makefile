@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help up down install seed reset shell wp status verify
+.PHONY: help up down install seed reset shell wp status verify pot
 
 help:
 	@echo "make install  Ortamı kurar ve pilot veriyi yükler"
@@ -11,6 +11,7 @@ help:
 	@echo "make shell    WordPress konteynerinde kabuk açar"
 	@echo "make wp ARGS='plugin list'  WP-CLI çalıştırır"
 	@echo "make verify   Kabul ölçümlerini raporlar"
+	@echo "make pot      Tema ve eklenti çeviri kataloglarını üretir"
 
 up:
 	@./scripts/ensure-env.sh
@@ -39,3 +40,7 @@ status:
 
 verify:
 	@./scripts/verify.sh
+
+pot:
+	docker compose run --rm wp-cli wp i18n make-pot /var/www/html/wp-content/themes/kuka-island-child /var/www/html/wp-content/themes/kuka-island-child/languages/kuka-island.pot --domain=kuka-island
+	docker compose run --rm wp-cli wp i18n make-pot /var/www/html/wp-content/plugins/kuka-island-core /var/www/html/wp-content/plugins/kuka-island-core/languages/kuka-island-core.pot --domain=kuka-island-core
