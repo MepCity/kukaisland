@@ -1700,6 +1700,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-04 | Kesim, renk, beden ve fiyat grupları doğal `<details>`/`<summary>` akordiyonu olacak | JS akordiyonu eklemeden klavye davranışı sağlanır; yalnız aktif filtresi olan grup sunucu yanıtında açık gelir |
 | 2026-08-04 | Filtre çekmecesi `--filter-panel-width: 640px`, sepet ve menü `--panel-width: 480px` kullanacak | Chip grid masaüstünde nefes alır; mevcut sepet ve navigasyon oranları değişmez, mobilde filtre paneli tam genişlik olur |
 | 2026-08-04 | Açık `paper` örtü yalnız açık filtre paneline uygulanacak; diğer paneller koyu örtüyü koruyacak | Referansın sönük katalog bağlamı Kuka paletine uyarlanır; `border-left` panel sınırını korur ve `:has()` ile değişiklik filtreye izole edilir |
+| 2026-08-04 | Ürün şeması WooCommerce'in tek üreticisine bırakıldı; child theme yalnız review/aggregateRating alanlarını kaldırır | Product, Offer ve BreadcrumbList'in birer kez çıkması ve ikinci şema üreticisi oluşmaması için |
+| 2026-08-04 | WooCommerce override bütçesi yalnız `content-product.php` ile kapatıldı | Ürün detay, galeri, sepet ve checkout hook/CSS ile karşılandığından yükseltme maliyetini sınırlamak için |
+| 2026-08-04 | i18n URL hazırlığı gelecekte `/en/` ön eki varsayımıdır; bu fazda çoklu dil eklentisi kurulmaz | Text domain ve POT hazırlığını yayın/routing kararından ayırmak için |
+| 2026-08-04 | Kesim indeksi, kart stok/beden satırı ve Pro'ya bağımlı beş bileşen üretim temasına taşınmadı | Onaylanmayan hipotezleri ve lisans gerektiren davranışları custom kodla taklit etmemek için |
 
 ---
 
@@ -1736,7 +1740,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [ ] Gerçek 7 fotoğraflı ürün medya seti ve veri kaydıyla uzun galeri kabul testi çalıştırılacak
 - [ ] Müşteri tasarım onayı alınacak
 - [x] WooCommerce teknik pilotu local ortamda kuruldu; sandbox ödeme kabulü anahtar bekliyor
-- [ ] Panel geliştirilecek
+- [x] Faz 3A tasarım aktarımı: global vitrin, ana sayfa, katalog, ürün, sepet, klasik checkout ve içerik sayfaları tamamlandı
+- [x] Faz 4 Site Appearance paneli yedi içerik grubuyla, güvenli kayıt ve fallback sözleşmesiyle tamamlandı
+- [x] Tema/eklenti i18n hazırlığı, POT katalogları ve gelecekteki `/en/` URL varsayımı kaydedildi
+- [x] Panel geliştirilecek
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
 
