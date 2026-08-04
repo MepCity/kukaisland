@@ -8,6 +8,7 @@
 
   const closePanel = (restoreFocus = true) => {
     if (!activePanel) return;
+	const closedPanel = activePanel;
     activePanel.classList.remove("is-open");
     activePanel.setAttribute("aria-hidden", "true");
     activePanel.inert = true;
@@ -18,6 +19,7 @@
     activePanel = null;
     activeTrigger = null;
     activeOverlay = null;
+	document.dispatchEvent(new CustomEvent("kuka:panel-closed", { detail: { panel: closedPanel } }));
     if (restoreFocus) restore?.focus();
   };
 
@@ -34,6 +36,7 @@
     trigger.setAttribute("aria-expanded", "true");
     if (activeOverlay) activeOverlay.hidden = false;
     document.body.classList.add("kuka-panel-open");
+	document.dispatchEvent(new CustomEvent("kuka:panel-opened", { detail: { panel, trigger } }));
     window.requestAnimationFrame(() => panel.querySelector(focusableSelector)?.focus());
   };
 

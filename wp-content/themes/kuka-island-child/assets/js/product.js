@@ -43,6 +43,9 @@
       button.dataset.galleryItem = "";
       button.dataset.galleryIndex = String(index);
       button.dataset.full = item.full;
+	  button.dataset.panelTrigger = "kuka-product-lightbox";
+	  button.setAttribute("aria-controls", "kuka-product-lightbox");
+	  button.setAttribute("aria-expanded", "false");
       button.setAttribute("aria-label", `${item.alt}; tam ekran aç (${index + 1}/${items.length})`);
       const image = document.createElement("img");
       image.src = item.src;
@@ -145,7 +148,6 @@
   const viewport = lightbox?.querySelector("[data-lightbox-viewport]");
   const host = lightbox?.querySelector("[data-lightbox-image-host]");
   let lightboxIndex = 0;
-  let previousFocus = null;
   let scale = 1;
   let translateX = 0;
   let translateY = 0;
@@ -176,47 +178,20 @@
     if (counter) counter.textContent = `${lightboxIndex + 1} / ${items.length}`;
     resetZoom();
   };
-  const openLightbox = (index, trigger) => {
-    if (!lightbox) return;
-    previousFocus = trigger;
-    lightbox.inert = false;
-    lightbox.classList.add("is-open");
-    lightbox.setAttribute("aria-hidden", "false");
-    document.body.classList.add("kuka-panel-open");
-    showLightboxImage(index);
-    lightbox.querySelector("[data-lightbox-close]")?.focus();
-  };
-  const closeLightbox = () => {
-    if (!lightbox || !host) return;
-    lightbox.classList.remove("is-open");
-    lightbox.setAttribute("aria-hidden", "true");
-    lightbox.inert = true;
-    host.replaceChildren();
-    document.body.classList.remove("kuka-panel-open");
-    previousFocus?.focus();
-  };
-
   document.addEventListener("click", (event) => {
-    const item = event.target.closest("[data-gallery-item]");
-    if (item) openLightbox(Number(item.dataset.galleryIndex), item);
-    if (event.target.closest("[data-lightbox-close]")) closeLightbox();
     if (event.target.closest("[data-lightbox-previous]")) showLightboxImage(lightboxIndex - 1);
     if (event.target.closest("[data-lightbox-next]")) showLightboxImage(lightboxIndex + 1);
     if (event.target.closest("[data-lightbox-zoom]")) { scale = scale > 1 ? 1 : 2; applyTransform(); }
   });
+	document.addEventListener("kuka:panel-opened", (event) => {
+	  if (event.detail?.panel !== lightbox) return;
+	  showLightboxImage(Number(event.detail.trigger?.dataset.galleryIndex || 0));
+	});
+	document.addEventListener("kuka:panel-closed", (event) => {
+	  if (event.detail?.panel === lightbox) host?.replaceChildren();
+	});
   document.addEventListener("keydown", (event) => {
     if (!lightbox?.classList.contains("is-open")) return;
-    if (event.key === "Tab") {
-      const focusable = [...lightbox.querySelectorAll("button:not(:disabled)")];
-      if (!focusable.length) return;
-      const current = focusable.indexOf(document.activeElement);
-      const next = event.shiftKey
-        ? (current <= 0 ? focusable.length - 1 : current - 1)
-        : (current >= focusable.length - 1 ? 0 : current + 1);
-      event.preventDefault();
-      focusable[next].focus();
-    }
-    if (event.key === "Escape") closeLightbox();
     if (event.key === "ArrowLeft") showLightboxImage(lightboxIndex - 1);
     if (event.key === "ArrowRight") showLightboxImage(lightboxIndex + 1);
     if (event.key === "+" || event.key === "=") { scale = Math.min(4, scale + 0.5); applyTransform(); }
