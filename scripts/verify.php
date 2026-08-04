@@ -76,3 +76,16 @@ $swatches = get_terms( array( 'taxonomy' => 'pa_renk', 'hide_empty' => false ) )
 foreach ( $swatches as $term ) {
 	WP_CLI::line( 'SWATCH=' . $term->name . '|' . get_term_meta( $term->term_id, 'kuka_swatch_hex', true ) );
 }
+
+$site_content = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::get() : array();
+WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_content ) ) );
+$required_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo-teslimat', 'iade-degisim', 'gizlilik-politikasi', 'cerez-politikasi', 'kvkk-aydinlatma-metni', 'kullanim-kosullari', 'on-bilgilendirme-formu', 'mesafeli-satis-sozlesmesi', 'acik-riza-metni', 'ticari-elektronik-ileti-onayi', 'beden-rehberi' );
+$present_pages = array_filter( $required_pages, static fn( string $slug ): bool => (bool) get_page_by_path( $slug ) );
+WP_CLI::line( sprintf( 'CONTENT_PAGES=%d/%d', count( $present_pages ), count( $required_pages ) ) );
+$low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
+$out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
+WP_CLI::line( 'LOW_STOCK_VARIATIONS=' . count( $low_stock ) );
+WP_CLI::line( 'OUT_OF_STOCK_VARIATIONS=' . count( $out_stock ) );
+WP_CLI::line( 'SHOP_PER_PAGE=' . apply_filters( 'loop_shop_per_page', wc_get_default_products_per_row() * wc_get_default_product_rows_per_page() ) );
+WP_CLI::line( 'PERMALINK_STRUCTURE=' . get_option( 'permalink_structure' ) );
+WP_CLI::line( 'CHECKOUT_CLASSIC=' . ( str_contains( (string) get_post_field( 'post_content', wc_get_page_id( 'checkout' ) ), '[woocommerce_checkout]' ) ? 'yes' : 'no' ) );

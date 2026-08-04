@@ -1,0 +1,135 @@
+# Copyright (C) 2026 MepCity
+# This file is distributed under the same license as the Kuka Island Child theme.
+msgid ""
+msgstr ""
+"Project-Id-Version: Kuka Island Child 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/theme/kuka-island-child\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-08-04T10:53:51+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: kuka-island\n"
+
+#. Theme Name of the theme
+#: style.css
+msgid "Kuka Island Child"
+msgstr ""
+
+#. Description of the theme
+#: style.css
+msgid "Kuka Island sunum katmanı; Blocksy child theme."
+msgstr ""
+
+#. Author of the theme
+#: style.css
+msgid "MepCity"
+msgstr ""
+
+#: footer.php:10
+msgid "Yardım"
+msgstr ""
+
+#: footer.php:11
+msgid "E-posta adresi"
+msgstr ""
+
+#: footer.php:11
+msgid "Katıl"
+msgstr ""
+
+#: front-page.php:15
+msgid "Koleksiyon"
+msgstr ""
+
+#: front-page.php:15
+msgid "Tümünü gör"
+msgstr ""
+
+#: front-page.php:16
+msgid "Editoryal"
+msgstr ""
+
+#: front-page.php:16
+msgid "Hikâyeyi oku"
+msgstr ""
+
+#: front-page.php:17
+msgid "Manifesto"
+msgstr ""
+
+#: functions.php:115
+#, php-format
+msgid "Son %d adet"
+msgstr ""
+
+#: functions.php:116
+msgid "Tükendi"
+msgstr ""
+
+#: functions.php:170
+msgid "Malzeme"
+msgstr ""
+
+#: functions.php:170
+msgid "Bakım"
+msgstr ""
+
+#: functions.php:170
+msgid "Kalıp"
+msgstr ""
+
+#: functions.php:170
+msgid "Model"
+msgstr ""
+
+#: functions.php:178
+msgid "Beden rehberini aç"
+msgstr ""
+
+#: functions.php:193
+msgid "Birlikte iyi gider"
+msgstr ""
+
+#: functions.php:193
+msgid "Parçayı incele"
+msgstr ""
+
+#: header.php:16
+msgid "İçeriğe geç"
+msgstr ""
+
+#: header.php:18
+msgid "Duyurular"
+msgstr ""
+
+#: header.php:23
+msgid "Kuka Island ana sayfa"
+msgstr ""
+
+#: header.php:28
+msgid "Ana menü"
+msgstr ""
+
+#: header.php:32
+msgid "Sepet"
+msgstr ""
+
+#: header.php:33
+msgid "Menü"
+msgstr ""
+
+#: header.php:38
+msgid "Menüyü kapat"
+msgstr ""
+
+#: header.php:39
+msgid "Mobil menü"
+msgstr ""
+
+#: page.php:6
+msgid "Kuka Island"
+msgstr ""
