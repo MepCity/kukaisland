@@ -13,7 +13,7 @@ final class Kuka_Island_Core_Corporate_Billing {
 		$fields['billing']['billing_company'] = array( 'type' => 'text', 'label' => __( 'Şirket unvanı', 'kuka-island-core' ), 'required' => false, 'priority' => 30, 'class' => array( 'form-row-wide', 'kuka-corporate-field' ) );
 		$fields['billing']['billing_customer_type'] = array(
 			'type' => 'select', 'label' => __( 'Fatura türü', 'kuka-island-core' ), 'required' => true, 'priority' => 25,
-			'options' => array( 'personal' => __( 'Bireysel', 'kuka-island-core' ), 'corporate' => __( 'Kurumsal', 'kuka-island-core' ) ),
+			'options' => array( 'personal' => __( 'Bireysel', 'kuka-island-core' ), 'corporate' => __( 'Kurumsal', 'kuka-island-core' ) ), 'class' => array( 'form-row-wide' ),
 		);
 		$fields['billing']['billing_tax_office'] = array( 'type' => 'text', 'label' => __( 'Vergi dairesi', 'kuka-island-core' ), 'required' => false, 'priority' => 31, 'class' => array( 'form-row-first', 'kuka-corporate-field' ) );
 		$fields['billing']['billing_tax_number'] = array( 'type' => 'text', 'label' => __( 'VKN (10 hane)', 'kuka-island-core' ), 'required' => false, 'priority' => 32, 'class' => array( 'form-row-last', 'kuka-corporate-field' ), 'maxlength' => 10, 'inputmode' => 'numeric' );
