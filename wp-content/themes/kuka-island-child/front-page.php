@@ -10,10 +10,9 @@ $mobile = ! empty( $hero['mobile_image_id'] ) ? wp_get_attachment_image_url( $he
 $category_terms = get_terms( array(
 	'taxonomy'   => 'product_cat',
 	'hide_empty' => false,
-	'parent'     => 0,
 	'number'     => 4,
-	'orderby'    => 'name',
-	'exclude'    => array_filter( array( (int) get_option( 'default_product_cat' ) ) ),
+	'orderby'    => 'count',
+	'order'      => 'DESC',
 ) );
 $products_shortcode = '[products limit="4" columns="4" orderby="date"';
 if ( 'featured' === ( $home['new_arrivals_source'] ?? 'latest' ) ) { $products_shortcode .= ' visibility="featured"'; }
@@ -40,7 +39,7 @@ $products_shortcode .= ']';
 			<a class="kuka-category-index__item" href="<?php echo esc_url( get_term_link( $category ) ); ?>">
 				<span class="kuka-category-index__number"><?php echo esc_html( str_pad( (string) ( $index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span>
 				<span class="kuka-category-index__name"><?php echo esc_html( $category->name ); ?></span>
-				<span class="kuka-category-index__meta"><?php echo esc_html( $cut_names ? implode( ' · ', $cut_names ) : __( 'Seçki', 'kuka-island' ) ); ?></span>
+				<span class="kuka-category-index__meta"><?php echo esc_html( $cut_names ? implode( ' · ', $cut_names ) : '—' ); ?></span>
 				<span class="kuka-category-index__arrow" aria-hidden="true">↗</span>
 			</a>
 		<?php endforeach; ?>
