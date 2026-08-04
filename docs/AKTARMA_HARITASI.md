@@ -1,6 +1,6 @@
 # Faz 3 Aktarma Haritası
 
-> Faz 3A kapanışı: minimum envanterden yalnızca `woocommerce/content-product.php` override edildi. Ürün detay, galeri, sepet ve checkout hook/CSS ile tamamlandı; variation, cart ve checkout template override'ları gerekmedi.
+> Faz 3B kapanışı: override bütçesi iki dosyadır. `woocommerce/content-product.php` editoryal kart anatomisini, `woocommerce/single-product/product-image.php` ise Blocksy'nin template öncesi bastığı slider yerine tam çözünürlüğü ertelenen özel galeriyi sağlar. Sepet, checkout ve varyasyon formu hook/CSS/DOM katmanında kalır.
 
 Bu belge prototipin React/Next yapısını üretim WordPress katmanlarına çevirmek için minimum override planıdır. Faz 2'de yalnız token katmanı taşındı; aşağıdaki bileşen portları yapılmadı.
 
@@ -38,7 +38,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 | Ürün kartı | `content-product.php` | Hook'lar yetersiz kalırsa tek override; ilk aday |
 | Ürün detay bilgi paneli | `content-single-product.php` + single product hook'ları | Önce hook; tam override son çare |
 | Varyasyon seçim alanı | `single-product/add-to-cart/variable.php` | Swatch DOM sözleşmesi için gerekirse dar override |
-| Galeri | Blocksy Product Variations Gallery | Override yok; Free özelliği kullanılacak |
+| Galeri | `single-product/product-image.php` | Blocksy Free galerisi prototipteki tek editoryal sütun, mobil snap/sayaç ve açılışta boş lightbox host sözleşmesini vermedi. `blocksy:woocommerce:product-view:use-default` filtresiyle dar override etkinleştirildi |
 | Sepet satırı/sayfası | `cart/cart.php` | Önce Woo hook'ları; görsel ayrışma büyükse override |
 | Klasik checkout formu | `checkout/form-checkout.php` | Alanlar hook ile; layout gerçekten gerekirse override |
 | Sipariş özeti | `checkout/review-order.php` | Önce CSS/hook; override ertelendi |
@@ -75,3 +75,11 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Soğuk palet ve CSS'e gömülü ürün renkleri: marka ve global terim meta kurallarına aykırı.
 - Kesim landing page'leri: müşteri listesi/SEO kararı açık.
 - Ödeme imzası, webhook veya özel kombin fiyat kuralı: proje kısıtıyla yasak.
+
+## Faz 3B gerçekleşen bileşen sınırı
+
+- Header/footer child theme şablonlarıdır; beş inline SVG `currentColor` kullanır. Ana menü WordPress menü konumundan ve seed edilen iki seviyeli hiyerarşiden gelir.
+- Katalog kartı tek WooCommerce override'ıdır; filtre sorgusu WooCommerce ana sorgusunun taksonomi/meta filtrelerine eklenir. Gerçek GET input'ları JS olmadan da çalışır.
+- Renk swatch'ı `pa_renk` terim metasını okur; native varyasyon select'leri erişilebilir yedek ve WooCommerce'in tek doğruluk kaynağı olarak DOM'da kalır.
+- Ürün galerisi ikinci ve son override'dır. Liste görselleri `large`, lightbox görseli yalnız açıldığında `full` kaynaktan oluşturulur.
+- Blocksy parent, WooCommerce ve iyzico dosyaları değiştirilmedi. Blocksy galeri/breadcrumb extension point'leri ve iyzico page-overlay için dar child CSS seçicisi kullanıldı.

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-04T10:53:51+00:00\n"
+"POT-Creation-Date: 2026-08-04T11:53:45+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -29,16 +29,48 @@ msgstr ""
 msgid "MepCity"
 msgstr ""
 
-#: footer.php:10
-msgid "Yardım"
+#: footer.php:7
+msgid "Gizlilik Politikası"
 msgstr ""
 
-#: footer.php:11
+#: footer.php:8
+msgid "Çerez Politikası"
+msgstr ""
+
+#: footer.php:9
+msgid "KVKK Aydınlatma Metni"
+msgstr ""
+
+#: footer.php:10
+msgid "Mesafeli Satış Sözleşmesi"
+msgstr ""
+
+#: footer.php:16
+msgid "Ada mektupları"
+msgstr ""
+
+#: footer.php:18
 msgid "E-posta adresi"
 msgstr ""
 
-#: footer.php:11
+#: footer.php:18
 msgid "Katıl"
+msgstr ""
+
+#: footer.php:21
+msgid "Kategoriler"
+msgstr ""
+
+#: footer.php:22
+msgid "Yardım"
+msgstr ""
+
+#: footer.php:23
+msgid "Yasal"
+msgstr ""
+
+#: footer.php:24
+msgid "Sosyal"
 msgstr ""
 
 #: front-page.php:15
@@ -61,40 +93,59 @@ msgstr ""
 msgid "Manifesto"
 msgstr ""
 
-#: functions.php:115
+#: functions.php:19
+msgid "Ana mağaza menüsü"
+msgstr ""
+
+#: functions.php:20
+msgid "Footer kategoriler"
+msgstr ""
+
+#: functions.php:21
+msgid "Footer yasal"
+msgstr ""
+
+#: functions.php:41
+#: functions.php:233
+msgid "Ana sayfa"
+msgstr ""
+
+#. translators: %d is the remaining stock quantity.
+#: functions.php:203
 #, php-format
 msgid "Son %d adet"
 msgstr ""
 
-#: functions.php:116
+#: functions.php:204
+#: woocommerce/content-product.php:17
 msgid "Tükendi"
 msgstr ""
 
-#: functions.php:170
+#: functions.php:272
 msgid "Malzeme"
 msgstr ""
 
-#: functions.php:170
+#: functions.php:272
 msgid "Bakım"
 msgstr ""
 
-#: functions.php:170
+#: functions.php:272
 msgid "Kalıp"
 msgstr ""
 
-#: functions.php:170
+#: functions.php:272
 msgid "Model"
 msgstr ""
 
-#: functions.php:178
+#: functions.php:280
 msgid "Beden rehberini aç"
 msgstr ""
 
-#: functions.php:193
+#: functions.php:295
 msgid "Birlikte iyi gider"
 msgstr ""
 
-#: functions.php:193
+#: functions.php:295
 msgid "Parçayı incele"
 msgstr ""
 
@@ -107,18 +158,30 @@ msgid "Duyurular"
 msgstr ""
 
 #: header.php:23
-msgid "Kuka Island ana sayfa"
+msgid "Menüyü aç"
 msgstr ""
 
-#: header.php:28
+#: header.php:24
 msgid "Ana menü"
 msgstr ""
 
+#: header.php:27
+msgid "Kuka Island ana sayfa"
+msgstr ""
+
+#: header.php:31
+msgid "Ürün ara"
+msgstr ""
+
 #: header.php:32
-msgid "Sepet"
+msgid "Hesabım"
 msgstr ""
 
 #: header.php:33
+msgid "Sepete git"
+msgstr ""
+
+#: header.php:38
 msgid "Menü"
 msgstr ""
 
@@ -130,6 +193,144 @@ msgstr ""
 msgid "Mobil menü"
 msgstr ""
 
+#: inc/catalog-filters.php:71
+msgid "Stokta"
+msgstr ""
+
+#: inc/catalog-filters.php:75
+msgid "Aktif filtreler"
+msgstr ""
+
+#: inc/catalog-filters.php:76
+#, php-format
+msgid "%s filtresini kaldır"
+msgstr ""
+
+#: inc/catalog-filters.php:87
+#, php-format
+msgid "%d ürün"
+msgid_plural "%d ürün"
+msgstr[0] ""
+msgstr[1] ""
+
+#: inc/catalog-filters.php:88
+#: inc/catalog-filters.php:93
+msgid "Filtrele"
+msgstr ""
+
+#: inc/catalog-filters.php:93
+msgid "Filtreleri kapat"
+msgstr ""
+
+#: inc/catalog-filters.php:96
+msgid "Stokta olanlar"
+msgstr ""
+
+#: inc/catalog-filters.php:97
+msgid "Kesim"
+msgstr ""
+
+#: inc/catalog-filters.php:98
+msgid "Renk"
+msgstr ""
+
+#: inc/catalog-filters.php:99
+msgid "Beden"
+msgstr ""
+
+#: inc/catalog-filters.php:101
+msgid "Temizle"
+msgstr ""
+
+#: inc/catalog-filters.php:101
+msgid "Sonuçları gör"
+msgstr ""
+
+#: inc/catalog-filters.php:121
+msgid "Bu seçimde ürün bulunamadı."
+msgstr ""
+
+#: inc/catalog-filters.php:121
+msgid "Filtrelerden birini kaldırarak yeniden deneyin."
+msgstr ""
+
+#: inc/catalog-filters.php:121
+msgid "Filtreleri temizle"
+msgstr ""
+
 #: page.php:6
 msgid "Kuka Island"
+msgstr ""
+
+#: woocommerce/content-product.php:19
+msgid "Sınırlı"
+msgstr ""
+
+#: woocommerce/content-product.php:21
+msgid "Yeni"
+msgstr ""
+
+#: woocommerce/content-product.php:26
+#, php-format
+msgid "%s ürününü incele"
+msgstr ""
+
+#: woocommerce/content-product.php:33
+#: woocommerce/single-product/product-image.php:37
+msgid "Önceki fotoğraf"
+msgstr ""
+
+#: woocommerce/content-product.php:33
+#: woocommerce/single-product/product-image.php:37
+msgid "Sonraki fotoğraf"
+msgstr ""
+
+#: woocommerce/content-product.php:39
+msgid "Eski fiyat:"
+msgstr ""
+
+#: woocommerce/content-product.php:39
+msgid "Yeni fiyat:"
+msgstr ""
+
+#: woocommerce/content-product.php:41
+#, php-format
+msgid "%d renk"
+msgid_plural "%d renk"
+msgstr[0] ""
+msgstr[1] ""
+
+#: woocommerce/single-product/product-image.php:15
+#, php-format
+msgid "%s ürün galerisi"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:24
+msgid "Ürün görseli"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:26
+#, php-format
+msgid "%1$s; tam ekran aç (%2$d/%3$d)"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:31
+msgid "Önceki ürün fotoğrafı"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:31
+msgid "Sonraki ürün fotoğrafı"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:35
+#, php-format
+msgid "%s galerisi"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:35
+msgid "Galeriyi kapat"
+msgstr ""
+
+#: woocommerce/single-product/product-image.php:37
+msgid "Yakınlaştır"
 msgstr ""

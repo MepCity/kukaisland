@@ -1704,6 +1704,11 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-04 | WooCommerce override bütçesi yalnız `content-product.php` ile kapatıldı | Ürün detay, galeri, sepet ve checkout hook/CSS ile karşılandığından yükseltme maliyetini sınırlamak için |
 | 2026-08-04 | i18n URL hazırlığı gelecekte `/en/` ön eki varsayımıdır; bu fazda çoklu dil eklentisi kurulmaz | Text domain ve POT hazırlığını yayın/routing kararından ayırmak için |
 | 2026-08-04 | Kesim indeksi, kart stok/beden satırı ve Pro'ya bağımlı beş bileşen üretim temasına taşınmadı | Onaylanmayan hipotezleri ve lisans gerektiren davranışları custom kodla taklit etmemek için |
+| 2026-08-04 | Faz 3B'de prototip header/footer, editoryal ürün kartı, filtre çekmecesi, swatch ve özel ürün galerisi child theme bileşenlerine taşındı | Faz 3A'nın palette kalan ince CSS katmanını gerçek DOM ve etkileşim sözleşmesine dönüştürmek için |
+| 2026-08-04 | WooCommerce override bütçesi iki dosya olarak kapatıldı | Kart anatomisi hook'larla güvenilir kurulamadı; Blocksy de ürün galeri template'ini WooCommerce'den önce bastırdığı için yalnız kart ve galeri dar override edildi |
+| 2026-08-04 | Renk swatch'ı ve filtre çekmecesi Blocksy Pro alınmadan geliştirildi | Faz 3B kapsamı bunları mayo mağazası için vazgeçilmez kabul etti; native select/GET input ve WooCommerce sorgusu tek doğruluk kaynağı olarak korundu |
+| 2026-08-04 | iyzico ödeme alanı korunup yalnız page-overlay promosyonu dar child CSS seçicisiyle gizlendi | Eklentide kapatma ayarı bulunmadı; sabit promosyon galeri ve checkout alanlarını örtüyordu |
+| 2026-08-04 | Favoriler, off-canvas sepet, beden modalı, mega menü, kesim indeksi ve kart beden/stok satırı Faz 3B dışında kaldı | Ayrı veri/senkronizasyon veya onaylanmamış tasarım kararı gerektiren işleri bu aktarım turuna gizlice eklememek için |
 
 ---
 
@@ -1743,6 +1748,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 3A tasarım aktarımı: global vitrin, ana sayfa, katalog, ürün, sepet, klasik checkout ve içerik sayfaları tamamlandı
 - [x] Faz 4 Site Appearance paneli yedi içerik grubuyla, güvenli kayıt ve fallback sözleşmesiyle tamamlandı
 - [x] Tema/eklenti i18n hazırlığı, POT katalogları ve gelecekteki `/en/` URL varsayımı kaydedildi
+- [x] Faz 3B bileşen aktarımı tamamlandı: gerçek header/footer, WordPress menüsü, editoryal kart/galeri, Pro'suz swatch/filtre, token disiplini ve responsive tarayıcı QA
 - [x] Panel geliştirilecek
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
