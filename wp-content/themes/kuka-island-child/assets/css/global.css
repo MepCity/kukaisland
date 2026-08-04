@@ -299,7 +299,8 @@ samp,
 }
 
 .kuka-mobile-menu,
-.kuka-catalog-filters {
+.kuka-catalog-filters,
+.kuka-side-panel {
   position: fixed;
   visibility: hidden;
   z-index: var(--layer-panel);
@@ -312,10 +313,19 @@ samp,
 }
 
 .kuka-mobile-menu.is-open,
-.kuka-catalog-filters.is-open {
+.kuka-catalog-filters.is-open,
+.kuka-side-panel.is-open {
   visibility: visible;
   transform: translateX(0);
   transition-delay: 0s;
+}
+
+.kuka-side-panel {
+  right: 0;
+  left: auto;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(105%);
 }
 
 .kuka-panel-head {
