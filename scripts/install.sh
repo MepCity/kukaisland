@@ -29,6 +29,7 @@ fi
 
 docker compose run --rm wp-cli wp language core install tr_TR --activate
 docker compose run --rm wp-cli wp plugin install woocommerce blocksy-companion iyzico-woocommerce --activate
+docker compose run --rm wp-cli wp language plugin install woocommerce tr_TR
 docker compose run --rm wp-cli wp theme install blocksy
 docker compose run --rm wp-cli wp theme activate kuka-island-child
 docker compose run --rm wp-cli wp plugin activate kuka-island-core

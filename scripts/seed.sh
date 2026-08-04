@@ -7,3 +7,4 @@ cd "$project_dir"
 
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed-attributes.php
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed.php
+docker compose run --rm wp-cli wp eval-file /project-scripts/seed-content.php
