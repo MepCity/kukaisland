@@ -11,4 +11,4 @@ override_count=$(find wp-content/themes/kuka-island-child/woocommerce -type f ! 
 echo "WOOCOMMERCE_OVERRIDES=$override_count"
 echo "THEME_POT=$(test -s wp-content/themes/kuka-island-child/languages/kuka-island.pot && echo yes || echo no)"
 echo "PLUGIN_POT=$(test -s wp-content/plugins/kuka-island-core/languages/kuka-island-core.pot && echo yes || echo no)"
-echo "PRO_CUSTOM_FEATURES=$(rg -l 'wishlist|favorite|kuka-swatch|offcanvas-cart|filter-drawer|size-modal' wp-content/themes/kuka-island-child wp-content/plugins/kuka-island-core --glob '!*.pot' --glob '!class-swatch-meta.php' --glob '!class-plugin.php' | wc -l | tr -d ' ')"
+echo "OUT_OF_SCOPE_CUSTOM_FEATURES=$(rg -l 'wishlist|favorite|offcanvas-cart|size-modal|mega-menu|cut-index|card-stock' wp-content/themes/kuka-island-child wp-content/plugins/kuka-island-core --glob '!*.pot' | wc -l | tr -d ' ')"

@@ -20,6 +20,8 @@ foreach ( wc_get_attribute_taxonomies() as $attribute ) {
 WP_CLI::line( 'WP_LOCALE=' . get_locale() );
 WP_CLI::line( 'TIMEZONE=' . wp_timezone_string() );
 WP_CLI::line( 'CURRENCY=' . get_woocommerce_currency() );
+WP_CLI::line( 'PRICE_FORMAT=' . wp_strip_all_tags( html_entity_decode( wc_price( 2890 ), ENT_QUOTES, 'UTF-8' ) ) );
+WP_CLI::line( 'PRICE_SETTINGS=' . get_option( 'woocommerce_currency_pos' ) . '|' . get_option( 'woocommerce_price_thousand_sep' ) . '|' . get_option( 'woocommerce_price_decimal_sep' ) . '|' . get_option( 'woocommerce_price_num_decimals' ) );
 WP_CLI::line( 'ACTIVE_THEME=' . wp_get_theme()->get_stylesheet() );
 WP_CLI::line( 'HPOS=' . get_option( 'woocommerce_custom_orders_table_enabled' ) );
 WP_CLI::line( 'GUEST_CHECKOUT=' . get_option( 'woocommerce_enable_guest_checkout' ) );
@@ -30,6 +32,7 @@ $single_size = wc_get_image_size( 'single' );
 $gallery_size = wc_get_image_size( 'gallery_thumbnail' );
 WP_CLI::line( sprintf( 'IMAGE_SIZES=card:%dx%d|single:%dx%d|gallery:%dx%d', $thumb_size['width'], $thumb_size['height'], $single_size['width'], $single_size['height'], $gallery_size['width'], $gallery_size['height'] ) );
 WP_CLI::line( 'IYZICO_ACTIVE=' . ( is_plugin_active( 'iyzico-woocommerce/woocommerce-gateway-iyzico.php' ) ? 'yes' : 'no' ) );
+WP_CLI::line( 'WC_GALLERY_SUPPORT=slider:' . ( current_theme_supports( 'wc-product-gallery-slider' ) ? 'yes' : 'no' ) . '|zoom:' . ( current_theme_supports( 'wc-product-gallery-zoom' ) ? 'yes' : 'no' ) . '|lightbox:' . ( current_theme_supports( 'wc-product-gallery-lightbox' ) ? 'yes' : 'no' ) );
 foreach ( $attribute_rows as $row ) {
 	WP_CLI::line( 'ATTRIBUTE=' . $row['name'] . '|' . $row['slug'] . '|' . $row['terms'] );
 }
@@ -82,6 +85,19 @@ WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_conten
 $required_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo-teslimat', 'iade-degisim', 'gizlilik-politikasi', 'cerez-politikasi', 'kvkk-aydinlatma-metni', 'kullanim-kosullari', 'on-bilgilendirme-formu', 'mesafeli-satis-sozlesmesi', 'acik-riza-metni', 'ticari-elektronik-ileti-onayi', 'beden-rehberi' );
 $present_pages = array_filter( $required_pages, static fn( string $slug ): bool => (bool) get_page_by_path( $slug ) );
 WP_CLI::line( sprintf( 'CONTENT_PAGES=%d/%d', count( $present_pages ), count( $required_pages ) ) );
+WP_CLI::line( 'TYPOGRAPHY_TEST_PAGE=' . ( get_page_by_path( 'tipografi-testi' ) ? 'yes' : 'no' ) );
+$locations    = get_nav_menu_locations();
+$primary_menu = isset( $locations['primary'] ) ? wp_get_nav_menu_items( $locations['primary'] ) : array();
+$menu_rows    = array();
+foreach ( $primary_menu ?: array() as $item ) {
+	$parent_name = '';
+	if ( $item->menu_item_parent ) {
+		$parent = wp_filter_object_list( $primary_menu, array( 'ID' => (int) $item->menu_item_parent ) );
+		$parent_name = $parent ? reset( $parent )->title . ' > ' : '';
+	}
+	$menu_rows[] = $parent_name . $item->title;
+}
+WP_CLI::line( 'PRIMARY_MENU=' . implode( '|', $menu_rows ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
 $out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
 WP_CLI::line( 'LOW_STOCK_VARIATIONS=' . count( $low_stock ) );
