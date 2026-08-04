@@ -1,13 +1,182 @@
 <?php
 /**
- * Faz 4 Site Görünümü panelinin navigation placeholder'ı.
+ * Site Appearance data contract and administration screen.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Site_Appearance {
+	public const OPTION_NAME = 'kuka_island_site_content';
+
+	/**
+	 * Register the settings page and the explicit, nonce-protected save action.
+	 */
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'admin_post_kuka_island_save_site_appearance', array( $this, 'save' ) );
+	}
+
+	/**
+	 * Defaults are intentionally content-only. Design tokens remain in the theme.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function defaults(): array {
+		return array(
+			'brand'        => array(
+				'logo_id'       => 0,
+				'favicon_id'    => 0,
+				'email'         => 'hello@kukaisland.com',
+				'phone'         => '+90 850 000 00 00',
+				'instagram_url' => 'https://www.instagram.com/',
+				'pinterest_url' => 'https://www.pinterest.com/',
+			),
+			'announcement' => array(
+				'enabled' => true,
+				'items'   => array(
+					'1.500 TL üzeri siparişlerde ücretsiz kargo',
+					'Kolay değişim desteği',
+					'Güvenli ödeme',
+				),
+			),
+			'hero'         => array(
+				'enabled'          => true,
+				'desktop_image_id' => 0,
+				'mobile_image_id'  => 0,
+				'eyebrow'          => 'KUKA ISLAND / YENİ SEZON',
+				'title'            => 'Adanın ritmini yanında taşı.',
+				'copy'             => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
+				'button_label'     => 'Yeni gelenleri keşfet',
+				'button_url'       => '/magaza/',
+				'alignment'        => 'left',
+				'text_tone'        => 'light',
+			),
+			'home'         => array(
+				'new_arrivals_title' => 'Yeni Gelenler',
+				'editorial_title'    => 'Ada Günlüğü',
+				'editorial_copy'     => 'Şehirden kıyıya uzanan günlük üniforma.',
+				'editorial_image_id' => 0,
+				'editorial_url'      => '/hakkimizda/',
+				'manifesto_title'    => 'Az, iyi ve uzun ömürlü.',
+				'manifesto_copy'     => 'Her parçayı tekrar tekrar giymek için tasarlıyoruz.',
+				'service_1'          => 'Güvenli ödeme',
+				'service_2'          => 'Kolay değişim',
+				'service_3'          => 'Destek hattı',
+			),
+			'navigation'   => array(
+				'main' => "Yeni Gelenler|/magaza/?orderby=date\nTüm Ürünler|/magaza/\nHakkımızda|/hakkimizda/",
+				'help' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
+			),
+			'footer'       => array(
+				'brand_copy'        => 'Günlük hayatın her ritmine uyum sağlayan zamansız parçalar.',
+				'newsletter_title'  => 'Ada mektuplarına katıl',
+				'newsletter_copy'   => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
+				'newsletter_consent'=> 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
+				'company_name'      => 'Kuka Island Tekstil Ltd. Şti.',
+				'company_address'   => '[Şirket adresi hukuk/onay sonrası eklenecek]',
+			),
+			'commercial'   => array(
+				'free_shipping_threshold' => 1500,
+				'shipping_copy'             => '1.500 TL üzeri siparişlerde ücretsiz kargo.',
+				'flat_rate_copy'            => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
+				'exchange_copy'             => 'Değişim talebinizi teslimattan sonra 14 gün içinde iletebilirsiniz.',
+				'secure_payment_copy'       => 'Ödeme bilgileriniz güvenli bağlantı üzerinden işlenir.',
+				'support_hours'             => 'Hafta içi 09.00–18.00',
+			),
+		);
+	}
+
+	/**
+	 * Return persisted content merged recursively over safe defaults.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get(): array {
+		$saved = get_option( self::OPTION_NAME, array() );
+		return self::merge( self::defaults(), is_array( $saved ) ? $saved : array() );
+	}
+
+	/** @return array<string, array<string, array<string, mixed>>> */
+	private static function fields(): array {
+		return array(
+			'brand'        => array(
+				'label'  => __( '1. Marka', 'kuka-island-core' ),
+				'fields' => array(
+					'logo_id'       => array( __( 'Logo medya ID', 'kuka-island-core' ), 'number' ),
+					'favicon_id'    => array( __( 'Favicon medya ID', 'kuka-island-core' ), 'number' ),
+					'email'         => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
+					'phone'         => array( __( 'Telefon', 'kuka-island-core' ), 'text' ),
+					'instagram_url' => array( __( 'Instagram URL', 'kuka-island-core' ), 'url' ),
+					'pinterest_url' => array( __( 'Pinterest URL', 'kuka-island-core' ), 'url' ),
+				),
+			),
+			'announcement' => array(
+				'label'  => __( '2. Duyuru Bandı', 'kuka-island-core' ),
+				'fields' => array(
+					'enabled' => array( __( 'Bandı göster', 'kuka-island-core' ), 'checkbox' ),
+					'items'   => array( __( 'Duyurular (satır başına bir, en fazla 3)', 'kuka-island-core' ), 'lines' ),
+				),
+			),
+			'hero'         => array(
+				'label'  => __( '3. Ana Hero', 'kuka-island-core' ),
+				'fields' => array(
+					'enabled'          => array( __( 'Hero göster', 'kuka-island-core' ), 'checkbox' ),
+					'desktop_image_id' => array( __( 'Masaüstü görsel medya ID', 'kuka-island-core' ), 'number' ),
+					'mobile_image_id'  => array( __( 'Mobil görsel medya ID', 'kuka-island-core' ), 'number' ),
+					'eyebrow'          => array( __( 'Üst başlık', 'kuka-island-core' ), 'text' ),
+					'title'            => array( __( 'Başlık', 'kuka-island-core' ), 'text' ),
+					'copy'             => array( __( 'Metin', 'kuka-island-core' ), 'textarea' ),
+					'button_label'     => array( __( 'Buton etiketi', 'kuka-island-core' ), 'text' ),
+					'button_url'       => array( __( 'Buton URL', 'kuka-island-core' ), 'url' ),
+					'alignment'        => array( __( 'Hizalama (left/center/right)', 'kuka-island-core' ), 'alignment' ),
+					'text_tone'        => array( __( 'Metin tonu (light/dark)', 'kuka-island-core' ), 'tone' ),
+				),
+			),
+			'home'         => array(
+				'label'  => __( '4. Ana Sayfa Bölümleri', 'kuka-island-core' ),
+				'fields' => array(
+					'new_arrivals_title' => array( __( 'Yeni gelenler başlığı', 'kuka-island-core' ), 'text' ),
+					'editorial_title'    => array( __( 'Editoryal başlık', 'kuka-island-core' ), 'text' ),
+					'editorial_copy'     => array( __( 'Editoryal metin', 'kuka-island-core' ), 'textarea' ),
+					'editorial_image_id' => array( __( 'Editoryal görsel medya ID', 'kuka-island-core' ), 'number' ),
+					'editorial_url'      => array( __( 'Editoryal URL', 'kuka-island-core' ), 'url' ),
+					'manifesto_title'    => array( __( 'Manifesto başlığı', 'kuka-island-core' ), 'text' ),
+					'manifesto_copy'     => array( __( 'Manifesto metni', 'kuka-island-core' ), 'textarea' ),
+					'service_1'          => array( __( 'Hizmet 1', 'kuka-island-core' ), 'text' ),
+					'service_2'          => array( __( 'Hizmet 2', 'kuka-island-core' ), 'text' ),
+					'service_3'          => array( __( 'Hizmet 3', 'kuka-island-core' ), 'text' ),
+				),
+			),
+			'navigation'   => array(
+				'label'  => __( '5. Navigasyon', 'kuka-island-core' ),
+				'fields' => array(
+					'main' => array( __( 'Ana menü (Etiket|URL)', 'kuka-island-core' ), 'textarea' ),
+					'help' => array( __( 'Yardım menüsü (Etiket|URL)', 'kuka-island-core' ), 'textarea' ),
+				),
+			),
+			'footer'       => array(
+				'label'  => __( '6. Footer', 'kuka-island-core' ),
+				'fields' => array(
+					'brand_copy'         => array( __( 'Marka metni', 'kuka-island-core' ), 'textarea' ),
+					'newsletter_title'   => array( __( 'Bülten başlığı', 'kuka-island-core' ), 'text' ),
+					'newsletter_copy'    => array( __( 'Bülten metni', 'kuka-island-core' ), 'textarea' ),
+					'newsletter_consent' => array( __( 'Bülten onay metni', 'kuka-island-core' ), 'textarea' ),
+					'company_name'       => array( __( 'Şirket unvanı', 'kuka-island-core' ), 'text' ),
+					'company_address'    => array( __( 'Şirket adresi', 'kuka-island-core' ), 'textarea' ),
+				),
+			),
+			'commercial'   => array(
+				'label'  => __( '7. Ticari Bilgiler', 'kuka-island-core' ),
+				'fields' => array(
+					'free_shipping_threshold' => array( __( 'Ücretsiz kargo eşiği (TL)', 'kuka-island-core' ), 'number' ),
+					'shipping_copy'             => array( __( 'Kargo metni', 'kuka-island-core' ), 'textarea' ),
+					'flat_rate_copy'            => array( __( 'Sabit kargo metni', 'kuka-island-core' ), 'textarea' ),
+					'exchange_copy'             => array( __( 'Değişim metni', 'kuka-island-core' ), 'textarea' ),
+					'secure_payment_copy'       => array( __( 'Güvenli ödeme metni', 'kuka-island-core' ), 'textarea' ),
+					'support_hours'             => array( __( 'Destek saatleri', 'kuka-island-core' ), 'text' ),
+				),
+			),
+		);
 	}
 
 	public function add_menu(): void {
@@ -26,12 +195,130 @@ final class Kuka_Island_Core_Site_Appearance {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Bu sayfaya erişim yetkiniz yok.', 'kuka-island-core' ) );
 		}
+
+		$content = self::get();
 		?>
-		<div class="wrap">
-			<h1><?php echo esc_html__( 'Kuka Island / Site Görünümü', 'kuka-island-core' ); ?></h1>
-			<p><?php echo esc_html__( 'Alan sözleşmesi Faz 2 aktarma haritasında tanımlıdır; düzenleme arayüzü Faz 4 kapsamındadır.', 'kuka-island-core' ); ?></p>
+		<div class="wrap kuka-island-settings">
+			<h1><?php esc_html_e( 'Kuka Island / Site Görünümü', 'kuka-island-core' ); ?></h1>
+			<p><?php esc_html_e( 'Yalnızca içerik ve ticari metinler burada yönetilir. Renk, tipografi ve ölçüler temanın tasarım sözleşmesindedir.', 'kuka-island-core' ); ?></p>
+			<?php if ( isset( $_GET['updated'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended ?>
+				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Site görünümü kaydedildi.', 'kuka-island-core' ); ?></p></div>
+			<?php endif; ?>
+			<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+				<input type="hidden" name="action" value="kuka_island_save_site_appearance">
+				<?php wp_nonce_field( 'kuka_island_save_site_appearance' ); ?>
+				<?php foreach ( self::fields() as $group_key => $group ) : ?>
+					<fieldset style="max-width:920px;background:#fff;border:1px solid #c3c4c7;margin:20px 0;padding:20px">
+						<legend style="font-size:16px;font-weight:600;padding:0 8px"><?php echo esc_html( $group['label'] ); ?></legend>
+						<table class="form-table" role="presentation"><tbody>
+						<?php foreach ( $group['fields'] as $field_key => $field ) : ?>
+							<?php $this->render_field( $group_key, $field_key, $field, $content[ $group_key ][ $field_key ] ?? '' ); ?>
+						<?php endforeach; ?>
+						</tbody></table>
+					</fieldset>
+				<?php endforeach; ?>
+				<?php submit_button( __( 'Site görünümünü kaydet', 'kuka-island-core' ) ); ?>
+			</form>
 		</div>
 		<?php
+	}
+
+	/** @param array<int, string> $field */
+	private function render_field( string $group_key, string $field_key, array $field, mixed $value ): void {
+		$name = sprintf( 'site_content[%s][%s]', $group_key, $field_key );
+		$type = $field[1];
+		if ( 'lines' === $type && is_array( $value ) ) {
+			$value = implode( "\n", $value );
+		}
+		?>
+		<tr>
+			<th scope="row"><label for="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>"><?php echo esc_html( $field[0] ); ?></label></th>
+			<td>
+			<?php if ( 'checkbox' === $type ) : ?>
+				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="0">
+				<input id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( (bool) $value ); ?>>
+			<?php elseif ( in_array( $type, array( 'textarea', 'lines' ), true ) ) : ?>
+				<textarea class="large-text" rows="4" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( (string) $value ); ?></textarea>
+			<?php else : ?>
+				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number', 'url' ), true ) ? $type : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?>>
+			<?php endif; ?>
+			</td>
+		</tr>
+		<?php
+	}
+
+	public function save(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'kuka-island-core' ), 403 );
+		}
+
+		check_admin_referer( 'kuka_island_save_site_appearance' );
+		$raw = isset( $_POST['site_content'] ) && is_array( $_POST['site_content'] )
+			? wp_unslash( $_POST['site_content'] )
+			: array();
+		update_option( self::OPTION_NAME, self::sanitize( $raw ), false );
+
+		wp_safe_redirect( add_query_arg( 'updated', '1', admin_url( 'admin.php?page=kuka-island' ) ) );
+		exit;
+	}
+
+	/** @param array<string, mixed> $raw @return array<string, mixed> */
+	private static function sanitize( array $raw ): array {
+		$clean = array();
+		foreach ( self::fields() as $group_key => $group ) {
+			foreach ( $group['fields'] as $field_key => $field ) {
+				$value = $raw[ $group_key ][ $field_key ] ?? '';
+				switch ( $field[1] ) {
+					case 'checkbox':
+						$value = '1' === (string) $value;
+						break;
+					case 'number':
+						$value = max( 0, absint( $value ) );
+						break;
+					case 'email':
+						$value = sanitize_email( $value );
+						break;
+					case 'url':
+						$value = self::sanitize_url( (string) $value );
+						break;
+					case 'textarea':
+						$value = sanitize_textarea_field( $value );
+						break;
+					case 'lines':
+						$value = array_slice( array_values( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ) ), 0, 3 );
+						break;
+					case 'alignment':
+						$value = in_array( $value, array( 'left', 'center', 'right' ), true ) ? $value : 'left';
+						break;
+					case 'tone':
+						$value = in_array( $value, array( 'light', 'dark' ), true ) ? $value : 'light';
+						break;
+					default:
+						$value = sanitize_text_field( $value );
+				}
+				$clean[ $group_key ][ $field_key ] = $value;
+			}
+		}
+		return $clean;
+	}
+
+	private static function sanitize_url( string $value ): string {
+		if ( str_starts_with( $value, '/' ) && ! str_starts_with( $value, '//' ) ) {
+			return '/' . ltrim( sanitize_text_field( $value ), '/' );
+		}
+		return esc_url_raw( $value );
+	}
+
+	/** @param array<string, mixed> $defaults @param array<string, mixed> $saved @return array<string, mixed> */
+	private static function merge( array $defaults, array $saved ): array {
+		foreach ( $defaults as $key => $value ) {
+			if ( is_array( $value ) ) {
+				$saved[ $key ] = self::merge( $value, isset( $saved[ $key ] ) && is_array( $saved[ $key ] ) ? $saved[ $key ] : array() );
+			} elseif ( ! array_key_exists( $key, $saved ) || '' === $saved[ $key ] || null === $saved[ $key ] ) {
+				$saved[ $key ] = $value;
+			}
+		}
+		return $saved;
 	}
 }
 
