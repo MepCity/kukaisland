@@ -319,6 +319,10 @@ samp,
   background: color-mix(in srgb, var(--color-ink) 55%, transparent);
 }
 
+.kuka-panel-overlay--light {
+  background: color-mix(in srgb, var(--color-paper) 55%, transparent);
+}
+
 /* iyzico does not expose a setting for its page-overlay promotion. */
 #iyzico-bpo1[data-type="page-overlay"] {
   display: none !important;
