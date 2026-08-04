@@ -35,8 +35,8 @@ function kuka_island_shipping_progress(): string {
 	}
 
 	return $remaining > 0
-		? sprintf( __( 'Ücretsiz kargo için %s daha ekleyin.', 'kuka-island' ), $price )
-		: __( 'Ücretsiz kargo hakkınız hazır.', 'kuka-island' );
+		? str_replace( '%s', $price, (string) ( $content['commercial']['free_shipping_remaining_copy'] ?? __( 'Ücretsiz kargo için %s daha ekleyin.', 'kuka-island' ) ) )
+		: (string) ( $content['commercial']['free_shipping_ready_copy'] ?? __( 'Ücretsiz kargo hakkınız hazır.', 'kuka-island' ) );
 }
 
 /** Render one cart row. WooCommerce remains the source of price, variation and stock data. */
@@ -141,8 +141,9 @@ function kuka_island_account_panel_content(): void {
 				<a href="<?php echo esc_url( wc_logout_url() ); ?>"><?php esc_html_e( 'Çıkış yap', 'kuka-island' ); ?><span aria-hidden="true">→</span></a>
 			</nav>
 		<?php else : ?>
-			<h2><?php esc_html_e( 'Tekrar hoş geldiniz.', 'kuka-island' ); ?></h2>
-			<p class="kuka-account-panel__intro"><?php esc_html_e( 'E-posta adresiniz ve şifrenizle giriş yapın.', 'kuka-island' ); ?></p>
+			<?php $panel_content = kuka_island_content()['panels'] ?? array(); ?>
+			<h2><?php echo esc_html( $panel_content['account_greeting'] ?? __( 'Tekrar hoş geldiniz.', 'kuka-island' ) ); ?></h2>
+			<p class="kuka-account-panel__intro"><?php echo esc_html( $panel_content['account_copy'] ?? __( 'E-posta adresiniz ve şifrenizle giriş yapın.', 'kuka-island' ) ); ?></p>
 			<?php if ( kuka_island_account_panel_requires_attention() ) : ?>
 				<div class="kuka-account-panel__errors" role="alert"><strong><?php esc_html_e( 'Giriş tamamlanamadı.', 'kuka-island' ); ?></strong><?php wc_print_notices(); ?></div>
 			<?php endif; ?>

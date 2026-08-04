@@ -105,6 +105,20 @@ function kuka_island_content(): array {
 	return array();
 }
 
+/** Output panel-controlled brand metadata without exposing layout controls. */
+function kuka_island_brand_metadata(): void {
+	$brand = kuka_island_content()['brand'] ?? array();
+	if ( ! empty( $brand['social_share_image_id'] ) ) {
+		$url = wp_get_attachment_image_url( absint( $brand['social_share_image_id'] ), 'full' );
+		if ( $url ) { echo '<meta property="og:image" content="' . esc_url( $url ) . '">'; }
+	}
+	if ( ! empty( $brand['favicon_id'] ) ) {
+		$url = wp_get_attachment_image_url( absint( $brand['favicon_id'] ), 'full' );
+		if ( $url ) { echo '<link rel="icon" href="' . esc_url( $url ) . '">'; }
+	}
+}
+add_action( 'wp_head', 'kuka_island_brand_metadata', 3 );
+
 /** @return array<int, array{label:string,url:string}> */
 function kuka_island_menu_lines( string $lines ): array {
 	$items = array();

@@ -7,6 +7,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
+	private const CAPABILITY = 'manage_woocommerce';
 
 	/**
 	 * Register the settings page and the explicit, nonce-protected save action.
@@ -23,65 +24,53 @@ final class Kuka_Island_Core_Site_Appearance {
 	 */
 	public static function defaults(): array {
 		return array(
-			'brand'        => array(
-				'logo_id'       => 0,
-				'favicon_id'    => 0,
-				'email'         => 'hello@kukaisland.com',
-				'phone'         => '+90 850 000 00 00',
-				'instagram_url' => 'https://www.instagram.com/',
-				'pinterest_url' => 'https://www.pinterest.com/',
+			'brand' => array(
+				'logo_id' => 0, 'mobile_logo_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
+				'email' => 'hello@kukaisland.com', 'phone' => '+90 850 000 00 00', 'whatsapp_url' => 'https://wa.me/908500000000',
+				'social_links' => "Instagram|https://www.instagram.com/\nPinterest|https://www.pinterest.com/",
 			),
 			'announcement' => array(
 				'enabled' => true,
-				'items'   => array(
-					'1.500 TL üzeri siparişlerde ücretsiz kargo',
-					'Kolay değişim desteği',
-					'Güvenli ödeme',
-				),
+				'items' => array( '1.500 TL üzeri siparişlerde ücretsiz kargo', 'Kolay değişim desteği', 'Güvenli ödeme' ),
+				'link_labels' => array( '', '', '' ), 'link_urls' => array( '', '', '' ),
 			),
-			'hero'         => array(
-				'enabled'          => true,
-				'desktop_image_id' => 0,
-				'mobile_image_id'  => 0,
-				'eyebrow'          => 'KUKA ISLAND / YENİ SEZON',
-				'title'            => 'Adanın ritmini yanında taşı.',
-				'copy'             => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
-				'button_label'     => 'Yeni gelenleri keşfet',
-				'button_url'       => '/magaza/',
-				'alignment'        => 'left',
-				'text_tone'        => 'light',
+			'hero' => array(
+				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
+				'title' => 'Adanın ritmini yanında taşı.', 'copy' => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
+				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'light',
 			),
-			'home'         => array(
-				'new_arrivals_title' => 'Yeni Gelenler',
-				'editorial_title'    => 'Ada Günlüğü',
-				'editorial_copy'     => 'Şehirden kıyıya uzanan günlük üniforma.',
-				'editorial_image_id' => 0,
-				'editorial_url'      => '/hakkimizda/',
-				'manifesto_title'    => 'Az, iyi ve uzun ömürlü.',
-				'manifesto_copy'     => 'Her parçayı tekrar tekrar giymek için tasarlıyoruz.',
-				'service_1'          => 'Güvenli ödeme',
-				'service_2'          => 'Kolay değişim',
-				'service_3'          => 'Destek hattı',
+			'home' => array(
+				'category_index_enabled' => true, 'category_index_label' => 'Formunu bul', 'category_index_title' => 'Ürün kategorileri',
+				'new_arrivals_enabled' => true, 'new_arrivals_title' => 'Yeni Gelenler', 'new_arrivals_copy' => 'Yeni sezon seçkisi.',
+				'new_arrivals_source' => 'latest', 'source_category' => '', 'source_collection' => '', 'manual_product_ids' => '', 'presentation' => 'grid',
+				'card_swatches_enabled' => true, 'card_stock_enabled' => true,
+				'editorial_enabled' => true, 'editorial_title' => 'Ada Günlüğü', 'editorial_copy' => 'Şehirden kıyıya uzanan günlük üniforma.',
+				'editorial_image_id' => 0, 'editorial_video_id' => 0, 'editorial_url' => '/hakkimizda/', 'editorial_link_label' => 'Hikâyeyi oku',
+				'manifesto_enabled' => true, 'manifesto_title' => 'Az, iyi ve uzun ömürlü.', 'manifesto_copy' => 'Her parçayı tekrar tekrar giymek için tasarlıyoruz.',
+				'services_enabled' => true, 'service_1' => 'Güvenli ödeme', 'service_2' => 'Kolay değişim', 'service_3' => 'Destek hattı',
 			),
-			'navigation'   => array(
+			'navigation' => array(
 				'main' => "Yeni Gelenler|/magaza/?orderby=date\nTüm Ürünler|/magaza/\nHakkımızda|/hakkimizda/",
 				'help' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
 			),
-			'footer'       => array(
-				'brand_copy'        => 'Günlük hayatın her ritmine uyum sağlayan zamansız parçalar.',
-				'newsletter_title'  => 'Ada mektuplarına katıl',
-				'newsletter_copy'   => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
-				'newsletter_consent'=> 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
-				'company_name'      => 'Kuka Island Tekstil Ltd. Şti.',
-				'company_address'   => '[Şirket adresi hukuk/onay sonrası eklenecek]',
+			'footer' => array(
+				'brand_copy' => 'Günlük hayatın her ritmine uyum sağlayan zamansız parçalar.', 'newsletter_enabled' => true,
+				'newsletter_eyebrow' => 'Ada mektupları', 'newsletter_title' => 'Ada mektuplarına katıl',
+				'newsletter_copy' => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
+				'newsletter_consent' => 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
+				'company_name' => 'Kuka Island Tekstil Ltd. Şti.', 'company_address' => '[Şirket adresi hukuk/onay sonrası eklenecek]',
+				'help_links' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
+				'legal_links' => "Gizlilik Politikası|/gizlilik-politikasi/\nÇerez Politikası|/cerez-politikasi/\nKVKK Aydınlatma Metni|/kvkk-aydinlatma-metni/\nMesafeli Satış Sözleşmesi|/mesafeli-satis-sozlesmesi/",
 			),
-			'commercial'   => array(
-				'free_shipping_threshold' => 1500,
-				'shipping_copy'             => '1.500 TL üzeri siparişlerde ücretsiz kargo.',
-				'flat_rate_copy'            => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
-				'exchange_copy'             => 'Değişim talebinizi teslimattan sonra 14 gün içinde iletebilirsiniz.',
-				'secure_payment_copy'       => 'Ödeme bilgileriniz güvenli bağlantı üzerinden işlenir.',
-				'support_hours'             => 'Hafta içi 09.00–18.00',
+			'commercial' => array(
+				'free_shipping_threshold' => 1500, 'shipping_copy' => '1.500 TL üzeri siparişlerde ücretsiz kargo.',
+				'free_shipping_remaining_copy' => 'Ücretsiz kargo için %s daha ekleyin.', 'free_shipping_ready_copy' => 'Ücretsiz kargo hakkınız hazır.',
+				'flat_rate_copy' => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
+				'exchange_copy' => 'Değişim talebinizi teslimattan sonra 14 gün içinde iletebilirsiniz.',
+				'secure_payment_copy' => 'Ödeme bilgileriniz güvenli bağlantı üzerinden işlenir.', 'support_hours' => 'Hafta içi 09.00–18.00',
+			),
+			'panels' => array(
+				'account_greeting' => 'Tekrar hoş geldiniz.', 'account_copy' => 'E-posta adresiniz ve şifrenizle giriş yapın.',
 			),
 		);
 	}
@@ -102,12 +91,14 @@ final class Kuka_Island_Core_Site_Appearance {
 			'brand'        => array(
 				'label'  => __( '1. Marka', 'kuka-island-core' ),
 				'fields' => array(
-					'logo_id'       => array( __( 'Logo medya ID', 'kuka-island-core' ), 'number' ),
-					'favicon_id'    => array( __( 'Favicon medya ID', 'kuka-island-core' ), 'number' ),
-					'email'         => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
-					'phone'         => array( __( 'Telefon', 'kuka-island-core' ), 'text' ),
-					'instagram_url' => array( __( 'Instagram URL', 'kuka-island-core' ), 'url' ),
-					'pinterest_url' => array( __( 'Pinterest URL', 'kuka-island-core' ), 'url' ),
+					'logo_id'               => array( __( 'Logo medya ID', 'kuka-island-core' ), 'number' ),
+					'mobile_logo_id'        => array( __( 'Mobil logo medya ID', 'kuka-island-core' ), 'number' ),
+					'favicon_id'            => array( __( 'Favicon medya ID', 'kuka-island-core' ), 'number' ),
+					'social_share_image_id' => array( __( 'Sosyal paylaşım görseli medya ID', 'kuka-island-core' ), 'number' ),
+					'email'                 => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
+					'phone'                 => array( __( 'Telefon', 'kuka-island-core' ), 'text' ),
+					'whatsapp_url'          => array( __( 'WhatsApp URL', 'kuka-island-core' ), 'url' ),
+					'social_links'          => array( __( 'Sosyal bağlantılar (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
 			),
 			'announcement' => array(
@@ -115,6 +106,8 @@ final class Kuka_Island_Core_Site_Appearance {
 				'fields' => array(
 					'enabled' => array( __( 'Bandı göster', 'kuka-island-core' ), 'checkbox' ),
 					'items'   => array( __( 'Duyurular (satır başına bir, en fazla 3)', 'kuka-island-core' ), 'lines' ),
+					'link_labels' => array( __( 'Duyuru bağlantı etiketleri (satır sırasıyla)', 'kuka-island-core' ), 'lines' ),
+					'link_urls' => array( __( 'Duyuru bağlantı URL’leri (satır sırasıyla)', 'kuka-island-core' ), 'url_lines' ),
 				),
 			),
 			'hero'         => array(
@@ -135,13 +128,30 @@ final class Kuka_Island_Core_Site_Appearance {
 			'home'         => array(
 				'label'  => __( '4. Ana Sayfa Bölümleri', 'kuka-island-core' ),
 				'fields' => array(
+					'category_index_enabled' => array( __( 'Kesim indeksini göster', 'kuka-island-core' ), 'checkbox' ),
+					'category_index_label'   => array( __( 'Kesim indeksi etiketi', 'kuka-island-core' ), 'text' ),
+					'category_index_title'   => array( __( 'Kesim indeksi erişilebilir başlığı', 'kuka-island-core' ), 'text' ),
+					'new_arrivals_enabled'   => array( __( 'Yeni gelenleri göster', 'kuka-island-core' ), 'checkbox' ),
 					'new_arrivals_title' => array( __( 'Yeni gelenler başlığı', 'kuka-island-core' ), 'text' ),
+					'new_arrivals_copy' => array( __( 'Yeni gelenler metni', 'kuka-island-core' ), 'textarea' ),
+					'new_arrivals_source' => array( __( 'Ürün kaynağı (latest/featured/sale/manual)', 'kuka-island-core' ), 'product_source' ),
+					'source_category' => array( __( 'Kaynak kategori slug', 'kuka-island-core' ), 'slug' ),
+					'source_collection' => array( __( 'Kaynak koleksiyon slug', 'kuka-island-core' ), 'slug' ),
+					'manual_product_ids' => array( __( 'Manuel ürün ID’leri (virgülle)', 'kuka-island-core' ), 'ids' ),
+					'presentation' => array( __( 'Sunum (grid/carousel)', 'kuka-island-core' ), 'presentation' ),
+					'card_swatches_enabled' => array( __( 'Kart renk swatch’larını göster', 'kuka-island-core' ), 'checkbox' ),
+					'card_stock_enabled' => array( __( 'Kart beden/stok satırını göster', 'kuka-island-core' ), 'checkbox' ),
+					'editorial_enabled' => array( __( 'Editoryal bölümü göster', 'kuka-island-core' ), 'checkbox' ),
 					'editorial_title'    => array( __( 'Editoryal başlık', 'kuka-island-core' ), 'text' ),
 					'editorial_copy'     => array( __( 'Editoryal metin', 'kuka-island-core' ), 'textarea' ),
 					'editorial_image_id' => array( __( 'Editoryal görsel medya ID', 'kuka-island-core' ), 'number' ),
+					'editorial_video_id' => array( __( 'Editoryal video medya ID', 'kuka-island-core' ), 'number' ),
 					'editorial_url'      => array( __( 'Editoryal URL', 'kuka-island-core' ), 'url' ),
+					'editorial_link_label' => array( __( 'Editoryal bağlantı etiketi', 'kuka-island-core' ), 'text' ),
+					'manifesto_enabled' => array( __( 'Manifestoyu göster', 'kuka-island-core' ), 'checkbox' ),
 					'manifesto_title'    => array( __( 'Manifesto başlığı', 'kuka-island-core' ), 'text' ),
 					'manifesto_copy'     => array( __( 'Manifesto metni', 'kuka-island-core' ), 'textarea' ),
+					'services_enabled'   => array( __( 'Hizmet satırını göster', 'kuka-island-core' ), 'checkbox' ),
 					'service_1'          => array( __( 'Hizmet 1', 'kuka-island-core' ), 'text' ),
 					'service_2'          => array( __( 'Hizmet 2', 'kuka-island-core' ), 'text' ),
 					'service_3'          => array( __( 'Hizmet 3', 'kuka-island-core' ), 'text' ),
@@ -150,19 +160,23 @@ final class Kuka_Island_Core_Site_Appearance {
 			'navigation'   => array(
 				'label'  => __( '5. Navigasyon', 'kuka-island-core' ),
 				'fields' => array(
-					'main' => array( __( 'Ana menü (Etiket|URL)', 'kuka-island-core' ), 'textarea' ),
-					'help' => array( __( 'Yardım menüsü (Etiket|URL)', 'kuka-island-core' ), 'textarea' ),
+					'main' => array( __( 'Ana menü (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
+					'help' => array( __( 'Yardım menüsü (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
 			),
 			'footer'       => array(
 				'label'  => __( '6. Footer', 'kuka-island-core' ),
 				'fields' => array(
 					'brand_copy'         => array( __( 'Marka metni', 'kuka-island-core' ), 'textarea' ),
+					'newsletter_enabled' => array( __( 'Bülteni göster', 'kuka-island-core' ), 'checkbox' ),
+					'newsletter_eyebrow' => array( __( 'Bülten üst başlığı', 'kuka-island-core' ), 'text' ),
 					'newsletter_title'   => array( __( 'Bülten başlığı', 'kuka-island-core' ), 'text' ),
 					'newsletter_copy'    => array( __( 'Bülten metni', 'kuka-island-core' ), 'textarea' ),
 					'newsletter_consent' => array( __( 'Bülten onay metni', 'kuka-island-core' ), 'textarea' ),
 					'company_name'       => array( __( 'Şirket unvanı', 'kuka-island-core' ), 'text' ),
 					'company_address'    => array( __( 'Şirket adresi', 'kuka-island-core' ), 'textarea' ),
+					'help_links'         => array( __( 'Yardım bağlantıları (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
+					'legal_links'        => array( __( 'Yasal bağlantılar (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
 			),
 			'commercial'   => array(
@@ -170,10 +184,19 @@ final class Kuka_Island_Core_Site_Appearance {
 				'fields' => array(
 					'free_shipping_threshold' => array( __( 'Ücretsiz kargo eşiği (TL)', 'kuka-island-core' ), 'number' ),
 					'shipping_copy'             => array( __( 'Kargo metni', 'kuka-island-core' ), 'textarea' ),
+					'free_shipping_remaining_copy' => array( __( 'Eşiğe kalan kargo metni (%s fiyat)', 'kuka-island-core' ), 'textarea' ),
+					'free_shipping_ready_copy' => array( __( 'Eşik tamamlandı metni', 'kuka-island-core' ), 'textarea' ),
 					'flat_rate_copy'            => array( __( 'Sabit kargo metni', 'kuka-island-core' ), 'textarea' ),
 					'exchange_copy'             => array( __( 'Değişim metni', 'kuka-island-core' ), 'textarea' ),
 					'secure_payment_copy'       => array( __( 'Güvenli ödeme metni', 'kuka-island-core' ), 'textarea' ),
 					'support_hours'             => array( __( 'Destek saatleri', 'kuka-island-core' ), 'text' ),
+				),
+			),
+			'panels'       => array(
+				'label'  => __( '8. Panel Metinleri', 'kuka-island-core' ),
+				'fields' => array(
+					'account_greeting' => array( __( 'Hesap karşılama başlığı', 'kuka-island-core' ), 'text' ),
+					'account_copy'     => array( __( 'Hesap kısa açıklaması', 'kuka-island-core' ), 'textarea' ),
 				),
 			),
 		);
@@ -183,7 +206,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		add_menu_page(
 			__( 'Kuka Island', 'kuka-island-core' ),
 			__( 'Kuka Island', 'kuka-island-core' ),
-			'manage_options',
+			self::CAPABILITY,
 			'kuka-island',
 			array( $this, 'render_page' ),
 			'dashicons-store',
@@ -192,7 +215,7 @@ final class Kuka_Island_Core_Site_Appearance {
 	}
 
 	public function render_page(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
 			wp_die( esc_html__( 'Bu sayfaya erişim yetkiniz yok.', 'kuka-island-core' ) );
 		}
 
@@ -227,7 +250,7 @@ final class Kuka_Island_Core_Site_Appearance {
 	private function render_field( string $group_key, string $field_key, array $field, mixed $value ): void {
 		$name = sprintf( 'site_content[%s][%s]', $group_key, $field_key );
 		$type = $field[1];
-		if ( 'lines' === $type && is_array( $value ) ) {
+		if ( in_array( $type, array( 'lines', 'url_lines' ), true ) && is_array( $value ) ) {
 			$value = implode( "\n", $value );
 		}
 		?>
@@ -237,7 +260,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php if ( 'checkbox' === $type ) : ?>
 				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="0">
 				<input id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( (bool) $value ); ?>>
-			<?php elseif ( in_array( $type, array( 'textarea', 'lines' ), true ) ) : ?>
+			<?php elseif ( in_array( $type, array( 'textarea', 'lines', 'url_lines', 'link_lines' ), true ) ) : ?>
 				<textarea class="large-text" rows="4" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( (string) $value ); ?></textarea>
 			<?php else : ?>
 				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number', 'url' ), true ) ? $type : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?>>
@@ -248,7 +271,7 @@ final class Kuka_Island_Core_Site_Appearance {
 	}
 
 	public function save(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
 			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'kuka-island-core' ), 403 );
 		}
 
@@ -287,6 +310,29 @@ final class Kuka_Island_Core_Site_Appearance {
 					case 'lines':
 						$value = array_slice( array_values( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ) ), 0, 3 );
 						break;
+					case 'url_lines':
+						$value = array_slice( array_map( array( self::class, 'sanitize_url' ), preg_split( '/\R/', (string) $value ) ?: array() ), 0, 3 );
+						break;
+					case 'link_lines':
+						$lines = array();
+						foreach ( preg_split( '/\R/', (string) $value ) ?: array() as $line ) {
+							$parts = array_map( 'trim', explode( '|', $line, 2 ) );
+							if ( 2 === count( $parts ) && $parts[0] && $parts[1] ) { $lines[] = sanitize_text_field( $parts[0] ) . '|' . self::sanitize_url( $parts[1] ); }
+						}
+						$value = implode( "\n", $lines );
+						break;
+					case 'ids':
+						$value = implode( ',', array_filter( array_map( 'absint', preg_split( '/\s*,\s*/', (string) $value ) ?: array() ) ) );
+						break;
+					case 'slug':
+						$value = sanitize_title( $value );
+						break;
+					case 'product_source':
+						$value = in_array( $value, array( 'latest', 'featured', 'sale', 'manual' ), true ) ? $value : 'latest';
+						break;
+					case 'presentation':
+						$value = in_array( $value, array( 'grid', 'carousel' ), true ) ? $value : 'grid';
+						break;
 					case 'alignment':
 						$value = in_array( $value, array( 'left', 'center', 'right' ), true ) ? $value : 'left';
 						break;
@@ -321,4 +367,3 @@ final class Kuka_Island_Core_Site_Appearance {
 		return $saved;
 	}
 }
-
