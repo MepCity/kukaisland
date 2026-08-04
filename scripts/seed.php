@@ -152,7 +152,7 @@ function kuka_seed_product( array $spec, array $attribute_ids, array $terms, arr
 			$expected_skus[] = $sku;
 			$variation_id    = wc_get_product_id_by_sku( $sku );
 			$variation       = $variation_id ? new WC_Product_Variation( $variation_id ) : new WC_Product_Variation();
-			$stock           = ( $index % 11 === 0 ) ? 0 : 3 + ( $index % 6 );
+			$stock           = ( $index % 11 === 0 ) ? 0 : ( ( $index % 7 === 1 ) ? 2 : 3 + ( $index % 6 ) );
 			$variation->set_parent_id( $product_id );
 			$variation->set_status( 'publish' );
 			$variation->set_sku( $sku );
@@ -200,7 +200,9 @@ function kuka_seed_product( array $spec, array $attribute_ids, array $terms, arr
 // Locale, commerce defaults and HPOS.
 update_option( 'timezone_string', 'Europe/Istanbul' );
 update_option( 'WPLANG', 'tr_TR' );
+update_option( 'permalink_structure', '/%postname%/' );
 update_option( 'woocommerce_currency', 'TRY' );
+update_option( 'woocommerce_default_country', 'TR' );
 update_option( 'woocommerce_calc_taxes', 'no' );
 update_option( 'woocommerce_enable_guest_checkout', 'yes' );
 update_option( 'woocommerce_enable_signup_and_login_from_checkout', 'no' );
@@ -304,8 +306,18 @@ update_post_meta( $product_ids['KI-BTM-004'], '_kuka_paired_product_id', $produc
 // Classic checkout is the pilot decision; supported hooks remain available and iyzico renders here.
 $checkout_id = (int) wc_get_page_id( 'checkout' );
 if ( $checkout_id > 0 ) {
-	wp_update_post( array( 'ID' => $checkout_id, 'post_content' => '[woocommerce_checkout]' ) );
+	wp_update_post( array( 'ID' => $checkout_id, 'post_title' => 'Ödeme', 'post_name' => 'odeme', 'post_content' => '[woocommerce_checkout]' ) );
 }
+$commerce_pages = array( 'shop' => array( 'magaza', 'Mağaza', '' ), 'cart' => array( 'sepet', 'Sepet', '[woocommerce_cart]' ), 'myaccount' => array( 'hesabim', 'Hesabım', '[woocommerce_my_account]' ) );
+foreach ( $commerce_pages as $page_key => $page_data ) {
+	$page_id = (int) wc_get_page_id( $page_key );
+	if ( $page_id > 0 ) {
+		$page_update = array( 'ID' => $page_id, 'post_name' => $page_data[0], 'post_title' => $page_data[1] );
+		if ( $page_data[2] ) { $page_update['post_content'] = $page_data[2]; }
+		wp_update_post( $page_update );
+	}
+}
+update_option( 'woocommerce_permalinks', array( 'product_base' => '/urun', 'category_base' => '/kategori', 'tag_base' => '/urun-etiketi', 'attribute_base' => '' ) );
 
 // Turkey zone with provisional values pending customer confirmation.
 $zone_id = 0;
