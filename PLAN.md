@@ -1709,6 +1709,11 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-04 | Renk swatch'ı ve filtre çekmecesi Blocksy Pro alınmadan geliştirildi | Faz 3B kapsamı bunları mayo mağazası için vazgeçilmez kabul etti; native select/GET input ve WooCommerce sorgusu tek doğruluk kaynağı olarak korundu |
 | 2026-08-04 | iyzico ödeme alanı korunup yalnız page-overlay promosyonu dar child CSS seçicisiyle gizlendi | Eklentide kapatma ayarı bulunmadı; sabit promosyon galeri ve checkout alanlarını örtüyordu |
 | 2026-08-04 | Favoriler, off-canvas sepet, beden modalı, mega menü, kesim indeksi ve kart beden/stok satırı Faz 3B dışında kaldı | Ayrı veri/senkronizasyon veya onaylanmamış tasarım kararı gerektiren işleri bu aktarım turuna gizlice eklememek için |
+| 2026-08-04 | Özel sepet çekmecesi §29.1 kesmesinden Faz 3C kapsamına geri alındı | Kullanıcı bu tur için 12–18 saatlik geliştirme payını açıkça kapsama aldı; WooCommerce fragment'ları, çekirdek sepet form işleyicisi ve JS'siz `/sepet` akışı korunarak ayrı sepet motoru yazılmadı |
+| 2026-08-04 | Hesabım sayfası korunup §10.7'ye sağdan açılan hesap paneli ek yüzey olarak eklendi | Header hesabına hızlı erişim sağlanırken WooCommerce'in nonce'lı giriş/kayıt/çıkış akışı tek doğruluk kaynağı kaldı; JS kapalı bağlantı `/hesabim` sayfasına gider |
+| 2026-08-04 | Mobil menü soldan, sepet ve hesap panelleri sağdan açılır | Navigasyon başlangıç yönünde; header'ın sağındaki kişisel/ticari eylemler kendi fiziksel konumlarından gelir. Dördü aynı Escape, odak tuzağı, odak iadesi, `inert` ve örtü altyapısını paylaşır |
+| 2026-08-04 | Filtre örtüsü `paper` %55, diğer panel örtüleri `ink` %55 karışımıdır | Açık filtre bağlamındaki ürün renkleri `filter:none` ile korunur; koyu örtü yalnız menü, hesap ve sepet odağında kalır |
+| 2026-08-04 | Yumuşatma semantik hareket ve odak token'larıyla yapılır | `--duration-micro` mevcut 240 ms'e, `--duration-panel` mevcut 420 ms'e, `--duration-image` mevcut 240 ms'e ve `--focus-color` mevcut `ink-soft`a bağlandı; gölge, radius veya yeni sayısal değer eklenmedi |
 
 ---
 
@@ -1749,7 +1754,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 4 Site Appearance paneli yedi içerik grubuyla, güvenli kayıt ve fallback sözleşmesiyle tamamlandı
 - [x] Tema/eklenti i18n hazırlığı, POT katalogları ve gelecekteki `/en/` URL varsayımı kaydedildi
 - [x] Faz 3B bileşen aktarımı tamamlandı: gerçek header/footer, WordPress menüsü, editoryal kart/galeri, Pro'suz swatch/filtre, token disiplini ve responsive tarayıcı QA
-- [x] Panel geliştirilecek
+- [x] Faz 3C panelleri tamamlandı: Woo fragment sepeti, Woo hesap/giriş paneli, ortak erişilebilir panel altyapısı, mikro etkileşimler ve açık filtre örtüsü
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
 
