@@ -1,0 +1,33 @@
+# WordPress core and runtime state
+/*
+!/.gitignore
+!/.env.example
+!/docker-compose.yml
+!/Makefile
+!/README.md
+!/PLAN.md
+!/docs/
+!/docs/**
+!/scripts/
+!/scripts/**
+!/wp-content/
+
+# Only project-owned WordPress code is versioned.
+/wp-content/*
+!/wp-content/themes/
+!/wp-content/plugins/
+/wp-content/themes/*
+!/wp-content/themes/kuka-island-child/
+!/wp-content/themes/kuka-island-child/**
+/wp-content/plugins/*
+!/wp-content/plugins/kuka-island-core/
+!/wp-content/plugins/kuka-island-core/**
+
+# Local secrets, media, database and generated files
+.env
+seed-media/
+wp-content/uploads/
+*.sql
+*.sql.gz
+.DS_Store
+
