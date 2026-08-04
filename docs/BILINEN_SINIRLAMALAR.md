@@ -1,0 +1,39 @@
+# Bilinen sınırlamalar
+
+Bu bağlantı, Kuka Island'ın görsel yönünü ve alışveriş akışını değerlendirmek için hazırlanmış bir tasarım prototipidir; çalışan bir mağaza değildir.
+
+## Prototip olduğu için çalışmayanlar
+
+- Gerçek sepet, ödeme, sipariş kaydı ve sipariş e-postası yoktur. Sunum sepeti yalnızca ziyaretçinin tarayıcısında tutulur.
+- iyzico bağlı değildir; ödeme sayfası yalnızca önerilen görsel yönü gösterir ve para çekmez.
+- Ürün, sipariş ve içerik yönetim paneli yoktur; panel çalışması Faz 4'te yapılacaktır.
+- Ürün adları, çeşitler, stoklar ve fiyatlar demo veridir. Gerçek katalog müşteriden alınacaktır.
+- Fotoğraflar lisanslı veya proje için hazırlanmış yer tutuculardır; gerçek ürün çekimleri değildir.
+
+## Müşteri girdisi bekleyen konular
+
+- Kesim listesi, ürün başına renk sayıları ve gerçek fiyatlar henüz teslim edilmedi (soru 4, 5 ve 22).
+- Kargo firması ve ücretsiz kargo eşiği onaylanmadı. Sunumda görülen ₺7.500 eşik ve ₺149 ücret geçicidir (soru 8 ve 9).
+- Hijyen bandının kullanım ve iade koşulları karara bağlanmadı (soru 16).
+- e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24).
+- Üst-alt takım alımında indirim uygulanıp uygulanmayacağı bekleniyor (soru 19).
+- Logo, kurumsal renk/font dosyaları ve varsa marka kullanım kuralları bekleniyor (soru 11). Sunumdaki yazı karakterli logo geçicidir.
+- Yasal metinlerin tamamı taslaktır; şirket bilgileriyle doldurulup hukuk danışmanı tarafından onaylanmadan yayımlanamaz.
+
+## İlk sürümden sonraki fazlar
+
+İlk canlı sürümden sonraki fazlarda değerlendirilecek işler: e-Fatura; pazaryeri bağlantıları; özel kargo API'si; iade/değişim portalı; çoklu dil ve para birimi; ERP/muhasebe bağlantısı; profesyonel çekimin üretilmesi; ürün yorumları ve puanlama; takım set indirimi; ana sayfa videosu; ürün açıklama metinlerinin yazılması; ayrıca anlaşılmadıkça logo ve tam kurumsal kimlik tasarımı; özel mobil uygulama; sadakat/puan ve abonelik sistemi; gelişmiş pazarlama otomasyonları; devir sonrası sürekli bakım/destek. Bunlar iptal edilmiş değildir; sonraki fazların kapsamıdır. Yüzlerce ürünün elle temizlenmesi/girilmesi, kurala aykırı fotoğrafların elle eşleştirilmesi, sınırsız revizyon ve referans sitelerin birebir kopyalanması da mevcut kapsamda değildir.
+
+## Onaya bağlı tasarım hipotezleri
+
+- Ana sayfadaki kesim/kategori indeksi, ürün keşfini hızlandırdığı varsayımıyla gösterilir.
+- Ürün kartındaki beden ve stok satırı, hızlı karar vermeyi kolaylaştırdığı varsayımıyla gösterilir.
+
+Bu iki yaklaşım [Hipotez Sunumu](HIPOTEZ_SUNUMU.md) üzerinden ayrı ayrı onaylanacaktır. Onaylanmayan yaklaşım prototipten kaldırılacak veya onaylanan sade yönle değiştirilecektir.
+# Faz 2 ekleri
+
+- Dikey poster logo 64 px header'a uygun değildir. Müşteriden SVG, yatay lockup, açık/koyu varyant ve favicon bekleniyor; o zamana kadar tipografik `KUKA ISLAND` wordmark kullanılır.
+- Logo serif ailesinin adı ve lisansı bilinmediği için serif font eklenmedi. Geist sans + mono, child theme içinde self-hosted kullanılır.
+- iyzico sandbox anahtarları yok; gateway işlem testi yapılmadı.
+- Kombin için altı ticari şartı birlikte karşılayan ücretsiz çözüm bulunmadı.
+- Kesim landing page'leri müşteri kesim listesi ve SEO kararı gelene kadar açılmadı.
