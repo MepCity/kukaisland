@@ -1,3 +1,98 @@
-.woocommerce-checkout .kuka-main{max-width:1400px;margin:auto;padding:64px var(--content-gutter)}.woocommerce-checkout h1{font-size:var(--text-heading-medium)}.woocommerce-checkout form.checkout{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.7fr);gap:64px}.woocommerce-checkout #customer_details{width:auto}.woocommerce-checkout #order_review_heading,.woocommerce-checkout #order_review{float:none;width:auto}.woocommerce-checkout #order_review{grid-column:2}.woocommerce-checkout #order_review_heading{grid-column:2;grid-row:1}.woocommerce-checkout .form-row input.input-text,.woocommerce-checkout .form-row select{min-height:48px;border:1px solid var(--color-line);background:transparent;padding:10px}.woocommerce-checkout #payment{background:var(--color-sand);border-radius:0}.kuka-legal-consents{margin:20px 0}.kuka-legal-consents label{display:flex;gap:10px;margin:12px 0}.kuka-legal-consents input{width:18px;height:18px;flex:0 0 auto}.woocommerce-checkout #place_order[disabled]{opacity:.45;cursor:not-allowed}
-.kuka-corporate-field{display:none!important}.kuka-corporate .kuka-corporate-field{display:block!important}
-@media(max-width:800px){.woocommerce-checkout form.checkout{display:block}.woocommerce-checkout .kuka-main{padding:32px var(--content-gutter)}}
+.woocommerce-checkout .kuka-main .ct-container {
+  max-width: var(--measure-content);
+  padding-inline: var(--content-gutter);
+}
+
+.woocommerce-checkout .entry-title {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-heading-medium);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-tight);
+}
+
+.woocommerce-checkout form.checkout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(var(--measure-product-info), 0.7fr);
+  gap: var(--space-8);
+}
+
+.woocommerce-checkout #customer_details,
+.woocommerce-checkout #order_review_heading,
+.woocommerce-checkout #order_review {
+  float: none;
+  width: auto;
+}
+
+.woocommerce-checkout #order_review_heading,
+.woocommerce-checkout #order_review {
+  grid-column: 2;
+}
+
+.woocommerce-checkout #order_review_heading {
+  grid-row: 1;
+}
+
+.woocommerce-checkout #billing_customer_type_field {
+  float: none;
+  width: 100%;
+  clear: both;
+}
+
+.woocommerce-checkout .form-row input.input-text,
+.woocommerce-checkout .form-row select {
+  min-height: var(--control-large);
+  padding: var(--space-1);
+  background: transparent;
+  border: 1px solid var(--color-line);
+}
+
+.kuka-corporate-field {
+  display: none !important;
+}
+
+.kuka-corporate .kuka-corporate-field {
+  display: block !important;
+}
+
+.kuka-corporate #billing_company_field {
+  float: none;
+  width: 100%;
+}
+
+.woocommerce-checkout #payment {
+  background: var(--color-sand);
+  border-radius: 0;
+}
+
+.kuka-legal-consents {
+  margin-block: var(--space-3);
+}
+
+.kuka-legal-consents label {
+  display: flex;
+  gap: var(--space-1-5);
+  margin-block: var(--space-1-5);
+  font-size: var(--text-caption);
+}
+
+.kuka-legal-consents input {
+  width: var(--space-3);
+  height: var(--space-3);
+  flex: 0 0 auto;
+}
+
+.woocommerce-checkout #place_order[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 56.25em) {
+  .woocommerce-checkout form.checkout {
+    display: block;
+  }
+
+  .woocommerce-checkout #order_review_heading {
+    margin-top: var(--space-8);
+  }
+}
