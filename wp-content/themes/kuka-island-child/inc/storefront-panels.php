@@ -17,6 +17,11 @@ function kuka_island_cart_count_markup(): string {
 	return '<span class="kuka-cart-count" aria-live="polite">' . esc_html( (string) kuka_island_cart_count() ) . '</span>';
 }
 
+/** Render the cart panel title so fragments keep its count current. */
+function kuka_island_cart_title_markup(): string {
+	return '<span id="kuka-cart-panel-title" class="kuka-cart-panel__title">' . esc_html( sprintf( __( 'Sepet / %d', 'kuka-island' ), kuka_island_cart_count() ) ) . '</span>';
+}
+
 /** Render the free-shipping progress message from Site Appearance content. */
 function kuka_island_shipping_progress(): string {
 	$content   = kuka_island_content();
@@ -46,24 +51,19 @@ function kuka_island_cart_panel_item( string $cart_item_key, array $cart_item ):
 	$permalink = apply_filters( 'woocommerce_cart_item_permalink', $product->is_visible() ? $product->get_permalink( $cart_item ) : '', $cart_item, $cart_item_key );
 	$maximum   = $product->get_max_purchase_quantity();
 	$maximum   = $maximum < 0 ? '' : (string) $maximum;
+	$variation = array();
+	foreach ( (array) ( $cart_item['variation'] ?? array() ) as $attribute => $value ) {
+		$taxonomy   = str_replace( 'attribute_', '', $attribute );
+		$term       = taxonomy_exists( $taxonomy ) ? get_term_by( 'slug', $value, $taxonomy ) : false;
+		$variation[] = $term ? $term->name : $value;
+	}
 	?>
 	<article class="kuka-cart-panel__item">
 		<?php if ( $permalink ) : ?><a class="kuka-cart-panel__image" href="<?php echo esc_url( $permalink ); ?>"><?php echo $product->get_image( 'woocommerce_thumbnail', array( 'loading' => 'lazy' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></a><?php else : ?><span class="kuka-cart-panel__image"><?php echo $product->get_image( 'woocommerce_thumbnail', array( 'loading' => 'lazy' ) ); // phpcs:ignore ?></span><?php endif; ?>
 		<div class="kuka-cart-panel__body">
-			<div class="kuka-cart-panel__summary">
-				<?php if ( $permalink ) : ?><a class="kuka-cart-panel__name" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $name ); ?></a><?php else : ?><span class="kuka-cart-panel__name"><?php echo esc_html( $name ); ?></span><?php endif; ?>
-				<strong><?php echo wp_kses_post( WC()->cart->get_product_subtotal( $product, $cart_item['quantity'] ) ); ?></strong>
-			</div>
-			<?php if ( ! empty( $cart_item['variation'] ) ) : ?>
-				<dl class="kuka-cart-panel__meta">
-					<?php foreach ( $cart_item['variation'] as $attribute => $value ) :
-						$taxonomy = str_replace( 'attribute_', '', $attribute );
-						$term     = taxonomy_exists( $taxonomy ) ? get_term_by( 'slug', $value, $taxonomy ) : false;
-						?>
-						<div><dt><?php echo esc_html( wc_attribute_label( $taxonomy ) ); ?>:</dt> <dd><?php echo esc_html( $term ? $term->name : $value ); ?></dd></div>
-					<?php endforeach; ?>
-				</dl>
-			<?php endif; ?>
+			<?php if ( $permalink ) : ?><a class="kuka-cart-panel__name" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $name ); ?></a><?php else : ?><span class="kuka-cart-panel__name"><?php echo esc_html( $name ); ?></span><?php endif; ?>
+			<?php if ( $variation ) : ?><p class="kuka-cart-panel__meta"><?php echo esc_html( implode( ' · ', $variation ) ); ?></p><?php endif; ?>
+			<strong class="kuka-cart-panel__price"><?php echo wp_kses_post( WC()->cart->get_product_subtotal( $product, $cart_item['quantity'] ) ); ?></strong>
 			<form class="kuka-cart-panel__form" method="post" action="<?php echo esc_url( wc_get_cart_url() ); ?>" data-kuka-cart-update>
 				<div class="kuka-cart-panel__quantity" role="group" aria-label="<?php echo esc_attr( sprintf( __( '%s adedi', 'kuka-island' ), $name ) ); ?>">
 					<button type="button" data-kuka-quantity-step="-1" aria-label="<?php esc_attr_e( 'Adedi azalt', 'kuka-island' ); ?>">−</button>
@@ -97,8 +97,9 @@ function kuka_island_cart_panel_content(): void {
 			<div class="kuka-cart-panel__foot">
 				<p class="kuka-cart-panel__shipping"><?php echo esc_html( kuka_island_shipping_progress() ); ?></p>
 				<div class="kuka-cart-panel__subtotal"><span><?php esc_html_e( 'Ara toplam', 'kuka-island' ); ?></span><strong><?php echo wp_kses_post( WC()->cart->get_cart_subtotal() ); ?></strong></div>
-				<div class="kuka-cart-panel__actions"><a href="<?php echo esc_url( wc_get_cart_url() ); ?>"><?php esc_html_e( 'Sepete git', 'kuka-island' ); ?></a><a class="kuka-button" href="<?php echo esc_url( wc_get_checkout_url() ); ?>"><?php esc_html_e( 'Ödemeye geç', 'kuka-island' ); ?></a></div>
+				<div class="kuka-cart-panel__actions"><a class="kuka-button" href="<?php echo esc_url( wc_get_checkout_url() ); ?>"><?php esc_html_e( 'Ödemeye geç', 'kuka-island' ); ?></a><a class="kuka-button kuka-button--outline" href="<?php echo esc_url( wc_get_cart_url() ); ?>"><?php esc_html_e( 'Sepete git', 'kuka-island' ); ?></a></div>
 				<p class="kuka-cart-panel__legal"><a href="<?php echo esc_url( home_url( '/on-bilgilendirme-formu/' ) ); ?>"><?php esc_html_e( 'Ön Bilgilendirme Formu', 'kuka-island' ); ?></a><span aria-hidden="true">·</span><a href="<?php echo esc_url( home_url( '/mesafeli-satis-sozlesmesi/' ) ); ?>"><?php esc_html_e( 'Mesafeli Satış Sözleşmesi', 'kuka-island' ); ?></a></p>
+				<p class="kuka-cart-panel__security"><?php echo esc_html( kuka_island_content()['commercial']['secure_payment_copy'] ?? __( 'Ödeme bilgileriniz güvenli ödeme altyapısında korunur', 'kuka-island' ) ); ?></p>
 			</div>
 		<?php endif; ?>
 	</div>
@@ -108,6 +109,7 @@ function kuka_island_cart_panel_content(): void {
 /** Return custom cart fragments alongside WooCommerce's core fragments. */
 function kuka_island_cart_fragments( array $fragments ): array {
 	$fragments['.kuka-cart-count'] = kuka_island_cart_count_markup();
+	$fragments['.kuka-cart-panel__title'] = kuka_island_cart_title_markup();
 	ob_start();
 	kuka_island_cart_panel_content();
 	$fragments['#kuka-cart-panel-content'] = ob_get_clean();
