@@ -202,10 +202,15 @@ update_option( 'timezone_string', 'Europe/Istanbul' );
 update_option( 'WPLANG', 'tr_TR' );
 update_option( 'permalink_structure', '/%postname%/' );
 update_option( 'woocommerce_currency', 'TRY' );
+update_option( 'woocommerce_currency_pos', 'left' );
+update_option( 'woocommerce_price_num_decimals', '0' );
+update_option( 'woocommerce_price_thousand_sep', '.' );
+update_option( 'woocommerce_price_decimal_sep', ',' );
 update_option( 'woocommerce_default_country', 'TR' );
 update_option( 'woocommerce_calc_taxes', 'no' );
 update_option( 'woocommerce_enable_guest_checkout', 'yes' );
 update_option( 'woocommerce_enable_signup_and_login_from_checkout', 'no' );
+update_option( 'woocommerce_checkout_privacy_policy_text', 'Kişisel verileriniz siparişinizi işlemek, site deneyiminizi desteklemek ve [privacy_policy] sayfamızda açıklanan diğer amaçlar için kullanılacaktır.' );
 update_option( 'woocommerce_custom_orders_table_enabled', 'yes' );
 update_option( 'woocommerce_custom_orders_table_data_sync_enabled', 'no' );
 update_option( 'woocommerce_thumbnail_image_width', '600' );
@@ -247,6 +252,7 @@ foreach ( array( 'asimetrik' => 'Asimetrik', 'bralet' => 'Bralet', 'tek-parca' =
 foreach ( array( 'bikini-ustleri' => 'Bikini Üstleri', 'bikini-altlari' => 'Bikini Altları', 'mayolar' => 'Mayolar', 'plaj-giyim' => 'Plaj Giyim' ) as $slug => $name ) {
 	$terms['categories'][ $slug ] = kuka_seed_term( 'product_cat', $name, $slug );
 }
+$terms['categories']['takimlar'] = kuka_seed_term( 'product_cat', 'Takımlar', 'takimlar' );
 $uncategorized = get_term_by( 'slug', 'uncategorized', 'product_cat' );
 if ( $uncategorized ) {
 	update_option( 'default_product_cat', $terms['categories']['bikini-ustleri'] );
@@ -318,6 +324,58 @@ foreach ( $commerce_pages as $page_key => $page_data ) {
 	}
 }
 update_option( 'woocommerce_permalinks', array( 'product_base' => '/urun', 'category_base' => '/kategori', 'tag_base' => '/urun-etiketi', 'attribute_base' => '' ) );
+
+/** Build one reset-safe WordPress navigation menu. */
+function kuka_seed_menu( string $name, array $items ): int {
+	$menu = wp_get_nav_menu_object( $name );
+	$menu_id = $menu ? (int) $menu->term_id : wp_create_nav_menu( $name );
+	if ( is_wp_error( $menu_id ) ) { WP_CLI::error( $menu_id->get_error_message() ); }
+	if ( wp_get_nav_menu_items( $menu_id ) ) { return (int) $menu_id; }
+	$created = array();
+	foreach ( $items as $key => $item ) {
+		$created[ $key ] = wp_update_nav_menu_item(
+			$menu_id,
+			0,
+			array(
+				'menu-item-title'     => $item['title'],
+				'menu-item-url'       => home_url( $item['url'] ),
+				'menu-item-status'    => 'publish',
+				'menu-item-type'      => 'custom',
+				'menu-item-parent-id' => isset( $item['parent'] ) ? ( $created[ $item['parent'] ] ?? 0 ) : 0,
+			)
+		);
+	}
+	return (int) $menu_id;
+}
+
+$primary_menu = kuka_seed_menu(
+	'Kuka Island Ana Menü',
+	array(
+		'new' => array( 'title' => 'Yeni Gelenler', 'url' => '/magaza/?orderby=date' ),
+		'bikini' => array( 'title' => 'Bikini', 'url' => '/magaza/' ),
+		'bikini_tops' => array( 'title' => 'Bikini Üstleri', 'url' => '/kategori/bikini-ustleri/', 'parent' => 'bikini' ),
+		'bikini_bottoms' => array( 'title' => 'Bikini Altları', 'url' => '/kategori/bikini-altlari/', 'parent' => 'bikini' ),
+		'sets' => array( 'title' => 'Takımlar', 'url' => '/kategori/takimlar/', 'parent' => 'bikini' ),
+		'one_piece' => array( 'title' => 'Mayo', 'url' => '/kategori/mayolar/' ),
+		'beachwear' => array( 'title' => 'Plaj Giyim', 'url' => '/kategori/plaj-giyim/' ),
+		'collections' => array( 'title' => 'Koleksiyonlar', 'url' => '/magaza/' ),
+		'brand' => array( 'title' => 'Marka / Hikâyemiz', 'url' => '/hakkimizda/' ),
+	)
+);
+$footer_menu = kuka_seed_menu(
+	'Kuka Island Footer Kategoriler',
+	array(
+		'new' => array( 'title' => 'Yeni Gelenler', 'url' => '/magaza/?orderby=date' ),
+		'tops' => array( 'title' => 'Bikini Üstleri', 'url' => '/kategori/bikini-ustleri/' ),
+		'bottoms' => array( 'title' => 'Bikini Altları', 'url' => '/kategori/bikini-altlari/' ),
+		'one_piece' => array( 'title' => 'Mayolar', 'url' => '/kategori/mayolar/' ),
+		'beachwear' => array( 'title' => 'Plaj Giyim', 'url' => '/kategori/plaj-giyim/' ),
+	)
+);
+$locations = get_theme_mod( 'nav_menu_locations', array() );
+$locations['primary'] = $primary_menu;
+$locations['footer_categories'] = $footer_menu;
+set_theme_mod( 'nav_menu_locations', $locations );
 
 // Turkey zone with provisional values pending customer confirmation.
 $zone_id = 0;

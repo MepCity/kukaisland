@@ -9,6 +9,9 @@
   --color-white: #fffdf8;
   --color-error: #9a3328;
   --color-success: #3d6b4f;
+  --color-image-placeholder: #e4dac9;
+  --color-ink-soft: #695a44;
+  --color-ink-line: #8b7d67;
 
   /* Prototipteki 8 px tabanlı boşluk ölçeği. */
   --space-0-5: 4px;
@@ -28,7 +31,7 @@
   --text-caption: 12px;
   --text-body: 14px;
   --text-body-large: 16px;
-  --text-heading-small: clamp(28px, 4vw, 56px);
+  --text-heading-small: clamp(28px, 3vw, 48px);
   --text-heading-medium: clamp(42px, 6vw, 92px);
   --text-heading-section: clamp(44px, 5.5vw, 80px);
   --text-heading-panel: clamp(44px, 5vw, 66px);
@@ -39,7 +42,9 @@
   --weight-medium: 520;
   --tracking-label: 0.06em;
   --tracking-tight: -0.06em;
-  --leading-tight: 0.92;
+  --leading-tight: 1.05;
+  --leading-display: 0.98;
+  --leading-heading: 1.08;
   --leading-body: 1.5;
 
   --ratio-product-card: 4 / 5;
@@ -48,6 +53,8 @@
   --ratio-hero-mobile: 4 / 5;
   --control-small: 40px;
   --control: 40px;
+  --control-large: 48px;
+  --icon-size: 20px;
   --focus-outline-width: 2px;
   --header-height: 64px;
   --announcement-height: 24px;
@@ -57,6 +64,9 @@
   --measure-copy-narrow: 380px;
   --measure-heading: 980px;
   --measure-content: 1200px;
+  --measure-wide: 1440px;
+  --measure-product-info: 440px;
+  --measure-table: 760px;
   --hero-min-height: 640px;
   --hero-max-height: 860px;
   --editorial-max-height: 900px;
@@ -93,4 +103,3 @@
     --service-min-height: 104px;
   }
 }
-
