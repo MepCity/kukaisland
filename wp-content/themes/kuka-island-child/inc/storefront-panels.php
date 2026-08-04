@@ -141,13 +141,13 @@ function kuka_island_account_panel_content(): void {
 				<a href="<?php echo esc_url( wc_logout_url() ); ?>"><?php esc_html_e( 'Çıkış yap', 'kuka-island' ); ?><span aria-hidden="true">→</span></a>
 			</nav>
 		<?php else : ?>
-			<p class="kuka-eyebrow"><?php esc_html_e( 'Tekrar hoş geldiniz', 'kuka-island' ); ?></p>
-			<h2><?php esc_html_e( 'Hesabınıza giriş yapın.', 'kuka-island' ); ?></h2>
+			<h2><?php esc_html_e( 'Tekrar hoş geldiniz.', 'kuka-island' ); ?></h2>
+			<p class="kuka-account-panel__intro"><?php esc_html_e( 'E-posta adresiniz ve şifrenizle giriş yapın.', 'kuka-island' ); ?></p>
 			<?php if ( kuka_island_account_panel_requires_attention() ) : ?>
 				<div class="kuka-account-panel__errors" role="alert"><strong><?php esc_html_e( 'Giriş tamamlanamadı.', 'kuka-island' ); ?></strong><?php wc_print_notices(); ?></div>
 			<?php endif; ?>
 			<?php woocommerce_login_form( array( 'redirect' => wc_get_page_permalink( 'myaccount' ) ) ); ?>
-			<p class="kuka-account-panel__register"><?php esc_html_e( 'Henüz hesabınız yok mu?', 'kuka-island' ); ?> <a href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) . '#customer_login' ); ?>"><?php esc_html_e( 'Hesap oluşturun', 'kuka-island' ); ?></a></p>
+			<p class="kuka-account-panel__register"><a href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) . '#customer_login' ); ?>"><?php esc_html_e( 'Hesap oluştur', 'kuka-island' ); ?></a></p>
 		<?php endif; ?>
 	</div>
 	<?php
