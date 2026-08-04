@@ -37,3 +37,11 @@ Bu iki yaklaşım [Hipotez Sunumu](HIPOTEZ_SUNUMU.md) üzerinden ayrı ayrı ona
 - iyzico sandbox anahtarları yok; gateway işlem testi yapılmadı.
 - Kombin için altı ticari şartı birlikte karşılayan ücretsiz çözüm bulunmadı.
 - Kesim landing page'leri müşteri kesim listesi ve SEO kararı gelene kadar açılmadı.
+
+## Faz 3B kapsam sınırı
+
+- Favoriler, off-canvas sepet, beden rehberi modalı ve mega menü bu turda yapılmadı; ilk ikisi ayrı veri/hesap ve sepet senkronizasyonu, diğerleri ayrı erişilebilir panel ve içerik kararı gerektirir.
+- Kesim indeksi ile kart beden/stok satırı onaylanmamış tasarım hipotezidir; katalog yoğunluğu ve gerçek kesim listesi görülmeden üretime eklenmedi.
+- Takım ürünlerde bağımsız iki beden ve ayrı paket fiyatı, ücretsiz çözümün stok/fiyat koşullarını karşılamadığı için ürün eşleştirme bağlantısı düzeyinde kalır.
+- Gerçek yedi fotoğraflı müşteri ürünü teslim edilmedi. Galeri 2–4 görselli pilot medya ve görsel sayısından bağımsız DOM sözleşmesiyle doğrulandı; yedi gerçek fotoğraflı kabul turu açıktır.
+- iyzico sandbox anahtarları bulunmadığından gerçek tahsilat/3D dönüşü test edilmedi. Ödeme yöntemleri korunmuştur; yalnız `#iyzico-bpo1[data-type="page-overlay"]` yüzen promosyonu, eklentide kapatma ayarı bulunmadığı için child CSS ile gizlenir.
