@@ -45,7 +45,7 @@ $overlay_header = is_front_page();
 </aside>
 <div class="kuka-panel-overlay" data-panel-overlay hidden></div>
 <aside id="kuka-cart-panel" class="kuka-side-panel kuka-cart-panel" role="dialog" aria-modal="true" aria-labelledby="kuka-cart-panel-title" aria-hidden="true" inert>
-	<div class="kuka-panel-head"><span id="kuka-cart-panel-title"><?php esc_html_e( 'Sepet', 'kuka-island' ); ?></span><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Sepeti kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
+	<div class="kuka-panel-head"><?php echo kuka_island_cart_title_markup(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Sepeti kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
 	<?php kuka_island_cart_panel_content(); ?>
 </aside>
 <main id="main" class="kuka-main">
