@@ -6,7 +6,7 @@
   let activeTrigger = null;
   let activeOverlay = null;
 
-  const closePanel = () => {
+  const closePanel = (restoreFocus = true) => {
     if (!activePanel) return;
     activePanel.classList.remove("is-open");
     activePanel.setAttribute("aria-hidden", "true");
@@ -18,13 +18,13 @@
     activePanel = null;
     activeTrigger = null;
     activeOverlay = null;
-    restore?.focus();
+    if (restoreFocus) restore?.focus();
   };
 
   const openPanel = (trigger) => {
     const panel = document.getElementById(trigger.getAttribute("aria-controls"));
     if (!panel) return;
-    closePanel();
+    closePanel(false);
     activePanel = panel;
     activeTrigger = trigger;
     activeOverlay = panel.previousElementSibling?.matches("[data-panel-overlay]") ? panel.previousElementSibling : null;
@@ -34,13 +34,22 @@
     trigger.setAttribute("aria-expanded", "true");
     if (activeOverlay) activeOverlay.hidden = false;
     document.body.classList.add("kuka-panel-open");
-    panel.querySelector(focusableSelector)?.focus();
+    window.requestAnimationFrame(() => panel.querySelector(focusableSelector)?.focus());
   };
 
   document.addEventListener("click", (event) => {
     const trigger = event.target.closest("[data-panel-trigger]");
-    if (trigger) openPanel(trigger);
+    if (trigger) {
+      event.preventDefault();
+      openPanel(trigger);
+    }
     if (event.target.closest("[data-panel-close]") || event.target.matches("[data-panel-overlay]")) closePanel();
+  });
+
+  document.addEventListener("kuka:panel-open", (event) => {
+    const panelId = event.detail?.panelId;
+    const trigger = event.detail?.trigger || document.querySelector(`[aria-controls="${panelId}"]`);
+    if (trigger) openPanel(trigger);
   });
 
   document.addEventListener("keydown", (event) => {

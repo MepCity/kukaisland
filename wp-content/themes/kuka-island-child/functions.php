@@ -158,6 +158,9 @@ function kuka_island_child_enqueue_assets(): void {
 		if ( 'product' === $name ) {
 			$dependencies = array_merge( $dependencies, array( 'jquery', 'wc-add-to-cart-variation' ) );
 		}
+		if ( 'cart' === $name ) {
+			$dependencies = array_merge( $dependencies, array( 'jquery', 'wc-add-to-cart', 'wc-cart-fragments' ) );
+		}
 		wp_enqueue_script(
 			$handle,
 			get_stylesheet_directory_uri() . '/' . $script,
@@ -236,6 +239,7 @@ add_filter(
 );
 
 require_once get_stylesheet_directory() . '/inc/catalog-filters.php';
+require_once get_stylesheet_directory() . '/inc/storefront-panels.php';
 
 add_action(
 	'wp_head',
