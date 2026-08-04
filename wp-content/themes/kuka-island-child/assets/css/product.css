@@ -211,7 +211,7 @@
 .woocommerce div.product form.cart .button {
   width: 100%;
   min-height: var(--control-large);
-  margin-top: var(--space-2);
+  margin-top: 0;
 }
 
 .kuka-product-detail {
