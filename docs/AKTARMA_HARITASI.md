@@ -1,5 +1,7 @@
 # Faz 3 Aktarma Haritası
 
+> Faz 3A kapanışı: minimum envanterden yalnızca `woocommerce/content-product.php` override edildi. Ürün detay, galeri, sepet ve checkout hook/CSS ile tamamlandı; variation, cart ve checkout template override'ları gerekmedi.
+
 Bu belge prototipin React/Next yapısını üretim WordPress katmanlarına çevirmek için minimum override planıdır. Faz 2'de yalnız token katmanı taşındı; aşağıdaki bileşen portları yapılmadı.
 
 ## CSS eşlemesi
@@ -73,4 +75,3 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Soğuk palet ve CSS'e gömülü ürün renkleri: marka ve global terim meta kurallarına aykırı.
 - Kesim landing page'leri: müşteri listesi/SEO kararı açık.
 - Ödeme imzası, webhook veya özel kombin fiyat kuralı: proje kısıtıyla yasak.
-
