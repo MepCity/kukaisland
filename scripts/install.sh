@@ -28,9 +28,11 @@ if ! docker compose run --rm wp-cli wp core is-installed >/dev/null 2>&1; then
 fi
 
 docker compose run --rm wp-cli wp language core install tr_TR --activate
-docker compose run --rm wp-cli wp plugin install woocommerce blocksy-companion iyzico-woocommerce --activate
+docker compose run --rm wp-cli wp plugin install woocommerce --version=11.0.0 --activate
+docker compose run --rm wp-cli wp plugin install blocksy-companion --version=2.1.51 --activate
+docker compose run --rm wp-cli wp plugin install iyzico-woocommerce --version=3.5.28 --activate
 docker compose run --rm wp-cli wp language plugin install woocommerce tr_TR
-docker compose run --rm wp-cli wp theme install blocksy
+docker compose run --rm wp-cli wp theme install blocksy --version=2.1.51
 docker compose run --rm wp-cli wp theme activate kuka-island-child
 docker compose run --rm wp-cli wp plugin activate kuka-island-core
 ./scripts/seed.sh
