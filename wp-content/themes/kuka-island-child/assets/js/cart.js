@@ -6,8 +6,12 @@
   const refreshFragments = () => {
     if (window.jQuery) window.jQuery(document.body).trigger("wc_fragment_refresh");
   };
+  let cartUpdateController = null;
 
   const submitCartUpdate = async (form) => {
+    cartUpdateController?.abort();
+    cartUpdateController = new AbortController();
+    const { signal } = cartUpdateController;
     const content = document.querySelector("#kuka-cart-panel-content");
     content?.setAttribute("aria-busy", "true");
     try {
@@ -15,10 +19,12 @@
         method: "POST",
         body: new FormData(form),
         credentials: "same-origin",
+        signal,
       });
       if (!response.ok) throw new Error("cart-update-failed");
       refreshFragments();
-    } catch {
+    } catch (error) {
+      if (error.name === "AbortError") return;
       window.location.assign(form.action);
     }
   };
