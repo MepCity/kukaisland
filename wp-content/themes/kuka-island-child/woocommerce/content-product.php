@@ -15,6 +15,14 @@ $colors = wc_get_product_terms( $product->get_id(), 'pa_renk', array( 'fields' =
 if ( is_wp_error( $colors ) ) { $colors = array(); }
 $sizes = wc_get_product_terms( $product->get_id(), 'pa_beden', array( 'fields' => 'all' ) );
 if ( is_wp_error( $sizes ) ) { $sizes = array(); }
+$color_by_slug = array();
+if ( is_array( $colors ) ) {
+	foreach ( $colors as $color_term ) {
+		if ( $color_term instanceof WP_Term ) {
+			$color_by_slug[ $color_term->slug ] = $color_term;
+		}
+	}
+}
 $color_data = array();
 $variation_images = array();
 if ( $product->is_type( 'variable' ) ) {
@@ -28,7 +36,7 @@ if ( $product->is_type( 'variable' ) ) {
 		$image_id = $variation->get_image_id();
 		if ( $image_id ) { $variation_images[] = $image_id; }
 		if ( ! isset( $color_data[ $color_slug ] ) ) {
-			$term = get_term_by( 'slug', $color_slug, 'pa_renk' );
+			$term = $color_by_slug[ $color_slug ] ?? null;
 			$color_data[ $color_slug ] = array(
 				'name'     => $term ? $term->name : $color_slug,
 				'hex'      => $term ? (string) get_term_meta( $term->term_id, 'kuka_swatch_hex', true ) : '#777777',

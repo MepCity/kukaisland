@@ -261,6 +261,70 @@ add_filter( 'woocommerce_get_image_size_gallery_thumbnail', 'kuka_island_child_g
 add_filter( 'loop_shop_per_page', static fn(): int => 12, 20 );
 add_filter( 'loop_shop_columns', static fn(): int => 4, 20 );
 
+/**
+ * Prime object, term and variation caches for the whole loop at once so the
+ * per-card work in content-product.php hits the cache instead of issuing one
+ * query per variation and per color term (N+1 on a 12-product page).
+ *
+ * @param array<int, int>|false $product_ids Product IDs shown on this page.
+ */
+function kuka_island_prime_catalog_caches( $product_ids = false ): void {
+	if ( ! function_exists( 'wc_get_product' ) ) {
+		return;
+	}
+	if ( false === $product_ids ) {
+		global $wp_query;
+		$product_ids = is_array( $wp_query->posts ?? null ) ? wp_list_pluck( $wp_query->posts, 'ID' ) : array();
+	}
+	$product_ids = array_filter( array_map( 'absint', (array) $product_ids ) );
+	if ( ! $product_ids ) {
+		return;
+	}
+
+	// Post + meta + term caches for the products themselves.
+	_prime_post_caches( $product_ids, true, true );
+
+	$variation_ids = array();
+	foreach ( $product_ids as $product_id ) {
+		$product = wc_get_product( $product_id );
+		if ( $product instanceof WC_Product_Variable ) {
+			foreach ( $product->get_children() as $child_id ) {
+				$variation_ids[] = (int) $child_id;
+			}
+		}
+	}
+
+	if ( $variation_ids ) {
+		// Prime the variation post + meta caches so each wc_get_product($id)
+		// inside the card loop is a memory hit, not a query.
+		_prime_post_caches( $variation_ids, true, true );
+
+		// Pre-load the pa_renk color terms used by the card swatches so the
+		// repeated get_term_by('slug', ...) calls resolve from the term cache.
+		$color_slugs = array();
+		foreach ( $variation_ids as $variation_id ) {
+			$variation = wc_get_product( $variation_id );
+			if ( $variation instanceof WC_Product_Variation ) {
+				$slug = $variation->get_attribute( 'pa_renk' );
+				if ( $slug ) {
+					$color_slugs[] = $slug;
+				}
+			}
+		}
+		if ( $color_slugs && taxonomy_exists( 'pa_renk' ) ) {
+			get_terms(
+				array(
+					'taxonomy'   => 'pa_renk',
+					'hide_empty' => false,
+					'slug'       => array_values( array_unique( $color_slugs ) ),
+					'fields'     => 'all',
+				)
+			);
+		}
+	}
+}
+add_action( 'woocommerce_before_shop_loop', static function (): void { kuka_island_prime_catalog_caches(); }, 1 );
+
 add_filter(
 	'woocommerce_breadcrumb_defaults',
 	static function ( array $defaults ): array {
