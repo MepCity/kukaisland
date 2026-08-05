@@ -6,8 +6,8 @@
 - Yönetim: `http://localhost:8080/wp-admin/`
 - Yönetici: `[removed-admin-user]`
 - Günlük Shop Manager: `[removed-manager-user]`
-- Her iki yerel hesabın şifresi: `a811078f429846823ab46ba75aee266fcc5f`
-- Site Görünümü: yönetimde **Kuka Island → Site Görünümü** (`/wp-admin/admin.php?page=kuka-island`)
+- Hesapların birbirinden farklı yerel parolaları Git tarafından yok sayılan `.env` dosyasındadır.
+- Site Görünümü: yönetimde **Kuka Island → Site Görünümü** (`/wp-admin/admin.php?page=kuka-island-appearance`)
 
 Bu bilgi yalnız yerel geliştirme ortamı içindir; `.env.example` içine yazılmamıştır.
 

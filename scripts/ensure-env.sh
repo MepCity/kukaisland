@@ -11,6 +11,7 @@ fi
 db_password=$(openssl rand -hex 18)
 db_root_password=$(openssl rand -hex 18)
 admin_password=$(openssl rand -hex 18)
+manager_password=$(openssl rand -hex 18)
 
 umask 077
 sed \
@@ -25,6 +26,7 @@ sed \
   -e 's/^WP_ADMIN_USER=.*/WP_ADMIN_USER=[removed-admin-user]/' \
   -e "s/^WP_ADMIN_PASSWORD=.*/WP_ADMIN_PASSWORD=$admin_password/" \
   -e 's/^WP_ADMIN_EMAIL=.*/WP_ADMIN_EMAIL=admin@kukaisland.test/' \
+  -e "s/^WP_MANAGER_PASSWORD=.*/WP_MANAGER_PASSWORD=$manager_password/" \
   "$project_dir/.env.example" > "$env_file"
 
 echo "Yerel .env üretildi; Git tarafından yok sayılıyor."
