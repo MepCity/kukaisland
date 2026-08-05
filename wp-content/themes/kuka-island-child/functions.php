@@ -158,6 +158,15 @@ function kuka_island_content_url( string $url ): string {
 	return str_starts_with( $url, '/' ) && ! str_starts_with( $url, '//' ) ? home_url( $url ) : $url;
 }
 
+/**
+ * Resolve the panel WhatsApp phone field to a wa.me link, or '' when unset.
+ * The link is generated so the operator only enters a phone number.
+ */
+function kuka_island_whatsapp_url(): string {
+	$phone = (string) ( kuka_island_content()['brand']['whatsapp_phone'] ?? '' );
+	return class_exists( 'Kuka_Island_Core_Content' ) ? Kuka_Island_Core_Content::whatsapp_url( $phone ) : '';
+}
+
 require_once get_stylesheet_directory() . '/inc/assets.php';
 require_once get_stylesheet_directory() . '/inc/catalog-filters.php';
 require_once get_stylesheet_directory() . '/inc/seo.php';
