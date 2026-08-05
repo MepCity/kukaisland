@@ -26,6 +26,7 @@ duplicate_lightbox=$(search_count 'inert|event.key === "Tab"|event.key === "Esca
 cart_fragments=$(search_count 'woocommerce_add_to_cart_fragments' wp-content/themes/kuka-island-child)
 overflow_masks=$(search_count 'overflow-x:[[:space:]]*(hidden|clip)' wp-content/themes/kuka-island-child/assets/css/global.css)
 raw_colors=$(find wp-content/themes/kuka-island-child/assets/css -name '*.css' ! -name tokens.css -exec grep -En '#[0-9a-fA-F]{3,8}|rgba?\(' {} + 2>/dev/null | wc -l | tr -d ' ')
+raw_px=$(find wp-content/themes/kuka-island-child/assets/css -name '*.css' ! -name tokens.css -exec grep -En '[0-9]+(\.[0-9]+)?px' {} + 2>/dev/null | wc -l | tr -d ' ')
 shadows=$(search_count 'box-shadow|drop-shadow' wp-content/themes/kuka-island-child/assets/css)
 locked_controls=$(search_count "'font_(family|size)'|'grid_columns'|'breakpoint'|'animation_duration'|'product_card_ratio'" wp-content/plugins/kuka-island-core/includes/class-site-appearance.php)
 used_tokens=$(mktemp)
@@ -44,6 +45,7 @@ PRODUCT_LIGHTBOX_DUPLICATE_HANDLER=$duplicate_lightbox
 CART_FRAGMENT_FILTER=$cart_fragments
 ROOT_OVERFLOW_MASK=$overflow_masks
 CSS_RAW_COLORS_OUTSIDE_TOKENS=$raw_colors
+CSS_RAW_PX_OUTSIDE_TOKENS=$raw_px
 CSS_SHADOWS=$shadows
 LOCKED_DESIGN_CONTROLS=$locked_controls
 CSS_UNDEFINED_TOKENS=$undefined_tokens
@@ -84,6 +86,7 @@ expect_line "Instagram link" "INSTAGRAM_LINK=yes"
 expect_value "theme POT" "$theme_pot" "yes"
 expect_value "plugin POT" "$plugin_pot" "yes"
 expect_value "raw theme colors" "$raw_colors" "0"
+expect_value "raw theme pixel values" "$raw_px" "0"
 expect_value "theme shadows" "$shadows" "0"
 expect_value "root overflow mask" "$overflow_masks" "0"
 expect_value "undefined CSS tokens" "$undefined_tokens" "0"

@@ -44,7 +44,7 @@
   min-height: var(--control-large);
   padding: var(--space-1);
   background: transparent;
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
 }
 
 .kuka-checkout-enhanced:not(.kuka-corporate) .kuka-corporate-field {

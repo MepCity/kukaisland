@@ -15,7 +15,7 @@
 
 .woocommerce table.shop_table {
   background: transparent;
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
   border-radius: 0;
 }
 
@@ -34,7 +34,7 @@
 .woocommerce .quantity .qty {
   min-height: var(--control);
   background: transparent;
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
 }
 
 .woocommerce .cart-collaterals .cart_totals {
@@ -73,7 +73,7 @@
   grid-template-columns: clamp(7rem, 24%, 11rem) minmax(0, 1fr);
   gap: var(--space-3);
   padding-block: var(--space-3);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
 }
 
 .kuka-cart-panel__image img {
@@ -126,7 +126,7 @@
 }
 
 .kuka-cart-panel__quantity {
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
 }
 
 .kuka-cart-panel__quantity button,
@@ -146,7 +146,7 @@
 
 .kuka-cart-panel__quantity input {
   appearance: textfield;
-  border-inline: 1px solid var(--color-line);
+  border-inline: var(--stroke) solid var(--color-line);
 }
 
 .kuka-cart-panel__remove {
@@ -165,7 +165,7 @@
 .kuka-cart-panel__foot {
   padding: var(--space-3);
   background: var(--color-sand);
-  border-top: 1px solid var(--color-line);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .kuka-cart-panel__shipping {
@@ -197,7 +197,7 @@
 
 .kuka-cart-panel__actions .kuka-button--outline {
   background: transparent !important;
-  border: 1px solid var(--color-ink) !important;
+  border: var(--stroke) solid var(--color-ink) !important;
   color: var(--color-ink) !important;
 }
 
@@ -212,7 +212,7 @@
 .kuka-cart-panel__security {
   margin: var(--space-3) calc(var(--space-3) * -1) calc(var(--space-3) * -1);
   padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--color-line);
+  border-top: var(--stroke) solid var(--color-line);
   color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
@@ -253,7 +253,7 @@
 }
 
 .kuka-account-panel__content nav {
-  border-top: 1px solid var(--color-line);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .kuka-account-panel__content nav a {
@@ -262,7 +262,7 @@
   align-items: center;
   justify-content: space-between;
   padding-block: var(--space-2);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
   text-decoration: none;
   transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard);
 }
@@ -299,7 +299,7 @@
   padding-inline: 0;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--color-muted);
+  border-bottom: var(--stroke) solid var(--color-muted);
 }
 
 .kuka-account-panel .woocommerce-form-login__rememberme {
@@ -346,7 +346,7 @@
 
 .kuka-account-panel__register a {
   background: transparent;
-  border: 1px solid var(--color-ink);
+  border: var(--stroke) solid var(--color-ink);
   color: var(--color-ink);
 }
 
@@ -359,7 +359,7 @@
 .kuka-account-panel__errors {
   margin-bottom: var(--space-3);
   padding: var(--space-2);
-  border: 1px solid var(--color-error);
+  border: var(--stroke) solid var(--color-error);
 }
 
 .kuka-account-panel__errors .woocommerce-error {
