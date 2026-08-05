@@ -7,13 +7,7 @@ $hero = $content['hero'] ?? array();
 $home = $content['home'] ?? array();
 $desktop = ! empty( $hero['desktop_image_id'] ) ? wp_get_attachment_image_url( $hero['desktop_image_id'], 'full' ) : '';
 $mobile = ! empty( $hero['mobile_image_id'] ) ? wp_get_attachment_image_url( $hero['mobile_image_id'], 'full' ) : $desktop;
-$category_terms = get_terms( array(
-	'taxonomy'   => 'product_cat',
-	'hide_empty' => false,
-	'number'     => 4,
-	'orderby'    => 'count',
-	'order'      => 'DESC',
-) );
+$category_items = array_values( array_filter( kuka_island_category_navigation(), static fn( array $item ): bool => $item['home'] ) );
 $products_shortcode = '[products limit="4" columns="4" orderby="date"';
 if ( 'featured' === ( $home['new_arrivals_source'] ?? 'latest' ) ) { $products_shortcode .= ' visibility="featured"'; }
 if ( 'sale' === ( $home['new_arrivals_source'] ?? 'latest' ) ) { $products_shortcode .= ' on_sale="true"'; }
@@ -27,18 +21,20 @@ $products_shortcode .= ']';
 	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><?php echo esc_html( $hero['title'] ?? '' ); ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
 </section>
 <?php endif; ?>
-<?php if ( ! empty( $home['category_index_enabled'] ) && ! is_wp_error( $category_terms ) && $category_terms ) : ?>
+<?php if ( ! empty( $home['category_index_enabled'] ) && $category_items ) : ?>
 <section class="kuka-category-intro kuka-section" aria-labelledby="kuka-category-title">
 	<h2 id="kuka-category-title" class="kuka-eyebrow"><?php echo esc_html( $home['category_index_label'] ?? __( 'Formunu bul', 'kuka-island' ) ); ?></h2>
 	<div class="kuka-category-index" aria-label="<?php echo esc_attr( $home['category_index_title'] ?? __( 'Ürün kategorileri', 'kuka-island' ) ); ?>">
-		<?php foreach ( $category_terms as $index => $category ) :
-			$product_ids = get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => array( array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $category->term_id ) ) ) ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+		<?php foreach ( $category_items as $index => $category_item ) :
+			$category_slug = basename( untrailingslashit( wp_parse_url( $category_item['url'], PHP_URL_PATH ) ?: '' ) );
+			$category = get_term_by( 'slug', $category_slug, 'product_cat' );
+			$product_ids = $category instanceof WP_Term ? get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => array( array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $category->term_id ) ) ) ) : array(); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
 			$cut_names = $product_ids ? wp_get_object_terms( $product_ids, 'pa_kesim', array( 'fields' => 'names' ) ) : array();
 			$cut_names = is_wp_error( $cut_names ) ? array() : array_values( array_unique( $cut_names ) );
 			?>
-			<a class="kuka-category-index__item" href="<?php echo esc_url( get_term_link( $category ) ); ?>">
+			<a class="kuka-category-index__item" href="<?php echo esc_url( kuka_island_content_url( $category_item['url'] ) ); ?>">
 				<span class="kuka-category-index__number"><?php echo esc_html( str_pad( (string) ( $index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span>
-				<span class="kuka-category-index__name"><?php echo esc_html( $category->name ); ?></span>
+				<span class="kuka-category-index__name"><?php echo esc_html( $category_item['label'] ); ?></span>
 				<span class="kuka-category-index__meta"><?php echo esc_html( $cut_names ? implode( ' · ', $cut_names ) : '—' ); ?></span>
 				<span class="kuka-category-index__arrow" aria-hidden="true">↗</span>
 			</a>

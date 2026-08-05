@@ -131,6 +131,29 @@ function kuka_island_menu_lines( string $lines ): array {
 	return $items;
 }
 
+/** @return array<int, array{label:string,url:string,header:bool,home:bool}> */
+function kuka_island_category_navigation(): array {
+	$content = kuka_island_content();
+	$lines   = (string) ( $content['navigation']['categories'] ?? '' );
+	if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
+		return Kuka_Island_Core_Site_Appearance::parse_category_navigation( $lines );
+	}
+	return array();
+}
+
+/** Keep fixed brand links and category visibility in one panel-owned menu. */
+function kuka_island_header_menu(): array {
+	$fixed      = kuka_island_menu_lines( (string) ( kuka_island_content()['navigation']['main'] ?? '' ) );
+	$categories = array_values(
+		array_map(
+			static fn( array $item ): array => array( 'label' => $item['label'], 'url' => $item['url'] ),
+			array_filter( kuka_island_category_navigation(), static fn( array $item ): bool => $item['header'] )
+		)
+	);
+	$first = $fixed ? array_shift( $fixed ) : null;
+	return array_merge( $first ? array( $first ) : array(), $categories, $fixed );
+}
+
 function kuka_island_content_url( string $url ): string {
 	return str_starts_with( $url, '/' ) && ! str_starts_with( $url, '//' ) ? home_url( $url ) : $url;
 }
