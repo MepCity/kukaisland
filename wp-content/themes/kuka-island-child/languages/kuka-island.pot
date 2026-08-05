@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-05T10:52:22+00:00\n"
+"POT-Creation-Date: 2026-08-05T11:36:55+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -381,11 +381,20 @@ msgstr ""
 msgid "Beden rehberini aç"
 msgstr ""
 
-#: inc/woocommerce.php:86
+#: inc/woocommerce.php:77
+msgid "Kargo, teslimat ve değişim"
+msgstr ""
+
+#: inc/woocommerce.php:78
+#, php-format
+msgid "İade veya değişim talebinizi teslimattan sonra %d gün içinde destek ekibine iletebilirsiniz. "
+msgstr ""
+
+#: inc/woocommerce.php:92
 msgid "Birlikte iyi gider"
 msgstr ""
 
-#: inc/woocommerce.php:86
+#: inc/woocommerce.php:92
 msgid "Parçayı incele"
 msgstr ""
 
