@@ -236,8 +236,6 @@ function kuka_island_child_enqueue_assets(): void {
 		'kuka-island-product',
 		'kukaIslandProduct',
 		array(
-			/* translators: %d is the remaining stock quantity. */
-			'lowStock'     => __( 'Son %d adet', 'kuka-island' ),
 			'soldOut'      => __( 'Tükendi', 'kuka-island' ),
 			'availability' => $availability,
 			'colors'       => $colors,

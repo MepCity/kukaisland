@@ -83,7 +83,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'services_enabled' => true, 'service_1' => 'Güvenli ödeme', 'service_2' => 'Kolay değişim', 'service_3' => 'Destek hattı',
 			),
 			'navigation' => array(
-				'main' => "Yeni Gelenler|/magaza/?orderby=date\nTüm Ürünler|/magaza/\nHakkımızda|/hakkimizda/",
+				'main' => "Yeni Gelenler|/magaza/?orderby=date\nBikini|/kategori/bikini-ustleri/\nMayo|/kategori/mayolar/\nPlaj Giyim|/kategori/plaj-giyim/\nKoleksiyonlar|/magaza/\nMarka / Hikâyemiz|/hakkimizda/",
 				'help' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
 			),
 			'footer' => array(

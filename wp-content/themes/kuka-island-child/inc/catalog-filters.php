@@ -104,6 +104,9 @@ function kuka_island_catalog_controls(): void {
 	<?php
 }
 add_action( 'woocommerce_before_shop_loop', 'kuka_island_catalog_controls', 5 );
+// WooCommerce prints its own result count on the same hook; the toolbar above
+// already shows the count, so suppress the duplicate to keep a single toolbar row.
+remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 10 );
 
 /** Render the archive title inside the WooCommerce content rhythm. */
 function kuka_island_catalog_heading(): void {

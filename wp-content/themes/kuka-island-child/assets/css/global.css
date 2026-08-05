@@ -59,6 +59,22 @@ a {
   color: inherit;
 }
 
+a:hover,
+a:focus-visible {
+  color: var(--color-ink);
+}
+
+/* On ink/dark surfaces (footer, overlay header) keep the inherited light text
+   on hover instead of dropping to the dark ink token. */
+.kuka-footer a:hover,
+.kuka-footer a:focus-visible,
+.kuka-header--overlay a:hover,
+.kuka-header--overlay a:focus-visible,
+.kuka-hero a:hover,
+.kuka-hero a:focus-visible {
+  color: inherit;
+}
+
 img {
   display: block;
   max-width: 100%;
@@ -559,7 +575,7 @@ samp,
 
 .kuka-category-index__item:hover {
   padding-inline: var(--space-2);
-  background: var(--color-mist);
+  background: var(--color-sand);
 }
 
 .kuka-category-index__number,
