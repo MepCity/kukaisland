@@ -13,7 +13,7 @@ docker compose run --rm wp-cli wp eval-file /project-scripts/seed.php
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed-content.php
 
 if docker compose run --rm wp-cli wp user get kuka_manager >/dev/null 2>&1; then
-  docker compose run --rm wp-cli wp user update kuka_manager --role=shop_manager --user_pass="$WP_ADMIN_PASSWORD"
+  printf '%s\n' "$WP_MANAGER_PASSWORD" | docker compose run --rm -T wp-cli wp user update kuka_manager --role=shop_manager --prompt=user_pass
 else
-  docker compose run --rm wp-cli wp user create kuka_manager manager@kukaisland.test --role=shop_manager --user_pass="$WP_ADMIN_PASSWORD"
+  printf '%s\n' "$WP_MANAGER_PASSWORD" | docker compose run --rm -T wp-cli wp user create kuka_manager manager@kukaisland.test --role=shop_manager --prompt=user_pass
 fi

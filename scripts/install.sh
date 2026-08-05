@@ -17,13 +17,13 @@ fi
 docker compose up -d --wait db wordpress
 
 if ! docker compose run --rm wp-cli wp core is-installed >/dev/null 2>&1; then
-  docker compose run --rm wp-cli wp core install \
+  printf '%s\n' "$WP_ADMIN_PASSWORD" | docker compose run --rm -T wp-cli wp core install \
     --url="$WP_URL" \
     --title="$WP_TITLE" \
     --admin_user="$WP_ADMIN_USER" \
-    --admin_password="$WP_ADMIN_PASSWORD" \
     --admin_email="$WP_ADMIN_EMAIL" \
     --locale=tr_TR \
+    --prompt=admin_password \
     --skip-email
 fi
 
