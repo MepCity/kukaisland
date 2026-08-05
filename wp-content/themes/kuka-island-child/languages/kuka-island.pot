@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-04T13:23:02+00:00\n"
+"POT-Creation-Date: 2026-08-05T10:25:57+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -98,46 +98,40 @@ msgid "Footer yasal"
 msgstr ""
 
 #: functions.php:41
-#: functions.php:250
+#: functions.php:329
 msgid "Ana sayfa"
 msgstr ""
 
-#. translators: %d is the remaining stock quantity.
-#: functions.php:220
-#, php-format
-msgid "Son %d adet"
-msgstr ""
-
-#: functions.php:221
-#: woocommerce/content-product.php:44
+#: functions.php:239
+#: woocommerce/content-product.php:55
 msgid "Tükendi"
 msgstr ""
 
-#: functions.php:290
+#: functions.php:369
 msgid "Malzeme"
 msgstr ""
 
-#: functions.php:290
+#: functions.php:369
 msgid "Bakım"
 msgstr ""
 
-#: functions.php:290
+#: functions.php:369
 msgid "Kalıp"
 msgstr ""
 
-#: functions.php:290
+#: functions.php:369
 msgid "Model"
 msgstr ""
 
-#: functions.php:298
+#: functions.php:377
 msgid "Beden rehberini aç"
 msgstr ""
 
-#: functions.php:313
+#: functions.php:392
 msgid "Birlikte iyi gider"
 msgstr ""
 
-#: functions.php:313
+#: functions.php:392
 msgid "Parçayı incele"
 msgstr ""
 
@@ -250,15 +244,15 @@ msgstr ""
 msgid "Sonuçları gör"
 msgstr ""
 
-#: inc/catalog-filters.php:121
+#: inc/catalog-filters.php:124
 msgid "Bu seçimde ürün bulunamadı."
 msgstr ""
 
-#: inc/catalog-filters.php:121
+#: inc/catalog-filters.php:124
 msgid "Filtrelerden birini kaldırarak yeniden deneyin."
 msgstr ""
 
-#: inc/catalog-filters.php:121
+#: inc/catalog-filters.php:124
 msgid "Filtreleri temizle"
 msgstr ""
 
@@ -374,49 +368,49 @@ msgstr ""
 msgid "Kuka Island"
 msgstr ""
 
-#: woocommerce/content-product.php:46
+#: woocommerce/content-product.php:57
 msgid "Sınırlı"
 msgstr ""
 
-#: woocommerce/content-product.php:48
+#: woocommerce/content-product.php:59
 msgid "Yeni"
 msgstr ""
 
-#: woocommerce/content-product.php:53
+#: woocommerce/content-product.php:64
 #, php-format
 msgid "%s ürününü incele"
 msgstr ""
 
-#: woocommerce/content-product.php:60
+#: woocommerce/content-product.php:71
 msgid "Renk seçenekleri"
 msgstr ""
 
-#: woocommerce/content-product.php:67
+#: woocommerce/content-product.php:78
 #: woocommerce/single-product/product-image.php:37
 msgid "Önceki fotoğraf"
 msgstr ""
 
-#: woocommerce/content-product.php:67
+#: woocommerce/content-product.php:78
 #: woocommerce/single-product/product-image.php:37
 msgid "Sonraki fotoğraf"
 msgstr ""
 
-#: woocommerce/content-product.php:73
+#: woocommerce/content-product.php:84
 msgid "Eski fiyat:"
 msgstr ""
 
-#: woocommerce/content-product.php:73
+#: woocommerce/content-product.php:84
 msgid "Yeni fiyat:"
 msgstr ""
 
-#: woocommerce/content-product.php:75
+#: woocommerce/content-product.php:86
 #, php-format
 msgid "%d renk"
 msgid_plural "%d renk"
 msgstr[0] ""
 msgstr[1] ""
 
-#: woocommerce/content-product.php:78
+#: woocommerce/content-product.php:89
 msgid "Beden stokları"
 msgstr ""
 
