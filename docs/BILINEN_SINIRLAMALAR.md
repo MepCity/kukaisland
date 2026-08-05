@@ -1,19 +1,17 @@
 # Bilinen sınırlamalar
 
-Bu bağlantı, Kuka Island'ın görsel yönünü ve alışveriş akışını değerlendirmek için hazırlanmış bir tasarım prototipidir; çalışan bir mağaza değildir.
+Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş için aşağıdaki dış girdiler ve operasyon adımları hâlâ gereklidir.
 
-## Prototip olduğu için çalışmayanlar
+## Yayın öncesi dış bağımlılıklar
 
-- Gerçek sepet, ödeme, sipariş kaydı ve sipariş e-postası yoktur. Sunum sepeti yalnızca ziyaretçinin tarayıcısında tutulur.
-- iyzico bağlı değildir; ödeme sayfası yalnızca önerilen görsel yönü gösterir ve para çekmez.
-- Ürün, sipariş ve içerik yönetim paneli yoktur; panel çalışması Faz 4'te yapılacaktır.
-- Ürün adları, çeşitler, stoklar ve fiyatlar demo veridir. Gerçek katalog müşteriden alınacaktır.
+- Gerçek sepet, sipariş ve panel akışları vardır; canlı iyzico anahtarları olmadığı için gerçek tahsilat/3D dönüşü yapılmamıştır.
+- Ürün adları, çeşitler, stoklar ve fiyatlar pilot veridir. Gerçek katalog müşteriden alınacaktır.
 - Fotoğraflar lisanslı veya proje için hazırlanmış yer tutuculardır; gerçek ürün çekimleri değildir.
 
 ## Müşteri girdisi bekleyen konular
 
 - Kesim listesi, ürün başına renk sayıları ve gerçek fiyatlar henüz teslim edilmedi (soru 4, 5 ve 22).
-- Kargo firması ve ücretsiz kargo eşiği onaylanmadı. Sunumda görülen ₺7.500 eşik ve ₺149 ücret geçicidir (soru 8 ve 9).
+- Kargo firması ve nihai ücretsiz kargo eşiği onaylanmadı. Pilot 1.500 TL eşik panel, sepet ve WooCommerce kuralında senkron tutulur; yayın öncesi müşteri onayıyla değiştirilecektir (soru 8 ve 9).
 - Hijyen bandının kullanım ve iade koşulları karara bağlanmadı (soru 16).
 - e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24).
 - Üst-alt takım alımında indirim uygulanıp uygulanmayacağı bekleniyor (soru 19).
@@ -28,6 +26,13 @@ Bu bağlantı, Kuka Island'ın görsel yönünü ve alışveriş akışını de�
 
 - Ana sayfadaki kesim/kategori indeksi kalıcı gereksinimdir; içerik gerçek kategori ve `pa_kesim` verisinden gelir.
 - Ürün kartındaki swatch, SKU ve beden/stok satırı kalıcı gereksinimdir. Swatch ve beden/stok katmanı müşteri isterse Site Görünümü'nden ayrı ayrı kapatılabilir.
+
+## Üretim hazırlığı durumu
+
+- WordPress, WooCommerce, Blocksy/Companion ve iyzico sürümleri; MariaDB/WordPress/WP-CLI imajları sabitlenmiştir. Güncelleme yalnız staging yedeği ve `make verify` sonrası yapılır.
+- Smoke kapsamı ana sayfa/hero, katalog+filtre, ürün varyasyonu+stok dışı beden, doğru varyasyonu sepete ekleme ve checkout iki-onay kilididir. Canlı ödeme, e-posta teslimatı ve gerçek cihaz motorları bu smoke kapsamına girmez.
+- Hosting aktarımı, güvenlik, SMTP, yayın sonrası kontrol ve geri dönüş adımları `docs/DEPLOY_RUNBOOK.md` içinde hazırdır; henüz uygulanmamıştır.
+- PHPCS yayın kapısı WordPress standardının kritik (severity 9) ihlallerini engeller. Daha düşük önemdeki mevcut biçimlendirme borcu toplu bir yayın değişikliğine çevrilmemiştir. PHPStan, WordPress/WooCommerce dinamik hook/global stub bakımı nedeniyle bu turda eklenmemiştir.
 # Faz 2 ekleri
 
 - Dikey poster logo 64 px header'a uygun değildir. Müşteriden SVG, yatay lockup, açık/koyu varyant ve favicon bekleniyor; o zamana kadar tipografik `KUKA ISLAND` wordmark kullanılır.
@@ -38,7 +43,7 @@ Bu bağlantı, Kuka Island'ın görsel yönünü ve alışveriş akışını de�
 
 ## Faz 3B kapsam sınırı
 
-- Favoriler, off-canvas sepet, beden rehberi modalı ve mega menü bu turda yapılmadı; ilk ikisi ayrı veri/hesap ve sepet senkronizasyonu, diğerleri ayrı erişilebilir panel ve içerik kararı gerektirir.
+- Favoriler, beden rehberi modalı ve mega menü yapılmadı; ayrı veri/hesap, erişilebilir panel ve içerik kararı gerektirir. WooCommerce fragment tabanlı sepet çekmecesi Faz 3C'de tamamlandı.
 - Gerçek müşteri kesim listesi teslim edilmedi; indeks mevcut `pa_kesim` terimleriyle çalışır ve yeni terimler eklendikçe otomatik güncellenir.
 - Takım ürünlerde bağımsız iki beden ve ayrı paket fiyatı, ücretsiz çözümün stok/fiyat koşullarını karşılamadığı için ürün eşleştirme bağlantısı düzeyinde kalır.
 - Gerçek yedi fotoğraflı müşteri ürünü teslim edilmedi. Galeri 2–4 görselli pilot medya ve görsel sayısından bağımsız DOM sözleşmesiyle doğrulandı; yedi gerçek fotoğraflı kabul turu açıktır.
