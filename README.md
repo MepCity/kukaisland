@@ -7,6 +7,7 @@ Bu depo Kuka Island üretim kod tabanıdır. WordPress çekirdeği, üçüncü t
 - Docker Desktop 29+ ve Docker Compose 2.40+
 - `openssl` (yerel geliştirme sırlarını üretmek için)
 - Pilot medya kaynağı: varsayılan olarak `/Users/yasir.arslan/Desktop/kukaisland/public/images/demo`
+- Composer 2 (yalnız PHPCS kalite araçları için)
 
 Host PHP kullanılmaz; WP-CLI yalnız `wordpress:cli-php8.3` konteynerinde çalışır.
 
@@ -47,6 +48,15 @@ make shell
 
 `make verify`, global nitelik/terim, ürün/varyasyon, stok alanı, Blocksy renk galerisi, HPOS, para birimi ve görsel ayarı özetini verir.
 
+```sh
+make pot
+./scripts/smoke.sh
+composer install
+composer phpcs
+```
+
+`make verify` artık doğrulama ve beş storefront smoke akışı için açık `PASS/FAIL` üretir; hata halinde sıfır olmayan kodla çıkar. PHPStan eklenmedi: WordPress/WooCommerce'in dinamik hook ve global tipleri için ayrıca stub/baseline bakımı gerektireceğinden, bu yayın kapısında PHP syntax + WordPress PHPCS + gerçek kurulum/smoke testi daha düşük bakım maliyetli seçildi.
+
 ## Sıfırdan kurulum
 
 ```sh
@@ -63,8 +73,21 @@ make reset
 - `docs/`: kararlar, ölçümler ve Faz 3 aktarma planı
 - `PLAN.md`: bu depodaki kanonik proje planı
 - `seed-media/`: yerel ve Git dışı pilot medya
+- `app-reference/`: prototip CSS'inden Faz 3 sadakat denetimi için alınmış, üretilmiş/salt okunur stil referansı
+- `data-reference/`: prototip içerik ve katalog sözleşmelerinin üretilmiş/salt okunur kopyası
+- `lib-reference/`: prototip DOM etkileşimlerinin üretilmiş/salt okunur davranış referansı
+
+Referans dizinleri çalışma zamanında kullanılmaz ve elle düzenlenmez. Prototipteki kaynak değişirse aynı dosyalar yeniden kopyalanarak güncellenir; medya ise `scripts/prepare-media.sh` ile `KUKA_PROTOTYPE_DIR/public/images/demo` kaynağından hazırlanır.
 
 ## Sırlar ve üçüncü taraf kodu
 
-`.env.example` yalnız değişken adlarını ve açıklamalarını içerir. `.env`, uploads, veritabanı dökümleri, WordPress çekirdeği, Blocksy parent ve üçüncü taraf eklentileri Git'e alınmaz. iyzico API anahtarları yönetim ekranından ve yalnız sandbox anahtarları hazır olduğunda girilecektir.
+`.env.example` yalnız değişken adlarını ve açıklamalarını içerir. Yerel `kuka_admin` ve `kuka_manager` hesaplarının birbirinden farklı parolaları `.env` içindeki `WP_ADMIN_PASSWORD` ve `WP_MANAGER_PASSWORD` değerleridir. `.env`, uploads, veritabanı dökümleri, WordPress çekirdeği, Blocksy parent ve üçüncü taraf eklentileri Git'e alınmaz. iyzico API anahtarları yönetim ekranından ve yalnız sandbox anahtarları hazır olduğunda girilecektir.
 
+## Sorun giderme
+
+- Port doluysa `.env` içindeki `WP_PORT` ve `WP_URL` birlikte değiştirilir, sonra `docker compose up -d --wait` çalıştırılır.
+- Sağlıksız konteynerde `docker compose ps` ve `docker compose logs wordpress db` incelenir; debug log üretimde açılmaz.
+- Seed medya bulunamazsa `KUKA_PROTOTYPE_DIR=/mutlak/prototip/yolu make install` kullanılır.
+- Tema değişikliği görünmüyorsa `make wp ARGS='cache flush'` ve tarayıcı hard refresh uygulanır.
+- Kurulum yarıda kaldıysa yerel verinin silineceği bilinerek `make reset` kullanılır; üretimde bu komut asla çalıştırılmaz.
+- Hosting aktarımı için [deploy runbook](docs/DEPLOY_RUNBOOK.md) izlenir.

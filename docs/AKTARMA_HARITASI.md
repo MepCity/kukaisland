@@ -54,7 +54,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 | `duyuruBandi` | Duyuru | En fazla 3 aktif kayıt; boş metin gizlenir |
 | `anaHero` | Ana hero | Attachment ID, güvenli enum hizalama/renk; görsel veya başlık yoksa gizle |
 | `anaSayfaBolumleri` | Bölüm sırası/içeriği | Kaynak türü allowlist; bozuk ilişki bölümü gizler |
-| `navigasyon` | Menü eşlemeleri | WordPress menu ID; varsayılan yardım menüsü |
+| `navigasyon` | Menü eşlemeleri | Site Görünümü kategori tablosu + sabit bağlantılar; göreli/HTTPS URL doğrulaması |
 | `footer` | Footer ve şirket | Link URL sanitize; şirket yer tutucuları canlıda yayınlanmaz |
 | `ticariMesajlar` | Kargo/değişim/destek | `commercial.free_shipping_threshold` çekmecede kalan tutarı üretir; pozitif sayı ve müşteri onaylı fallback |
 
@@ -78,7 +78,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 
 ## Faz 3B gerçekleşen bileşen sınırı
 
-- Header/footer child theme şablonlarıdır; beş inline SVG `currentColor` kullanır. Ana menü WordPress menü konumundan ve seed edilen iki seviyeli hiyerarşiden gelir.
+- Header/footer child theme şablonlarıdır; beş inline SVG `currentColor` kullanır. Ana menü ve ana sayfa kategori indeksi Site Görünümü'ndeki ortak kategori görünürlüğü kaynağından gelir; kullanılmayan WordPress primary menüsü seed edilmez.
 - Katalog kartı tek WooCommerce override'ıdır; filtre sorgusu WooCommerce ana sorgusunun taksonomi/meta filtrelerine eklenir. Gerçek GET input'ları JS olmadan da çalışır.
 - Renk swatch'ı `pa_renk` terim metasını okur; native varyasyon select'leri erişilebilir yedek ve WooCommerce'in tek doğruluk kaynağı olarak DOM'da kalır.
 - Ürün galerisi ikinci ve son override'dır. Liste görselleri `large`, lightbox görseli yalnız açıldığında `full` kaynaktan oluşturulur.

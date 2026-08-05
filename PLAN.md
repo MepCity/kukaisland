@@ -3,7 +3,7 @@
 > **Belge durumu:** Onaylı ana plan / tek doğruluk kaynağı; müşteri girdileri faz önkoşulu olarak açıktır
 > **Sürüm:** 2.5 (katalog ve ürün detay veri kaynağı birleştirildi)
 > **Tarih:** 4 Ağustos 2026
-> **Proje dizini:** `~/Desktop/kukaisland`
+> **Proje dizini:** `~/Desktop/kukaisland-canli` (kanonik üretim deposu)
 > **Hedef pazar:** Türkiye
 > **Başlangıç dili ve para birimi:** Türkçe / TRY
 > **Üretim altyapısı:** WordPress + WooCommerce
@@ -1584,6 +1584,12 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-05 | Ücretsiz kargo eşiğinin tek kaynağı Site Görünümü ticari alanıdır; kayıt sırasında WooCommerce free-shipping instance ayarlarına yazılır | Operatörün tek ekrandan yönettiği duyuru/sepet/checkout değerlerinin ayrışmasını ve tutulmayan ticari vaadi önlemek |
+| 2026-08-05 | Header ve ana sayfa kategori indeksi Site Görünümü'ndeki kategori görünürlük tablosundan beslenir; WordPress primary menüsü kullanılmaz | §15.2 navigasyonu panel içeriği sayar; iki menü kaynağını ve seed sonrası farklılaşmayı kaldırmak |
+| 2026-08-05 | Katalog döngüsü ürün, varyasyon, meta ve renk terimi cache'lerini toplu ısıtır | Kart sözleşmesini değiştirmeden 12 ürün tabanında sorgu sayısını 264'ten 118'e düşürmek |
+| 2026-08-05 | WordPress 7.0.2, WooCommerce 11.0.0, Blocksy/Companion 2.1.51 ve iyzico 3.5.28; Docker imajları digest ile sabittir | Kontrolsüz güncelleme ve iki kurulum arasında yığın farkı oluşmasını önlemek |
+| 2026-08-05 | İç URL alanları HTML `url` yerine metin olarak render edilir; sunucu yalnız `/yol/` veya `http(s)` kabul eder | Tarayıcı doğrulamasının geçerli göreli URL'lerle panel kaydını bloke etmesini önlemek |
+| 2026-08-05 | Hosting aktarımı `docs/DEPLOY_RUNBOOK.md` adımlarıyla yürütülür | Kod, veritabanı, medya, güvenlik, SMTP, yayın kontrolü ve geri dönüşü tek operasyon belgesine bağlamak |
 | 2026-08-04 | Kesim indeksi ile kart swatch/SKU/beden-stok anatomisi kalıcı gereksinimdir | Müşteri iki Faz 1 hipotezini onayladı; veriler WooCommerce taksonomi/varyasyonlarından gelir ve kartın iki yoğun katmanı panelden kapatılabilir |
 | 2026-08-04 | Beş dialog yüzeyi tek `storefront.js` erişilebilirlik altyapısını kullanır | İkinci lightbox odak tuzağını kaldırmak; Escape, Tab, inert ve odak dönüşünü tek bakım noktasında tutmak |
 | 2026-08-04 | Tüm yan paneller açık `paper` %55 örtü kullanır | Arka plandaki ürün renklerini kaybetmeden panel odağını korumak |
@@ -1756,6 +1762,8 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 3C panelleri tamamlandı: Woo fragment sepeti, Woo hesap/giriş paneli, ortak erişilebilir panel altyapısı, mikro etkileşimler ve açık filtre örtüsü
 - [x] Faz 3D sadakat denetimi tamamlandı: 24/24 sapma düzeltildi; kesim indeksi ve kart envanter katmanı kalıcılaştırıldı; sticky/overflow ve ortak lightbox doğrulandı
 - [x] Faz 4 paneli tamamlandı: sekiz Site Görünümü grubu, 72 görünür alan, iki kilitli desen, Shop Manager hesabı/menüsü ve panel rehberi hazır
+- [x] Faz 3E yayın öncesi düzeltmeleri tamamlandı: sürüm pinleri, beş smoke akışı, CI kapısı, deploy runbook, panel kullanılabilirliği ve kod kalitesi
+- [x] Üretim planı bu depoda kanonik ilan edildi; prototip PLAN kopyası arşiv işaretine indirildi
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
 
