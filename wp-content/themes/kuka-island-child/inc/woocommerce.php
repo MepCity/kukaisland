@@ -98,3 +98,55 @@ add_action(
 add_filter( 'woocommerce_structured_data_product', static function ( array $markup ): array { unset( $markup['review'], $markup['aggregateRating'] ); return $markup; } );
 add_filter( 'woocommerce_product_tabs', static function ( array $tabs ): array { unset( $tabs['reviews'] ); return $tabs; }, 30 );
 add_filter( 'comments_open', static fn( bool $open, int $post_id ): bool => 'product' === get_post_type( $post_id ) ? false : $open, 20, 2 );
+
+/**
+ * Show only the parent product name in the cart; colour/size stay in the
+ * variation meta line so the row reads as "Name" then "Renk: … · Beden: …".
+ */
+add_filter(
+	'woocommerce_cart_item_name',
+	static function ( string $name, array $cart_item, string $cart_item_key ): string {
+		$product = $cart_item['data'] ?? null;
+		if ( ! $product instanceof WC_Product_Variation ) {
+			return $name;
+		}
+		$parent = wc_get_product( $product->get_parent_id() );
+		if ( ! $parent instanceof WC_Product ) {
+			return $name;
+		}
+		$permalink = $product->is_visible() ? $product->get_permalink( $cart_item ) : '';
+		return $permalink ? sprintf( '<a href="%s">%s</a>', esc_url( $permalink ), esc_html( $parent->get_name() ) ) : esc_html( $parent->get_name() );
+	},
+	10,
+	3
+);
+
+/**
+ * Render the colour/size meta line after the cart item name. WooCommerce's
+ * own formatter returns empty for this store, so the row would otherwise hide
+ * the variation attributes. Output mirrors the dl.variation contract.
+ */
+add_action(
+	'woocommerce_after_cart_item_name',
+	static function ( array $cart_item, string $cart_item_key ): void {
+		$product = $cart_item['data'] ?? null;
+		if ( ! $product instanceof WC_Product_Variation || empty( $cart_item['variation'] ) ) {
+			return;
+		}
+		$pairs = array();
+		foreach ( $cart_item['variation'] as $attribute => $value ) {
+			$taxonomy = str_replace( 'attribute_', '', $attribute );
+			if ( ! taxonomy_exists( $taxonomy ) ) { continue; }
+			$term   = get_term_by( 'slug', $value, $taxonomy );
+			$pairs[] = array( wc_attribute_label( $taxonomy ), $term ? $term->name : $value );
+		}
+		if ( ! $pairs ) { return; }
+		echo '<dl class="variation">';
+		foreach ( $pairs as $pair ) {
+			echo '<dt>' . esc_html( $pair[0] ) . ':</dt><dd><p>' . esc_html( $pair[1] ) . '</p></dd>';
+		}
+		echo '</dl>';
+	},
+	10,
+	2
+);
