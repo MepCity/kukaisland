@@ -3,7 +3,7 @@
 defined( 'ABSPATH' ) || exit;
 $site_content = kuka_island_content();
 $announcements = $site_content['announcement']['items'] ?? array();
-$main_menu = kuka_island_menu_lines( $site_content['navigation']['main'] ?? '' );
+$main_menu = kuka_island_header_menu();
 $overlay_header = is_front_page();
 ?><!doctype html>
 <html <?php language_attributes(); ?>>

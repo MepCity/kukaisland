@@ -8,12 +8,15 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	private const CAPABILITY = 'manage_woocommerce';
+	/** @var array<int, string> */
+	private static array $sanitize_notices = array();
 
 	/**
 	 * Register the settings page and the explicit, nonce-protected save action.
 	 */
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'admin_post_kuka_island_save_site_appearance', array( $this, 'save' ) );
 	}
 
@@ -83,7 +86,8 @@ final class Kuka_Island_Core_Site_Appearance {
 				'services_enabled' => true, 'service_1' => 'Güvenli ödeme', 'service_2' => 'Kolay değişim', 'service_3' => 'Destek hattı',
 			),
 			'navigation' => array(
-				'main' => "Yeni Gelenler|/magaza/?orderby=date\nBikini|/kategori/bikini-ustleri/\nMayo|/kategori/mayolar/\nPlaj Giyim|/kategori/plaj-giyim/\nKoleksiyonlar|/magaza/\nMarka / Hikâyemiz|/hakkimizda/",
+				'main' => "Yeni Gelenler|/magaza/?orderby=date\nMarka / Hikâyemiz|/hakkimizda/",
+				'categories' => "Bikini|/kategori/bikini-ustleri/|1|1\nMayo|/kategori/mayolar/|1|1\nPlaj Giyim|/kategori/plaj-giyim/|1|1\nKoleksiyonlar|/magaza/|1|0",
 				'help' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
 			),
 			'footer' => array(
@@ -124,10 +128,10 @@ final class Kuka_Island_Core_Site_Appearance {
 			'brand'        => array(
 				'label'  => __( '1. Marka', 'kuka-island-core' ),
 				'fields' => array(
-					'logo_id'               => array( __( 'Logo medya ID', 'kuka-island-core' ), 'number' ),
-					'mobile_logo_id'        => array( __( 'Mobil logo medya ID', 'kuka-island-core' ), 'number' ),
-					'favicon_id'            => array( __( 'Favicon medya ID', 'kuka-island-core' ), 'number' ),
-					'social_share_image_id' => array( __( 'Sosyal paylaşım görseli medya ID', 'kuka-island-core' ), 'number' ),
+					'logo_id'               => array( __( 'Logo', 'kuka-island-core' ), 'media_image' ),
+					'mobile_logo_id'        => array( __( 'Mobil logo', 'kuka-island-core' ), 'media_image' ),
+					'favicon_id'            => array( __( 'Favicon', 'kuka-island-core' ), 'media_image' ),
+					'social_share_image_id' => array( __( 'Sosyal paylaşım görseli', 'kuka-island-core' ), 'media_image' ),
 					'email'                 => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
 					'phone'                 => array( __( 'Telefon', 'kuka-island-core' ), 'text' ),
 					'whatsapp_url'          => array( __( 'WhatsApp URL', 'kuka-island-core' ), 'url' ),
@@ -147,8 +151,8 @@ final class Kuka_Island_Core_Site_Appearance {
 				'label'  => __( '3. Ana Hero', 'kuka-island-core' ),
 				'fields' => array(
 					'enabled'          => array( __( 'Hero göster', 'kuka-island-core' ), 'checkbox' ),
-					'desktop_image_id' => array( __( 'Masaüstü görsel medya ID', 'kuka-island-core' ), 'number' ),
-					'mobile_image_id'  => array( __( 'Mobil görsel medya ID', 'kuka-island-core' ), 'number' ),
+					'desktop_image_id' => array( __( 'Masaüstü görsel', 'kuka-island-core' ), 'media_image' ),
+					'mobile_image_id'  => array( __( 'Mobil görsel', 'kuka-island-core' ), 'media_image' ),
 					'eyebrow'          => array( __( 'Üst başlık', 'kuka-island-core' ), 'text' ),
 					'title'            => array( __( 'Başlık', 'kuka-island-core' ), 'text' ),
 					'copy'             => array( __( 'Metin', 'kuka-island-core' ), 'textarea' ),
@@ -177,8 +181,8 @@ final class Kuka_Island_Core_Site_Appearance {
 					'editorial_enabled' => array( __( 'Editoryal bölümü göster', 'kuka-island-core' ), 'checkbox' ),
 					'editorial_title'    => array( __( 'Editoryal başlık', 'kuka-island-core' ), 'text' ),
 					'editorial_copy'     => array( __( 'Editoryal metin', 'kuka-island-core' ), 'textarea' ),
-					'editorial_image_id' => array( __( 'Editoryal görsel medya ID', 'kuka-island-core' ), 'number' ),
-					'editorial_video_id' => array( __( 'Editoryal video medya ID', 'kuka-island-core' ), 'number' ),
+					'editorial_image_id' => array( __( 'Editoryal görsel', 'kuka-island-core' ), 'media_image' ),
+					'editorial_video_id' => array( __( 'Editoryal video', 'kuka-island-core' ), 'media_video' ),
 					'editorial_url'      => array( __( 'Editoryal URL', 'kuka-island-core' ), 'url' ),
 					'editorial_link_label' => array( __( 'Editoryal bağlantı etiketi', 'kuka-island-core' ), 'text' ),
 					'manifesto_enabled' => array( __( 'Manifestoyu göster', 'kuka-island-core' ), 'checkbox' ),
@@ -193,7 +197,8 @@ final class Kuka_Island_Core_Site_Appearance {
 			'navigation'   => array(
 				'label'  => __( '5. Navigasyon', 'kuka-island-core' ),
 				'fields' => array(
-					'main' => array( __( 'Ana menü (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
+					'main' => array( __( 'Sabit üst menü bağlantıları (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
+					'categories' => array( __( 'Kategori görünürlüğü', 'kuka-island-core' ), 'category_navigation' ),
 					'help' => array( __( 'Yardım menüsü (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
 			),
@@ -241,10 +246,45 @@ final class Kuka_Island_Core_Site_Appearance {
 			__( 'Kuka Island', 'kuka-island-core' ),
 			self::CAPABILITY,
 			'kuka-island',
-			array( $this, 'render_page' ),
+			array( $this, 'render_start_page' ),
 			'dashicons-store',
 			58
 		);
+		add_submenu_page( 'kuka-island', __( 'Başlangıç', 'kuka-island-core' ), __( 'Başlangıç', 'kuka-island-core' ), self::CAPABILITY, 'kuka-island', array( $this, 'render_start_page' ) );
+		add_submenu_page( 'kuka-island', __( 'Site Görünümü', 'kuka-island-core' ), __( 'Site Görünümü', 'kuka-island-core' ), self::CAPABILITY, 'kuka-island-appearance', array( $this, 'render_page' ) );
+	}
+
+	/** Load WordPress' media selector only on the Site Appearance screen. */
+	public function enqueue_admin_assets( string $hook ): void {
+		if ( 'kuka-island_page_kuka-island-appearance' !== $hook ) { return; }
+		wp_enqueue_media();
+		wp_enqueue_script(
+			'kuka-island-site-appearance',
+			plugins_url( 'assets/site-appearance.js', KUKA_ISLAND_CORE_FILE ),
+			array( 'jquery' ),
+			'0.1.0',
+			true
+		);
+	}
+
+	/** Daily operator map with direct links to the relevant native screens. */
+	public function render_start_page(): void {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu sayfaya erişim yetkiniz yok.', 'kuka-island-core' ) );
+		}
+		$routes = array(
+			__( 'Ürün / stok / fotoğraf', 'kuka-island-core' ) => admin_url( 'edit.php?post_type=product' ),
+			__( 'Renk swatch rengi', 'kuka-island-core' ) => admin_url( 'edit.php?post_type=product&page=product_attributes' ),
+			__( 'Hero, duyuru, bölüm başlıkları', 'kuka-island-core' ) => admin_url( 'admin.php?page=kuka-island-appearance' ),
+			__( 'Kargo ücreti / eşik', 'kuka-island-core' ) => admin_url( 'admin.php?page=kuka-island-appearance#commercial' ),
+			__( 'Siparişler', 'kuka-island-core' ) => admin_url( 'admin.php?page=wc-orders' ),
+			__( 'Sayfa metinleri', 'kuka-island-core' ) => admin_url( 'edit.php?post_type=page' ),
+		);
+		?>
+		<div class="wrap"><h1><?php esc_html_e( 'Kuka Island / Başlangıç', 'kuka-island-core' ); ?></h1><p><?php esc_html_e( 'Değiştirmek istediğiniz içeriğin yönetim ekranına buradan gidin.', 'kuka-island-core' ); ?></p><table class="widefat striped" style="max-width:900px"><tbody>
+		<?php foreach ( $routes as $label => $url ) : ?><tr><th scope="row"><?php echo esc_html( $label ); ?></th><td><a class="button" href="<?php echo esc_url( $url ); ?>"><?php esc_html_e( 'Aç', 'kuka-island-core' ); ?></a></td></tr><?php endforeach; ?>
+		</tbody></table></div>
+		<?php
 	}
 
 	public function render_page(): void {
@@ -260,11 +300,13 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php if ( isset( $_GET['updated'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended ?>
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Site görünümü kaydedildi.', 'kuka-island-core' ); ?></p></div>
 			<?php endif; ?>
+			<?php $notices = get_transient( 'kuka_island_site_notices_' . get_current_user_id() ); delete_transient( 'kuka_island_site_notices_' . get_current_user_id() ); ?>
+			<?php if ( is_array( $notices ) && $notices ) : ?><div class="notice notice-warning"><p><?php esc_html_e( 'Bazı bağlantı satırları kaydedilmedi:', 'kuka-island-core' ); ?></p><ul><?php foreach ( $notices as $notice ) : ?><li><?php echo esc_html( $notice ); ?></li><?php endforeach; ?></ul></div><?php endif; ?>
 			<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
 				<input type="hidden" name="action" value="kuka_island_save_site_appearance">
 				<?php wp_nonce_field( 'kuka_island_save_site_appearance' ); ?>
 				<?php foreach ( self::fields() as $group_key => $group ) : ?>
-					<fieldset style="max-width:920px;background:#fff;border:1px solid #c3c4c7;margin:20px 0;padding:20px">
+					<fieldset id="<?php echo esc_attr( $group_key ); ?>" style="max-width:920px;background:#fff;border:1px solid #c3c4c7;margin:20px 0;padding:20px">
 						<legend style="font-size:16px;font-weight:600;padding:0 8px"><?php echo esc_html( $group['label'] ); ?></legend>
 						<table class="form-table" role="presentation"><tbody>
 						<?php foreach ( $group['fields'] as $field_key => $field ) : ?>
@@ -293,10 +335,23 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php if ( 'checkbox' === $type ) : ?>
 				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="0">
 				<input id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( (bool) $value ); ?>>
+			<?php elseif ( in_array( $type, array( 'media_image', 'media_video' ), true ) ) : ?>
+				<div data-kuka-media-field data-media-type="<?php echo esc_attr( 'media_video' === $type ? 'video' : 'image' ); ?>">
+					<input class="small-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="number" min="0" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" readonly>
+					<button class="button" type="button" data-kuka-media-select><?php esc_html_e( 'Medyadan seç', 'kuka-island-core' ); ?></button>
+					<button class="button-link-delete" type="button" data-kuka-media-clear><?php esc_html_e( 'Temizle', 'kuka-island-core' ); ?></button>
+					<span data-kuka-media-preview><?php echo $value ? wp_get_attachment_image( absint( $value ), array( 80, 80 ) ) : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
+				</div>
+			<?php elseif ( 'category_navigation' === $type ) : ?>
+				<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Kategori', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'URL', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Üst menü', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Ana sayfa indeksi', 'kuka-island-core' ); ?></th></tr></thead><tbody>
+				<?php foreach ( self::parse_category_navigation( (string) $value ) as $index => $item ) : ?>
+					<tr><td><input type="text" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][label]" value="<?php echo esc_attr( $item['label'] ); ?>"></td><td><input type="text" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][url]" value="<?php echo esc_attr( $item['url'] ); ?>"></td><td><input type="hidden" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][header]" value="0"><input type="checkbox" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][header]" value="1" <?php checked( $item['header'] ); ?>></td><td><input type="hidden" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][home]" value="0"><input type="checkbox" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][home]" value="1" <?php checked( $item['home'] ); ?>></td></tr>
+				<?php endforeach; ?>
+				</tbody></table>
 			<?php elseif ( in_array( $type, array( 'textarea', 'lines', 'url_lines', 'link_lines' ), true ) ) : ?>
 				<textarea class="large-text" rows="4" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( (string) $value ); ?></textarea>
 			<?php else : ?>
-				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number', 'url' ), true ) ? $type : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?>>
+				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number' ), true ) ? $type : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?>>
 			<?php endif; ?>
 			</td>
 		</tr>
@@ -314,14 +369,18 @@ final class Kuka_Island_Core_Site_Appearance {
 			: array();
 		update_option( self::OPTION_NAME, self::sanitize( $raw ), false );
 		self::sync_free_shipping_threshold();
+		if ( self::$sanitize_notices ) {
+			set_transient( 'kuka_island_site_notices_' . get_current_user_id(), self::$sanitize_notices, MINUTE_IN_SECONDS );
+		}
 
-		wp_safe_redirect( add_query_arg( 'updated', '1', admin_url( 'admin.php?page=kuka-island' ) ) );
+		wp_safe_redirect( add_query_arg( 'updated', '1', admin_url( 'admin.php?page=kuka-island-appearance' ) ) );
 		exit;
 	}
 
 	/** @param array<string, mixed> $raw @return array<string, mixed> */
 	private static function sanitize( array $raw ): array {
 		$clean = array();
+		self::$sanitize_notices = array();
 		foreach ( self::fields() as $group_key => $group ) {
 			foreach ( $group['fields'] as $field_key => $field ) {
 				$value = $raw[ $group_key ][ $field_key ] ?? '';
@@ -331,6 +390,10 @@ final class Kuka_Island_Core_Site_Appearance {
 						break;
 					case 'number':
 						$value = max( 0, absint( $value ) );
+						break;
+					case 'media_image':
+					case 'media_video':
+						$value = absint( $value );
 						break;
 					case 'email':
 						$value = sanitize_email( $value );
@@ -349,9 +412,28 @@ final class Kuka_Island_Core_Site_Appearance {
 						break;
 					case 'link_lines':
 						$lines = array();
-						foreach ( preg_split( '/\R/', (string) $value ) ?: array() as $line ) {
+						foreach ( preg_split( '/\R/', (string) $value ) ?: array() as $line_number => $line ) {
+							if ( '' === trim( $line ) ) { continue; }
 							$parts = array_map( 'trim', explode( '|', $line, 2 ) );
-							if ( 2 === count( $parts ) && $parts[0] && $parts[1] ) { $lines[] = sanitize_text_field( $parts[0] ) . '|' . self::sanitize_url( $parts[1] ); }
+							$url = 2 === count( $parts ) ? self::sanitize_url( $parts[1] ) : '';
+							if ( 2 === count( $parts ) && $parts[0] && $url ) {
+								$lines[] = sanitize_text_field( $parts[0] ) . '|' . $url;
+							} else {
+								self::$sanitize_notices[] = sprintf( __( '%1$s / %2$s: %3$d. satır (%4$s)', 'kuka-island-core' ), $group['label'], $field[0], $line_number + 1, sanitize_text_field( $line ) );
+							}
+						}
+						$value = implode( "\n", $lines );
+						break;
+					case 'category_navigation':
+						$lines = array();
+						foreach ( is_array( $value ) ? $value : array() as $row_number => $row ) {
+							$label = sanitize_text_field( $row['label'] ?? '' );
+							$url = self::sanitize_url( (string) ( $row['url'] ?? '' ) );
+							if ( ! $label || ! $url ) {
+								self::$sanitize_notices[] = sprintf( __( 'Kategori görünürlüğü: %d. satır kaydedilmedi.', 'kuka-island-core' ), $row_number + 1 );
+								continue;
+							}
+							$lines[] = implode( '|', array( $label, $url, '1' === (string) ( $row['header'] ?? '0' ) ? '1' : '0', '1' === (string) ( $row['home'] ?? '0' ) ? '1' : '0' ) );
 						}
 						$value = implode( "\n", $lines );
 						break;
@@ -383,10 +465,22 @@ final class Kuka_Island_Core_Site_Appearance {
 	}
 
 	private static function sanitize_url( string $value ): string {
+		$value = trim( $value );
 		if ( str_starts_with( $value, '/' ) && ! str_starts_with( $value, '//' ) ) {
 			return '/' . ltrim( sanitize_text_field( $value ), '/' );
 		}
-		return esc_url_raw( $value );
+		return preg_match( '#^https?://#i', $value ) ? esc_url_raw( $value, array( 'http', 'https' ) ) : '';
+	}
+
+	/** @return array<int, array{label:string,url:string,header:bool,home:bool}> */
+	public static function parse_category_navigation( string $value ): array {
+		$items = array();
+		foreach ( preg_split( '/\R/', $value ) ?: array() as $line ) {
+			$parts = array_map( 'trim', explode( '|', $line, 4 ) );
+			if ( 4 !== count( $parts ) || ! $parts[0] || ! $parts[1] ) { continue; }
+			$items[] = array( 'label' => $parts[0], 'url' => $parts[1], 'header' => '1' === $parts[2], 'home' => '1' === $parts[3] );
+		}
+		return $items;
 	}
 
 	/** @param array<string, mixed> $defaults @param array<string, mixed> $saved @return array<string, mixed> */
@@ -394,7 +488,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		foreach ( $defaults as $key => $value ) {
 			if ( is_array( $value ) ) {
 				$saved[ $key ] = self::merge( $value, isset( $saved[ $key ] ) && is_array( $saved[ $key ] ) ? $saved[ $key ] : array() );
-			} elseif ( ! array_key_exists( $key, $saved ) || '' === $saved[ $key ] || null === $saved[ $key ] ) {
+			} elseif ( ! array_key_exists( $key, $saved ) || null === $saved[ $key ] ) {
 				$saved[ $key ] = $value;
 			}
 		}
