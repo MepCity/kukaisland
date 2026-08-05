@@ -10,8 +10,11 @@ global $product;
 if ( ! $product instanceof WC_Product || ! $product->is_visible() ) { return; }
 
 $cuts = wc_get_product_terms( $product->get_id(), 'pa_kesim', array( 'fields' => 'names' ) );
+if ( is_wp_error( $cuts ) ) { $cuts = array(); }
 $colors = wc_get_product_terms( $product->get_id(), 'pa_renk', array( 'fields' => 'all' ) );
+if ( is_wp_error( $colors ) ) { $colors = array(); }
 $sizes = wc_get_product_terms( $product->get_id(), 'pa_beden', array( 'fields' => 'all' ) );
+if ( is_wp_error( $sizes ) ) { $sizes = array(); }
 $color_data = array();
 $variation_images = array();
 if ( $product->is_type( 'variable' ) ) {
