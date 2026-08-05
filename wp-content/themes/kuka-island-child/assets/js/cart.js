@@ -1,5 +1,8 @@
 (() => {
   "use strict";
+  // Progressive enhancement: CSS keeps corporate fields visible until this
+  // script has successfully started, so checkout remains usable without JS.
+  document.body.classList.add("kuka-checkout-enhanced");
   const refreshFragments = () => {
     if (window.jQuery) window.jQuery(document.body).trigger("wc_fragment_refresh");
   };
