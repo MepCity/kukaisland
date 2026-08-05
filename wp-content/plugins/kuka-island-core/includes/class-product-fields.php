@@ -12,6 +12,8 @@ final class Kuka_Island_Core_Product_Fields {
 		'_kuka_fit'        => 'Kalıp',
 		'_kuka_model_info' => 'Model bilgisi',
 		'_kuka_size_guide' => 'Beden rehberi ilişkisi',
+		'_kuka_seo_title'   => 'SEO başlığı',
+		'_kuka_meta_description' => 'Meta açıklaması',
 	);
 
 	public function register(): void {
@@ -43,4 +45,3 @@ final class Kuka_Island_Core_Product_Fields {
 		}
 	}
 }
-
