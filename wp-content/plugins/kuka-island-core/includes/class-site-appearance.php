@@ -28,7 +28,9 @@ final class Kuka_Island_Core_Site_Appearance {
 	 * matched free_shipping method min_amount.
 	 */
 	public static function sync_free_shipping_threshold(): void {
-		$threshold = (float) ( self::get()['commercial']['free_shipping_threshold'] ?? 0 );
+		$commercial = self::get()['commercial'];
+		$threshold  = (float) ( $commercial['free_shipping_threshold'] ?? 0 );
+		$flat_rate  = (float) ( $commercial['flat_shipping_fee'] ?? 0 );
 
 		// Write every free_shipping instance option directly from the options table.
 		// Going through WC_Shipping_Zones would read cached, sometimes stale, runtime
@@ -51,6 +53,20 @@ final class Kuka_Island_Core_Site_Appearance {
 			$settings['ignore_discounts'] = $settings['ignore_discounts'] ?? 'no';
 			update_option( $option_key, $settings, false );
 		}
+
+		$flat_rate_keys = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->prepare(
+				'SELECT option_name FROM %i WHERE option_name LIKE %s',
+				$wpdb->options,
+				$wpdb->esc_like( 'woocommerce_flat_rate_' ) . '%_settings'
+			)
+		);
+		foreach ( $flat_rate_keys as $option_key ) {
+			$settings         = get_option( $option_key, array() );
+			$settings         = is_array( $settings ) ? $settings : array();
+			$settings['cost'] = (string) $flat_rate;
+			update_option( $option_key, $settings, false );
+		}
 	}
 
 	/**
@@ -63,7 +79,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			'brand' => array(
 				'logo_id' => 0, 'mobile_logo_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
 				'email' => 'hello@kukaisland.com', 'phone' => '+90 850 000 00 00', 'whatsapp_url' => 'https://wa.me/908500000000',
-				'social_links' => "Instagram|https://www.instagram.com/\nPinterest|https://www.pinterest.com/",
+				'social_links' => 'Instagram|https://www.instagram.com/kukaisland',
 			),
 			'announcement' => array(
 				'enabled' => true,
@@ -88,23 +104,33 @@ final class Kuka_Island_Core_Site_Appearance {
 			'navigation' => array(
 				'main' => "Yeni Gelenler|/magaza/?orderby=date\nMarka / Hikâyemiz|/hakkimizda/",
 				'categories' => "Bikini|/kategori/bikini-ustleri/|1|1\nMayo|/kategori/mayolar/|1|1\nPlaj Giyim|/kategori/plaj-giyim/|1|1\nKoleksiyonlar|/magaza/|1|0",
-				'help' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
+				'help' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade ve Değişim|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
 			),
 			'footer' => array(
 				'brand_copy' => 'Günlük hayatın her ritmine uyum sağlayan zamansız parçalar.', 'newsletter_enabled' => true,
 				'newsletter_eyebrow' => 'Ada mektupları', 'newsletter_title' => 'Ada mektuplarına katıl',
 				'newsletter_copy' => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
 				'newsletter_consent' => 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
-				'company_name' => 'Kuka Island Tekstil Ltd. Şti.', 'company_address' => '[Şirket adresi hukuk/onay sonrası eklenecek]',
-				'help_links' => "Beden Rehberi|/beden-rehberi/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/",
-				'legal_links' => "Gizlilik Politikası|/gizlilik-politikasi/\nÇerez Politikası|/cerez-politikasi/\nKVKK Aydınlatma Metni|/kvkk-aydinlatma-metni/\nMesafeli Satış Sözleşmesi|/mesafeli-satis-sozlesmesi/",
+				'help_links' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade ve Değişim|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
+				'legal_links' => "Gizlilik Politikası|/gizlilik-politikasi/\nÇerez Politikası|/cerez-politikasi/\nKVKK Aydınlatma Metni|/kvkk-aydinlatma-metni/\nİade ve Değişim|/iade-degisim/\nÖn Bilgilendirme Formu|/on-bilgilendirme-formu/\nMesafeli Satış Sözleşmesi|/mesafeli-satis-sozlesmesi/",
 			),
 			'commercial' => array(
 				'free_shipping_threshold' => 1500, 'shipping_copy' => '1.500 TL üzeri siparişlerde ücretsiz kargo.',
 				'free_shipping_remaining_copy' => 'Ücretsiz kargo için %s daha ekleyin.', 'free_shipping_ready_copy' => 'Ücretsiz kargo hakkınız hazır.',
-				'flat_rate_copy' => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
+				'flat_shipping_fee' => 149, 'flat_rate_copy' => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
+				'shipping_carrier' => '[KARGO FİRMASI]', 'delivery_time' => '[TESLİMAT SÜRESİ]', 'return_period_days' => 14,
+				'return_shipping_responsibility' => '[İADE KARGO ÜCRETİNİN KİME AİT OLDUĞU]',
 				'exchange_copy' => 'Değişim talebinizi teslimattan sonra 14 gün içinde iletebilirsiniz.',
 				'secure_payment_copy' => 'Ödeme bilgileriniz güvenli bağlantı üzerinden işlenir.', 'support_hours' => 'Hafta içi 09.00–18.00',
+			),
+			'legal' => array(
+				'company_title' => '[ŞİRKET UNVANI]', 'tax_number' => '[VKN]', 'tax_office' => '[VERGİ DAİRESİ]',
+				'address' => '[ADRES]', 'telephone' => '[TELEFON]', 'etbis_number' => '[ETBİS NO]', 'mersis_number' => '[MERSİS NO]',
+			),
+			'content' => array(
+				'size_top_rows' => "34|XS|80–84|68–72|A–B\n36|S|84–88|72–76|A–B\n38|M|88–92|76–80|B–C\n40|L|92–98|80–84|C–D\n42|XL|98–104|84–88|C–D",
+				'size_bottom_rows' => "34|XS|62–66|88–92\n36|S|66–70|92–96\n38|M|70–74|96–100\n40|L|74–80|100–106\n42|XL|80–86|106–112",
+				'size_swimsuit_rows' => "34|XS|80–84|62–66|88–92\n36|S|84–88|66–70|92–96\n38|M|88–92|70–74|96–100\n40|L|92–98|74–80|100–106\n42|XL|98–104|80–86|106–112",
 			),
 			'panels' => array(
 				'account_greeting' => 'Tekrar hoş geldiniz.', 'account_copy' => 'E-posta adresiniz ve şifrenizle giriş yapın.',
@@ -215,8 +241,6 @@ final class Kuka_Island_Core_Site_Appearance {
 					'newsletter_title'   => array( __( 'Bülten başlığı', 'kuka-island-core' ), 'text' ),
 					'newsletter_copy'    => array( __( 'Bülten metni', 'kuka-island-core' ), 'textarea' ),
 					'newsletter_consent' => array( __( 'Bülten onay metni', 'kuka-island-core' ), 'textarea' ),
-					'company_name'       => array( __( 'Şirket unvanı', 'kuka-island-core' ), 'text' ),
-					'company_address'    => array( __( 'Şirket adresi', 'kuka-island-core' ), 'textarea' ),
 					'help_links'         => array( __( 'Yardım bağlantıları (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 					'legal_links'        => array( __( 'Yasal bağlantılar (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
@@ -225,6 +249,11 @@ final class Kuka_Island_Core_Site_Appearance {
 				'label'  => __( '7. Ticari Bilgiler', 'kuka-island-core' ),
 				'fields' => array(
 					'free_shipping_threshold' => array( __( 'Ücretsiz kargo eşiği (TL)', 'kuka-island-core' ), 'number' ),
+					'flat_shipping_fee'       => array( __( 'Standart kargo ücreti (TL)', 'kuka-island-core' ), 'number' ),
+					'shipping_carrier'        => array( __( 'Kargo firması', 'kuka-island-core' ), 'text' ),
+					'delivery_time'           => array( __( 'Tahmini teslimat süresi', 'kuka-island-core' ), 'text' ),
+					'return_period_days'      => array( __( 'İade/değişim süresi (gün)', 'kuka-island-core' ), 'number' ),
+					'return_shipping_responsibility' => array( __( 'İade kargo ücreti sorumluluğu', 'kuka-island-core' ), 'text' ),
 					'shipping_copy'             => array( __( 'Kargo metni', 'kuka-island-core' ), 'textarea' ),
 					'free_shipping_remaining_copy' => array( __( 'Eşiğe kalan kargo metni (%s fiyat)', 'kuka-island-core' ), 'textarea' ),
 					'free_shipping_ready_copy' => array( __( 'Eşik tamamlandı metni', 'kuka-island-core' ), 'textarea' ),
@@ -234,8 +263,28 @@ final class Kuka_Island_Core_Site_Appearance {
 					'support_hours'             => array( __( 'Destek saatleri', 'kuka-island-core' ), 'text' ),
 				),
 			),
+			'legal'        => array(
+				'label'  => __( '8. Şirket ve Yasal Yer Tutucular', 'kuka-island-core' ),
+				'fields' => array(
+					'company_title' => array( __( 'Şirket unvanı', 'kuka-island-core' ), 'text' ),
+					'tax_number'    => array( __( 'VKN', 'kuka-island-core' ), 'text' ),
+					'tax_office'    => array( __( 'Vergi dairesi', 'kuka-island-core' ), 'text' ),
+					'address'       => array( __( 'Adres', 'kuka-island-core' ), 'textarea' ),
+					'telephone'     => array( __( 'Yasal iletişim telefonu', 'kuka-island-core' ), 'text' ),
+					'etbis_number'  => array( __( 'ETBİS numarası', 'kuka-island-core' ), 'text' ),
+					'mersis_number' => array( __( 'MERSİS numarası', 'kuka-island-core' ), 'text' ),
+				),
+			),
+			'content'      => array(
+				'label'  => __( '9. Beden Rehberi Verileri', 'kuka-island-core' ),
+				'fields' => array(
+					'size_top_rows'      => array( __( 'Bikini üstü satırları (EU|Harf|Göğüs|Göğüs altı|Kupa)', 'kuka-island-core' ), 'size_rows' ),
+					'size_bottom_rows'   => array( __( 'Bikini altı satırları (EU|Harf|Bel|Kalça)', 'kuka-island-core' ), 'size_rows' ),
+					'size_swimsuit_rows' => array( __( 'Mayo satırları (EU|Harf|Göğüs|Bel|Kalça)', 'kuka-island-core' ), 'size_rows' ),
+				),
+			),
 			'panels'       => array(
-				'label'  => __( '8. Panel Metinleri', 'kuka-island-core' ),
+				'label'  => __( '10. Panel Metinleri', 'kuka-island-core' ),
 				'fields' => array(
 					'account_greeting' => array( __( 'Hesap karşılama başlığı', 'kuka-island-core' ), 'text' ),
 					'account_copy'     => array( __( 'Hesap kısa açıklaması', 'kuka-island-core' ), 'textarea' ),
@@ -352,8 +401,8 @@ final class Kuka_Island_Core_Site_Appearance {
 					<tr><td><input type="text" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][label]" value="<?php echo esc_attr( $item['label'] ); ?>"></td><td><input type="text" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][url]" value="<?php echo esc_attr( $item['url'] ); ?>"></td><td><input type="hidden" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][header]" value="0"><input type="checkbox" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][header]" value="1" <?php checked( $item['header'] ); ?>></td><td><input type="hidden" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][home]" value="0"><input type="checkbox" name="<?php echo esc_attr( $name ); ?>[<?php echo esc_attr( $index ); ?>][home]" value="1" <?php checked( $item['home'] ); ?>></td></tr>
 				<?php endforeach; ?>
 				</tbody></table>
-			<?php elseif ( in_array( $type, array( 'textarea', 'lines', 'url_lines', 'link_lines' ), true ) ) : ?>
-				<textarea class="large-text" rows="4" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( (string) $value ); ?></textarea>
+			<?php elseif ( in_array( $type, array( 'textarea', 'lines', 'url_lines', 'link_lines', 'size_rows' ), true ) ) : ?>
+				<textarea class="large-text" rows="<?php echo 'size_rows' === $type ? '7' : '4'; ?>" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( (string) $value ); ?></textarea>
 			<?php else : ?>
 				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number' ), true ) ? $type : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?>>
 			<?php endif; ?>
@@ -407,6 +456,14 @@ final class Kuka_Island_Core_Site_Appearance {
 						break;
 					case 'textarea':
 						$value = sanitize_textarea_field( $value );
+						break;
+					case 'size_rows':
+						$rows = array();
+						foreach ( preg_split( '/\R/', (string) $value ) ?: array() as $row ) {
+							$cells = array_values( array_filter( array_map( 'sanitize_text_field', explode( '|', $row ) ), static fn( string $cell ): bool => '' !== $cell ) );
+							if ( count( $cells ) >= 4 && count( $cells ) <= 5 ) { $rows[] = implode( '|', $cells ); }
+						}
+						$value = implode( "\n", array_slice( $rows, 0, 10 ) );
 						break;
 					case 'lines':
 						$value = array_slice( array_values( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ) ), 0, 3 );
