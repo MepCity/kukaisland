@@ -10,8 +10,7 @@ $social_links = kuka_island_menu_lines( $site_content['brand']['social_links'] ?
 <footer class="kuka-footer">
 	<?php if ( ! empty( $site_content['footer']['newsletter_enabled'] ) ) : ?><section class="kuka-newsletter" aria-labelledby="kuka-newsletter-title">
 		<p class="kuka-eyebrow"><?php echo esc_html( $site_content['footer']['newsletter_eyebrow'] ?? __( 'Ada mektupları', 'kuka-island' ) ); ?></p>
-		<div><h2 id="kuka-newsletter-title"><?php echo esc_html( $site_content['footer']['newsletter_title'] ?? '' ); ?></h2><p><?php echo esc_html( $site_content['footer']['newsletter_copy'] ?? '' ); ?></p>
-		<form><label class="kuka-newsletter__label" for="kuka-newsletter-email"><?php esc_html_e( 'E-posta adresi', 'kuka-island' ); ?></label><div class="kuka-newsletter__field"><input id="kuka-newsletter-email" type="email" autocomplete="email" required><button type="submit"><?php esc_html_e( 'Katıl', 'kuka-island' ); ?> ↗</button></div><label class="kuka-newsletter__consent"><input type="checkbox" required> <span><?php echo esc_html( $site_content['footer']['newsletter_consent'] ?? '' ); ?></span></label></form></div>
+		<div><h2 id="kuka-newsletter-title"><?php echo esc_html( $site_content['footer']['newsletter_title'] ?? '' ); ?></h2><p><?php echo esc_html( $site_content['footer']['newsletter_copy'] ?? '' ); ?></p><p class="kuka-newsletter__disabled"><?php esc_html_e( 'E-posta kaydı yakında açılacak.', 'kuka-island' ); ?></p></div>
 	</section><?php endif; ?>
 	<section class="kuka-footer-links">
 		<div><p class="kuka-footer-title"><?php esc_html_e( 'Kategoriler', 'kuka-island' ); ?></p><?php wp_nav_menu( array( 'theme_location' => 'footer_categories', 'container' => false, 'items_wrap' => '<ul>%3$s</ul>', 'fallback_cb' => false, 'depth' => 1 ) ); ?></div>

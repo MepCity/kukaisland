@@ -6,6 +6,7 @@
   const gallery = document.querySelector("[data-product-gallery]");
   const colorSelect = form?.querySelector('[name="attribute_pa_renk"]');
   const sizeSelect = form?.querySelector('[name="attribute_pa_beden"]');
+  const format = (template, ...values) => values.reduce((text, value, index) => text.replace(new RegExp(`%${index + 1}\\$[sd]|%[sd]`), String(value)), template);
 
   const dispatchChange = (select) => {
     select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -46,7 +47,7 @@
 	  button.dataset.panelTrigger = "kuka-product-lightbox";
 	  button.setAttribute("aria-controls", "kuka-product-lightbox");
 	  button.setAttribute("aria-expanded", "false");
-      button.setAttribute("aria-label", `${item.alt}; tam ekran aç (${index + 1}/${items.length})`);
+      button.setAttribute("aria-label", format(config.galleryFullscreen, item.alt, index + 1, items.length));
       const image = document.createElement("img");
       image.src = item.src;
       image.alt = item.alt;
@@ -64,7 +65,7 @@
     const colorGroup = document.createElement("div");
     colorGroup.className = "kuka-product-swatches";
     colorGroup.setAttribute("role", "radiogroup");
-    colorGroup.setAttribute("aria-label", "Renk seçimi");
+    colorGroup.setAttribute("aria-label", config.colorSelection);
     const productColors = config.colors?.filter((color) => [...colorSelect.options].some((option) => option.value === color.slug)) || [];
     productColors.forEach((color, index) => {
       const button = document.createElement("button");
@@ -72,7 +73,7 @@
       button.role = "radio";
       button.dataset.color = color.slug;
       button.style.setProperty("--swatch-color", color.hex);
-      button.setAttribute("aria-label", `${color.name} rengini seç`);
+      button.setAttribute("aria-label", format(config.selectColor, color.name));
       button.setAttribute("aria-checked", "false");
       button.tabIndex = index ? -1 : 0;
       button.addEventListener("click", () => {
@@ -89,7 +90,7 @@
     const sizeGroup = document.createElement("div");
     sizeGroup.className = "kuka-product-sizes";
     sizeGroup.setAttribute("role", "radiogroup");
-    sizeGroup.setAttribute("aria-label", "Beden seçimi");
+    sizeGroup.setAttribute("aria-label", config.sizeSelection);
     [...sizeSelect.options].filter((option) => option.value).forEach((option) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -122,7 +123,7 @@
         const unavailable = Boolean(color) && (!match || !match.available);
         button.disabled = unavailable;
         button.setAttribute("aria-disabled", String(unavailable));
-        button.setAttribute("aria-label", unavailable ? `${button.textContent} beden tükendi` : `${button.textContent} beden stokta`);
+        button.setAttribute("aria-label", format(unavailable ? config.sizeSoldOut : config.sizeInStock, button.textContent));
         const selected = sizeSelect.value === button.dataset.size;
         button.setAttribute("aria-checked", String(selected));
         button.classList.toggle("is-selected", selected);

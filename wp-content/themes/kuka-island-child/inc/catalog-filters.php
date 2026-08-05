@@ -46,7 +46,8 @@ function kuka_island_filter_group( string $title, string $query_key, string $tax
 		<summary><span><?php echo esc_html( $title ); ?></span><span aria-hidden="true">⌄</span></summary>
 		<fieldset><legend class="screen-reader-text"><?php echo esc_html( $title ); ?></legend><ul class="kuka-filter-options <?php echo esc_attr( $class ); ?>">
 		<?php foreach ( $terms as $term ) : ?>
-			<li><label><input class="kuka-sr-only" type="checkbox" name="<?php echo esc_attr( $query_key ); ?>[]" value="<?php echo esc_attr( $term->slug ); ?>" <?php checked( in_array( $term->slug, $chosen, true ) ); ?>><span class="kuka-filter-label" <?php echo 'pa_renk' === $taxonomy ? 'style="--swatch-color:' . esc_attr( get_term_meta( $term->term_id, 'kuka_swatch_hex', true ) ) . '"' : ''; ?>><?php echo esc_html( $term->name ); ?></span><span class="kuka-filter-count"><?php echo esc_html( $term->count ); ?></span></label></li>
+			<?php $swatch = 'pa_renk' === $taxonomy ? sanitize_hex_color( get_term_meta( $term->term_id, 'kuka_swatch_hex', true ) ) : ''; ?>
+			<li><label><input class="kuka-sr-only" type="checkbox" name="<?php echo esc_attr( $query_key ); ?>[]" value="<?php echo esc_attr( $term->slug ); ?>" <?php checked( in_array( $term->slug, $chosen, true ) ); ?>><span class="kuka-filter-label" <?php echo $swatch ? 'style="--swatch-color:' . esc_attr( $swatch ) . '"' : ''; ?>><?php echo esc_html( $term->name ); ?></span><span class="kuka-filter-count"><?php echo esc_html( $term->count ); ?></span></label></li>
 		<?php endforeach; ?>
 		</ul></fieldset>
 	</details>

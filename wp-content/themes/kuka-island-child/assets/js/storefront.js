@@ -37,12 +37,13 @@
     if (activeOverlay) activeOverlay.hidden = false;
     document.body.classList.add("kuka-panel-open");
 	document.dispatchEvent(new CustomEvent("kuka:panel-opened", { detail: { panel, trigger } }));
-    window.requestAnimationFrame(() => panel.querySelector(focusableSelector)?.focus());
+    window.requestAnimationFrame(() => [...panel.querySelectorAll(focusableSelector)].find((node) => node.getClientRects().length && node.getAttribute("aria-hidden") !== "true")?.focus());
   };
 
   document.addEventListener("click", (event) => {
     const trigger = event.target.closest("[data-panel-trigger]");
     if (trigger) {
+      if (trigger.matches("a") && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)) return;
       event.preventDefault();
       openPanel(trigger);
     }
@@ -67,7 +68,7 @@
       return;
     }
     if (event.key !== "Tab") return;
-    const nodes = [...activePanel.querySelectorAll(focusableSelector)];
+    const nodes = [...activePanel.querySelectorAll(focusableSelector)].filter((node) => node.getClientRects().length && node.getAttribute("aria-hidden") !== "true");
     if (!nodes.length) return;
     const first = nodes[0];
     const last = nodes[nodes.length - 1];
@@ -85,6 +86,5 @@
   window.addEventListener("scroll", syncHeader, { passive: true });
   syncHeader();
 
-  document.querySelector(".kuka-newsletter form")?.addEventListener("submit", (event) => event.preventDefault());
   document.documentElement.dataset.kukaIslandTheme = "ready";
 })();
