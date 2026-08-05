@@ -199,13 +199,8 @@
   color: var(--color-success);
 }
 
-.woocommerce-variation-availability .out-of-stock,
-.kuka-low-stock {
+.woocommerce-variation-availability .out-of-stock {
   color: var(--color-error);
-}
-
-.kuka-low-stock {
-  font-size: var(--text-caption);
 }
 
 .woocommerce div.product form.cart .button {

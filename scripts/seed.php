@@ -350,20 +350,10 @@ function kuka_seed_menu( string $name, array $items ): int {
 	return (int) $menu_id;
 }
 
-$primary_menu = kuka_seed_menu(
-	'Kuka Island Ana Menü',
-	array(
-		'new' => array( 'title' => 'Yeni Gelenler', 'url' => '/magaza/?orderby=date' ),
-		'bikini' => array( 'title' => 'Bikini', 'url' => '/magaza/' ),
-		'bikini_tops' => array( 'title' => 'Bikini Üstleri', 'url' => '/kategori/bikini-ustleri/', 'parent' => 'bikini' ),
-		'bikini_bottoms' => array( 'title' => 'Bikini Altları', 'url' => '/kategori/bikini-altlari/', 'parent' => 'bikini' ),
-		'sets' => array( 'title' => 'Takımlar', 'url' => '/kategori/takimlar/', 'parent' => 'bikini' ),
-		'one_piece' => array( 'title' => 'Mayo', 'url' => '/kategori/mayolar/' ),
-		'beachwear' => array( 'title' => 'Plaj Giyim', 'url' => '/kategori/plaj-giyim/' ),
-		'collections' => array( 'title' => 'Koleksiyonlar', 'url' => '/magaza/' ),
-		'brand' => array( 'title' => 'Marka / Hikâyemiz', 'url' => '/hakkimizda/' ),
-	)
-);
+// The primary header navigation is sourced from the Site Appearance panel
+// (§8.2 / §15.2), so it is not seeded as a WordPress nav menu. The footer
+// category menu remains a WordPress menu because the footer renders it with
+// wp_nav_menu().
 $footer_menu = kuka_seed_menu(
 	'Kuka Island Footer Kategoriler',
 	array(
@@ -375,7 +365,6 @@ $footer_menu = kuka_seed_menu(
 	)
 );
 $locations = get_theme_mod( 'nav_menu_locations', array() );
-$locations['primary'] = $primary_menu;
 $locations['footer_categories'] = $footer_menu;
 set_theme_mod( 'nav_menu_locations', $locations );
 

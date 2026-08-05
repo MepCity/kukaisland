@@ -189,6 +189,10 @@
 .kuka-cart-panel__actions > a {
   width: 100%;
   text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
 }
 
 .kuka-cart-panel__actions .kuka-button--outline {
