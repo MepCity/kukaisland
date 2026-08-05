@@ -402,11 +402,11 @@ foreach ( $zone->get_shipping_methods( true ) as $method ) {
 		update_option( $method->get_instance_option_key(), $method->instance_settings );
 		$has_flat = true;
 	}
-	if ( 'free_shipping' === $method->id ) {
-		$method->instance_settings = array( 'title' => 'Ücretsiz kargo', 'requires' => 'min_amount', 'min_amount' => '3000', 'ignore_discounts' => 'no' );
-		update_option( $method->get_instance_option_key(), $method->instance_settings );
-		$has_free = true;
-	}
+		if ( 'free_shipping' === $method->id ) {
+			$method->instance_settings = array( 'title' => 'Ücretsiz kargo', 'requires' => 'min_amount', 'min_amount' => '1500', 'ignore_discounts' => 'no' );
+			update_option( $method->get_instance_option_key(), $method->instance_settings );
+			$has_free = true;
+		}
 }
 if ( ! $has_flat ) {
 	$instance_id = $zone->add_shipping_method( 'flat_rate' );
@@ -414,7 +414,7 @@ if ( ! $has_flat ) {
 }
 if ( ! $has_free ) {
 	$instance_id = $zone->add_shipping_method( 'free_shipping' );
-	update_option( 'woocommerce_free_shipping_' . $instance_id . '_settings', array( 'title' => 'Ücretsiz kargo', 'requires' => 'min_amount', 'min_amount' => '3000', 'ignore_discounts' => 'no' ) );
+	update_option( 'woocommerce_free_shipping_' . $instance_id . '_settings', array( 'title' => 'Ücretsiz kargo', 'requires' => 'min_amount', 'min_amount' => '1500', 'ignore_discounts' => 'no' ) );
 }
 
 flush_rewrite_rules( false );
