@@ -119,10 +119,10 @@ samp,
 .kuka-sr-only,
 .kuka-skip-link:not(:focus) {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: var(--stroke);
+  height: var(--stroke);
   padding: 0;
-  margin: -1px;
+  margin: calc(-1 * var(--stroke));
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
@@ -136,7 +136,7 @@ samp,
   left: var(--space-1);
   padding: var(--space-1-5) var(--space-2);
   background: var(--color-paper);
-  border: 1px solid var(--color-ink);
+  border: var(--stroke) solid var(--color-ink);
 }
 
 .kuka-announcement {
@@ -166,7 +166,7 @@ samp,
   padding-inline: var(--content-gutter);
   background: var(--color-paper);
   color: var(--color-ink);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
   transition: background var(--duration-normal) var(--ease-standard), color var(--duration-normal) var(--ease-standard), border-color var(--duration-normal) var(--ease-standard);
 }
 
@@ -235,7 +235,7 @@ samp,
   left: 0;
   bottom: calc(-1 * var(--space-1));
   width: 100%;
-  height: 1px;
+  height: var(--stroke);
   background: currentColor;
   transform: scaleX(0);
   transform-origin: right;
@@ -260,7 +260,7 @@ samp,
   padding: var(--space-2);
   background: var(--color-paper);
   color: var(--color-ink);
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
 }
 
 .kuka-desktop-nav li:hover > .sub-menu,
@@ -316,7 +316,7 @@ samp,
   height: var(--space-2);
   display: grid;
   place-items: center;
-  border: 1px solid currentColor;
+  border: var(--stroke) solid currentColor;
   border-radius: 50%;
   font-family: var(--font-mono);
   font-size: var(--text-micro);
@@ -378,7 +378,7 @@ samp,
   align-items: center;
   justify-content: space-between;
   padding-inline: var(--space-3);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   letter-spacing: var(--tracking-label);
@@ -387,7 +387,7 @@ samp,
 
 .kuka-panel-head [data-panel-close]:focus-visible {
   outline: 0 !important;
-  border-bottom: 1px solid currentColor;
+  border-bottom: var(--stroke) solid currentColor;
 }
 
 .kuka-mobile-menu nav {
@@ -403,7 +403,7 @@ samp,
 }
 
 .kuka-mobile-menu > nav > ul > li {
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
 }
 
 .kuka-mobile-menu a {
@@ -463,7 +463,7 @@ samp,
   padding: var(--space-1-5) var(--space-2) !important;
   background: var(--color-ink) !important;
   color: var(--color-white) !important;
-  border: 1px solid var(--color-ink) !important;
+  border: var(--stroke) solid var(--color-ink) !important;
   border-radius: 0 !important;
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
@@ -484,7 +484,7 @@ samp,
   align-items: center;
   gap: var(--space-2);
   padding-bottom: var(--space-0-5);
-  border-bottom: 1px solid currentColor;
+  border-bottom: var(--stroke) solid currentColor;
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   letter-spacing: var(--tracking-label);
@@ -559,7 +559,7 @@ samp,
 
 .kuka-category-index {
   margin-top: var(--space-4);
-  border-top: 1px solid var(--color-ink);
+  border-top: var(--stroke) solid var(--color-ink);
 }
 
 .kuka-category-index__item {
@@ -568,7 +568,7 @@ samp,
   grid-template-columns: var(--category-index-label-width) minmax(var(--category-index-copy-min), 1.35fr) 1fr var(--control);
   gap: var(--space-3);
   align-items: center;
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
   text-decoration: none;
   transition: background var(--duration-fast) var(--ease-standard), padding var(--duration-normal) var(--ease-out);
 }
@@ -652,7 +652,7 @@ samp,
 .kuka-services {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-block: 1px solid var(--color-line);
+  border-block: var(--stroke) solid var(--color-line);
 }
 
 .kuka-services > div {
@@ -661,7 +661,7 @@ samp,
   align-items: flex-end;
   justify-content: space-between;
   padding: var(--space-3) var(--content-gutter);
-  border-right: 1px solid var(--color-line);
+  border-right: var(--stroke) solid var(--color-line);
   font-size: var(--text-body-large);
 }
 
@@ -699,7 +699,7 @@ samp,
 
 .kuka-newsletter__field {
   display: flex;
-  border-bottom: 1px solid var(--color-ink-line);
+  border-bottom: var(--stroke) solid var(--color-ink-line);
 }
 
 .kuka-newsletter__field input {
@@ -736,7 +736,7 @@ samp,
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-6);
   padding: var(--space-6) 0 var(--space-12);
-  border-top: 1px solid color-mix(in srgb, var(--color-white) 20%, transparent);
+  border-top: var(--stroke) solid color-mix(in srgb, var(--color-white) 20%, transparent);
 }
 
 .kuka-footer-links ul {
@@ -766,7 +766,7 @@ samp,
   grid-template-columns: 1fr 1fr auto;
   gap: var(--space-6);
   padding-top: var(--space-3);
-  border-top: 1px solid color-mix(in srgb, var(--color-white) 20%, transparent);
+  border-top: var(--stroke) solid color-mix(in srgb, var(--color-white) 20%, transparent);
   color: var(--color-muted-on-ink);
   font-size: var(--text-micro);
 }
@@ -871,7 +871,7 @@ samp,
 
   .kuka-services > div {
     border-right: 0;
-    border-bottom: 1px solid var(--color-line);
+    border-bottom: var(--stroke) solid var(--color-line);
   }
 
   .kuka-footer {

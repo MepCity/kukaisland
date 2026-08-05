@@ -14,7 +14,7 @@
   width: auto;
   min-width: 0;
   margin: 0;
-  border-right: 1px solid var(--color-line);
+  border-right: var(--stroke) solid var(--color-line);
 }
 
 .kuka-product-gallery__track {
@@ -94,7 +94,7 @@
 .woocommerce div.product form.cart .variations tr {
   display: block;
   padding-block: var(--space-2);
-  border-top: 1px solid var(--color-line);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .woocommerce div.product form.cart .variations th,
@@ -118,15 +118,15 @@
   min-height: var(--control-large);
   padding-inline: var(--space-1-5);
   background: transparent;
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
 }
 
 .kuka-variation-enhanced .variations select {
   position: absolute;
-  width: 1px !important;
-  height: 1px;
+  width: var(--stroke) !important;
+  height: var(--stroke);
   padding: 0 !important;
-  margin: -1px;
+  margin: calc(-1 * var(--stroke));
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
@@ -156,7 +156,7 @@
   background: var(--swatch-color);
   border: var(--space-0-5) solid var(--color-paper);
   border-radius: 50%;
-  outline: 1px solid var(--color-line);
+  outline: var(--stroke) solid var(--color-line);
 }
 
 .kuka-product-swatches button.is-selected::before {
@@ -172,7 +172,7 @@
 .kuka-product-sizes button {
   min-height: var(--control-large);
   background: transparent;
-  border: 1px solid var(--color-line);
+  border: var(--stroke) solid var(--color-line);
   font-size: var(--text-caption);
 }
 
@@ -184,7 +184,7 @@
 
 .kuka-product-sizes button:disabled {
   color: var(--color-muted);
-  background: linear-gradient(to bottom right, transparent calc(50% - 1px), var(--color-line) 50%, transparent calc(50% + 1px));
+  background: linear-gradient(to bottom right, transparent calc(50% - var(--stroke)), var(--color-line) 50%, transparent calc(50% + var(--stroke)));
   cursor: not-allowed;
   text-decoration: line-through;
 }
@@ -211,11 +211,11 @@
 
 .kuka-product-detail {
   padding-block: var(--space-2);
-  border-top: 1px solid var(--color-line);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .kuka-product-detail:last-of-type {
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
 }
 
 .kuka-product-detail summary {
@@ -264,7 +264,7 @@
   align-items: center;
   gap: var(--space-2);
   padding-inline: var(--content-gutter);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--color-line);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   letter-spacing: var(--tracking-label);
@@ -313,7 +313,7 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   padding-inline: var(--content-gutter);
-  border-top: 1px solid var(--color-line);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .kuka-product-lightbox__controls button {
@@ -361,7 +361,7 @@
 
   .single-product div.product .kuka-product-gallery {
     border-right: 0;
-    border-bottom: 1px solid var(--color-line);
+    border-bottom: var(--stroke) solid var(--color-line);
   }
 
   .kuka-product-gallery__track {
