@@ -49,7 +49,7 @@ foreach ( $products as $product ) {
 	$valid_stock = true;
 	$galleries   = true;
 	$fields      = true;
-	foreach ( array( '_kuka_material', '_kuka_care', '_kuka_fit', '_kuka_model_info', '_kuka_size_guide' ) as $meta_key ) {
+	foreach ( array( '_kuka_material', '_kuka_care', '_kuka_fit', '_kuka_model_info', '_kuka_size_guide', '_kuka_seo_title', '_kuka_meta_description' ) as $meta_key ) {
 		$fields = $fields && '' !== (string) $product->get_meta( $meta_key, true );
 	}
 	foreach ( $product->get_children() as $variation_id ) {
@@ -92,9 +92,28 @@ $pattern_registry = WP_Block_Patterns_Registry::get_instance();
 WP_CLI::line( 'LOCKED_PATTERNS=' . (int) $pattern_registry->is_registered( 'kuka-island/editorial-story' ) . '/1|' . (int) $pattern_registry->is_registered( 'kuka-island/legal-section' ) . '/1' );
 $manager = get_user_by( 'login', 'kuka_manager' );
 WP_CLI::line( 'DAILY_MANAGER=' . ( $manager && in_array( 'shop_manager', (array) $manager->roles, true ) ? 'yes' : 'no' ) );
-$required_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo-teslimat', 'iade-degisim', 'gizlilik-politikasi', 'cerez-politikasi', 'kvkk-aydinlatma-metni', 'kullanim-kosullari', 'on-bilgilendirme-formu', 'mesafeli-satis-sozlesmesi', 'acik-riza-metni', 'ticari-elektronik-ileti-onayi', 'beden-rehberi' );
+$required_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo-teslimat', 'iade-degisim', 'gizlilik-politikasi', 'cerez-politikasi', 'kvkk-aydinlatma-metni', 'kullanim-kosullari', 'on-bilgilendirme-formu', 'mesafeli-satis-sozlesmesi', 'acik-riza-metni', 'ticari-elektronik-ileti-onayi', 'beden-rehberi', 'siparis-takibi' );
 $present_pages = array_filter( $required_pages, static fn( string $slug ): bool => (bool) get_page_by_path( $slug ) );
 WP_CLI::line( sprintf( 'CONTENT_PAGES=%d/%d', count( $present_pages ), count( $required_pages ) ) );
+$legal_pages = array( 'mesafeli-satis-sozlesmesi', 'on-bilgilendirme-formu', 'iade-degisim', 'kvkk-aydinlatma-metni', 'cerez-politikasi', 'gizlilik-politikasi' );
+$draft_warnings = 0;
+$central_company = 0;
+foreach ( $legal_pages as $slug ) {
+	$page = get_page_by_path( $slug );
+	$content = $page ? (string) $page->post_content : '';
+	$draft_warnings += str_contains( $content, '[kuka_legal_warning]' ) ? 1 : 0;
+	$central_company += str_contains( $content, '[kuka_company_details]' ) ? 1 : 0;
+}
+WP_CLI::line( sprintf( 'LEGAL_DRAFT_WARNINGS=%d/6', $draft_warnings ) );
+WP_CLI::line( sprintf( 'LEGAL_CENTRAL_COMPANY=%d/6', $central_company ) );
+$return_page = get_page_by_path( 'iade-degisim' );
+$return_html = $return_page ? do_shortcode( (string) $return_page->post_content ) : '';
+$hygiene_ok = class_exists( 'Kuka_Island_Core_Content' ) && str_contains( wp_strip_all_tags( $return_html ), Kuka_Island_Core_Content::HYGIENE_POLICY );
+WP_CLI::line( 'HYGIENE_SINGLE_SOURCE=' . ( $hygiene_ok ? 'yes' : 'no' ) );
+$size_html = do_shortcode( '[kuka_size_guide]' );
+WP_CLI::line( 'SIZE_GUIDE_TABLES=' . substr_count( $size_html, '<table>' ) );
+WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['brand']['social_links'] ?? '' ), 'https://www.instagram.com/kukaisland' ) ? 'yes' : 'no' ) );
+WP_CLI::line( 'COMMERCIAL_CONTENT=' . implode( '|', array( $site_content['commercial']['flat_shipping_fee'] ?? '', $site_content['commercial']['free_shipping_threshold'] ?? '', $site_content['commercial']['return_period_days'] ?? '' ) ) );
 WP_CLI::line( 'TYPOGRAPHY_TEST_PAGE=' . ( get_page_by_path( 'tipografi-testi' ) ? 'yes' : 'no' ) );
 $menu_rows = function_exists( 'kuka_island_header_menu' ) ? wp_list_pluck( kuka_island_header_menu(), 'label' ) : array();
 WP_CLI::line( 'PRIMARY_MENU=' . implode( '|', $menu_rows ) );
