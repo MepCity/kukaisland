@@ -7,16 +7,17 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Gerçek sepet, sipariş ve panel akışları vardır; canlı iyzico anahtarları olmadığı için gerçek tahsilat/3D dönüşü yapılmamıştır.
 - Ürün adları, çeşitler, stoklar ve fiyatlar pilot veridir. Gerçek katalog müşteriden alınacaktır.
 - Fotoğraflar lisanslı veya proje için hazırlanmış yer tutuculardır; gerçek ürün çekimleri değildir.
+- Hakkımızda metni özgün fakat geçici marka anlatısıdır; gerçek kuruluş hikâyesi müşteriden beklenmektedir.
 
 ## Müşteri girdisi bekleyen konular
 
 - Kesim listesi, ürün başına renk sayıları ve gerçek fiyatlar henüz teslim edilmedi (soru 4, 5 ve 22).
-- Kargo firması ve nihai ücretsiz kargo eşiği onaylanmadı. Pilot 1.500 TL eşik panel, sepet ve WooCommerce kuralında senkron tutulur; yayın öncesi müşteri onayıyla değiştirilecektir (soru 8 ve 9).
+- Kargo firması, teslimat süresi, iade kargo sorumluluğu ve nihai ücretsiz kargo eşiği onaylanmadı. Pilot 149 TL ücret, 1.500 TL eşik ve 14 gün panel/sayfa/WooCommerce kaynaklarında senkron tutulur; yayın öncesi müşteri onayıyla değiştirilecektir.
 - Hijyen bandının kullanım ve iade koşulları karara bağlanmadı (soru 16).
 - e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24).
 - Üst-alt takım alımında indirim uygulanıp uygulanmayacağı bekleniyor (soru 19).
 - Logo, kurumsal renk/font dosyaları ve varsa marka kullanım kuralları bekleniyor (soru 11). Sunumdaki yazı karakterli logo geçicidir.
-- Yasal metinlerin tamamı taslaktır; şirket bilgileriyle doldurulup hukuk danışmanı tarafından onaylanmadan yayımlanamaz.
+- Altı yasal sayfa özgün çalışma taslaklarıyla test yayınına hazırdır; görünür hukuk onayı uyarısı kalır. `[ŞİRKET UNVANI]`, `[VKN]`, `[VERGİ DAİRESİ]`, `[ADRES]`, `[TELEFON]`, `[ETBİS NO]`, `[MERSİS NO]` alanları müşteriden gelmediği için merkezî panelde yer tutucudur. Hukuk danışmanı ve şirket yetkilisi onayı olmadan metinler yürürlüğe alınamaz.
 
 ## İlk sürümden sonraki fazlar
 
@@ -31,7 +32,7 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 
 - WordPress, WooCommerce, Blocksy/Companion ve iyzico sürümleri; MariaDB/WordPress/WP-CLI imajları sabitlenmiştir. Güncelleme yalnız staging yedeği ve `make verify` sonrası yapılır.
 - Smoke kapsamı ana sayfa/hero, katalog+filtre, ürün varyasyonu+stok dışı beden, doğru varyasyonu sepete ekleme ve checkout iki-onay kilididir. Canlı ödeme, e-posta teslimatı ve gerçek cihaz motorları bu smoke kapsamına girmez.
-- Hosting aktarımı, güvenlik, SMTP, yayın sonrası kontrol ve geri dönüş adımları `docs/DEPLOY_RUNBOOK.md` içinde hazırdır; henüz uygulanmamıştır.
+- Veridyen dosya/DB/medya aktarımı, coming soon erişim seçenekleri, güvenlik, SMTP, yayın sonrası kontrol ve gerçek geri dönüş testi `docs/DEPLOY_RUNBOOK.md` içinde hazırdır; fiili deploy yapılmamıştır.
 - PHPCS yayın kapısı WordPress standardının kritik (severity 9) ihlallerini engeller. Daha düşük önemdeki mevcut biçimlendirme borcu toplu bir yayın değişikliğine çevrilmemiştir. PHPStan, WordPress/WooCommerce dinamik hook/global stub bakımı nedeniyle bu turda eklenmemiştir.
 # Faz 2 ekleri
 

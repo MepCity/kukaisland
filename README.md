@@ -53,9 +53,12 @@ make pot
 ./scripts/smoke.sh
 composer install
 composer phpcs
+make deploy-package
 ```
 
 `make verify` artık doğrulama ve beş storefront smoke akışı için açık `PASS/FAIL` üretir; hata halinde sıfır olmayan kodla çıkar. PHPStan eklenmedi: WordPress/WooCommerce'in dinamik hook ve global tipleri için ayrıca stub/baseline bakımı gerektireceğinden, bu yayın kapısında PHP syntax + WordPress PHPCS + gerçek kurulum/smoke testi daha düşük bakım maliyetli seçildi.
+
+`make deploy-package`, yalnız proje sahipli child tema, Core eklenti ve Veridyen runbook'unu `dist-deploy/` altında checksum'lı arşivler. Çıktı Git dışıdır; komut fiili deploy yapmaz.
 
 ## Sıfırdan kurulum
 

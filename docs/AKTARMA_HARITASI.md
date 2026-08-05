@@ -1,6 +1,6 @@
 # Faz 3 Aktarma Haritası
 
-> Faz 3D kapanışı: override bütçesi yine iki dosyadır. Sepet, hesap, mobil menü, filtre ve ürün lightbox erişilebilirliği tek `storefront.js` altyapısındadır. Sepet verisi, stok ve kimlik doğrulama WooCommerce'tir.
+> Faz 3F kapanışı: override bütçesi yine iki dosyadır. Sepet, hesap, mobil menü, filtre ve ürün lightbox erişilebilirliği tek `storefront.js` altyapısındadır. Sepet verisi, stok ve kimlik doğrulama WooCommerce'tir; yasal/ticari içerik tek Core kısa kod katmanından gelir.
 
 Bu belge prototipin React/Next yapısını üretim WordPress katmanlarına çevirmek için minimum override planıdır. Faz 2'de yalnız token katmanı taşındı; aşağıdaki bileşen portları yapılmadı.
 
@@ -55,8 +55,10 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 | `anaHero` | Ana hero | Attachment ID, güvenli enum hizalama/renk; görsel veya başlık yoksa gizle |
 | `anaSayfaBolumleri` | Bölüm sırası/içeriği | Kaynak türü allowlist; bozuk ilişki bölümü gizler |
 | `navigasyon` | Menü eşlemeleri | Site Görünümü kategori tablosu + sabit bağlantılar; göreli/HTTPS URL doğrulaması |
-| `footer` | Footer ve şirket | Link URL sanitize; şirket yer tutucuları canlıda yayınlanmaz |
-| `ticariMesajlar` | Kargo/değişim/destek | `commercial.free_shipping_threshold` çekmecede kalan tutarı üretir; pozitif sayı ve müşteri onaylı fallback |
+| `footer` | Footer | Link URL sanitize; şirket bilgisi ayrı merkezî yasal kaynaktan gelir |
+| `ticariMesajlar` | Ticari bilgiler | Kargo ücreti/eşiği WooCommerce'e senkronlanır; kargo, iade ve SSS kısa kodlarla aynı panel değerlerini okur |
+| Şirket/yasal alanlar | Şirket ve Yasal Yer Tutucular | Yedi değer tek kaynaktır; müşteri verisi gelene kadar köşeli parantezli yer tutucular korunur |
+| Beden tabloları | Beden Rehberi Verileri | Üç tablo `|` ayrımlı satırlardan üretilir; hatalı sütun sayısı atlanır ve tablo kendi kabında yatay kayar |
 
 ## İçerik aktarımı
 
@@ -100,3 +102,10 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Ürün lightbox tetikleyicileri `data-panel-trigger` sözleşmesine geçti. `product.js` yalnız galeri/zoom durumunu tutar; `inert`, Tab, Escape ve odak dönüşü `storefront.js` sorumluluğudur.
 - Site Görünümü sekiz gruba tamamlandı. Marka, duyuru bağlantıları, bölüm kaynakları/görünürlüğü, kart anahtarları, footer bağlantıları, kargo durum metinleri ve hesap karşılama metni doğrulanmış varsayılanlarla ön yüze bağlıdır.
 - `Kuka Island` Gutenberg kategorisinde iki `templateLock:all` desen bulunur. Günlük `[removed-manager-user]` kullanıcısı `shop_manager` rolündedir; menüsü içerik, medya, WooCommerce, ürünler, raporlar ve Site Görünümü işlerine odaklıdır.
+
+## Faz 3F içerik ve test yayını sınırı
+
+- Site Görünümü on gruptur. Şirket bilgileri, ticari değerler ve üç beden tablosu `Kuka_Island_Core_Content` kısa kodları üzerinden sayfalara tek kaynaktan taşınır.
+- Altı yasal sayfa görünür taslak uyarısı ve merkezî şirket yer tutucuları taşır. Ortak hijyen/iade cümlesi hem ürün hem iade sayfasında aynı Core sabitinden üretilir.
+- Dört pilot ürünün kumaş, bakım, kalıp, model, beden, SEO başlığı ve meta açıklaması WooCommerce meta alanlarıdır; toplu aktarım sözleşmesi CSV şablonunda belgelenmiştir.
+- Veridyen paketi yalnız child tema, Core eklenti ve runbook'u içerir. Blocksy parent, WooCommerce ve iyzico arşive alınmaz; `dist-deploy/` Git dışıdır ve fiili aktarım bu fazın dışındadır.

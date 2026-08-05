@@ -1584,6 +1584,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-05 | Faz 3F yasal, yardım ve marka metinleri başka siteden kopyalanmadan Kuka Island için sıfırdan üretildi; hukuki sayfalar görünür taslak uyarısıyla kalır | §3.3.1 telif/yanlış beyan riskini ve §10.9 hukuk onayı sınırını korumak |
+| 2026-08-05 | Şirket yer tutucuları, ticari değerler, ortak hijyen metni ve üç beden tablosu Site Görünümü + Core kısa kod katmanında tek kaynaktır | Müşteri verisi geldiğinde altı sayfada arama yapmak yerine tek panel kaydıyla tüm yüzeyleri güncellemek |
+| 2026-08-05 | Deploy runbook'u Veridyen paneli/SFTP/koşullu SSH, coming soon erişim seçenekleri ve geri dönüş testiyle özelleştirildi; fiili deploy müşteriye bırakıldı | Gizli erişim bilgilerini istemeden test yayınını tekrarlanabilir ve geri alınabilir hazırlamak |
 | 2026-08-05 | Ücretsiz kargo eşiğinin tek kaynağı Site Görünümü ticari alanıdır; kayıt sırasında WooCommerce free-shipping instance ayarlarına yazılır | Operatörün tek ekrandan yönettiği duyuru/sepet/checkout değerlerinin ayrışmasını ve tutulmayan ticari vaadi önlemek |
 | 2026-08-05 | Header ve ana sayfa kategori indeksi Site Görünümü'ndeki kategori görünürlük tablosundan beslenir; WordPress primary menüsü kullanılmaz | §15.2 navigasyonu panel içeriği sayar; iki menü kaynağını ve seed sonrası farklılaşmayı kaldırmak |
 | 2026-08-05 | Katalog döngüsü ürün, varyasyon, meta ve renk terimi cache'lerini toplu ısıtır | Kart sözleşmesini değiştirmeden 12 ürün tabanında sorgu sayısını 264'ten 118'e düşürmek |
@@ -1764,6 +1767,8 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 4 paneli tamamlandı: sekiz Site Görünümü grubu, 72 görünür alan, iki kilitli desen, Shop Manager hesabı/menüsü ve panel rehberi hazır
 - [x] Faz 3E yayın öncesi düzeltmeleri tamamlandı: sürüm pinleri, beş smoke akışı, CI kapısı, deploy runbook, panel kullanılabilirliği ve kod kalitesi
 - [x] Üretim planı bu depoda kanonik ilan edildi; prototip PLAN kopyası arşiv işaretine indirildi
+- [x] Faz 3F içerik tamamlandı: altı yasal taslak, yardım/marka sayfaları, merkezî şirket/ticari/beden verisi, dört ürün SEO alanı ve CSV şablonu
+- [x] Veridyen test yayını için deploy arşiv betiği ve sağlayıcıya özgü runbook hazırlandı; fiili deploy yapılmadı
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
 
