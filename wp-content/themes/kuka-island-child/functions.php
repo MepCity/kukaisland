@@ -185,6 +185,7 @@ function kuka_island_child_enqueue_assets(): void {
 		$previous = $handle;
 	}
 	$availability = array();
+	$colors       = array();
 	if ( is_product() ) {
 		$product = wc_get_product( get_queried_object_id() );
 		if ( $product instanceof WC_Product_Variable ) {
@@ -211,19 +212,35 @@ function kuka_island_child_enqueue_assets(): void {
 				}
 			}
 		}
+
+		// pa_renk may be unregistered on an altered install; guard the result so the
+		// typed WP_Term closure never receives a WP_Error (fatal TypeError on every page).
+		$color_terms = taxonomy_exists( 'pa_renk' ) ? get_terms( array( 'taxonomy' => 'pa_renk', 'hide_empty' => false ) ) : array();
+		if ( is_array( $color_terms ) ) {
+			$colors = array_map(
+				static function ( $term ): array {
+					if ( ! $term instanceof WP_Term ) {
+						return array();
+					}
+					return array(
+						'slug' => $term->slug,
+						'name' => $term->name,
+						'hex'  => get_term_meta( $term->term_id, 'kuka_swatch_hex', true ),
+					);
+				},
+				$color_terms
+			);
+		}
 	}
 	wp_localize_script(
 		'kuka-island-product',
 		'kukaIslandProduct',
 		array(
 			/* translators: %d is the remaining stock quantity. */
-			'lowStock' => __( 'Son %d adet', 'kuka-island' ),
-			'soldOut'  => __( 'Tükendi', 'kuka-island' ),
+			'lowStock'     => __( 'Son %d adet', 'kuka-island' ),
+			'soldOut'      => __( 'Tükendi', 'kuka-island' ),
 			'availability' => $availability,
-			'colors'       => array_map(
-				static fn( WP_Term $term ): array => array( 'slug' => $term->slug, 'name' => $term->name, 'hex' => get_term_meta( $term->term_id, 'kuka_swatch_hex', true ) ),
-				get_terms( array( 'taxonomy' => 'pa_renk', 'hide_empty' => false ) )
-			),
+			'colors'       => $colors,
 		)
 	);
 }
