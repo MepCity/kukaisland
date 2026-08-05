@@ -1,0 +1,36 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  production-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+      - name: Validate Composer metadata
+        run: composer validate --strict
+      - name: Install quality tools
+        run: composer install --no-interaction --prefer-dist
+      - name: PHP syntax
+        run: find wp-content scripts -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: WordPress coding standards
+        run: composer phpcs
+      - name: Create CI-only seed media
+        run: |
+          mkdir -p seed-media
+          pixel='/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q=='
+          for name in noir-asymmetric-top noir-asymmetric-top-detail cobalt-asymmetric-top cobalt-asymmetric-top-detail noir-one-piece noir-one-piece-detail azur-bikini-bottom azur-bikini-bottom-detail azur-bralet-top azur-bralet-top-detail cobalt-set hero-aegean-black hero-aegean-black-mobile; do
+            printf '%s' "$pixel" | base64 --decode > "seed-media/$name.jpg"
+          done
+      - name: Install clean production stack
+        run: make install
+      - name: Acceptance and smoke tests
+        run: make verify

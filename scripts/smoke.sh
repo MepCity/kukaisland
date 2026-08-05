@@ -1,0 +1,69 @@
+#!/bin/sh
+set -eu
+
+project_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+cd "$project_dir"
+./scripts/ensure-env.sh
+set -a
+. "$project_dir/.env"
+set +a
+
+temporary_dir=$(mktemp -d)
+trap 'rm -r "$temporary_dir"' EXIT HUP INT TERM
+cookie_jar="$temporary_dir/cookies"
+
+pass() { echo "PASS $1"; }
+fail() { echo "FAIL $1" >&2; exit 1; }
+fetch() {
+  url=$1
+  output=$2
+  code=$(curl -sS -L -o "$output" -w '%{http_code}' "$url")
+  [ "$code" = "200" ] || fail "$url HTTP $code"
+}
+
+fetch "$WP_URL" "$temporary_dir/home.html"
+grep -q 'class="kuka-hero' "$temporary_dir/home.html" || fail "home hero"
+pass "home 200 + hero"
+
+fetch "${WP_URL%/}/magaza/" "$temporary_dir/catalog.html"
+catalog_count=$(grep -o 'data-product-card' "$temporary_dir/catalog.html" | wc -l | tr -d ' ')
+fetch "${WP_URL%/}/magaza/?ki_color%5B%5D=kobalt" "$temporary_dir/catalog-filtered.html"
+filtered_count=$(grep -o 'data-product-card' "$temporary_dir/catalog-filtered.html" | wc -l | tr -d ' ')
+[ "$catalog_count" -gt 0 ] && [ "$filtered_count" -gt 0 ] && [ "$catalog_count" -ne "$filtered_count" ] || fail "catalog filter result change"
+grep -q 'kuka-active-filters' "$temporary_dir/catalog-filtered.html" || fail "catalog active filter"
+pass "catalog cards + filter changes result ($catalog_count -> $filtered_count)"
+
+product_data=$(docker compose run --rm -T wp-cli wp eval '
+$products=wc_get_products(array("type"=>"variable","limit"=>-1));
+foreach($products as $product){$in=null;$out=null;foreach($product->get_children() as $id){$variation=wc_get_product($id);if(!$variation instanceof WC_Product_Variation){continue;}if($variation->is_in_stock()&&!$in){$in=$variation;}if(!$variation->is_in_stock()&&!$out){$out=$variation;}}if($in&&$out){$a=$in->get_attributes();$b=$out->get_attributes();echo implode("|",array($product->get_id(),$product->get_permalink(),$in->get_id(),$a["pa_renk"]??"",$a["pa_beden"]??"",$out->get_id(),$b["pa_beden"]??""));break;}}')
+IFS='|' read -r product_id product_url variation_id color size out_variation_id out_size <<EOF
+$product_data
+EOF
+[ -n "$out_variation_id" ] || fail "product stock fixtures"
+fetch "$product_url" "$temporary_dir/product.html"
+grep -q 'form class="variations_form' "$temporary_dir/product.html" || fail "product variation form"
+grep -q "\"id\":$out_variation_id" "$temporary_dir/product.html" || fail "out-of-stock variation data"
+grep -q '"available":false' "$temporary_dir/product.html" || fail "out-of-stock availability"
+pass "product variation + out-of-stock size ($out_size)"
+
+add_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/added.html" -w '%{http_code}' -X POST "$product_url" \
+  --data-urlencode "add-to-cart=$product_id" \
+  --data-urlencode "product_id=$product_id" \
+  --data-urlencode "variation_id=$variation_id" \
+  --data-urlencode 'quantity=1' \
+  --data-urlencode "attribute_pa_renk=$color" \
+  --data-urlencode "attribute_pa_beden=$size")
+[ "$add_code" = "200" ] || fail "add to cart HTTP $add_code"
+cart_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/cart.html" -w '%{http_code}' "${WP_URL%/}/sepet/")
+[ "$cart_code" = "200" ] || fail "cart HTTP $cart_code"
+grep -q "$color" "$temporary_dir/cart.html" && grep -q "$size" "$temporary_dir/cart.html" || fail "correct cart variation"
+pass "correct variation added to cart ($variation_id: $color/$size)"
+
+checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout.html" -w '%{http_code}' "${WP_URL%/}/odeme/")
+[ "$checkout_code" = "200" ] || fail "checkout HTTP $checkout_code"
+[ "$(grep -o 'name="kuka_[^"]*_accepted"' "$temporary_dir/checkout.html" | sort -u | wc -l | tr -d ' ')" = "2" ] || fail "checkout legal consents"
+grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
+grep -q 'button.disabled = !checks.every' wp-content/themes/kuka-island-child/assets/js/cart.js || fail "checkout consent gate"
+pass "checkout rendered + two-consent payment gate"
+
+echo "SMOKE=PASS (5/5)"

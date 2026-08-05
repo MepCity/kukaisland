@@ -1,0 +1,19 @@
+{
+  "name": "mepcity/kuka-island-live",
+  "description": "Kuka Island production WordPress quality tooling",
+  "type": "project",
+  "license": "proprietary",
+  "require-dev": {
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "wp-coding-standards/wpcs": "^3.2"
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    },
+    "sort-packages": true
+  },
+  "scripts": {
+    "phpcs": "phpcs --standard=phpcs.xml.dist"
+  }
+}

@@ -96,18 +96,9 @@ $required_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo
 $present_pages = array_filter( $required_pages, static fn( string $slug ): bool => (bool) get_page_by_path( $slug ) );
 WP_CLI::line( sprintf( 'CONTENT_PAGES=%d/%d', count( $present_pages ), count( $required_pages ) ) );
 WP_CLI::line( 'TYPOGRAPHY_TEST_PAGE=' . ( get_page_by_path( 'tipografi-testi' ) ? 'yes' : 'no' ) );
-$locations    = get_nav_menu_locations();
-$primary_menu = isset( $locations['primary'] ) ? wp_get_nav_menu_items( $locations['primary'] ) : array();
-$menu_rows    = array();
-foreach ( $primary_menu ?: array() as $item ) {
-	$parent_name = '';
-	if ( $item->menu_item_parent ) {
-		$parent = wp_filter_object_list( $primary_menu, array( 'ID' => (int) $item->menu_item_parent ) );
-		$parent_name = $parent ? reset( $parent )->title . ' > ' : '';
-	}
-	$menu_rows[] = $parent_name . $item->title;
-}
+$menu_rows = function_exists( 'kuka_island_header_menu' ) ? wp_list_pluck( kuka_island_header_menu(), 'label' ) : array();
 WP_CLI::line( 'PRIMARY_MENU=' . implode( '|', $menu_rows ) );
+WP_CLI::line( 'PRIMARY_MENU_COUNT=' . count( $menu_rows ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
 $out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
 WP_CLI::line( 'LOW_STOCK_VARIATIONS=' . count( $low_stock ) );
