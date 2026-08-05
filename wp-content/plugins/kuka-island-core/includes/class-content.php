@@ -9,6 +9,28 @@ final class Kuka_Island_Core_Content {
 	public const LEGAL_DRAFT_WARNING = 'Hukuki taslak uyarısı: Bu metin Kuka Island için özgün olarak hazırlanmış bir çalışma taslağıdır; müşteri veya hukuk danışmanı onayı olmadan yürürlüğe girmez.';
 	public const HYGIENE_POLICY = 'Koruyucu unsur, hijyen bandı veya mühür teslimden sonra açılmışsa; ürünün niteliği ve yürürlükteki mevzuat değerlendirilerek cayma hakkı istisnası uygulanabilir. Bu sonuç otomatik değildir ve her talep kendi koşullarıyla incelenir.';
 
+	/**
+	 * Build a wa.me link from a free-form phone number.
+	 *
+	 * Normalization strips spaces, parentheses and hyphens; a leading 0 is
+	 * replaced with the TR country code 90, and an explicit +90 / 90 prefix is
+	 * kept. An empty input yields an empty link so callers can hide the entry.
+	 */
+	public static function whatsapp_url( string $phone ): string {
+		$digits = preg_replace( '/[^0-9]/', '', $phone );
+		if ( '' === $digits ) {
+			return '';
+		}
+		if ( str_starts_with( $digits, '90' ) ) {
+			// Already carries the country code.
+		} elseif ( str_starts_with( $digits, '0' ) ) {
+			$digits = '9' . $digits;
+		} else {
+			$digits = '90' . $digits;
+		}
+		return 'https://wa.me/' . $digits;
+	}
+
 	public function register(): void {
 		add_shortcode( 'kuka_legal_warning', array( $this, 'legal_warning' ) );
 		add_shortcode( 'kuka_company_details', array( $this, 'company_details' ) );
@@ -25,17 +47,19 @@ final class Kuka_Island_Core_Content {
 	public function company_details(): string {
 		$legal = Kuka_Island_Core_Site_Appearance::get()['legal'];
 		$rows  = array(
-			__( 'Şirket unvanı', 'kuka-island-core' ) => $legal['company_title'],
+			__( 'Satıcı / unvan', 'kuka-island-core' ) => $legal['company_title'],
+			__( 'İşletme adı', 'kuka-island-core' ) => $legal['brand_name'],
 			__( 'VKN', 'kuka-island-core' ) => $legal['tax_number'],
 			__( 'Vergi dairesi', 'kuka-island-core' ) => $legal['tax_office'],
 			__( 'Adres', 'kuka-island-core' ) => $legal['address'],
 			__( 'Telefon', 'kuka-island-core' ) => $legal['telephone'],
 			__( 'ETBİS numarası', 'kuka-island-core' ) => $legal['etbis_number'],
-			__( 'MERSİS numarası', 'kuka-island-core' ) => $legal['mersis_number'],
 		);
 		$html  = '<dl class="kuka-company-details">';
 		foreach ( $rows as $label => $detail ) {
-			$html .= '<div><dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( (string) $detail ) . '</dd></div>';
+			$value = (string) $detail;
+			if ( '' === trim( $value ) ) { continue; }
+			$html .= '<div><dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd></div>';
 		}
 		return $html . '</dl>';
 	}
@@ -67,7 +91,7 @@ final class Kuka_Island_Core_Content {
 		$content = Kuka_Island_Core_Site_Appearance::get();
 		$email   = (string) $content['brand']['email'];
 		$phone   = (string) $content['brand']['phone'];
-		$whats   = (string) $content['brand']['whatsapp_url'];
+		$whats   = self::whatsapp_url( (string) ( $content['brand']['whatsapp_phone'] ?? '' ) );
 		$html    = '<ul class="kuka-contact-details">';
 		$html   .= '<li><strong>' . esc_html__( 'E-posta:', 'kuka-island-core' ) . '</strong> <a href="mailto:' . esc_attr( $email ) . '">' . esc_html( $email ) . '</a></li>';
 		$html   .= '<li><strong>' . esc_html__( 'Telefon:', 'kuka-island-core' ) . '</strong> <a href="tel:' . esc_attr( preg_replace( '/[^0-9+]/', '', $phone ) ) . '">' . esc_html( $phone ) . '</a></li>';
