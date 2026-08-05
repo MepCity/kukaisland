@@ -1722,6 +1722,17 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-04 | Mobil menü soldan, sepet ve hesap panelleri sağdan açılır | Navigasyon başlangıç yönünde; header'ın sağındaki kişisel/ticari eylemler kendi fiziksel konumlarından gelir. Dördü aynı Escape, odak tuzağı, odak iadesi, `inert` ve örtü altyapısını paylaşır |
 | 2026-08-04 | Filtre örtüsü `paper` %55, diğer panel örtüleri `ink` %55 karışımıdır | Açık filtre bağlamındaki ürün renkleri `filter:none` ile korunur; koyu örtü yalnız menü, hesap ve sepet odağında kalır |
 | 2026-08-04 | Yumuşatma semantik hareket ve odak token'larıyla yapılır | `--duration-micro` mevcut 240 ms'e, `--duration-panel` mevcut 420 ms'e, `--duration-image` mevcut 240 ms'e ve `--focus-color` mevcut `ink-soft`a bağlandı; gölge, radius veya yeni sayısal değer eklenmedi |
+| 2026-08-06 | Şirket bilgileri girildi: satıcı Kübra Gültekin (şahıs işletmesi), VKN 4220658128, Beşiktaş VD, Akat Mah. adresi, iletişim telefonu +90 530 948 19 96 | Müşteri vergi levhasından geldi; tek kaynak Site Görünümü → Şirket ve Yasal; panelden düzenlenebilir |
+| 2026-08-06 | TC Kimlik No bilinçli olarak hiçbir yere girilmedi ve yayınlanmıyor | Mesafeli satış sözleşmesi için gerekmiyor; VKN ayrı bir numara olarak yeterli; işletme sahibinin kimlik verisini açığa çıkarmak KVKW maruziyeti yaratır ve müşterimizi korumak zorundayız |
+| 2026-08-06 | MERSİS numarası alanı ve şablon satırı kaldırıldı | Şahıs işletmeleri MERSİS numarası taşımaz; boş yer tutucu göstermek yerine alan kapatıldı |
+| 2026-08-06 | "Şirket unvanı" etiketi yerine "Satıcı / unvan" ve ek "İşletme adı" satırı kullanıldı | Şahıs işletmesinde ticaret ünvanı yoktur; satıcı gerçek kişi adıdır, işletme adı Kuka Island ayrı satırda |
+| 2026-08-06 | WhatsApp panel alanı URL'den telefon numarasına çevrildi; wa.me bağlantısı koddan üretiliyor | Müşteri yalnızca numara girer; boşluk/parantez/tire temizlenir, baştaki 0 → 90, +90 kabul edilir. 0530 948 19 96 → https://wa.me/905309481996. Boşken WhatsApp arayüzü hiç görünmez |
+| 2026-08-06 | Yüzen WhatsApp düğmesi sağ altta sabit, marka `ink` renginde; checkout ve ödeme sayfasında gizli | iyzico yüzen promosyonunun yerine geçmesin diye sade ve küçük; gölge/büyük radius yok (§11.1); WhatsApp yeşili kullanılmadı (§11.2) |
+| 2026-08-06 | Servis şeridi yeniden tasarlandı: mono numara + başlık + açıklama + sağ ok; hücre tamamı tıklanabilir; başlık/açıklama/bağlantı panelden | Prototipteki anatomi geri getirildi; üçüncü hücre WhatsApp'a, boşsa /iletisim'e düşer. Açıklamalar panelden okunur (§15.2), uydurma bilgi yok |
+| 2026-08-06 | Sepet sayfası düzeni düzeltildi: ölçü `content` → `wide`; Woo tablosu sol, `.cart_totals` sağ kolon grid; kolonlara min-width ve nowrap; kupon + "Sepeti güncelle" tek satır grid; mobilde tablo kart düzenine döner | Başlıklar ve fiyatlar sarmıyordu; güncelle düğmesi satır dışına taşmıştı; 2000px'te içerik sıkışıyordu |
+| 2026-08-06 | Sepet satırında ürün adı parent adına indirildi; renk/beden `dl.variation` ile ayrı satırda "Renk: x · Beden: y" okunur | Varyasyon takısı üründen adından kopuk kırılıyordu; `woocommerce_cart_item_name` parent adını, `woocommerce_after_cart_item_name` ise meta DL'ini basar (Woo'nun kendi formatlayıcısı bu mağazada boş dönüyor) |
+| 2026-08-06 | Tüm form kontrolleri `accent-color: var(--color-ink)` token'a çekildi; footer/hero koyu zemininde `--color-white`; odak halkası da `--color-ink` | §11.2 aksan yok kuralı ihlal ediliyordu; tarayıcı/Blocksy varsayılan mavi radio/checkbox kazanmıştı |
+| 2026-08-06 | SSS soruları `<details>`/`<summary>` akordiyona çevrildi; grup başlıkları h2 olarak kaldı; varsayılan hepsi kapalı | JS'siz açılır/kapanır, klavyeyle çalışır; `prefers-reduced-motion` altında chevron geçişi global olarak sıfırlanır |
 
 ---
 
@@ -1768,6 +1779,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 3E yayın öncesi düzeltmeleri tamamlandı: sürüm pinleri, beş smoke akışı, CI kapısı, deploy runbook, panel kullanılabilirliği ve kod kalitesi
 - [x] Üretim planı bu depoda kanonik ilan edildi; prototip PLAN kopyası arşiv işaretine indirildi
 - [x] Faz 3F içerik tamamlandı: altı yasal taslak, yardım/marka sayfaları, merkezî şirket/ticari/beden verisi, dört ürün SEO alanı ve CSV şablonu
+- [x] Faz 3G mağaza deneyimi tamamlandı: sepet sayfası düzeni, marka renkli form kontrolleri, SSS akordiyonu, gerçek şirket bilgileri, WhatsApp telefon alanı + yüzen düğme ve işlevsel servis şeridi
 - [x] Veridyen test yayını için deploy arşiv betiği ve sağlayıcıya özgü runbook hazırlandı; fiili deploy yapılmadı
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak

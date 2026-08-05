@@ -5,6 +5,7 @@ get_header();
 $content = kuka_island_content();
 $hero = $content['hero'] ?? array();
 $home = $content['home'] ?? array();
+$whatsapp_url = kuka_island_whatsapp_url();
 $desktop = ! empty( $hero['desktop_image_id'] ) ? wp_get_attachment_image_url( $hero['desktop_image_id'], 'full' ) : '';
 $mobile = ! empty( $hero['mobile_image_id'] ) ? wp_get_attachment_image_url( $hero['mobile_image_id'], 'full' ) : $desktop;
 $category_items = array_values( array_filter( kuka_island_category_navigation(), static fn( array $item ): bool => $item['home'] ) );
@@ -45,5 +46,26 @@ $products_shortcode .= ']';
 <?php if ( ! empty( $home['new_arrivals_enabled'] ) ) : ?><section class="kuka-home-products kuka-home-products--<?php echo esc_attr( $home['presentation'] ?? 'grid' ); ?> kuka-section"><div class="kuka-section-heading"><div><p class="kuka-eyebrow"><?php esc_html_e( 'Koleksiyon', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['new_arrivals_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['new_arrivals_copy'] ?? '' ); ?></p></div><a class="kuka-text-link" href="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>"><?php esc_html_e( 'Tümünü gör', 'kuka-island' ); ?><span aria-hidden="true">↗</span></a></div><?php echo do_shortcode( $products_shortcode ); ?></section><?php endif; ?>
 <?php if ( ! empty( $home['editorial_enabled'] ) ) : ?><section class="kuka-editorial kuka-section"><div class="kuka-editorial__image"><?php if ( ! empty( $home['editorial_video_id'] ) ) : ?><?php echo wp_video_shortcode( array( 'src' => wp_get_attachment_url( absint( $home['editorial_video_id'] ) ) ) ); ?><?php else : ?><?php echo wp_get_attachment_image( absint( $home['editorial_image_id'] ?? 0 ), 'full' ); ?><?php endif; ?></div><div><p class="kuka-eyebrow"><?php esc_html_e( 'Editoryal', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['editorial_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['editorial_copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $home['editorial_url'] ?? '/hakkimizda/' ) ); ?>"><?php echo esc_html( $home['editorial_link_label'] ?? __( 'Hikâyeyi oku', 'kuka-island' ) ); ?></a></div></section><?php endif; ?>
 <?php if ( ! empty( $home['manifesto_enabled'] ) ) : ?><section class="kuka-manifesto kuka-section"><p class="kuka-eyebrow"><?php esc_html_e( 'Manifesto', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['manifesto_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['manifesto_copy'] ?? '' ); ?></p></section><?php endif; ?>
-<?php if ( ! empty( $home['services_enabled'] ) ) : ?><section class="kuka-services"><?php foreach ( array( 'service_1', 'service_2', 'service_3' ) as $key ) : ?><div><span aria-hidden="true">↗</span><p><?php echo esc_html( $home[ $key ] ?? '' ); ?></p></div><?php endforeach; ?></section><?php endif; ?>
+<?php if ( ! empty( $home['services_enabled'] ) ) : ?>
+<section class="kuka-services" aria-label="<?php esc_attr_e( 'Servis güvenceleri', 'kuka-island' ); ?>">
+<?php foreach ( array( 'service_1', 'service_2', 'service_3' ) as $service_index => $service_key ) :
+	$service_title = (string) ( $home[ $service_key . '_title' ] ?? '' );
+	$service_copy  = (string) ( $home[ $service_key . '_copy' ] ?? '' );
+	$service_url   = (string) ( $home[ $service_key . '_url' ] ?? '' );
+	if ( '' === trim( $service_title ) ) { continue; }
+	if ( '' === $service_url ) {
+		$service_url = 'service_3' === $service_key && $whatsapp_url ? $whatsapp_url : kuka_island_content_url( '/iletisim/' );
+	} else {
+		$service_url = kuka_island_content_url( $service_url );
+	}
+?>
+<a class="kuka-services__cell" href="<?php echo esc_url( $service_url ); ?>">
+	<span class="kuka-services__number"><?php echo esc_html( str_pad( (string) ( $service_index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span>
+	<span class="kuka-services__title"><?php echo esc_html( $service_title ); ?></span>
+	<span class="kuka-services__copy"><?php echo esc_html( $service_copy ); ?></span>
+	<span class="kuka-services__arrow" aria-hidden="true">↗</span>
+</a>
+<?php endforeach; ?>
+</section>
+<?php endif; ?>
 <?php get_footer(); ?>
