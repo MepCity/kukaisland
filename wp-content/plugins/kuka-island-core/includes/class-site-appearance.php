@@ -119,6 +119,10 @@ final class Kuka_Island_Core_Site_Appearance {
 	 */
 	public static function get(): array {
 		$saved = get_option( self::OPTION_NAME, array() );
+		$legacy_main = "Yeni Gelenler|/magaza/?orderby=date\nTüm Ürünler|/magaza/\nHakkımızda|/hakkimizda/";
+		if ( is_array( $saved ) && $legacy_main === ( $saved['navigation']['main'] ?? '' ) ) {
+			$saved['navigation']['main'] = self::defaults()['navigation']['main'];
+		}
 		return self::merge( self::defaults(), is_array( $saved ) ? $saved : array() );
 	}
 
