@@ -28,6 +28,12 @@ overflow_masks=$(search_count 'overflow-x:[[:space:]]*(hidden|clip)' wp-content/
 raw_colors=$(find wp-content/themes/kuka-island-child/assets/css -name '*.css' ! -name tokens.css -exec grep -En '#[0-9a-fA-F]{3,8}|rgba?\(' {} + 2>/dev/null | wc -l | tr -d ' ')
 shadows=$(search_count 'box-shadow|drop-shadow' wp-content/themes/kuka-island-child/assets/css)
 locked_controls=$(search_count "'font_(family|size)'|'grid_columns'|'breakpoint'|'animation_duration'|'product_card_ratio'" wp-content/plugins/kuka-island-core/includes/class-site-appearance.php)
+used_tokens=$(mktemp)
+defined_tokens=$(mktemp)
+grep -hoE 'var\(--[a-z0-9-]+' wp-content/themes/kuka-island-child/assets/css/*.css | sed 's/var(--//' | sort -u > "$used_tokens"
+grep -hoE -- '--[a-z0-9-]+[[:space:]]*:' wp-content/themes/kuka-island-child/assets/css/tokens.css | sed -E 's/^--//;s/[[:space:]]*:.*$//' | sort -u > "$defined_tokens"
+undefined_tokens=$(comm -23 "$used_tokens" "$defined_tokens" | grep -Ev '^(hero-desktop|hero-mobile|swatch-color|zoom-scale|zoom-x|zoom-y)$' | wc -l | tr -d ' ')
+rm "$used_tokens" "$defined_tokens"
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -40,6 +46,7 @@ ROOT_OVERFLOW_MASK=$overflow_masks
 CSS_RAW_COLORS_OUTSIDE_TOKENS=$raw_colors
 CSS_SHADOWS=$shadows
 LOCKED_DESIGN_CONTROLS=$locked_controls
+CSS_UNDEFINED_TOKENS=$undefined_tokens
 EOF
 
 failures=0
@@ -74,6 +81,7 @@ expect_value "plugin POT" "$plugin_pot" "yes"
 expect_value "raw theme colors" "$raw_colors" "0"
 expect_value "theme shadows" "$shadows" "0"
 expect_value "root overflow mask" "$overflow_masks" "0"
+expect_value "undefined CSS tokens" "$undefined_tokens" "0"
 
 if [ "$failures" -ne 0 ]; then
   echo "VERIFY=FAIL ($failures)" >&2

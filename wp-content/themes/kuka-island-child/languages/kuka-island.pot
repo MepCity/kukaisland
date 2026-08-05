@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-05T10:25:57+00:00\n"
+"POT-Creation-Date: 2026-08-05T10:52:22+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -33,55 +33,51 @@ msgstr ""
 msgid "Ada mektupları"
 msgstr ""
 
-#: footer.php:14
-msgid "E-posta adresi"
+#: footer.php:13
+msgid "E-posta kaydı yakında açılacak."
 msgstr ""
 
-#: footer.php:14
-msgid "Katıl"
-msgstr ""
-
-#: footer.php:17
+#: footer.php:16
 msgid "Kategoriler"
 msgstr ""
 
-#: footer.php:18
+#: footer.php:17
 msgid "Yardım"
 msgstr ""
 
-#: footer.php:19
+#: footer.php:18
 msgid "Yasal"
 msgstr ""
 
-#: footer.php:20
+#: footer.php:19
 msgid "Sosyal"
 msgstr ""
 
-#: front-page.php:32
+#: front-page.php:26
 msgid "Formunu bul"
 msgstr ""
 
-#: front-page.php:33
+#: front-page.php:27
 msgid "Ürün kategorileri"
 msgstr ""
 
-#: front-page.php:49
+#: front-page.php:45
 msgid "Koleksiyon"
 msgstr ""
 
-#: front-page.php:49
+#: front-page.php:45
 msgid "Tümünü gör"
 msgstr ""
 
-#: front-page.php:50
+#: front-page.php:46
 msgid "Editoryal"
 msgstr ""
 
-#: front-page.php:50
+#: front-page.php:46
 msgid "Hikâyeyi oku"
 msgstr ""
 
-#: front-page.php:51
+#: front-page.php:47
 msgid "Manifesto"
 msgstr ""
 
@@ -98,41 +94,8 @@ msgid "Footer yasal"
 msgstr ""
 
 #: functions.php:41
-#: functions.php:329
+#: inc/woocommerce.php:48
 msgid "Ana sayfa"
-msgstr ""
-
-#: functions.php:239
-#: woocommerce/content-product.php:55
-msgid "Tükendi"
-msgstr ""
-
-#: functions.php:369
-msgid "Malzeme"
-msgstr ""
-
-#: functions.php:369
-msgid "Bakım"
-msgstr ""
-
-#: functions.php:369
-msgid "Kalıp"
-msgstr ""
-
-#: functions.php:369
-msgid "Model"
-msgstr ""
-
-#: functions.php:377
-msgid "Beden rehberini aç"
-msgstr ""
-
-#: functions.php:392
-msgid "Birlikte iyi gider"
-msgstr ""
-
-#: functions.php:392
-msgid "Parçayı incele"
 msgstr ""
 
 #: header.php:17
@@ -191,68 +154,102 @@ msgstr ""
 msgid "Sepeti kapat"
 msgstr ""
 
-#: inc/catalog-filters.php:71
+#: inc/assets.php:83
+#: woocommerce/content-product.php:55
+msgid "Tükendi"
+msgstr ""
+
+#: inc/assets.php:84
+#: woocommerce/single-product/product-image.php:26
+#, php-format
+msgid "%1$s; tam ekran aç (%2$d/%3$d)"
+msgstr ""
+
+#: inc/assets.php:85
+msgid "Renk seçimi"
+msgstr ""
+
+#: inc/assets.php:86
+#, php-format
+msgid "%s rengini seç"
+msgstr ""
+
+#: inc/assets.php:87
+msgid "Beden seçimi"
+msgstr ""
+
+#: inc/assets.php:88
+#, php-format
+msgid "%s beden tükendi"
+msgstr ""
+
+#: inc/assets.php:89
+#, php-format
+msgid "%s beden stokta"
+msgstr ""
+
+#: inc/catalog-filters.php:72
 msgid "Stokta"
 msgstr ""
 
-#: inc/catalog-filters.php:75
+#: inc/catalog-filters.php:76
 msgid "Aktif filtreler"
 msgstr ""
 
-#: inc/catalog-filters.php:76
+#: inc/catalog-filters.php:77
 #, php-format
 msgid "%s filtresini kaldır"
 msgstr ""
 
-#: inc/catalog-filters.php:87
+#: inc/catalog-filters.php:88
 #, php-format
 msgid "%d ürün"
 msgid_plural "%d ürün"
 msgstr[0] ""
 msgstr[1] ""
 
-#: inc/catalog-filters.php:88
-#: inc/catalog-filters.php:93
+#: inc/catalog-filters.php:89
+#: inc/catalog-filters.php:94
 msgid "Filtrele"
 msgstr ""
 
-#: inc/catalog-filters.php:93
+#: inc/catalog-filters.php:94
 msgid "Filtreleri kapat"
 msgstr ""
 
-#: inc/catalog-filters.php:96
+#: inc/catalog-filters.php:97
 msgid "Stokta olanlar"
 msgstr ""
 
-#: inc/catalog-filters.php:97
+#: inc/catalog-filters.php:98
 msgid "Kesim"
 msgstr ""
 
-#: inc/catalog-filters.php:98
+#: inc/catalog-filters.php:99
 msgid "Renk"
 msgstr ""
 
-#: inc/catalog-filters.php:99
+#: inc/catalog-filters.php:100
 msgid "Beden"
 msgstr ""
 
-#: inc/catalog-filters.php:101
+#: inc/catalog-filters.php:102
 msgid "Temizle"
 msgstr ""
 
-#: inc/catalog-filters.php:101
+#: inc/catalog-filters.php:102
 msgid "Sonuçları gör"
 msgstr ""
 
-#: inc/catalog-filters.php:124
+#: inc/catalog-filters.php:125
 msgid "Bu seçimde ürün bulunamadı."
 msgstr ""
 
-#: inc/catalog-filters.php:124
+#: inc/catalog-filters.php:125
 msgid "Filtrelerden birini kaldırarak yeniden deneyin."
 msgstr ""
 
-#: inc/catalog-filters.php:124
+#: inc/catalog-filters.php:125
 msgid "Filtreleri temizle"
 msgstr ""
 
@@ -364,6 +361,34 @@ msgstr ""
 msgid "Hesap oluştur"
 msgstr ""
 
+#: inc/woocommerce.php:69
+msgid "Malzeme"
+msgstr ""
+
+#: inc/woocommerce.php:69
+msgid "Bakım"
+msgstr ""
+
+#: inc/woocommerce.php:69
+msgid "Kalıp"
+msgstr ""
+
+#: inc/woocommerce.php:69
+msgid "Model"
+msgstr ""
+
+#: inc/woocommerce.php:74
+msgid "Beden rehberini aç"
+msgstr ""
+
+#: inc/woocommerce.php:86
+msgid "Birlikte iyi gider"
+msgstr ""
+
+#: inc/woocommerce.php:86
+msgid "Parçayı incele"
+msgstr ""
+
 #: page.php:6
 msgid "Kuka Island"
 msgstr ""
@@ -421,11 +446,6 @@ msgstr ""
 
 #: woocommerce/single-product/product-image.php:24
 msgid "Ürün görseli"
-msgstr ""
-
-#: woocommerce/single-product/product-image.php:26
-#, php-format
-msgid "%1$s; tam ekran aç (%2$d/%3$d)"
 msgstr ""
 
 #: woocommerce/single-product/product-image.php:31
