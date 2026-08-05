@@ -23,6 +23,7 @@ final class Kuka_Island_Core_Plugin {
 		$files = array(
 			'class-compatibility.php',
 			'class-site-appearance.php',
+			'class-content.php',
 			'class-product-fields.php',
 			'class-combination-relations.php',
 			'class-image-threshold.php',
@@ -39,6 +40,7 @@ final class Kuka_Island_Core_Plugin {
 		$this->modules = array(
 			new Kuka_Island_Core_Compatibility(),
 			new Kuka_Island_Core_Site_Appearance(),
+			new Kuka_Island_Core_Content(),
 			new Kuka_Island_Core_Product_Fields(),
 			new Kuka_Island_Core_Combination_Relations(),
 			new Kuka_Island_Core_Image_Threshold(),

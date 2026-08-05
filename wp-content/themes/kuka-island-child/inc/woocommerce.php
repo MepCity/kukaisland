@@ -72,6 +72,12 @@ add_action(
 		}
 		$guide = $product->get_meta( '_kuka_size_guide' );
 		if ( $guide ) { echo '<a class="kuka-size-link" href="' . esc_url( home_url( '/' . trim( $guide, '/' ) . '/' ) ) . '">' . esc_html__( 'Beden rehberini aç', 'kuka-island' ) . '</a>'; }
+		$content = function_exists( 'kuka_island_content' ) ? kuka_island_content() : array();
+		$days    = absint( $content['commercial']['return_period_days'] ?? 14 );
+		echo '<details class="kuka-product-detail"><summary>' . esc_html__( 'Kargo, teslimat ve değişim', 'kuka-island' ) . '</summary><p>';
+		printf( esc_html__( 'İade veya değişim talebinizi teslimattan sonra %d gün içinde destek ekibine iletebilirsiniz. ', 'kuka-island' ), $days );
+		if ( class_exists( 'Kuka_Island_Core_Content' ) ) { echo esc_html( Kuka_Island_Core_Content::HYGIENE_POLICY ); }
+		echo '</p></details>';
 	},
 	35
 );
