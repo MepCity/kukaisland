@@ -41,3 +41,19 @@ Bu form, tasarımı ve mağaza altyapısını yanlış varsayımlarla kalıcıla
 - Tasarımda özgün demo içerikleri kullanılacaktır.
 
 Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap geldiğinde veri katmanından değiştirilecektir.
+
+## Faz 3F sonunda hâlâ beklenenler
+
+| Girdi | Durum | Panelde doldurulacağı yer |
+|---|---|---|
+| Şirket unvanı, VKN, vergi dairesi, adres, telefon, ETBİS ve MERSİS | Bekleniyor; uydurulmadı | Site Görünümü → Şirket ve Yasal Yer Tutucular |
+| Kargo firması ve tahmini teslimat süresi | Bekleniyor | Site Görünümü → Ticari Bilgiler |
+| Standart kargo ücreti ve ücretsiz kargo eşiği onayı | Pilot değerler 149 TL / 1.500 TL | Site Görünümü → Ticari Bilgiler |
+| İade kargo ücretinin kime ait olduğu | Bekleniyor | Site Görünümü → Ticari Bilgiler |
+| Hijyen bandı/mühür operasyon kararı | Bekleniyor; metin koşullu ve otomatik ret kurmuyor | Yasal metin onayı + ürün operasyonu |
+| Yasal taslakların hukuk/şirket onayı | Bekleniyor | Onay sonrası sayfa metinleri ve merkezî yer tutucular |
+| Gerçek marka kuruluş hikâyesi | Bekleniyor; Hakkımızda metni geçici | Sayfalar → Hakkımızda |
+| Gerçek ürün kataloğu, fiyat, stok ve fotoğraflar | Bekleniyor; dört ürün pilot şablon | Ürünler veya CSV şablonu |
+| SMTP hesabı ve DNS kayıtları | Veridyen test yayını öncesi müşteri açacak | Hosting/DNS + seçilen SMTP eklentisi |
+| Coming soon altında test erişim yöntemi | Müşteri seçimi bekleniyor | `DEPLOY_RUNBOOK.md` §6 |
+| iyzico sandbox/canlı aktivasyonu | Bekleniyor; canlı anahtar repoya girilmeyecek | WooCommerce ödeme ayarları / secret alanı |
