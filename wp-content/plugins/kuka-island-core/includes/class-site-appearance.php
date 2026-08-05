@@ -18,6 +18,39 @@ final class Kuka_Island_Core_Site_Appearance {
 	}
 
 	/**
+	 * Keep the free-shipping threshold in sync with WooCommerce so the panel
+	 * announcement, the cart drawer progress message and the checkout shipping
+	 * rule all read from a single source. The panel is that source (§15.2 lists
+	 * the commercial messages under Site Appearance); on save it writes the
+	 * matched free_shipping method min_amount.
+	 */
+	public static function sync_free_shipping_threshold(): void {
+		$threshold = (float) ( self::get()['commercial']['free_shipping_threshold'] ?? 0 );
+
+		// Write every free_shipping instance option directly from the options table.
+		// Going through WC_Shipping_Zones would read cached, sometimes stale, runtime
+		// method objects; the persisted option is the single source the checkout reads.
+		global $wpdb;
+		$keys = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->prepare(
+				'SELECT option_name FROM %i WHERE option_name LIKE %s',
+				$wpdb->options,
+				$wpdb->esc_like( 'woocommerce_free_shipping_' ) . '%_settings'
+			)
+		);
+
+		foreach ( $keys as $option_key ) {
+			$settings                     = get_option( $option_key, array() );
+			$settings                     = is_array( $settings ) ? $settings : array();
+			$settings['title']            = $settings['title'] ?? __( 'Ücretsiz kargo', 'kuka-island-core' );
+			$settings['requires']         = $threshold > 0 ? 'min_amount' : '';
+			$settings['min_amount']        = (string) $threshold;
+			$settings['ignore_discounts'] = $settings['ignore_discounts'] ?? 'no';
+			update_option( $option_key, $settings, false );
+		}
+	}
+
+	/**
 	 * Defaults are intentionally content-only. Design tokens remain in the theme.
 	 *
 	 * @return array<string, mixed>
@@ -280,6 +313,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			? wp_unslash( $_POST['site_content'] )
 			: array();
 		update_option( self::OPTION_NAME, self::sanitize( $raw ), false );
+		self::sync_free_shipping_threshold();
 
 		wp_safe_redirect( add_query_arg( 'updated', '1', admin_url( 'admin.php?page=kuka-island' ) ) );
 		exit;
