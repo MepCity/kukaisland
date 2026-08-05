@@ -6,6 +6,11 @@
 !/Makefile
 !/README.md
 !/PLAN.md
+!/composer.json
+!/composer.lock
+!/phpcs.xml.dist
+!/.github/
+!/.github/**
 !/docs/
 !/docs/**
 !/scripts/
@@ -30,4 +35,3 @@ wp-content/uploads/
 *.sql
 *.sql.gz
 .DS_Store
-

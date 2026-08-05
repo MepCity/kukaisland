@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<ruleset name="Kuka Island WordPress">
+  <description>WordPress coding standards for project-owned PHP.</description>
+  <file>wp-content/themes/kuka-island-child</file>
+  <file>wp-content/plugins/kuka-island-core</file>
+  <file>scripts</file>
+  <exclude-pattern>*/languages/*</exclude-pattern>
+  <exclude-pattern>*/vendor/*</exclude-pattern>
+  <arg name="extensions" value="php"/>
+  <arg name="colors"/>
+  <arg value="sp"/>
+  <!-- The production gate starts with severity 9 so critical WordPress
+       security/compatibility violations block deploy without mixing the
+       existing presentation-formatting debt into this release. -->
+  <arg name="severity" value="9"/>
+  <rule ref="WordPress"/>
+</ruleset>
