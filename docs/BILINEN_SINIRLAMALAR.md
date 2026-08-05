@@ -14,10 +14,12 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Kesim listesi, ürün başına renk sayıları ve gerçek fiyatlar henüz teslim edilmedi (soru 4, 5 ve 22).
 - Kargo firması, teslimat süresi, iade kargo sorumluluğu ve nihai ücretsiz kargo eşiği onaylanmadı. Pilot 149 TL ücret, 1.500 TL eşik ve 14 gün panel/sayfa/WooCommerce kaynaklarında senkron tutulur; yayın öncesi müşteri onayıyla değiştirilecektir.
 - Hijyen bandının kullanım ve iade koşulları karara bağlanmadı (soru 16).
-- e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24).
+- e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24). Şirket bilgileri (satıcı, VKN, vergi dairesi, adres, telefon) Faz 3G'de girildi; ETBİS numarası panelde yer tutucu olarak `[ETBİS NO]` görünmeye devam eder.
+- TC Kimlik No bilinçli olarak hiçbir yere girilmedi ve yayınlanmayacak: mesafeli satış için gerekmiyor, işletme sahibinin kimlik verisini açığa çıkarmak KVKW maruziyeti yaratır.
+- MERSİS numarası alanı kaldırıldı; işletme şahıs işletmesi olduğu için MERSİS taşımıyor.
 - Üst-alt takım alımında indirim uygulanıp uygulanmayacağı bekleniyor (soru 19).
 - Logo, kurumsal renk/font dosyaları ve varsa marka kullanım kuralları bekleniyor (soru 11). Sunumdaki yazı karakterli logo geçicidir.
-- Altı yasal sayfa özgün çalışma taslaklarıyla test yayınına hazırdır; görünür hukuk onayı uyarısı kalır. `[ŞİRKET UNVANI]`, `[VKN]`, `[VERGİ DAİRESİ]`, `[ADRES]`, `[TELEFON]`, `[ETBİS NO]`, `[MERSİS NO]` alanları müşteriden gelmediği için merkezî panelde yer tutucudur. Hukuk danışmanı ve şirket yetkilisi onayı olmadan metinler yürürlüğe alınamaz.
+- Altı yasal sayfa özgün çalışma taslaklarıyla test yayınına hazırdır; görünür hukuk onayı uyarısı kalır. `[ETBİS NO]` alanı müşteriden gelmediği için merkezî panelde yer tutucudur. Şirket bilgileri (satıcı, VKN, vergi dairesi, adres, telefon) Faz 3G'de gerçek değerlerle dolduruldu; MERSİS alanı şahıs işletmesi olduğu için kaldırıldı, TC Kimlik No bilinçli olarak yayınlanmıyor. Hukuk danışmanı ve şirket yetkilisi onayı olmadan metinler yürürlüğe alınamaz.
 
 ## İlk sürümden sonraki fazlar
 

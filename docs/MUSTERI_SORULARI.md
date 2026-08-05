@@ -46,7 +46,9 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 
 | Girdi | Durum | Panelde doldurulacağı yer |
 |---|---|---|
-| Şirket unvanı, VKN, vergi dairesi, adres, telefon, ETBİS ve MERSİS | Bekleniyor; uydurulmadı | Site Görünümü → Şirket ve Yasal Yer Tutucular |
+| Satıcı/unvan, VKN, vergi dairesi, adres, telefon | **Girildi** (Kübra Gültekin / 4220658128 / Beşiktaş VD / Akat Mah. adresi / +90 530 948 19 96) | Site Görünümü → Şirket ve Yasal Bilgiler |
+| ETBİS numarası | Hâlâ bekleniyor; yer tutucu kalır (`[ETBİS NO]`) | Site Görünümü → Şirket ve Yasal Bilgiler |
+| MERSİS numarası | Şahıs işletmesi olduğu için alan kaldırıldı; TC Kimlik No bilinçli olarak hiçbir yere girilmedi | — |
 | Kargo firması ve tahmini teslimat süresi | Bekleniyor | Site Görünümü → Ticari Bilgiler |
 | Standart kargo ücreti ve ücretsiz kargo eşiği onayı | Pilot değerler 149 TL / 1.500 TL | Site Görünümü → Ticari Bilgiler |
 | İade kargo ücretinin kime ait olduğu | Bekleniyor | Site Görünümü → Ticari Bilgiler |

@@ -78,7 +78,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		return array(
 			'brand' => array(
 				'logo_id' => 0, 'mobile_logo_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
-				'email' => 'hello@kukaisland.com', 'phone' => '+90 850 000 00 00', 'whatsapp_url' => 'https://wa.me/908500000000',
+				'email' => 'hello@kukaisland.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
 				'social_links' => 'Instagram|https://www.instagram.com/kukaisland',
 			),
 			'announcement' => array(
@@ -99,7 +99,10 @@ final class Kuka_Island_Core_Site_Appearance {
 				'editorial_enabled' => true, 'editorial_title' => 'Ada Günlüğü', 'editorial_copy' => 'Şehirden kıyıya uzanan günlük üniforma.',
 				'editorial_image_id' => 0, 'editorial_video_id' => 0, 'editorial_url' => '/hakkimizda/', 'editorial_link_label' => 'Hikâyeyi oku',
 				'manifesto_enabled' => true, 'manifesto_title' => 'Az, iyi ve uzun ömürlü.', 'manifesto_copy' => 'Her parçayı tekrar tekrar giymek için tasarlıyoruz.',
-				'services_enabled' => true, 'service_1' => 'Güvenli ödeme', 'service_2' => 'Kolay değişim', 'service_3' => 'Destek hattı',
+				'services_enabled' => true,
+				'service_1_title' => 'Güvenli ödeme', 'service_1_copy' => 'iyzico altyapısı · 3D Secure', 'service_1_url' => '/mesafeli-satis-sozlesmesi/',
+				'service_2_title' => 'Kolay değişim', 'service_2_copy' => '14 gün içinde değişim', 'service_2_url' => '/iade-degisim/',
+				'service_3_title' => 'Destek', 'service_3_copy' => 'Hafta içi 09.00–18.00 · WhatsApp', 'service_3_url' => '',
 			),
 			'navigation' => array(
 				'main' => "Yeni Gelenler|/magaza/?orderby=date\nMarka / Hikâyemiz|/hakkimizda/",
@@ -124,8 +127,10 @@ final class Kuka_Island_Core_Site_Appearance {
 				'secure_payment_copy' => 'Ödeme bilgileriniz güvenli bağlantı üzerinden işlenir.', 'support_hours' => 'Hafta içi 09.00–18.00',
 			),
 			'legal' => array(
-				'company_title' => '[ŞİRKET UNVANI]', 'tax_number' => '[VKN]', 'tax_office' => '[VERGİ DAİRESİ]',
-				'address' => '[ADRES]', 'telephone' => '[TELEFON]', 'etbis_number' => '[ETBİS NO]', 'mersis_number' => '[MERSİS NO]',
+				'company_title' => 'Kübra Gültekin', 'brand_name' => 'Kuka Island',
+				'tax_number' => '4220658128', 'tax_office' => 'Beşiktaş',
+				'address' => 'Akat Mah. Ata Sk. Eti Sitesi A3 Blok No: 2 C İç Kapı No: 3 Beşiktaş / İstanbul',
+				'telephone' => '+90 530 948 19 96', 'etbis_number' => '[ETBİS NO]',
 			),
 			'content' => array(
 				'size_top_rows' => "34|XS|80–84|68–72|A–B\n36|S|84–88|72–76|A–B\n38|M|88–92|76–80|B–C\n40|L|92–98|80–84|C–D\n42|XL|98–104|84–88|C–D",
@@ -164,7 +169,7 @@ final class Kuka_Island_Core_Site_Appearance {
 					'social_share_image_id' => array( __( 'Sosyal paylaşım görseli', 'kuka-island-core' ), 'media_image' ),
 					'email'                 => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
 					'phone'                 => array( __( 'Telefon', 'kuka-island-core' ), 'text' ),
-					'whatsapp_url'          => array( __( 'WhatsApp URL', 'kuka-island-core' ), 'url' ),
+					'whatsapp_phone'        => array( __( 'WhatsApp numarası (wa.me bağlantısı otomatik üretilir)', 'kuka-island-core' ), 'text' ),
 					'social_links'          => array( __( 'Sosyal bağlantılar (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
 			),
@@ -218,10 +223,16 @@ final class Kuka_Island_Core_Site_Appearance {
 					'manifesto_enabled' => array( __( 'Manifestoyu göster', 'kuka-island-core' ), 'checkbox' ),
 					'manifesto_title'    => array( __( 'Manifesto başlığı', 'kuka-island-core' ), 'text' ),
 					'manifesto_copy'     => array( __( 'Manifesto metni', 'kuka-island-core' ), 'textarea' ),
-					'services_enabled'   => array( __( 'Hizmet satırını göster', 'kuka-island-core' ), 'checkbox' ),
-					'service_1'          => array( __( 'Hizmet 1', 'kuka-island-core' ), 'text' ),
-					'service_2'          => array( __( 'Hizmet 2', 'kuka-island-core' ), 'text' ),
-					'service_3'          => array( __( 'Hizmet 3', 'kuka-island-core' ), 'text' ),
+					'services_enabled'   => array( __( 'Servis şeridini göster', 'kuka-island-core' ), 'checkbox' ),
+					'service_1_title'    => array( __( 'Servis 1 başlık', 'kuka-island-core' ), 'text' ),
+					'service_1_copy'     => array( __( 'Servis 1 açıklama', 'kuka-island-core' ), 'text' ),
+					'service_1_url'      => array( __( 'Servis 1 bağlantı', 'kuka-island-core' ), 'url' ),
+					'service_2_title'    => array( __( 'Servis 2 başlık', 'kuka-island-core' ), 'text' ),
+					'service_2_copy'     => array( __( 'Servis 2 açıklama', 'kuka-island-core' ), 'text' ),
+					'service_2_url'      => array( __( 'Servis 2 bağlantı', 'kuka-island-core' ), 'url' ),
+					'service_3_title'    => array( __( 'Servis 3 başlık', 'kuka-island-core' ), 'text' ),
+					'service_3_copy'     => array( __( 'Servis 3 açıklama', 'kuka-island-core' ), 'text' ),
+					'service_3_url'      => array( __( 'Servis 3 bağlantı (boşsa WhatsApp/iletişim)', 'kuka-island-core' ), 'url' ),
 				),
 			),
 			'navigation'   => array(
@@ -264,15 +275,15 @@ final class Kuka_Island_Core_Site_Appearance {
 				),
 			),
 			'legal'        => array(
-				'label'  => __( '8. Şirket ve Yasal Yer Tutucular', 'kuka-island-core' ),
+				'label'  => __( '8. Şirket ve Yasal Bilgiler', 'kuka-island-core' ),
 				'fields' => array(
-					'company_title' => array( __( 'Şirket unvanı', 'kuka-island-core' ), 'text' ),
+					'company_title' => array( __( 'Satıcı / unvan', 'kuka-island-core' ), 'text' ),
+					'brand_name'    => array( __( 'İşletme adı', 'kuka-island-core' ), 'text' ),
 					'tax_number'    => array( __( 'VKN', 'kuka-island-core' ), 'text' ),
 					'tax_office'    => array( __( 'Vergi dairesi', 'kuka-island-core' ), 'text' ),
 					'address'       => array( __( 'Adres', 'kuka-island-core' ), 'textarea' ),
 					'telephone'     => array( __( 'Yasal iletişim telefonu', 'kuka-island-core' ), 'text' ),
 					'etbis_number'  => array( __( 'ETBİS numarası', 'kuka-island-core' ), 'text' ),
-					'mersis_number' => array( __( 'MERSİS numarası', 'kuka-island-core' ), 'text' ),
 				),
 			),
 			'content'      => array(
