@@ -43,6 +43,21 @@ function kuka_island_cart_fragment_name( $params, string $handle ) {
 }
 add_filter( 'woocommerce_get_script_data', 'kuka_island_cart_fragment_name', 10, 2 );
 
+/**
+ * "Çok yakında" ekranının varlıkları.
+ *
+ * WooCommerce kendi blok desenini ve stilini bu ekrana yükler; şablonu
+ * devraldığımız için o stil kullanılmaz, çıkarılır. Splash header/footer
+ * kullanmadığından mağaza stillerine de ihtiyaç duymaz.
+ */
+function kuka_island_coming_soon_assets(): void {
+	foreach ( array( 'catalog', 'product', 'cart', 'checkout', 'content' ) as $unused ) {
+		wp_dequeue_style( 'kuka-island-' . $unused );
+	}
+	wp_dequeue_style( 'woocommerce-coming-soon' );
+	kuka_island_enqueue_style( 'coming-soon', array( 'kuka-island-global' ) );
+}
+
 /** Load route-specific presentation assets and product runtime data. */
 function kuka_island_child_enqueue_assets(): void {
 	kuka_island_enqueue_style( 'tokens', array( 'ct-main-styles' ) );
