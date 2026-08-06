@@ -1,0 +1,159 @@
+/* "Çok yakında" ekranı. WooCommerce'in kendi deseni yerine geçer; sayfa
+   header/footer kullanmaz, bu yüzden yüzeyi burada baştan kurulur. */
+
+body.kuka-splash-body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+.kuka-splash {
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  overflow: hidden;
+  padding: var(--space-6) var(--content-gutter);
+}
+
+/* Basılı ilan hissi veren ince iç çerçeve. */
+.kuka-splash::before {
+  position: absolute;
+  inset: var(--splash-frame-inset);
+  border: var(--stroke) solid var(--color-line);
+  content: "";
+  pointer-events: none;
+}
+
+.kuka-splash__mark {
+  width: var(--splash-measure);
+  text-align: center;
+}
+
+.kuka-splash__emblem {
+  display: block;
+  width: var(--splash-emblem-width);
+  height: auto;
+  margin: 0 auto var(--space-3);
+  color: var(--color-ink);
+}
+
+.kuka-splash__logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.kuka-splash__wordmark {
+  margin: 0;
+  font-size: var(--splash-wordmark-size);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-wordmark);
+  /* Harf aralığı son harften sonra da boşluk bırakır; ortalamada
+     görünen metin yarısı kadar sola kayar, o kadar geri itilir. */
+  text-indent: calc(var(--tracking-wordmark) / 2);
+  text-transform: uppercase;
+}
+
+.kuka-splash__lockup {
+  display: block;
+  font-size: var(--splash-lockup-size);
+  font-weight: var(--weight-regular);
+  letter-spacing: var(--tracking-lockup);
+  text-indent: calc(var(--tracking-lockup) / 2);
+}
+
+.kuka-splash__signature {
+  margin: var(--space-3) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-body);
+  letter-spacing: var(--tracking-label);
+}
+
+.kuka-splash__divider {
+  width: var(--stroke);
+  height: var(--splash-divider-height);
+  margin: var(--space-4) auto;
+  background: var(--color-line);
+}
+
+.kuka-splash__status {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-status);
+  line-height: var(--leading-body);
+  text-indent: calc(var(--tracking-status) / 2);
+  text-transform: uppercase;
+}
+
+/* Alt satır: solda giriş, sağda yıl. Çerçevenin içinde hizalanır. */
+.kuka-splash__foot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: calc(var(--splash-frame-inset) + var(--space-3));
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.kuka-splash__login {
+  color: var(--color-muted);
+  text-decoration: none;
+  border-bottom: var(--stroke) solid var(--color-line);
+  padding-bottom: var(--space-0-5);
+  transition: color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.kuka-splash__login:hover,
+.kuka-splash__login:focus-visible {
+  color: var(--color-ink);
+  border-color: var(--color-ink);
+}
+
+.kuka-splash__login:focus-visible {
+  outline: var(--focus-outline-width) solid var(--focus-color);
+  outline-offset: var(--space-0-5);
+}
+
+.kuka-splash__year {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+/* Girişte tek bir yumuşak açılış; azaltılmış hareket tercihinde kapalı. */
+@media (prefers-reduced-motion: no-preference) {
+  .kuka-splash__mark {
+    animation: kuka-splash-reveal var(--duration-slow) var(--ease-out) both;
+  }
+}
+
+@keyframes kuka-splash-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1-5));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 47.5em) {
+  .kuka-splash__foot {
+    margin: calc(var(--splash-frame-inset) + var(--space-2));
+  }
+}

@@ -84,6 +84,23 @@ add_action(
 	100
 );
 
+/**
+ * Serve the child theme's "çok yakında" screen instead of WooCommerce's pattern.
+ *
+ * WooCommerce resolves the screen with get_query_template( 'coming-soon' ) and
+ * registers a block template under the same slug, which wins over the theme
+ * file. Forcing the path here keeps the launch screen in the child theme where
+ * it stays token-driven and version controlled.
+ *
+ * @param string $template Previously resolved template path.
+ * @return string
+ */
+function kuka_island_coming_soon_template( $template ) {
+	$override = get_stylesheet_directory() . '/coming-soon.php';
+	return file_exists( $override ) ? $override : $template;
+}
+add_filter( 'coming-soon_template', 'kuka_island_coming_soon_template', 20 );
+
 /** Render one of the five source-matched inline SVG icons. */
 function kuka_island_icon( string $name ): string {
 	$paths = array(
