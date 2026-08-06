@@ -74,15 +74,18 @@
   content: "↘";
   flex: 0 0 auto;
   color: var(--color-muted);
-  transition: transform var(--duration-fast) var(--ease-standard);
+  transition: transform var(--duration-normal) var(--ease-standard);
 }
 
 .kuka-prose details.kuka-faq[open] > summary::after {
   transform: rotate(-90deg);
 }
 
-.kuka-prose details.kuka-faq > p {
-  margin: var(--space-1) 0 0;
+/* Açılış/kapanış geçişi global.css'teki ::details-content kuralında;
+   burada yalnız cevap tipografisi kalır. */
+.kuka-prose details.kuka-faq > .kuka-faq__panel > p {
+  margin: 0;
+  padding: var(--space-1) 0 var(--space-0-5);
   color: var(--color-muted);
 }
 
