@@ -311,6 +311,12 @@ foreach ( $product_specs as $spec ) {
 update_post_meta( $product_ids['KI-TOP-002'], '_kuka_paired_product_id', $product_ids['KI-BTM-004'] );
 update_post_meta( $product_ids['KI-BTM-004'], '_kuka_paired_product_id', $product_ids['KI-TOP-002'] );
 
+// Only the iyzico card gateway is offered. The plugin also registers the "Pay
+// with iyzico" wallet (`pwi`); it stays disabled so checkout lists one method.
+$pwi_settings            = (array) get_option( 'woocommerce_pwi_settings', array() );
+$pwi_settings['enabled'] = 'no';
+update_option( 'woocommerce_pwi_settings', $pwi_settings );
+
 // Classic checkout is the pilot decision; supported hooks remain available and iyzico renders here.
 $checkout_id = (int) wc_get_page_id( 'checkout' );
 if ( $checkout_id > 0 ) {

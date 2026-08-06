@@ -1,6 +1,8 @@
-.woocommerce-checkout .kuka-main .ct-container {
-  max-width: var(--measure-content);
-  padding-inline: var(--content-gutter);
+/* Ödeme sayfası — Jacquemus referanslı iki kolon.
+   Ölçü ailesi sepetle aynı: sayfa .kuka-content-page üzerinden 1200px'e
+   ortalanır, .kuka-prose'un 760px okuma genişliği burada geçersizdir. */
+.woocommerce-checkout .kuka-prose {
+  max-width: none;
 }
 
 .woocommerce-checkout .entry-title {
@@ -11,42 +13,674 @@
   letter-spacing: var(--tracking-tight);
 }
 
-.woocommerce-checkout form.checkout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(var(--measure-product-info), 0.7fr);
-  gap: var(--space-8);
+/* Bölüm başlıklarını tema kuruyor; WooCommerce'in "Fatura detayları" h3'ü
+   şablon kopyalamadan devre dışı bırakılır. */
+.woocommerce-checkout .woocommerce-billing-fields > h3:not(.kuka-checkout-section) {
+  display: none;
 }
 
-.woocommerce-checkout #customer_details,
-.woocommerce-checkout #order_review_heading,
-.woocommerce-checkout #order_review {
+/* ---------- Adım göstergesi ---------- */
+
+.kuka-checkout-steps {
+  padding-bottom: var(--space-3);
+  border-bottom: var(--stroke) solid var(--color-line);
+}
+
+.kuka-checkout-steps ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kuka-checkout-steps__item > a,
+.kuka-checkout-steps__item > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.kuka-checkout-steps__item--done > a {
+  color: var(--color-ink);
+}
+
+.kuka-checkout-steps__item--current > span {
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+
+.kuka-checkout-steps__item--current .kuka-checkout-steps__label {
+  border-bottom: var(--focus-outline-width) solid var(--color-ink);
+}
+
+.kuka-checkout-steps__count {
+  color: var(--color-muted);
+}
+
+/* ---------- İki kolon ---------- */
+
+.woocommerce-checkout form.checkout.kuka-checkout__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-product-info));
+  align-items: start;
+  gap: var(--space-8);
+  margin-top: var(--space-6);
+}
+
+.kuka-checkout__fields {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+/* Sağ kolon masaüstünde sabit kalır: grid alanı sol kolon kadar uzun,
+   align-self:start ile kutu içerik boyunda kaldığı için sticky çalışır.
+   Üst boşluk, sayfa kaydırılınca sabitlenen header'ı kadar. */
+.kuka-checkout__summary {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-2));
+  min-width: 0;
+  padding-inline-start: var(--space-6);
+  border-inline-start: var(--stroke) solid var(--color-line);
+}
+
+/* Blocksy kendi sipariş özeti sarmalayıcısını kanca çiftiyle basıyor; kutu
+   çizgisi ve iç boşluğu buradaki sade düzenle çakışıyor. */
+.woocommerce-checkout .ct-order-review {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* ---------- Özet başlığı ---------- */
+
+.kuka-checkout-summary__toggle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.kuka-checkout-summary__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.kuka-checkout-summary__total {
+  margin-inline-start: auto;
+  font-size: var(--text-body);
+  letter-spacing: normal;
+}
+
+.kuka-checkout-summary__toggle::after {
+  content: "↘";
+  color: var(--color-muted);
+  transition: transform var(--duration-normal) var(--ease-standard);
+}
+
+.kuka-checkout-summary[open] > .kuka-checkout-summary__toggle::after {
+  transform: rotate(-90deg);
+}
+
+/* ---------- Sipariş özeti tablosu ----------
+   Blocksy tüm WooCommerce hücrelerine kenarlık verdiği için tablo iskeleti
+   yüksek özgüllükle sıfırlanır, satır düzeni sonra kurulur. */
+
+.woocommerce-checkout table.kuka-summary {
+  width: 100%;
+  margin-top: var(--space-3);
+  border: 0;
+  background: transparent;
+}
+
+.woocommerce-checkout table.kuka-summary thead,
+.woocommerce-checkout table.kuka-summary tbody,
+.woocommerce-checkout table.kuka-summary tfoot,
+.woocommerce-checkout table.kuka-summary tr {
+  display: block;
+  width: 100%;
+  border: 0;
+}
+
+.woocommerce-checkout table.kuka-summary th,
+.woocommerce-checkout table.kuka-summary td {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: start;
+  font-weight: inherit;
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__head th {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--stroke) solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.woocommerce-checkout table.kuka-summary .kuka-summary__edit {
+  color: var(--color-ink);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: var(--stroke) solid var(--color-line);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__item .product-name {
+  display: flex;
+  align-items: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.kuka-summary__thumb {
+  flex: 0 0 auto;
+  width: var(--space-8);
+}
+
+.kuka-summary__thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: var(--ratio-product-card);
+  object-fit: cover;
+}
+
+.kuka-summary__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.kuka-summary__name {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+.kuka-summary__attrs {
+  display: contents;
+}
+
+.kuka-summary__attr {
+  display: flex;
+  gap: var(--space-0-5);
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+
+.kuka-summary__attr > span::after {
+  content: ":";
+}
+
+.woocommerce-checkout table.kuka-summary td.kuka-summary__price {
+  align-self: start;
+  text-align: end;
+  white-space: nowrap;
+  font-size: var(--text-body);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__row,
+.woocommerce-checkout table.kuka-summary tr.woocommerce-shipping-totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+  font-size: var(--text-body);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__row th,
+.woocommerce-checkout table.kuka-summary tr.woocommerce-shipping-totals th {
+  color: var(--color-muted);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__row td,
+.woocommerce-checkout table.kuka-summary tr.woocommerce-shipping-totals td {
+  text-align: end;
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__row td {
+  white-space: nowrap;
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__row--discount td {
+  color: var(--color-success);
+}
+
+.kuka-summary__row--discount .woocommerce-remove-coupon {
+  display: inline-block;
+  margin-inline-start: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Gönderim satırı WooCommerce'in cart-shipping şablonundan gelir; yalnız
+   hizalama ve tipografi markaya çekilir. */
+.woocommerce-checkout table.kuka-summary ul#shipping_method {
+  display: grid;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.woocommerce-checkout table.kuka-summary ul#shipping_method li {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.woocommerce-checkout table.kuka-summary ul#shipping_method label {
+  white-space: normal;
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__note-row td {
+  padding-block: var(--space-1);
+}
+
+.kuka-summary__note {
+  margin: 0;
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__total-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: var(--stroke) solid var(--color-ink);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__total-row th {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__total-row td {
+  text-align: end;
+  font-size: var(--text-body-large);
+  font-weight: var(--weight-medium);
+}
+
+.kuka-summary__tax-note {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-regular);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* ---------- Kupon ---------- */
+
+.woocommerce-checkout table.kuka-summary tr.kuka-summary__coupon-row td {
+  padding-block: var(--space-2);
+  border-bottom: var(--stroke) solid var(--color-line);
+}
+
+.kuka-coupon__toggle {
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--text-caption);
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-0-5);
+}
+
+.kuka-coupon__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.kuka-coupon__body {
+  margin-top: var(--space-2);
+}
+
+.kuka-coupon__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.kuka-coupon__row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: end;
+}
+
+.kuka-coupon__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--control);
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--stroke) solid var(--color-line);
+  border-radius: 0;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  text-transform: uppercase;
+}
+
+.kuka-coupon__input:focus {
+  border-bottom-width: var(--focus-outline-width);
+  border-bottom-color: var(--color-ink);
+}
+
+.kuka-coupon__submit {
+  flex: 0 0 auto;
+  min-height: var(--control);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  color: var(--color-ink);
+  border: var(--stroke) solid var(--color-ink);
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.kuka-coupon__submit:hover {
+  background: var(--color-ink);
+  color: var(--color-white);
+}
+
+.kuka-coupon__error {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-error);
+}
+
+/* ---------- Özet altındaki akordiyonlar ---------- */
+
+.kuka-checkout-help {
+  margin-top: var(--space-3);
+  border-top: var(--stroke) solid var(--color-line);
+}
+
+.kuka-checkout-help__item {
+  border-bottom: var(--stroke) solid var(--color-line);
+}
+
+.kuka-checkout-help__item > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.kuka-checkout-help__item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kuka-checkout-help__item > summary::after {
+  content: "↘";
+  color: var(--color-muted);
+  transition: transform var(--duration-normal) var(--ease-standard);
+}
+
+.kuka-checkout-help__item[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+/* Açılış ve kapanış geçişi global.css'teki ::details-content kuralında. */
+.kuka-checkout-help__item > .kuka-faq__panel > p {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  color: var(--color-muted);
+}
+
+.kuka-checkout-help__item a {
+  color: var(--color-ink);
+}
+
+/* ---------- Form kolonu ---------- */
+
+.woocommerce-checkout .col2-set,
+.woocommerce-checkout .col2-set .col-1,
+.woocommerce-checkout .col2-set .col-2 {
   float: none;
   width: auto;
+  padding: 0;
 }
 
-.woocommerce-checkout #order_review_heading,
-.woocommerce-checkout #order_review {
+.kuka-checkout-section {
+  display: block;
+  margin: var(--space-6) 0 var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--stroke) solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+.kuka-checkout-section--first {
+  margin-top: 0;
+}
+
+/* Başlık satırları .form-row olarak üretilir: WooCommerce'in adres i18n
+   betiği yalnız .form-row öğelerini data-priority'ye göre sıralayıp yeniden
+   ekliyor; başlık .form-row olmasa grubundan kopup listenin başına düşerdi. */
+.kuka-checkout-heading {
+  margin: 0;
+}
+
+.woocommerce-billing-fields__field-wrapper,
+.woocommerce-shipping-fields__field-wrapper,
+.woocommerce-additional-fields__field-wrapper {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row {
+  float: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  grid-column: 1 / -1;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row-first {
+  grid-column: 1;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row-last {
   grid-column: 2;
 }
 
-.woocommerce-checkout #order_review_heading {
-  grid-row: 1;
+.woocommerce-checkout .kuka-checkout__fields .kuka-checkout-section,
+.woocommerce-checkout .kuka-checkout__fields .kuka-checkout-toggle {
+  grid-column: 1 / -1;
 }
 
-.woocommerce-checkout #billing_customer_type_field {
-  float: none;
+.woocommerce-checkout .kuka-checkout__fields .form-row label {
+  display: block;
+  margin-bottom: var(--space-0-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row .required {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row .optional {
+  color: var(--color-muted);
+}
+
+/* Jacquemus dili: kutu yok, yalnız alt çizgi. Odakta çizgi kalınlaşır ve
+   marka rengine döner; genel :focus-visible halkası ayrıca korunur. */
+.woocommerce-checkout .kuka-checkout__fields .form-row input.input-text,
+.woocommerce-checkout .kuka-checkout__fields .form-row textarea,
+.woocommerce-checkout .kuka-checkout__fields .form-row select {
   width: 100%;
-  clear: both;
-}
-
-.woocommerce-checkout .form-row input.input-text,
-.woocommerce-checkout .form-row select {
   min-height: var(--control-large);
-  padding: var(--space-1);
+  padding: var(--space-1) 0;
   background: transparent;
-  border: var(--stroke) solid var(--color-line);
+  border: 0;
+  border-bottom: var(--stroke) solid var(--color-line);
+  border-radius: 0;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
 }
 
+.woocommerce-checkout .kuka-checkout__fields .form-row textarea {
+  min-height: var(--space-12);
+  resize: vertical;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row input.input-text:focus,
+.woocommerce-checkout .kuka-checkout__fields .form-row textarea:focus,
+.woocommerce-checkout .kuka-checkout__fields .form-row select:focus {
+  border-bottom-width: var(--focus-outline-width);
+  border-bottom-color: var(--color-ink);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row input.input-text::placeholder,
+.woocommerce-checkout .kuka-checkout__fields .form-row textarea::placeholder {
+  color: var(--color-muted);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .woocommerce-input-wrapper {
+  display: block;
+}
+
+/* Chevron pseudo elemanla çizilir; data URI kullanılsaydı token dışı bir renk
+   değeri girerdi. select2 kendi okunu çizdiği için orada tekrarlanmaz. */
+.woocommerce-checkout .kuka-checkout__fields .form-row select {
+  appearance: none;
+  padding-inline-end: var(--space-3);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .woocommerce-input-wrapper:has(select:not(.select2-hidden-accessible)) {
+  position: relative;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .woocommerce-input-wrapper:has(select:not(.select2-hidden-accessible))::after {
+  content: "▾";
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+/* select2 (ülke/şehir) aynı alt çizgi diline çekilir. */
+.woocommerce-checkout .kuka-checkout__fields .select2-container--default .select2-selection--single {
+  height: var(--control-large);
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--stroke) solid var(--color-line);
+  border-radius: 0;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding: 0;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 100%;
+  inset-inline-end: 0;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .select2-container--open .select2-selection--single {
+  border-bottom-width: var(--focus-outline-width);
+  border-bottom-color: var(--color-ink);
+}
+
+.kuka-checkout-toggle {
+  margin: var(--space-2) 0 0;
+}
+
+.woocommerce-checkout .kuka-checkout__fields .kuka-checkout-toggle label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.kuka-checkout-toggle input {
+  width: var(--space-2);
+  height: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* Kurumsal fatura alanları JS gelene kadar açık kalır; §10.6 davranışı. */
 .kuka-checkout-enhanced:not(.kuka-corporate) .kuka-corporate-field {
   display: none !important;
 }
@@ -55,44 +689,166 @@
   display: block !important;
 }
 
-.kuka-corporate #billing_company_field {
-  float: none;
-  width: 100%;
+.woocommerce-checkout .kuka-checkout__fields #billing_company_field {
+  grid-column: 1 / -1;
 }
 
+/* ---------- Ödeme yöntemi ---------- */
+
+.kuka-checkout__payment {
+  margin-top: var(--space-6);
+}
+
+/* Blocksy dar ekranda #payment'ı negatif kenar boşluğuyla taşırıyor; ödeme
+   bloğu kolonun içinde kalmalı, yatay taşma sıfır olmalı. */
 .woocommerce-checkout #payment {
-  background: var(--color-sand);
+  width: auto;
+  max-width: 100%;
+  margin-inline: 0;
+  padding: 0;
+  background: transparent;
   border-radius: 0;
 }
 
+.woocommerce-checkout #payment ul.payment_methods {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  list-style: none;
+}
+
+.woocommerce-checkout #payment ul.payment_methods > li {
+  position: relative;
+  padding: var(--space-2);
+  border: var(--stroke) solid var(--color-line);
+  list-style: none;
+}
+
+/* Seçili kartın kenarlığı içeriden ikinci bir çizgiyle kalınlaşır; kutu
+   ölçüsü değişmediği için satırlar zıplamaz. */
+.woocommerce-checkout #payment ul.payment_methods > li::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--stroke) solid transparent;
+  pointer-events: none;
+}
+
+.woocommerce-checkout #payment ul.payment_methods > li:has(input:checked) {
+  border-color: var(--color-ink);
+}
+
+.woocommerce-checkout #payment ul.payment_methods > li:has(input:checked)::after {
+  border-color: var(--color-ink);
+}
+
+.woocommerce-checkout #payment ul.payment_methods label {
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  color: var(--color-ink);
+}
+
+.woocommerce-checkout #payment .payment_box {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  background: transparent;
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  color: var(--color-muted);
+}
+
+.woocommerce-checkout #payment .payment_box::before {
+  display: none;
+}
+
+.woocommerce-checkout #payment .payment_box img,
+.woocommerce-checkout #payment ul.payment_methods img {
+  max-width: 100%;
+  height: auto;
+}
+
+.kuka-payment-note {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+
+/* ---------- Sözleşme onayı ---------- */
+
 .kuka-legal-consents {
   margin-block: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .kuka-legal-consents label {
   display: flex;
+  align-items: start;
   gap: var(--space-1-5);
   margin-block: var(--space-1-5);
   font-size: var(--text-caption);
+  color: var(--color-ink);
 }
 
 .kuka-legal-consents input {
-  width: var(--space-3);
-  height: var(--space-3);
+  width: var(--space-2);
+  height: var(--space-2);
+  margin-top: var(--space-0-5);
   flex: 0 0 auto;
 }
 
-.woocommerce-checkout #place_order[disabled] {
-  opacity: 0.45;
-  cursor: not-allowed;
+.kuka-legal-consents a {
+  color: var(--color-ink);
 }
 
+.woocommerce-checkout #payment .place-order {
+  margin: 0;
+  padding: 0;
+}
+
+.woocommerce-checkout #place_order {
+  width: 100%;
+}
+
+.woocommerce-checkout .woocommerce-privacy-policy-text {
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  color: var(--color-muted);
+}
+
+/* ---------- Responsive ---------- */
+
 @media (max-width: 56.25em) {
-  .woocommerce-checkout form.checkout {
-    display: block;
+  .woocommerce-checkout form.checkout.kuka-checkout__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
   }
 
-  .woocommerce-checkout #order_review_heading {
-    margin-top: var(--space-8);
+  .kuka-checkout__summary {
+    grid-column: 1;
+    grid-row: 1;
+    position: static;
+    padding-inline-start: 0;
+    padding-bottom: var(--space-3);
+    border-inline-start: 0;
+    border-bottom: var(--stroke) solid var(--color-line);
+  }
+
+  .kuka-checkout__fields {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .woocommerce-billing-fields__field-wrapper,
+  .woocommerce-shipping-fields__field-wrapper,
+  .woocommerce-additional-fields__field-wrapper {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .woocommerce-checkout .kuka-checkout__fields .form-row-first,
+  .woocommerce-checkout .kuka-checkout__fields .form-row-last {
+    grid-column: 1;
   }
 }

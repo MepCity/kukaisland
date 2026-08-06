@@ -167,8 +167,19 @@ function kuka_island_whatsapp_url(): string {
 	return class_exists( 'Kuka_Island_Core_Content' ) ? Kuka_Island_Core_Content::whatsapp_url( $phone ) : '';
 }
 
+/**
+ * Parse the panel language list. The selector only renders when more than one
+ * language is defined; a single line keeps it hidden.
+ *
+ * @return array<int, array{label:string,url:string}>
+ */
+function kuka_island_languages(): array {
+	return kuka_island_menu_lines( (string) ( kuka_island_content()['languages']['items'] ?? '' ) );
+}
+
 require_once get_stylesheet_directory() . '/inc/assets.php';
 require_once get_stylesheet_directory() . '/inc/catalog-filters.php';
+require_once get_stylesheet_directory() . '/inc/checkout.php';
 require_once get_stylesheet_directory() . '/inc/seo.php';
 require_once get_stylesheet_directory() . '/inc/storefront-panels.php';
 require_once get_stylesheet_directory() . '/inc/woocommerce.php';
