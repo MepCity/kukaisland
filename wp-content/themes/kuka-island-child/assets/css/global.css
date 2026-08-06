@@ -105,11 +105,94 @@ samp,
   color: var(--color-paper);
 }
 
+/* Kök neden: Blocksy'nin özelleştirici üreттiği global.css'i
+   --theme-palette-color-1 (#2872fa mavi) tanımlıyor; tema bunu link,
+   buton, focus halkası VE form seçim alanı (checkout ödeme yöntemi
+   radio'su gibi görsel olarak gizli input + ::before ile çizilen
+   kontroller) için taban renk yapıyor. accent-color yalnız native
+   input boyamasını hedefler — Blocksy bu radio'yu clip: rect(...) ile
+   ekrandan gizleyip yerine label::before çiziyor, o yüzden accent-color
+   hiç etkilemiyordu. Kaynağı düzeltmek §11.2'yi tüm Blocksy bileşenlerinde
+   kalıcı çözer. */
+:root {
+  --theme-palette-color-1: var(--color-ink);
+  --theme-palette-color-2: var(--color-ink-soft);
+}
+
+/* Sayfalar arası geçiş yumuşak açılır; tam sayfa yüklemesinin sert sıçraması
+   yerine içerik kısa bir kararma ile gelir. prefers-reduced-motion altında
+   animasyon süresi sıfırlanır. */
+.kuka-main {
+  animation: kuka-page-enter var(--duration-normal) var(--ease-out);
+}
+
+@keyframes kuka-page-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Açılır blokların hem açılışı hem kapanışı yumuşak akar. ::details-content
+   üzerindeki block-size geçişi `interpolate-size` sayesinde auto'ya kadar
+   interpolate edilir; `content-visibility` allow-discrete ile geçtiği için
+   kapanış da görünür. Desteklemeyen tarayıcıda blok anında açılıp kapanır ve
+   details semantiği hiçbir koşulda bozulmaz. */
+:root {
+  interpolate-size: allow-keywords;
+}
+
+.kuka-faq::details-content,
+.kuka-product-detail::details-content,
+.kuka-checkout-help__item::details-content,
+.kuka-coupon::details-content,
+.kuka-checkout-summary::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size var(--duration-normal) var(--ease-out),
+    content-visibility var(--duration-normal) allow-discrete;
+}
+
+.kuka-faq[open]::details-content,
+.kuka-product-detail[open]::details-content,
+.kuka-checkout-help__item[open]::details-content,
+.kuka-coupon[open]::details-content,
+.kuka-checkout-summary[open]::details-content {
+  block-size: auto;
+}
+
+.kuka-lang-switcher::details-content {
+  opacity: 0;
+  translate: 0 calc(-1 * var(--space-0-5));
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out),
+    content-visibility var(--duration-fast) allow-discrete;
+}
+
+.kuka-lang-switcher[open]::details-content {
+  opacity: 1;
+  translate: 0 0;
+}
+
 /* Form kontrolleri marka rengine çekilir; §11.2 aksan rengi yok. */
 input[type="checkbox"],
 input[type="radio"],
 input[type="range"],
 progress {
+  accent-color: var(--color-ink);
+}
+
+/* WooCommerce/Blocksy bazı kontrolleri -webkit-appearance ile yeniden çizer;
+   accent-color yalnız native görünümde kazanır, bu yüzden auto'ya döndür. */
+.woocommerce input[type="checkbox"],
+.woocommerce input[type="radio"],
+.woocommerce-shipping-method input[type="radio"],
+.kuka-newsletter input[type="checkbox"],
+.kuka-legal-consents input[type="checkbox"],
+.kuka-account-panel input[type="checkbox"] {
+  -webkit-appearance: auto;
+  appearance: auto;
   accent-color: var(--color-ink);
 }
 
@@ -159,11 +242,16 @@ progress {
   border: var(--stroke) solid var(--color-ink);
 }
 
+/* Kargo mesajı şeridin akışında ortalanır, dil seçici ise mutlak konumla sol
+   uca alınır. Üç sütunlu grid'de seçici geniş kaldığında ortadaki sütunu
+   ittiği için mesaj "kalan alanın ortası"na kayıyordu; mutlak konum mesajı
+   seçici görünse de görünmese de sayfanın gerçek ortasında tutar. */
 .kuka-announcement {
+  position: relative;
   min-height: var(--announcement-height);
   display: flex;
   align-items: center;
-  justify-content: space-around;
+  justify-content: center;
   gap: var(--space-2);
   padding-inline: var(--content-gutter);
   background: var(--color-ink);
@@ -173,6 +261,99 @@ progress {
   line-height: 1;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+}
+
+/* Dil seçici şeridin sağ ucunda durur. Dikey ortalama transform yerine inset
+   ile yapılır: transform yığın bağlamı açtığı için açılır liste header'ın
+   altında kalıyordu. */
+.kuka-announcement__lang {
+  position: absolute;
+  inset-inline-end: var(--content-gutter);
+  inset-block: 0;
+  z-index: var(--layer-overlay);
+  display: flex;
+  align-items: center;
+}
+
+.kuka-announcement__message {
+  text-align: center;
+}
+
+/* Dar ekranda seçici mesajın üstüne kendi satırına çıkar; iki öğe yan yana
+   sığmadığı hâlde mesaj sayfa ortasında kalır. */
+@media (max-width: 47.5em) {
+  .kuka-announcement:has(.kuka-lang-switcher) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-0-5);
+    padding-block: var(--space-0-5);
+  }
+
+  .kuka-announcement:has(.kuka-lang-switcher) .kuka-announcement__lang {
+    position: static;
+    justify-content: flex-end;
+  }
+}
+
+.kuka-lang-switcher {
+  position: relative;
+}
+
+.kuka-lang-switcher__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  cursor: pointer;
+  color: var(--color-white);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  list-style: none;
+}
+
+.kuka-lang-switcher__button::-webkit-details-marker {
+  display: none;
+}
+
+.kuka-lang-switcher__button::after {
+  content: "▾";
+  font-size: var(--text-micro);
+  color: var(--color-muted-on-ink);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.kuka-lang-switcher[open] .kuka-lang-switcher__button::after {
+  transform: rotate(180deg);
+}
+
+/* Açılır liste koyu şeridin üstünde açık bir kart olarak durur: tek ince
+   çizgi, çerçevesiz tipografi, yumuşak giriş. */
+.kuka-lang-switcher__list {
+  position: absolute;
+  top: calc(100% + var(--space-0-5));
+  right: calc(-1 * var(--space-1));
+  z-index: var(--layer-overlay);
+  margin: 0;
+  padding: var(--space-0-5) 0;
+  min-width: var(--space-12);
+  list-style: none;
+  background: var(--color-paper);
+  border: var(--stroke) solid var(--color-line);
+}
+
+.kuka-lang-switcher__list a {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.kuka-lang-switcher__list a:hover,
+.kuka-lang-switcher__list a:focus-visible,
+.kuka-lang-switcher__list a[aria-current] {
+  color: var(--color-ink);
 }
 
 .kuka-header {
@@ -207,8 +388,30 @@ progress {
   backdrop-filter: blur(var(--space-1-5));
 }
 
+/* Ödeme adımında menü ve arama yerine tek çıkış yolu kalır. */
+.kuka-header-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  justify-self: start;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.kuka-header-back:hover {
+  text-decoration: underline;
+  text-underline-offset: var(--space-0-5);
+}
+
 .kuka-logo {
   justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: inherit;
   font-size: var(--text-body-large);
   font-weight: 620;
@@ -220,6 +423,20 @@ progress {
 .kuka-logo img {
   width: auto;
   max-height: var(--space-4);
+}
+
+.kuka-logo__emblem-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.kuka-logo__emblem {
+  height: var(--icon-size);
+  width: auto;
+}
+
+.kuka-logo__emblem-wrap--mirror {
+  transform: scaleX(-1);
 }
 
 .kuka-desktop-nav {
@@ -325,10 +542,12 @@ progress {
   height: var(--icon-size);
 }
 
+/* Sepet düğmesi ikon + sayaç taşıdığı için genişliği içeriğe uyar; iç boşluk
+   iki yanda eşit olmalı, yoksa hover zemini içeriği ortalamaz. */
 .kuka-bag-button {
   width: auto;
   gap: var(--space-0-5);
-  padding-left: var(--space-1);
+  padding-inline: var(--space-1);
 }
 
 .kuka-cart-count {
@@ -390,6 +609,73 @@ progress {
   display: flex;
   flex-direction: column;
   transform: translateX(105%);
+}
+
+/* Arama paneli: aynı yan panel iskeleti, alt çizgili tek alan. */
+.kuka-search-form {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-3) var(--space-3);
+}
+
+.kuka-search-form__label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.kuka-search-panel .kuka-search-form__field {
+  width: 100%;
+  min-height: var(--control-large);
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--stroke) solid var(--color-line);
+  border-radius: 0;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-large);
+}
+
+.kuka-search-form__field:focus {
+  border-bottom-width: var(--focus-outline-width);
+  border-bottom-color: var(--color-ink);
+}
+
+.kuka-search-form__field::placeholder {
+  color: var(--color-muted);
+}
+
+.kuka-search-form__submit {
+  justify-self: start;
+  margin-top: var(--space-2);
+}
+
+.kuka-search-panel__suggestions {
+  padding: 0 var(--space-3) var(--space-4);
+}
+
+.kuka-search-panel__suggestions ul {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.kuka-search-panel__suggestions a {
+  display: block;
+  padding-block: var(--space-0-5);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.kuka-search-panel__suggestions a:hover,
+.kuka-search-panel__suggestions a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: var(--space-0-5);
 }
 
 .kuka-panel-head {
@@ -736,30 +1022,82 @@ progress {
 }
 
 /* Yüzen WhatsApp destek düğmesi — sade, marka renginde; checkout'ta gizli. */
+/* Yüzen WhatsApp düğmesi sitenin çerçeveli düğme diliyle aynı: kâğıt zemin,
+   tek ince mürekkep çizgisi, üstüne gelince dolan zemin. Etiket sütunu
+   0fr → 1fr akar; sabit bir genişlik verilmediği için metin hiçbir dilde
+   kırpılmaz. */
 .kuka-whatsapp-fab {
   position: fixed;
   right: var(--content-gutter);
   bottom: var(--space-3);
   z-index: var(--layer-overlay);
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto 0fr;
   align-items: center;
-  justify-content: center;
-  width: var(--control-large);
-  height: var(--control-large);
-  color: var(--color-white);
-  background: var(--color-ink);
+  min-width: var(--control-large);
+  min-height: var(--control-large);
+  padding: var(--space-1-5);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: var(--stroke) solid var(--color-ink);
   text-decoration: none;
-  transition: transform var(--duration-fast) var(--ease-out);
+  transition:
+    grid-template-columns var(--duration-normal) var(--ease-out),
+    background var(--duration-normal) var(--ease-standard),
+    color var(--duration-normal) var(--ease-standard);
+}
+
+.kuka-whatsapp-fab__label {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  transition: opacity var(--duration-normal) var(--ease-out), padding var(--duration-normal) var(--ease-out);
 }
 
 .kuka-whatsapp-fab:hover,
 .kuka-whatsapp-fab:focus-visible {
+  grid-template-columns: auto 1fr;
   color: var(--color-white);
-  transform: translateY(calc(-1 * var(--space-0-5)));
+  background: var(--color-ink);
+}
+
+.kuka-whatsapp-fab:hover .kuka-whatsapp-fab__label,
+.kuka-whatsapp-fab:focus-visible .kuka-whatsapp-fab__label {
+  padding-inline-start: var(--space-1);
+  opacity: 1;
 }
 
 .woocommerce-checkout .kuka-whatsapp-fab {
   display: none;
+}
+
+/* Nextend Social Login butonları marka diline çekilir (§11.2 aksan yok).
+   Eklenti panelden yapılandırılmadıysa buton hiç render olmaz. */
+.nsl-container {
+  margin-top: var(--space-3);
+}
+
+.nsl-container-block .nsl-button {
+  background: var(--color-ink) !important;
+  color: var(--color-white) !important;
+  border: var(--stroke) solid var(--color-ink) !important;
+  border-radius: 0 !important;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.nsl-container-block .nsl-button:hover,
+.nsl-container-block .nsl-button:focus-visible {
+  background: var(--color-ink-soft) !important;
+  border-color: var(--color-ink-soft) !important;
+  color: var(--color-white) !important;
 }
 
 .kuka-newsletter {
@@ -879,7 +1217,8 @@ progress {
     display: inline-flex;
   }
 
-  .kuka-header-actions > a:not(.kuka-bag-button):not(.kuka-account-button) {
+  /* Arama dar ekranda da erişilebilir kalır; gizlenecek başka eylem yok. */
+  .kuka-header-actions > a:not(.kuka-bag-button):not(.kuka-account-button):not(.kuka-search-button) {
     display: none;
   }
 
@@ -890,10 +1229,6 @@ progress {
 }
 
 @media (max-width: 47.5em) {
-  .kuka-announcement span:not(:first-child) {
-    display: none;
-  }
-
   .kuka-section {
     padding-block: var(--space-8);
   }
@@ -978,7 +1313,8 @@ progress {
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  *::details-content {
     scroll-behavior: auto !important;
     transition-duration: 0s !important;
     animation-duration: 0s !important;
