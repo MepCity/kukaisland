@@ -6,6 +6,14 @@
   let activeTrigger = null;
   let activeOverlay = null;
 
+  // Panel fareyle kapatıldığında tetikleyiciye programatik odak vermek Chrome'da
+  // :focus-visible halkasını bırakıyor ve düğmenin üstünde kalıcı bir kutu gibi
+  // görünüyordu. Klavye kullanıcısı için odak dönüşü şart olduğundan yalnız son
+  // etkileşim işaretleyiciyse odak geri verilir.
+  let pointerModality = false;
+  document.addEventListener("pointerdown", () => { pointerModality = true; }, true);
+  document.addEventListener("keydown", () => { pointerModality = false; }, true);
+
   const closePanel = (restoreFocus = true) => {
     if (!activePanel) return;
 	const closedPanel = activePanel;
@@ -37,7 +45,13 @@
     if (activeOverlay) activeOverlay.hidden = false;
     document.body.classList.add("kuka-panel-open");
 	document.dispatchEvent(new CustomEvent("kuka:panel-opened", { detail: { panel, trigger } }));
-    window.requestAnimationFrame(() => [...panel.querySelectorAll(focusableSelector)].find((node) => node.getClientRects().length && node.getAttribute("aria-hidden") !== "true")?.focus());
+    // Panelin kendi belirttiği alan varsa odak oraya gider (arama kutusu gibi),
+    // yoksa ilk odaklanabilir öğeye düşer.
+    window.requestAnimationFrame(() => {
+      const preferred = panel.querySelector("[data-panel-autofocus]");
+      const fallback = [...panel.querySelectorAll(focusableSelector)].find((node) => node.getClientRects().length && node.getAttribute("aria-hidden") !== "true");
+      (preferred || fallback)?.focus();
+    });
   };
 
   document.addEventListener("click", (event) => {
@@ -80,6 +94,40 @@
       first.focus();
     }
   });
+
+  // Dil seçici <details> ile JS'siz de açılır. Buradaki katman panel
+  // erişilebilirlik sözleşmesini tamamlar: aria-expanded senkronu, Escape ile
+  // kapanma ve odağın düğmeye dönmesi.
+  const langSwitchers = [...document.querySelectorAll("[data-lang-switcher]")];
+  const closeLangSwitcher = (details, restoreFocus) => {
+    if (!details.open) return;
+    details.open = false;
+    if (restoreFocus) details.querySelector("summary")?.focus();
+  };
+  langSwitchers.forEach((details) => {
+    details.addEventListener("toggle", () => {
+      details.querySelector("summary")?.setAttribute("aria-expanded", String(details.open));
+    });
+  });
+  if (langSwitchers.length) {
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const open = langSwitchers.find((details) => details.open);
+      if (!open) return;
+      event.preventDefault();
+      closeLangSwitcher(open, true);
+    });
+    document.addEventListener("focusin", (event) => {
+      langSwitchers.forEach((details) => {
+        if (!details.contains(event.target)) closeLangSwitcher(details, false);
+      });
+    });
+    document.addEventListener("click", (event) => {
+      langSwitchers.forEach((details) => {
+        if (!details.contains(event.target)) closeLangSwitcher(details, false);
+      });
+    });
+  }
 
   const header = document.querySelector("[data-site-header]");
   const syncHeader = () => header?.classList.toggle("is-scrolled", window.scrollY > 16);
