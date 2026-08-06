@@ -25,8 +25,34 @@ panel_handlers=$(search_count 'let activePanel' wp-content/themes/kuka-island-ch
 duplicate_lightbox=$(search_count 'inert|event.key === "Tab"|event.key === "Escape"' wp-content/themes/kuka-island-child/assets/js/product.js)
 cart_fragments=$(search_count 'woocommerce_add_to_cart_fragments' wp-content/themes/kuka-island-child)
 overflow_masks=$(search_count 'overflow-x:[[:space:]]*(hidden|clip)' wp-content/themes/kuka-island-child/assets/css/global.css)
-raw_colors=$(find wp-content/themes/kuka-island-child/assets/css -name '*.css' ! -name tokens.css -exec grep -En '#[0-9a-fA-F]{3,8}|rgba?\(' {} + 2>/dev/null | wc -l | tr -d ' ')
-raw_px=$(find wp-content/themes/kuka-island-child/assets/css -name '*.css' ! -name tokens.css -exec grep -En '[0-9]+(\.[0-9]+)?px' {} + 2>/dev/null | wc -l | tr -d ' ')
+# Token disiplini bildirimler üzerinde ölçülür: yorum blokları ayıklanır,
+# böylece bir kuralın neden yazıldığını anlatan açıklamadaki "760px" ya da
+# "#2872fa" gibi alıntılar ihlal sayılmaz. Eşik yine 0'dır.
+css_declarations=$(mktemp)
+find wp-content/themes/kuka-island-child/assets/css -name '*.css' ! -name tokens.css -exec awk '
+  {
+    line = $0
+    out = ""
+    while (1) {
+      if (in_comment) {
+        i = index(line, "*/")
+        if (i == 0) { line = ""; break }
+        in_comment = 0
+        line = substr(line, i + 2)
+      } else {
+        i = index(line, "/*")
+        if (i == 0) { out = out line; break }
+        out = out substr(line, 1, i - 1)
+        in_comment = 1
+        line = substr(line, i + 2)
+      }
+    }
+    print out
+  }
+' {} + > "$css_declarations"
+raw_colors=$(grep -En '#[0-9a-fA-F]{3,8}|rgba?\(' "$css_declarations" 2>/dev/null | wc -l | tr -d ' ')
+raw_px=$(grep -Ev '^[[:space:]]*@media' "$css_declarations" | grep -En '[0-9]+(\.[0-9]+)?px' 2>/dev/null | wc -l | tr -d ' ')
+rm "$css_declarations"
 shadows=$(search_count 'box-shadow|drop-shadow' wp-content/themes/kuka-island-child/assets/css)
 locked_controls=$(search_count "'font_(family|size)'|'grid_columns'|'breakpoint'|'animation_duration'|'product_card_ratio'" wp-content/plugins/kuka-island-core/includes/class-site-appearance.php)
 used_tokens=$(mktemp)
