@@ -77,14 +77,17 @@ final class Kuka_Island_Core_Site_Appearance {
 	public static function defaults(): array {
 		return array(
 			'brand' => array(
-				'logo_id' => 0, 'mobile_logo_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
+				'logo_id' => 0, 'mobile_logo_id' => 0, 'emblem_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
 				'email' => 'hello@kukaisland.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
 				'social_links' => 'Instagram|https://www.instagram.com/kukaisland',
 			),
 			'announcement' => array(
 				'enabled' => true,
-				'items' => array( '1.500 TL üzeri siparişlerde ücretsiz kargo', 'Kolay değişim desteği', 'Güvenli ödeme' ),
-				'link_labels' => array( '', '', '' ), 'link_urls' => array( '', '', '' ),
+				'items' => array( '1.500 TL üzeri siparişlerde ücretsiz kargo' ),
+				'link_labels' => array( '' ), 'link_urls' => array( '' ),
+			),
+			'languages' => array(
+				'items' => '',
 			),
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
@@ -165,6 +168,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'fields' => array(
 					'logo_id'               => array( __( 'Logo', 'kuka-island-core' ), 'media_image' ),
 					'mobile_logo_id'        => array( __( 'Mobil logo', 'kuka-island-core' ), 'media_image' ),
+					'emblem_id'             => array( __( 'Amblem (logoyla gösterilmez; boşsa palmiye SVG kullanılır)', 'kuka-island-core' ), 'media_image' ),
 					'favicon_id'            => array( __( 'Favicon', 'kuka-island-core' ), 'media_image' ),
 					'social_share_image_id' => array( __( 'Sosyal paylaşım görseli', 'kuka-island-core' ), 'media_image' ),
 					'email'                 => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
@@ -177,9 +181,15 @@ final class Kuka_Island_Core_Site_Appearance {
 				'label'  => __( '2. Duyuru Bandı', 'kuka-island-core' ),
 				'fields' => array(
 					'enabled' => array( __( 'Bandı göster', 'kuka-island-core' ), 'checkbox' ),
-					'items'   => array( __( 'Duyurular (satır başına bir, en fazla 3)', 'kuka-island-core' ), 'lines' ),
+					'items'   => array( __( 'Duyuru (tek satır, ortalanır)', 'kuka-island-core' ), 'lines' ),
 					'link_labels' => array( __( 'Duyuru bağlantı etiketleri (satır sırasıyla)', 'kuka-island-core' ), 'lines' ),
 					'link_urls' => array( __( 'Duyuru bağlantı URL’leri (satır sırasıyla)', 'kuka-island-core' ), 'url_lines' ),
+				),
+			),
+			'languages' => array(
+				'label'  => __( 'Dil Seçici', 'kuka-island-core' ),
+				'fields' => array(
+					'items' => array( __( 'Diller (Etiket|URL öneki) — tek satır seçici gizlenir', 'kuka-island-core' ), 'link_lines' ),
 				),
 			),
 			'hero'         => array(
