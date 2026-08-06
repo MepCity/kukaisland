@@ -1,11 +1,11 @@
-.woocommerce-cart .kuka-main .ct-container {
-  max-width: var(--measure-wide);
-  padding-inline: var(--content-gutter);
-}
-
-.woocommerce-account .kuka-main .ct-container {
-  max-width: var(--measure-content);
-  padding-inline: var(--content-gutter);
+/* .kuka-prose'un varsayılan 760px "okuma genişliği" (--measure-table) düz
+   metin/SSS içeriği için doğru, ama sepetin iki kolonlu tablo+toplam grid'i
+   için çok dar — toplamlar sütununu ~217px'e, ürün adını ~200px'e sıkıştırıp
+   "Beden:" gibi kısa kelimeleri bile satır ortasından bölüyordu. Sayfanın
+   kendi üst sınırı zaten .kuka-content-page üzerinden geliyor. */
+.woocommerce-cart .kuka-prose,
+.woocommerce-account .kuka-prose {
+  max-width: none;
 }
 
 .woocommerce-cart .entry-title,
@@ -17,27 +17,30 @@
   letter-spacing: var(--tracking-tight);
 }
 
-/* Sepet sayfası — WooCommerce tablosunu sol, toplamları sağ kolona böl. */
-.woocommerce-cart .kuka-main .woocommerce {
+/* Sepet iskeleti — Blocksy'nin cart.php şablonu totalları ".cart-collaterals"
+   sarmalayıcısına koymaz; form ve ".cart_totals" ".ct-woocommerce-cart-form"
+   içinde doğrudan kardeştir. Bildirimler ve cross-sell bu sarmalayıcının
+   dışında kaldığı için otomatik tam genişlik akar; grid'i doğru düzeyde kur. */
+.woocommerce-cart .ct-woocommerce-cart-form {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(var(--measure-copy-narrow), 0.7fr);
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 0.75fr);
   align-items: start;
   gap: var(--space-8);
 }
 
-.woocommerce-cart .woocommerce-cart-form,
-.woocommerce-cart .cart-collaterals .cross-sells {
+.woocommerce-cart .ct-woocommerce-cart-form > .woocommerce-cart-form {
   grid-column: 1;
+  min-width: 0;
 }
 
-.woocommerce-cart .cart-collaterals {
+.woocommerce-cart .ct-woocommerce-cart-form > .cart_totals {
   grid-column: 2;
-  grid-row: 1;
-  display: contents;
+  min-width: 0;
 }
 
-.woocommerce-cart .cart-collaterals .cross-sells {
-  grid-row: 2;
+/* Bu mağazada cross-sell bağlanmadı; olası çıktıyı gizle ki toplamlara karışmasın. */
+.woocommerce-cart .cross-sells {
+  display: none;
 }
 
 .woocommerce table.shop_table {
@@ -58,6 +61,12 @@
   vertical-align: middle;
 }
 
+.woocommerce-cart table.cart {
+  width: 100%;
+  min-width: 0;
+  table-layout: auto;
+}
+
 .woocommerce-cart table.cart .product-remove {
   width: var(--space-4);
   min-width: var(--space-4);
@@ -65,8 +74,8 @@
 }
 
 .woocommerce-cart table.cart .product-thumbnail {
-  width: var(--space-12);
-  min-width: var(--space-12);
+  width: var(--space-8);
+  min-width: var(--space-8);
 }
 
 .woocommerce-cart table.cart .product-price,
@@ -76,7 +85,7 @@
 }
 
 .woocommerce-cart table.cart .product-name {
-  min-width: var(--measure-copy);
+  min-width: 0;
 }
 
 .woocommerce-cart table.cart thead th {
@@ -89,7 +98,7 @@
 }
 
 .woocommerce-cart table.cart img {
-  width: var(--space-12);
+  width: var(--space-8);
   aspect-ratio: var(--ratio-product-card);
   object-fit: cover;
 }
@@ -103,21 +112,27 @@
 
 .woocommerce-cart .product-name .variation dt {
   display: inline;
+  float: none;
+  clear: none;
   margin: 0;
 }
 
 .woocommerce-cart .product-name .variation dd {
   display: inline;
-  margin: 0 var(--space-1) 0 var(--space-0-5);
+  float: none;
+  clear: none;
+  margin: 0 var(--space-0-5);
 }
 
 .woocommerce-cart .product-name .variation dd::after {
-  content: " · ";
+  content: "·";
+  margin-left: var(--space-0-5);
   color: var(--color-line);
 }
 
 .woocommerce-cart .product-name .variation dd:last-of-type::after {
   content: "";
+  margin-left: 0;
 }
 
 .woocommerce-cart .product-name .variation p {
@@ -132,26 +147,62 @@
   color: var(--color-muted);
 }
 
-/* Kupon ve "Sepeti güncelle" aynı satırda, WooCommerce float'ını grid ez. */
-.woocommerce-cart .woocommerce-cart-form .actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+/* Blocksy 1000px altında gerçek adet/ara toplam/kaldır hücrelerini gizler
+   (bkz. woocommerce.min.css "tr>.product-quantity" kuralı) ve bunun yerine
+   ürün adı hücresine gömülü bu kopya kontrolü gösterir — biri her zaman
+   tek başına görünür, ikisi asla aynı anda değil. ≥1000px'te masaüstünde
+   ayrı sütunlar zaten var, kopyayı burada gizle. */
+@media (min-width: 62.5em) {
+  .woocommerce-cart .product-name .price,
+  .woocommerce-cart .product-name .product-mobile-actions {
+    display: none;
+  }
+}
+
+.woocommerce-cart .product-name .product-mobile-actions {
+  margin-top: var(--space-2);
+  display: flex;
   align-items: center;
   gap: var(--space-2);
+  font-size: var(--text-caption);
+}
+
+.woocommerce-cart .product-name .product-mobile-actions .ct-product-multiply-symbol {
+  color: var(--color-muted);
+}
+
+.woocommerce-cart .product-name .product-mobile-actions .remove {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--color-ink);
+}
+
+/* Kupon ve "Sepeti güncelle" aynı satırda. Bu bir table-cell (td[colspan]);
+   display:grid/flex vermek onu tablo kolon algoritmasından çıkarıp
+   min-content'e çökertiyor (buton yazısı harf harf sarar). Table-cell
+   kalsın, hizalama float ile yapılsın — en güvenilir kombinasyon. */
+.woocommerce-cart .woocommerce-cart-form .actions {
   padding-top: var(--space-3);
   border-top: var(--stroke) solid var(--color-line);
+}
+
+.woocommerce-cart .woocommerce-cart-form .actions::after {
+  content: "";
+  display: block;
+  clear: both;
 }
 
 .woocommerce-cart .woocommerce-cart-form .actions .coupon {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
-  float: none !important;
+  float: left;
+  margin: 0;
 }
 
 .woocommerce-cart .woocommerce-cart-form .actions .coupon input[type="text"] {
   min-width: var(--space-12);
-  flex: 1;
   max-width: var(--measure-copy);
   min-height: var(--control-large);
   padding: var(--space-1);
@@ -160,9 +211,8 @@
 }
 
 .woocommerce-cart .woocommerce-cart-form .actions > .button[name="update_cart"] {
-  float: none !important;
+  float: right;
   margin: 0;
-  justify-self: end;
 }
 
 .woocommerce .quantity .qty {
@@ -171,42 +221,78 @@
   border: var(--stroke) solid var(--color-line);
 }
 
-.woocommerce .cart-collaterals .cart_totals {
+/* Adet +/− ikonları Blocksy'nin "woo" ikon fontundan glif çekiyor; açık
+   zeminde görünmez/okunaksız kalıyordu. Blocksy'nin konumlandırma ve
+   boyut mekaniğine dokunmadan yalnız glifi ve rengi markaya çek. */
+.woocommerce-cart .quantity[data-type="type-2"] {
+  --quantity-arrows-initial-color: var(--color-ink);
+  --quantity-arrows-hover-color: var(--color-white);
+  --quantity-hover-color: var(--color-ink);
+  border: var(--stroke) solid var(--color-line);
+}
+
+.woocommerce-cart .quantity[data-type="type-2"] .qty {
+  background: transparent;
+  border: 0;
+}
+
+.woocommerce-cart .quantity[data-type="type-2"] .ct-increase::before,
+.woocommerce-cart .quantity[data-type="type-2"] .ct-decrease::before {
+  content: "+";
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.woocommerce-cart .quantity[data-type="type-2"] .ct-decrease::before {
+  content: "−";
+}
+
+.woocommerce-cart .cart_totals {
   width: auto;
   padding: var(--space-3);
   background: var(--color-sand);
 }
 
-.woocommerce .cart-collaterals .cart_totals h2 {
-  font-size: var(--text-heading-small);
+.woocommerce-cart .cart_totals h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-body-large);
+  font-weight: var(--weight-medium);
 }
 
-.woocommerce .cart-collaterals .cart_totals th,
-.woocommerce .cart-collaterals .cart_totals td {
-  white-space: nowrap;
+/* Blocksy ≤689.98px'te th'yi gizler, td'yi label'ı float'lanmış bir
+   ::before'a bırakıp değeri sağa yaslar; nowrap o teknikte satırın
+   sarmasını önleyip taşmaya yol açtığı için yalnız Blocksy'nin kendi
+   masaüstü eşiğinde (≥43.125em) uygula. */
+@media (min-width: 43.125em) {
+  .woocommerce-cart .cart_totals th,
+  .woocommerce-cart .cart_totals td {
+    white-space: nowrap;
+  }
+
+  .woocommerce-cart .cart_totals .shipping td {
+    white-space: normal;
+  }
 }
 
-.woocommerce .cart-collaterals .cart_totals .shipping td {
-  white-space: normal;
-}
-
-.woocommerce .cart-collaterals .cart_totals .shipping-method {
+.woocommerce-cart .cart_totals .shipping-method {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.woocommerce .cart-collaterals .cart_totals .shipping-method li {
+.woocommerce-cart .cart_totals .shipping-method li {
   display: flex;
   gap: var(--space-1);
   align-items: baseline;
 }
 
-.woocommerce .cart-collaterals .cart_totals .shipping-method label {
+.woocommerce-cart .cart_totals .shipping-method label {
   white-space: normal;
 }
 
-.woocommerce .cart-collaterals .cart_totals .wc-proceed-to-checkout {
+.woocommerce-cart .cart_totals .wc-proceed-to-checkout {
   padding-bottom: 0;
 }
 
@@ -537,18 +623,20 @@
   display: none;
 }
 
-@media (max-width: 47.5em) {
-  .woocommerce .cart-collaterals .cart_totals {
+/* 68em eşiği 1024px'i de kart düzeninde tutar; iki kolon sadece geniş
+   masaüstünde (1280px+) tabloya yetecek kadar yer bırakır. */
+@media (max-width: 68em) {
+  .woocommerce-cart .cart_totals {
     width: 100%;
   }
 
   /* Sepet tablosu mobilde kart düzenine döner; başlıklar gizlenir,
      her hücre data-title ile etiketlenir ve tam genişlik akar. */
-  .woocommerce-cart .kuka-main .woocommerce {
+  .woocommerce-cart .ct-woocommerce-cart-form {
     display: block;
   }
 
-  .woocommerce-cart .cart-collaterals {
+  .woocommerce-cart .cart_totals {
     display: block;
     margin-top: var(--space-6);
   }
@@ -625,16 +713,33 @@
   }
 
   .woocommerce-cart table.cart .actions {
-    grid-template-columns: minmax(0, 1fr);
     padding: var(--space-3) 0 0;
   }
 
-  .woocommerce-cart table.cart .actions > .button[name="update_cart"] {
-    justify-self: stretch;
+  /* Blocksy'nin kendi ≤689.98px kuralları (flex-direction:column, input
+     width:100%) burada da devrede; genişliği belirsiz bırakmamak için
+     tüm alt öğeleri açıkça 100% yapıp kesişimi ortadan kaldır. */
+  .woocommerce-cart table.cart .actions .coupon {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    float: none;
+    width: 100%;
+    box-sizing: border-box;
   }
 
-  .woocommerce-cart table.cart .actions .coupon input[type="text"] {
+  .woocommerce-cart table.cart .actions > .button[name="update_cart"] {
+    float: none;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: var(--space-2);
+  }
+
+  .woocommerce-cart table.cart .actions .coupon input[type="text"],
+  .woocommerce-cart table.cart .actions .coupon button[type="submit"] {
+    width: 100%;
     max-width: none;
+    box-sizing: border-box;
   }
 
   .woocommerce-cart .product-thumbnail {

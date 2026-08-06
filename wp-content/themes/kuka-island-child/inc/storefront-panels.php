@@ -46,8 +46,10 @@ function kuka_island_cart_panel_item( string $cart_item_key, array $cart_item ):
 		return;
 	}
 
-	$parent    = ! empty( $cart_item['variation_id'] ) ? wc_get_product( $cart_item['product_id'] ) : false;
-	$name      = apply_filters( 'woocommerce_cart_item_name', $parent ? $parent->get_name() : $product->get_name(), $cart_item, $cart_item_key );
+	$parent = ! empty( $cart_item['variation_id'] ) ? wc_get_product( $cart_item['product_id'] ) : false;
+	// `woocommerce_cart_item_name` bu mağazada bağlantı işaretlemesi döndürüyor;
+	// panel adı kendi <a> etiketine sardığı ve metni kaçırdığı için ham ad kullanılır.
+	$name      = $parent instanceof WC_Product ? $parent->get_name() : $product->get_name();
 	$permalink = apply_filters( 'woocommerce_cart_item_permalink', $product->is_visible() ? $product->get_permalink( $cart_item ) : '', $cart_item, $cart_item_key );
 	$maximum   = $product->get_max_purchase_quantity();
 	$maximum   = $maximum < 0 ? '' : (string) $maximum;
