@@ -21,6 +21,28 @@ function kuka_island_enqueue_script( string $name, array $dependencies = array()
 	wp_enqueue_script( 'kuka-island-' . $name, get_stylesheet_directory_uri() . '/' . $relative, $dependencies, kuka_island_child_asset_version( $relative ), true );
 }
 
+/**
+ * Invalidate cached cart fragments when the panel markup changes.
+ *
+ * WooCommerce keeps the rendered cart panel in sessionStorage under
+ * `fragment_name` and only refreshes it when the cart hash changes. A theme
+ * update therefore kept showing the previous markup to returning visitors;
+ * binding the key to the panel and script mtimes retires the stale copy.
+ *
+ * @param mixed  $params Localized script data.
+ * @param string $handle Script handle.
+ * @return mixed
+ */
+function kuka_island_cart_fragment_name( $params, string $handle ) {
+	if ( 'wc-cart-fragments' !== $handle || ! is_array( $params ) ) {
+		return $params;
+	}
+	$signature               = kuka_island_child_asset_version( 'inc/storefront-panels.php' ) . '-' . kuka_island_child_asset_version( 'assets/js/cart.js' );
+	$params['fragment_name'] = 'wc_fragments_kuka_' . substr( md5( $signature ), 0, 12 );
+	return $params;
+}
+add_filter( 'woocommerce_get_script_data', 'kuka_island_cart_fragment_name', 10, 2 );
+
 /** Load route-specific presentation assets and product runtime data. */
 function kuka_island_child_enqueue_assets(): void {
 	kuka_island_enqueue_style( 'tokens', array( 'ct-main-styles' ) );
