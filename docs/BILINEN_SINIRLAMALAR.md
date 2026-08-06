@@ -44,6 +44,16 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Kombin için altı ticari şartı birlikte karşılayan ücretsiz çözüm bulunmadı.
 - Kesim landing page'leri müşteri kesim listesi ve SEO kararı gelene kadar açılmadı.
 
+## Faz 3H kapsam sınırı
+
+- **Google ile giriş canlı alan adı olmadan test edilemez.** Nextend Social Login kurulu ve etkin; sağlayıcı geçerli bir OAuth istemci kimliği/gizli anahtarı ve Google konsolunda kayıtlı bir yönlendirme URL'si olmadan etkinleşmiyor. Anahtar yokken buton hiç render olmuyor (doğrulandı); butonun marka dilindeki görünümü canlı alan adında doğrulanacak. Gizli anahtar repoya girmeyecek; panelden/eklenti ayarından girilecek.
+- **Dil seçici altyapısı hazır fakat gizli.** Site Görünümü → Dil Seçici alanına iki satır girildiğinde seçici duyuru şeridinin sağ ucunda görünür; tek dil (varsayılan) tanımlıyken hiç render olmaz. İkinci dil kararı (ücretsiz TranslatePress vs. ücretli çözüm — §3.5, §31) beklendiği için bu turda ikinci dil eklenmedi. Çeviri eklentisi seçilince liste ondan beslenecek şekilde bağlanacak.
+- **Ödeme sayfasında "Teslimat yöntemi" ayrı bir form bölümü değildir.** Kargo yöntemi seçimi WooCommerce'in `update_order_review` parçasında yaşar ve yalnız orada yenilenir; sipariş özeti kolonunda, kargo tutarının hemen üstünde görünür. Sol kolona taşımak parçayı bozar ve checkout akışını yeniden yazmayı gerektirirdi (§17.3).
+- **Tahmini teslim tarihi panelde sayı olmadan gösterilmez.** `Site Görünümü → Ticari Bilgiler → Tahmini teslimat süresi` alanı `[TESLİMAT SÜRESİ]` yer tutucusunda kaldığı sürece özet kolonunda tarih satırı hiç açılmaz. Alana "2-4 iş günü" gibi bir değer girildiğinde tarih aralığı iş günü sayılarak hesaplanır.
+- **KDV satırı yoktur.** `woocommerce_calc_taxes = no`; toplam satırındaki "KDV dahil" ibaresi fiyatların vergi dâhil girildiği kabulünü belirtir. Vergi yapılandırılırsa hem özet hem kupon denetim betiği vergi matrahını ayrıca raporlar.
+- **iyzico cüzdanı (`pwi`) kapalıdır.** Eklenti iki geçit kaydeder; checkout'ta tek yöntem istendiği için cüzdan geçidi seed sırasında pasifleştirilir. Müşteri isterse WooCommerce ödeme ayarlarından açılabilir.
+- **JS kapalıyken kupon hatası bildirim alanında görünür.** JS açıkken hata kupon alanının hemen altında `--color-error` ile yazılır; JS kapalıyken WooCommerce'in sayfa üstündeki standart bildirim alanı kullanılır.
+
 ## Faz 3B kapsam sınırı
 
 - Favoriler, beden rehberi modalı ve mega menü yapılmadı; ayrı veri/hesap, erişilebilir panel ve içerik kararı gerektirir. WooCommerce fragment tabanlı sepet çekmecesi Faz 3C'de tamamlandı.

@@ -59,3 +59,17 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 | SMTP hesabı ve DNS kayıtları | Veridyen test yayını öncesi müşteri açacak | Hosting/DNS + seçilen SMTP eklentisi |
 | Coming soon altında test erişim yöntemi | Müşteri seçimi bekleniyor | `DEPLOY_RUNBOOK.md` §6 |
 | iyzico sandbox/canlı aktivasyonu | Bekleniyor; canlı anahtar repoya girilmeyecek | WooCommerce ödeme ayarları / secret alanı |
+
+## Faz 3H sonunda eklenen girdiler
+
+| Girdi | Durum | Nereye girilecek |
+|---|---|---|
+| Google OAuth **istemci kimliği** (Client ID) | Bekleniyor | Yönetim → Nextend Social Login → Google. Google Cloud Console'da OAuth 2.0 istemcisi açılır. |
+| Google OAuth **gizli anahtarı** (Client Secret) | Bekleniyor; **repoya girilmeyecek** | Aynı ekran. Anahtar yalnız sunucuda tutulur; depoda hiçbir kopyası bulunmaz. |
+| Google konsolunda **yetkili yönlendirme URL'si** | Canlı alan adı belli olunca | `https://<alan-adi>/wp-login.php?loginSocial=google`. Nextend ayar ekranı doğru adresi kendisi yazar; oradan kopyalanır. |
+| Google OAuth **onay ekranı** bilgileri (uygulama adı, logo, gizlilik politikası URL'si) | Bekleniyor | Google Cloud Console → OAuth consent screen. Gizlilik politikası URL'si `/gizlilik-politikasi/` sayfasıdır. |
+| Palmiye amblemi | **Teslim alındı** — vektör (SVG) hâli temizlenip temaya alındı (`assets/img/palmiye.svg`) | Farklı bir amblem istenirse Site Görünümü → Marka → *Amblem* alanından yüklenir; boş bırakılırsa palmiye kullanılır. |
+| İkinci dil kararı (İngilizce) | Bekleniyor | Karar verilince Site Görünümü → Dil Seçici alanına `Etiket\|/önek/` satırları girilir; tek satırda seçici gizli kalır. |
+| Kupon kullanılacak mı, hangi tür (sabit tutar / yüzde) | Bilgi | Kupon alanı ödeme sayfasında hazır; WooCommerce → Kuponlar altından tanımlanır. |
+
+**Not (Google anahtarları):** Gizli anahtar e-posta veya mesajla paylaşılmamalı; müşteri panelde kendisi girmeli ya da geçici bir parola yöneticisiyle iletmelidir. Depoda `git grep` ile anahtar aranmış, sıfır sonuç bulunmuştur.

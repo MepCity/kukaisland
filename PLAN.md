@@ -1584,6 +1584,19 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-06 | Google ile giriş **kapsam eklemesi** olarak kabul edildi; Nextend Social Login kurulur, gizli anahtar depoya hiçbir biçimde girmez, buton anahtar yokken render olmaz | Sosyal giriş ilk sürüm listesinde değildi; müşteri istediği için eklendi. Anahtarın depoda tutulması sızıntı riski, panelde tutulması geri alınabilir bir karardır |
+| 2026-08-06 | Duyuru şeridi tek mesaja indirildi; "Kolay değişim" ve "Güvenli ödeme" yalnız ana sayfa servis şeridinde kalır | Aynı iki vaadin iki şeritte tekrarı ekranın en üstündeki tek satırlık alanı harcıyordu |
+| 2026-08-06 | Dil seçici duyuru şeridinin **sağ ucunda** mutlak konumlanır; kargo mesajı akışta ortalanır | Üç sütunlu grid'de seçici genişledikçe ortadaki sütunu itip mesajı "kalan alanın ortası"na kaydırıyordu; mutlak konum mesajı sayfanın gerçek ortasında tutar |
+| 2026-08-06 | Dil listesi paneldendir ve **tek dil tanımlıyken seçici hiç render olmaz**; ikinci dil bu turda eklenmedi | İngilizce için ücretsiz/ücretli çeviri kararı beklenirken boş bir seçici göstermek yanlış vaat olurdu (§3.5, §31) |
+| 2026-08-06 | Palmiye amblemi satır içi SVG olarak gömülür; `fill="currentColor"`, `pt` birimi ve DOCTYPE temizlendi | `<img src="...svg">` ile referanslanan SVG sayfanın rengini devralamaz; koyu hero üstünde beyaz, içerik sayfasında mürekkep rengi gerekiyordu |
+| 2026-08-06 | Ödeme sayfası iki kolona alındı; sipariş özeti sağ kolonda **sticky**, mobilde formun üstünde katlanabilir | Jacquemus referansı; uzun formda toplamın ekrandan çıkması alışverişi belirsizleştiriyordu |
+| 2026-08-06 | Kupon alanı checkout formunun içinde `apply_coupon` düğmesiyle çalışır; iç içe `<form>` üretilmez | Geçerli HTML ve JS kapalıyken çalışan tek yol; JS açıkken aynı düğme WooCommerce'in `apply_coupon` uç noktasına yönlendirilir |
+| 2026-08-06 | Sözleşme onay kilidi ödeme düğmesini pasifleştirmez; `required` + sunucu doğrulaması kullanılır | Pasif düğme hata mesajını bastırıyordu; okunur hata, sessiz engelden üstündür |
+| 2026-08-06 | Kupon/indirim/vergi matematiği **yazılmadı, ölçüldü**: `scripts/verify-coupon-allocation.php` satır bazında `_line_subtotal`/`_line_total` farkını kupon tutarıyla karşılaştırır | §17.3 — yanlış fatura riski kozmetik hatadan ağırdır; WooCommerce'in dağıtımı doğrulanır, yeniden uygulanmaz |
+| 2026-08-06 | iyzico'nun cüzdan geçidi (`pwi`) seed sırasında kapatılır; checkout'ta tek ödeme yöntemi listelenir | Eklenti dosyasına dokunmadan tek yöntem isteği karşılanır; müşteri isterse ayarlardan geri açabilir |
+| 2026-08-06 | `wp-cli` servisinin imaj entrypoint'i devre dışı bırakıldı | Entrypoint `wp help <ilk-argüman>` ile tahmin yürütüp komutu `wp wp …` hâline getirebiliyor ve kurulumu düşürüyordu |
+| 2026-08-06 | Nextend etkinleştirildikten sonra yönlendirmesi kurulum betiğinde bilerek bir kez tüketilir | Eklenti `plugins_loaded` üzerinde `wp_redirect(); exit;` çağırıyor; WP-CLI bu noktada süreci sonlandırıp bir sonraki adımı yarıda bırakıyordu |
+| 2026-08-06 | Token disiplini ölçümü yorum bloklarını ayıklar; eşik yine 0'dır | Bir kuralın gerekçesini anlatan yorumdaki "760px" alıntısı ihlal sayılmamalı, bildirimdeki ham değer sayılmalı |
 | 2026-08-05 | Faz 3F yasal, yardım ve marka metinleri başka siteden kopyalanmadan Kuka Island için sıfırdan üretildi; hukuki sayfalar görünür taslak uyarısıyla kalır | §3.3.1 telif/yanlış beyan riskini ve §10.9 hukuk onayı sınırını korumak |
 | 2026-08-05 | Şirket yer tutucuları, ticari değerler, ortak hijyen metni ve üç beden tablosu Site Görünümü + Core kısa kod katmanında tek kaynaktır | Müşteri verisi geldiğinde altı sayfada arama yapmak yerine tek panel kaydıyla tüm yüzeyleri güncellemek |
 | 2026-08-05 | Deploy runbook'u Veridyen paneli/SFTP/koşullu SSH, coming soon erişim seçenekleri ve geri dönüş testiyle özelleştirildi; fiili deploy müşteriye bırakıldı | Gizli erişim bilgilerini istemeden test yayınını tekrarlanabilir ve geri alınabilir hazırlamak |
@@ -1780,6 +1793,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Üretim planı bu depoda kanonik ilan edildi; prototip PLAN kopyası arşiv işaretine indirildi
 - [x] Faz 3F içerik tamamlandı: altı yasal taslak, yardım/marka sayfaları, merkezî şirket/ticari/beden verisi, dört ürün SEO alanı ve CSV şablonu
 - [x] Faz 3G mağaza deneyimi tamamlandı: sepet sayfası düzeni, marka renkli form kontrolleri, SSS akordiyonu, gerçek şirket bilgileri, WhatsApp telefon alanı + yüzen düğme ve işlevsel servis şeridi
+- [x] Faz 3H tamamlandı: palmiye amblemi (SVG), sadeleşen duyuru şeridi + panelden yönetilen dil seçici altyapısı, arama çekmecesi, yumuşak açılıp kapanan akordiyonlar ve `/odeme` sayfasının iki kolonlu yeniden tasarımı; kupon dağıtımı kuruşu kuruşuna doğrulandı — ayrıntı `docs/FAZ3H_TEKNIK_RAPORU.md`
+- [ ] Google ile giriş (kapsam eklemesi) canlı alan adı ve OAuth anahtarı geldiğinde etkinleştirilip görsel olarak doğrulanacak
+- [ ] İkinci dil kararı verilince dil seçici listesi çeviri eklentisinden beslenecek
 - [x] Veridyen test yayını için deploy arşiv betiği ve sağlayıcıya özgü runbook hazırlandı; fiili deploy yapılmadı
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
