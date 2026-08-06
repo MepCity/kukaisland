@@ -46,6 +46,12 @@ services:
 
   wp-cli:
     image: wordpress:cli-php8.3@sha256:2b5e9d4d3e51909dca1aaa4732e9f5e5bf0377c2114dbd8ff39f060bff202586
+    # İmajın entrypoint'i "wp help <ilk-argüman>" çalıştırıp başarılıysa komutun
+    # başına bir "wp" daha ekliyor. İlk argümanımız zaten "wp" olduğu için bu
+    # tahmin, eklenti sayısına göre bazen tutup komutu "wp wp ..." yapıyor ve
+    # kurulum "'wp' is not a registered wp command" ile düşüyordu. Entrypoint
+    # kaldırılınca komut ne yazıldıysa o çalışır.
+    entrypoint: []
     depends_on:
       db:
         condition: service_healthy
