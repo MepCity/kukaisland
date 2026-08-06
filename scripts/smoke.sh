@@ -63,7 +63,23 @@ checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir
 [ "$checkout_code" = "200" ] || fail "checkout HTTP $checkout_code"
 [ "$(grep -o 'name="kuka_[^"]*_accepted"' "$temporary_dir/checkout.html" | sort -u | wc -l | tr -d ' ')" = "2" ] || fail "checkout legal consents"
 grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
-grep -q 'button.disabled = !checks.every' wp-content/themes/kuka-island-child/assets/js/cart.js || fail "checkout consent gate"
+[ "$(grep -c 'name="kuka_[a-z_]*_accepted" value="1" required' "$temporary_dir/checkout.html" | tr -d ' ')" -ge 2 ] || fail "checkout consent required attribute"
+
+# Onay kapısı sunucuda doğrulanır: JS kapalıyken de onaysız gönderim reddedilmeli.
+checkout_nonce=$(grep -o 'name="woocommerce-process-checkout-nonce" value="[^"]*"' "$temporary_dir/checkout.html" | head -1 | sed 's/.*value="//;s/"$//')
+[ -n "$checkout_nonce" ] || fail "checkout nonce"
+curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-consent.html" -X POST "${WP_URL%/}/odeme/" \
+  --data-urlencode 'billing_first_name=Duman' --data-urlencode 'billing_last_name=Testi' \
+  --data-urlencode 'billing_email=duman@example.com' --data-urlencode 'billing_phone=05309481996' \
+  --data-urlencode 'billing_customer_type=personal' --data-urlencode 'billing_country=TR' \
+  --data-urlencode 'billing_address_1=Ata Sk 2' --data-urlencode 'billing_postcode=34335' \
+  --data-urlencode 'billing_city=Besiktas' --data-urlencode 'billing_state=TR34' \
+  --data-urlencode 'payment_method=iyzico' \
+  --data-urlencode "woocommerce-process-checkout-nonce=$checkout_nonce" \
+  --data-urlencode '_wp_http_referer=/odeme/' \
+  --data-urlencode 'woocommerce_checkout_place_order=Siparis ver' >/dev/null
+grep -q 'Ön Bilgilendirme Formu onayı zorunludur' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (preinfo)"
+grep -q 'Mesafeli Satış Sözleşmesi onayı zorunludur' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (distance sales)"
 pass "checkout rendered + two-consent payment gate"
 
 echo "SMOKE=PASS (5/5)"
