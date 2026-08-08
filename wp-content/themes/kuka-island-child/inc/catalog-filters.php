@@ -38,7 +38,7 @@ add_filter(
 
 /** Render one taxonomy chip group. */
 function kuka_island_filter_group( string $title, string $query_key, string $taxonomy, string $class ): void {
-	$terms = get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => true ) );
+	$terms = get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => true, 'orderby' => 'menu_order' ) );
 	if ( is_wp_error( $terms ) || ! $terms ) { return; }
 	$chosen = kuka_island_filter_values( $query_key );
 	?>

@@ -249,9 +249,10 @@ $terms  = array( 'colors' => array(), 'sizes' => array(), 'cuts' => array(), 'ca
 foreach ( $colors as $slug => $color ) {
 	$terms['colors'][ $slug ] = kuka_seed_term( 'pa_renk', $color[0], $slug, array( 'kuka_swatch_hex' => $color[1] ) );
 }
-// Müşteri beden setini S · M · L olarak sadeleştirdi (§13.4.1).
-foreach ( array( 'S', 'M', 'L' ) as $size ) {
-	$terms['sizes'][ sanitize_title( $size ) ] = kuka_seed_term( 'pa_beden', $size, sanitize_title( $size ) );
+// WooCommerce menu_order sıralaması `order` term metasını okur. Yeni bedenler
+// de aynı tanım tablosuna sıra değeri eklenerek oluşturulur.
+foreach ( array( 's' => array( 'S', 0 ), 'm' => array( 'M', 1 ), 'l' => array( 'L', 2 ) ) as $slug => $size ) {
+	$terms['sizes'][ $slug ] = kuka_seed_term( 'pa_beden', $size[0], $slug, array( 'order' => $size[1] ) );
 }
 foreach ( array( 'asimetrik' => 'Asimetrik', 'bralet' => 'Bralet', 'tek-parca' => 'Tek Parça', 'klasik' => 'Klasik' ) as $slug => $name ) {
 	$terms['cuts'][ $slug ] = kuka_seed_term( 'pa_kesim', $name, $slug );

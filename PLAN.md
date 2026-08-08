@@ -419,7 +419,7 @@ Kesim listesi 4. sorunun cevabına göre kesinleşir. Liste uzarsa mega menü se
 - Mayo
 - Plaj Giyim
 - Koleksiyonlar
-- Marka / Hikâyemiz
+- Hikâyemiz
 
 ### 8.3 Yardım navigasyonu
 
@@ -1584,6 +1584,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-09 | Faz 4B'de editoryal başlık manifesto ölçeğinden ayrıldı; menü etiketi “Hikâyemiz” oldu; beden terimleri `order` metasıyla S–M–L sıralanır | Dar editoryal kolonda kelime bölünmesini ölçeği gerçekten sığdırarak önlemek, kayıtlı panel verisini yeni etikete taşımak ve WooCommerce `menu_order` davranışını temiz kurulumlarda deterministik kılmak |
 | 2026-08-08 | Müşteri değişim hizmeti sunmamayı seçti; sitede yalnız 14 günlük cayma hakkı anlatılır. `04_Cayma_Hakki_ve_Iade_Sozlesmesi` `/iade-degisim/` URL'sinde, “Cayma Hakkı ve İade” başlığıyla kalır | URL atıfları kırılmaz. Sözleşme §5 ile tutarsızlık müşteriye bildirildi, metin bizim tarafımızdan değiştirilmedi |
 | 2026-08-08 | Üyelik sistemi ve Nextend Social Login kaldırıldı; misafir ödeme kod tarafından zorlanır, `/hesabim/` silinmeden ana sayfaya 302 yönlenir, `/siparis-takibi/` kalır | WooCommerce misafir sepeti kendi oturum tablosu ve çereziyle çalışır; ayrı localStorage sepeti yazmak kargo/kupon/stok/vergi sözleşmesini böler. `03` üyelik sözleşmesi hukuk kararı gelene kadar taslaktır |
 | 2026-08-08 | Google girişi Faz 3H'de eklendi, Faz 4A'da üyelik kaldırıldığı için geri çekildi | Toplanmayan hesap ve sosyal profil verisini vaat etmek hem arayüz hem KVKK metniyle tutarsız olurdu; Loginizer yönetici girişi için kalır |
@@ -1803,6 +1804,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 3G mağaza deneyimi tamamlandı: sepet sayfası düzeni, marka renkli form kontrolleri, SSS akordiyonu, gerçek şirket bilgileri, WhatsApp telefon alanı + yüzen düğme ve işlevsel servis şeridi
 - [x] Faz 3H tamamlandı: palmiye amblemi (SVG), sadeleşen duyuru şeridi + panelden yönetilen dil seçici altyapısı, arama çekmecesi, yumuşak açılıp kapanan akordiyonlar ve `/odeme` sayfasının iki kolonlu yeniden tasarımı; kupon dağıtımı kuruşu kuruşuna doğrulandı — ayrıntı `docs/FAZ3H_TEKNIK_RAPORU.md`
 - [x] Faz 4A müşteri onay turu tamamlandı: açık renk yüzeyler, footer/manifesto, müşteri hukuk metinleri, yalnız 14 gün cayma hakkı, S–M–L bedenler, 4.000 TL ücretsiz kargo, checkout alanları, görünür dil seçici ve okunur bildirimler
+- [x] Faz 4B onay düzeltmeleri tamamlandı: editoryal başlık yedi genişlikte kelime bölünmeden sığıyor, menü etiketi “Hikâyemiz”, beden sırası `order` term metasıyla S–M–L
 - [x] Üyelik, hesap paneli ve sosyal giriş geri çekildi; misafir ödeme, 48 saatlik panel kontrollü WooCommerce oturumu ve sipariş numarası + e-posta takip akışı korundu
 - [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
 - [ ] İkinci dil kararı verilince dil seçici listesi çeviri eklentisinden beslenecek

@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 2;
+	private const SCHEMA_VERSION = 3;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -114,7 +114,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'service_3_title' => 'Destek', 'service_3_copy' => 'Hafta içi 09.00–18.00 · WhatsApp', 'service_3_url' => '',
 			),
 			'navigation' => array(
-				'main' => "Yeni Gelenler|/magaza/?orderby=date\nMarka / Hikâyemiz|/hakkimizda/",
+				'main' => "Yeni Gelenler|/magaza/?orderby=date\nHikâyemiz|/hakkimizda/",
 				'categories' => "Bikini|/kategori/bikini-ustleri/|1|1\nMayo|/kategori/mayolar/|1|1\nPlaj Giyim|/kategori/plaj-giyim/|1|1\nKoleksiyonlar|/magaza/|1|0",
 				'help' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
 			),
@@ -199,6 +199,10 @@ final class Kuka_Island_Core_Site_Appearance {
 		// Tek "iade/değişim süresi" alanı yalnız cayma hakkına indi (§20, Bölüm E).
 		if ( isset( $saved['commercial']['return_period_days'] ) && ! isset( $saved['commercial']['cayma_hakki_gun'] ) ) {
 			$saved['commercial']['cayma_hakki_gun'] = $saved['commercial']['return_period_days'];
+		}
+		if ( isset( $saved['navigation']['main'] ) ) {
+			$old_story_label             = sprintf( '%s / %s', 'Marka', 'Hikâyemiz' );
+			$saved['navigation']['main'] = str_replace( $old_story_label, 'Hikâyemiz', (string) $saved['navigation']['main'] );
 		}
 		unset(
 			$saved['legal']['address'],
