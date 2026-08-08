@@ -17,7 +17,7 @@ Faz 4A sonrasında bildirilen üç sapma düzeltildi. Editoryal başlık manifes
 | 5. Seed ve reset sonrası term meta | İki temiz kurulumda `SIZE_TERM_ORDER=S:0|M:1|L:2`; `scripts/seed.php` ve mevcut mağaza geçişi `scripts/migrate-sizes.php` aynı metayı yazar | Karşılandı |
 | 6. Token ve taşma disiplini | Ham renk `0`, ham px `0`, gölge `0`, tanımsız token `0`; altı rota × yedi viewport = 42 kontrolde yatay taşma `0` | Karşılandı |
 | 7. İki temiz kurulum | `make reset && make verify` iki bağımsız turda `VERIFY=PASS`, `SMOKE=PASS (5/5)` | Karşılandı |
-| 8. CI | Push sonrasındaki GitHub Actions koşusunda doğrulanacak | Bekliyor |
+| 8. CI | GitHub Actions `Quality` koşusu `31280565112`: production kurulumu, syntax, WordPress standartları ve kabul/smoke adımları geçti | Karşılandı |
 
 ## Editoryal viewport görüntüleri
 
