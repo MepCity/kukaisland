@@ -1202,6 +1202,27 @@ progress {
   margin: 0;
 }
 
+.kuka-newsletter__trap {
+  position: absolute;
+  left: -100vw;
+  width: var(--stroke);
+  height: var(--stroke);
+  overflow: hidden;
+}
+
+.kuka-newsletter__message {
+  margin-block: var(--space-2);
+  font-size: var(--text-caption);
+}
+
+.kuka-newsletter__message--error {
+  color: var(--color-error);
+}
+
+.kuka-newsletter__message--success {
+  color: var(--color-success);
+}
+
 /* Kategoriler sütunu kaldırıldı; kalan üç sütun eşit paylaşır. */
 .kuka-footer-links {
   display: grid;

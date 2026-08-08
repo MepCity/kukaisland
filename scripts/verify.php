@@ -150,6 +150,20 @@ $menu_rows = function_exists( 'kuka_island_header_menu' ) ? wp_list_pluck( kuka_
 WP_CLI::line( 'PRIMARY_MENU=' . implode( '|', $menu_rows ) );
 WP_CLI::line( 'PRIMARY_MENU_COUNT=' . count( $menu_rows ) );
 WP_CLI::line( 'STORY_MENU_LABEL=' . ( in_array( 'Hikâyemiz', $menu_rows, true ) ? 'Hikâyemiz' : 'missing' ) );
+$about_page = get_page_by_path( 'hakkimizda' );
+$about_source = '';
+if ( $about_page && preg_match( '#<div class="kuka-brand-story__source">(.*)</div></div>#s', (string) $about_page->post_content, $about_match ) ) {
+	$about_source = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( preg_replace( '#<[^>]+>#', ' ', $about_match[1] ) ) ) );
+}
+$pdf_story = 'KUKA ISLAND Hayatta bazen sıfırdan başlamak gerekir. Benim için KUKA ISLAND tam olarak böyle başladı. Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim. Denizi… Yazı… Özgürlüğü… Ve kadınların kendini en güzel hissettiği anları… İşte KUKA ISLAND böyle doğdu. Her koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor. Bu yolculuk daha yeni başlıyor. İyi ki buradasın. Ve bu hikâyenin ilk sayfalarında bize eşlik ediyorsun. Love, KÜBRA';
+WP_CLI::line( 'BRAND_STORY_PDF_MATCH=' . ( hash_equals( $pdf_story, $about_source ) ? 'yes' : 'no' ) );
+WP_CLI::line( 'ABOUT_OPENING_PANEL_BOUND=' . ( $about_page && str_contains( (string) $about_page->post_content, '[kuka_manifesto_line_2]' ) ? 'yes' : 'no' ) );
+global $wpdb;
+$newsletter_table = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . 'kuka_newsletter_subscribers' ) );
+$newsletter_form = class_exists( 'Kuka_Island_Core_Newsletter' ) ? Kuka_Island_Core_Newsletter::form() : '';
+WP_CLI::line( 'NEWSLETTER_TABLE=' . ( $newsletter_table ? 'ready' : 'missing' ) );
+WP_CLI::line( 'NEWSLETTER_FORM=' . ( str_contains( $newsletter_form, 'method="post"' ) && str_contains( $newsletter_form, 'name="consent" value="1" required' ) ? 'native-required' : 'missing' ) );
+WP_CLI::line( 'NEWSLETTER_NOTIFICATION_FIELD=' . ( array_key_exists( 'newsletter_notification_email', $site_content['footer'] ?? array() ) ? 'panel' : 'missing' ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
 $out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
 WP_CLI::line( 'LOW_STOCK_VARIATIONS=' . count( $low_stock ) );
