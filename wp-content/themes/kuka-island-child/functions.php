@@ -192,7 +192,11 @@ function kuka_island_header_menu(): array {
 }
 
 function kuka_island_content_url( string $url ): string {
-	return str_starts_with( $url, '/' ) && ! str_starts_with( $url, '//' ) ? home_url( $url ) : $url;
+	if ( str_starts_with( $url, '/' ) && ! str_starts_with( $url, '//' ) ) {
+		$base = untrailingslashit( (string) get_option( 'home' ) );
+		$url  = $base . '/' . ltrim( $url, '/' );
+	}
+	return class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::url_for_language( $url, kuka_island_locale() ) : $url;
 }
 
 /**
@@ -211,7 +215,10 @@ function kuka_island_whatsapp_url(): string {
  * @return array<int, array{label:string,url:string}>
  */
 function kuka_island_languages(): array {
-	return kuka_island_menu_lines( (string) ( kuka_island_content()['languages']['items'] ?? '' ) );
+	return array(
+		array( 'label' => 'tr' === kuka_island_locale() ? 'Türkçe' : 'Turkish', 'url' => Kuka_Island_Core_Language::current_url( 'tr' ), 'code' => 'tr' ),
+		array( 'label' => 'en' === kuka_island_locale() ? 'English' : 'İngilizce', 'url' => Kuka_Island_Core_Language::current_url( 'en' ), 'code' => 'en' ),
+	);
 }
 
 /**
@@ -220,11 +227,7 @@ function kuka_island_languages(): array {
  * be visible before the second language exists without producing a 404.
  */
 function kuka_island_language_is_pending( string $url ): bool {
-	$pending = array_filter( array_map( 'trim', explode( ',', (string) ( kuka_island_content()['languages']['pending_urls'] ?? '' ) ) ) );
-	$needle  = trailingslashit( trim( $url ) );
-	foreach ( $pending as $candidate ) {
-		if ( trailingslashit( $candidate ) === $needle ) { return true; }
-	}
+	unset( $url );
 	return false;
 }
 

@@ -29,7 +29,7 @@ $emblem_html = $has_logo ? '' : kuka_island_emblem_markup();
 		<div class="kuka-announcement__lang"><?php
 			$languages = kuka_island_languages();
 			if ( count( $languages ) > 1 ) :
-				$current_lang = $languages[0];
+				$current_lang = 'en' === kuka_island_locale() ? $languages[1] : $languages[0];
 				?>
 				<details class="kuka-lang-switcher" data-lang-switcher>
 					<summary class="kuka-lang-switcher__button" aria-haspopup="listbox" aria-expanded="false"><?php echo esc_html( $current_lang['label'] ); ?></summary>
@@ -40,7 +40,7 @@ $emblem_html = $has_logo ? '' : kuka_island_emblem_markup();
 							<?php if ( kuka_island_language_is_pending( $lang['url'] ) ) : ?>
 								<li role="option" aria-disabled="true"><span class="kuka-lang-switcher__pending"><?php echo esc_html( $lang['label'] ); ?> <small><?php echo esc_html( kuka_island_language_pending_note() ); ?></small></span></li>
 							<?php else : ?>
-								<li role="option"><a href="<?php echo esc_url( kuka_island_content_url( $lang['url'] ) ); ?>" hreflang="<?php echo esc_attr( basename( trim( $lang['url'], '/' ) ) ); ?>"><?php echo esc_html( $lang['label'] ); ?></a></li>
+								<li role="option"<?php echo $lang['code'] === kuka_island_locale() ? ' aria-selected="true"' : ''; ?>><a href="<?php echo esc_url( $lang['url'] ); ?>" hreflang="<?php echo esc_attr( $lang['code'] ); ?>"><?php echo esc_html( $lang['label'] ); ?></a></li>
 							<?php endif; ?>
 						<?php endforeach; ?>
 					</ul>

@@ -21,6 +21,7 @@ final class Kuka_Island_Core_Plugin {
 
 	public function boot(): void {
 		$files = array(
+			'class-language.php',
 			'class-compatibility.php',
 			'class-site-appearance.php',
 			'class-content.php',
@@ -41,6 +42,7 @@ final class Kuka_Island_Core_Plugin {
 		}
 
 		$this->modules = array(
+			new Kuka_Island_Core_Language(),
 			new Kuka_Island_Core_Compatibility(),
 			new Kuka_Island_Core_Site_Appearance(),
 			new Kuka_Island_Core_Content(),
