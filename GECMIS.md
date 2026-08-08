@@ -375,6 +375,8 @@ docs/qa/                       ekran görüntüleri
 | 3G | Sepet düzeni, marka renkli kontroller, SSS akordiyonu, şirket bilgileri, WhatsApp |
 | 3H | Palmiye amblemi, duyuru şeridi, dil seçici altyapısı, arama çekmecesi, `/odeme` yeniden tasarımı, kupon dağıtım testi |
 | 4A | Müşteri onay turu — krem yüzeyler, yeni footer/manifesto, müşteri sözleşmeleri, 14 gün cayma hakkı, S–M–L, 4.000 TL kargo eşiği, misafir-only mağaza ve üyelik/sosyal giriş kaldırması |
+| 4B | Onay düzeltmeleri — Ada Günlüğü başlık ölçeği, “Hikâyemiz” menüsü ve deterministik S–M–L term sırası |
+| 4C | Hero fotoğrafını koruyan panel perdesi, kısa manifesto, yeniden tasarlanan PDF-eş Hakkımızda, dengeli footer ve onay kanıtlı JS'siz bülten kaydı |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
 
 ---

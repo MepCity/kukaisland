@@ -8,6 +8,8 @@ Bu form, tasarımı ve mağaza altyapısını yanlış varsayımlarla kalıcıla
 2. Sitede üyelik sunulmayacak. `03 Üyelik ve E-Ticaret Sitesi Kullanım Sözleşmesi` üyelik hükümleri içeriyor. Hukuk danışmanınız bu metni üyeliksiz kullanıma göre sadeleştirsin mi, yoksa yayından kaldıralım mı?
 3. Ön Bilgilendirme Formu sipariş e-postasına da eklenmeli mi?
 4. İngilizce sürüm yurt dışına satış için mi, yoksa yabancı ziyaretçinin arayüzü anlaması için mi kullanılacak? Yurt dışı satış seçilirse ihracat faturası, uygulanacak tüketici hukuku ve çoklu para birimi ayrı kapsam olarak planlanacaktır.
+5. Yeni bülten kayıt bildirimleri hangi e-posta adresine gönderilsin? Alan boş bırakılırsa kayıtlar panelde tutulur, bildirim gönderilmez.
+6. Ticari elektronik ileti gönderimi başlamadan önce İYS kaydı, bülten onay metni, kayıt saklama süresi ve silme talebi prosedürünü hukuk danışmanınızla onaylar mısınız?
 
 ## Tasarımı başlatmak için gerekli
 
