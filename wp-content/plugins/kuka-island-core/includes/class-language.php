@@ -224,8 +224,8 @@ final class Kuka_Island_Core_Language {
 	}
 
 	public function english_email_additional_content( string $content, $object, WC_Email $email ): string {
-		if ( ! $object instanceof WC_Order || 'en_US' !== $object->get_meta( '_kuka_order_locale', true ) || ! method_exists( $email, 'get_default_additional_content' ) ) { return $content; }
-		return $email->format_string( $email->get_default_additional_content() );
+		if ( ! $object instanceof WC_Order || 'en_US' !== $object->get_meta( '_kuka_order_locale', true ) ) { return $content; }
+		return $email->format_string( 'Thanks for using {site_url}!' );
 	}
 
 	public static function is_english_request(): bool {
