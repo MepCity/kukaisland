@@ -89,6 +89,13 @@ foreach ( $swatches as $term ) {
 
 $site_content = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::get() : array();
 WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_content ) ) );
+WP_CLI::line( 'LANGUAGE_TRANSLATABLE_FIELDS=' . ( class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_field_count() : 0 ) );
+WP_CLI::line( 'PRODUCT_EN_FIELD_SCHEMA=5' );
+WP_CLI::line( 'PAGE_EN_FIELD_SCHEMA=2' );
+WP_CLI::line( 'TAXONOMY_EN_FIELD=' . ( function_exists( 'kuka_island_term_name' ) ? '_kuka_name_en' : 'missing' ) );
+$translation_plugins = array_filter( (array) get_option( 'active_plugins', array() ), static fn( string $plugin ): bool => (bool) preg_match( '/polylang|sitepress|wpml|translatepress|weglot|gtranslate/i', $plugin ) );
+WP_CLI::line( 'TRANSLATION_PLUGIN=' . ( $translation_plugins ? implode( ',', $translation_plugins ) : 'none' ) );
+WP_CLI::line( 'LANGUAGE_PENDING_URLS=' . (string) ( $site_content['languages']['pending_urls'] ?? '' ) );
 $pattern_registry = WP_Block_Patterns_Registry::get_instance();
 WP_CLI::line( 'LOCKED_PATTERNS=' . (int) $pattern_registry->is_registered( 'kuka-island/editorial-story' ) . '/1|' . (int) $pattern_registry->is_registered( 'kuka-island/legal-section' ) . '/1' );
 $manager = get_user_by( 'login', 'kuka_manager' );
@@ -109,6 +116,15 @@ foreach ( $legal_pages as $slug ) {
 }
 WP_CLI::line( sprintf( 'LEGAL_DRAFT_WARNINGS=%d', $draft_warnings ) );
 WP_CLI::line( sprintf( 'LEGAL_CENTRAL_COMPANY=%d/8', $central_company ) );
+$legal_english_values = 0;
+foreach ( $legal_pages as $slug ) {
+	$page = get_page_by_path( $slug );
+	if ( $page ) {
+		$legal_english_values += '' !== trim( (string) get_post_meta( $page->ID, '_kuka_title_en', true ) ) ? 1 : 0;
+		$legal_english_values += '' !== trim( (string) get_post_meta( $page->ID, '_kuka_content_en', true ) ) ? 1 : 0;
+	}
+}
+WP_CLI::line( 'LEGAL_EN_VALUES=' . $legal_english_values . '/16' );
 $hygiene_copy = (string) ( $site_content['commercial']['hygiene_copy'] ?? '' );
 $return_page = get_page_by_path( 'iade-degisim' );
 $return_html = $return_page ? do_shortcode( (string) $return_page->post_content ) : '';
@@ -171,3 +187,40 @@ WP_CLI::line( 'OUT_OF_STOCK_VARIATIONS=' . count( $out_stock ) );
 WP_CLI::line( 'SHOP_PER_PAGE=' . apply_filters( 'loop_shop_per_page', wc_get_default_products_per_row() * wc_get_default_product_rows_per_page() ) );
 WP_CLI::line( 'PERMALINK_STRUCTURE=' . get_option( 'permalink_structure' ) );
 WP_CLI::line( 'CHECKOUT_CLASSIC=' . ( str_contains( (string) get_post_field( 'post_content', wc_get_page_id( 'checkout' ) ), '[woocommerce_checkout]' ) ? 'yes' : 'no' ) );
+$language = new Kuka_Island_Core_Language();
+$locale_order = new WC_Order();
+$request_uri = $_SERVER['REQUEST_URI'] ?? null;
+$_SERVER['REQUEST_URI'] = '/en/odeme/';
+$language->save_order_locale( $locale_order );
+if ( null === $request_uri ) { unset( $_SERVER['REQUEST_URI'] ); } else { $_SERVER['REQUEST_URI'] = $request_uri; }
+WP_CLI::line( 'ORDER_LOCALE_META=' . $locale_order->get_meta( '_kuka_order_locale', true ) );
+$email = WC()->mailer()->get_emails()['WC_Email_Customer_Processing_Order'];
+$email->object = $locale_order;
+$before_email_locale = get_locale();
+$language->switch_email_locale( true, $email );
+$switched_email_locale = get_locale();
+$language->restore_email_locale( true, $email );
+WP_CLI::line( 'EMAIL_LOCALE_SWITCH=' . $before_email_locale . '>' . $switched_email_locale . '>' . get_locale() );
+$render_order = new WC_Order();
+$render_order->set_date_created( time() );
+$render_order->set_billing_first_name( 'EN-QA' );
+$render_order->set_billing_email( 'en-qa@example.test' );
+$render_order->update_meta_data( '_kuka_order_locale', 'en_US' );
+$render_item = new WC_Order_Item_Product();
+$render_item->set_name( 'EN-QA-PRODUCT' );
+$render_item->set_quantity( 1 );
+$render_item->set_subtotal( 100 );
+$render_item->set_total( 100 );
+$render_order->add_item( $render_item );
+$email->object = $render_order;
+$language->switch_email_locale( true, $email );
+$english_email_html = $email->get_content_html();
+$english_email_heading = $email->get_heading();
+$language->restore_email_locale( true, $email );
+WP_CLI::line(
+	'ENGLISH_EMAIL_HTML=heading:' . ( str_contains( $english_email_heading, 'Thank you for your order' ) ? 'yes' : 'no' )
+	. '|body:' . ( str_contains( $english_email_html, 'Hi EN-QA' ) ? 'yes' : 'no' )
+	. '|product:' . ( str_contains( $english_email_html, 'EN-QA-PRODUCT' ) ? 'yes' : 'no' )
+	. '|tracking:' . ( str_contains( $english_email_html, 'Track your order with your order number and email address' ) ? 'yes' : 'no' )
+	. '|additional:' . ( str_contains( $english_email_html, 'Thanks again!' ) ? 'yes' : 'no' )
+);
