@@ -142,6 +142,13 @@
   gap: var(--space-3);
 }
 
+.kuka-translation-notice {
+  margin-bottom: var(--space-6);
+  padding: var(--space-3);
+  border: var(--stroke) solid var(--color-line);
+  color: var(--color-muted);
+}
+
 .kuka-type-test h2 {
   margin: 0;
   padding-block: var(--space-1);
