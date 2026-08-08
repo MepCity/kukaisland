@@ -25,6 +25,9 @@ final class Kuka_Island_Core_Product_Fields {
 		add_filter( 'woocommerce_product_variation_get_name', array( $this, 'english_variation_name' ), 10, 2 );
 		add_filter( 'woocommerce_product_get_description', array( $this, 'english_description' ), 10, 2 );
 		add_filter( 'woocommerce_product_get_short_description', array( $this, 'english_short_description' ), 10, 2 );
+		add_filter( 'the_title', array( $this, 'english_post_title' ), 25, 2 );
+		add_filter( 'the_content', array( $this, 'english_post_description' ), 9 );
+		add_filter( 'woocommerce_short_description', array( $this, 'english_post_short_description' ), 20 );
 		add_filter( 'woocommerce_structured_data_product', array( $this, 'english_structured_data' ), 20, 2 );
 	}
 
@@ -97,6 +100,24 @@ final class Kuka_Island_Core_Product_Fields {
 			$markup['description'] = wp_strip_all_tags( $product->get_short_description() ?: $product->get_description() );
 		}
 		return $markup;
+	}
+
+	public function english_post_title( string $title, int $post_id ): string {
+		if ( is_admin() || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() || 'product' !== get_post_type( $post_id ) ) { return $title; }
+		$english = trim( (string) get_post_meta( $post_id, '_kuka_name_en', true ) );
+		return '' !== $english ? $english : $title;
+	}
+
+	public function english_post_description( string $description ): string {
+		if ( ! is_singular( 'product' ) || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() ) { return $description; }
+		$english = trim( (string) get_post_meta( get_queried_object_id(), '_kuka_description_en', true ) );
+		return '' !== $english ? $english : $description;
+	}
+
+	public function english_post_short_description( string $description ): string {
+		if ( ! is_singular( 'product' ) || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() ) { return $description; }
+		$english = trim( (string) get_post_meta( get_queried_object_id(), '_kuka_short_description_en', true ) );
+		return '' !== $english ? $english : $description;
 	}
 
 	public function render_fields(): void {
