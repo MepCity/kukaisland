@@ -48,9 +48,8 @@ WordPress 7.0.2
 │   └── kuka-island-child          ← tasarımın tamamı burada
 ├── WooCommerce 11.0.0 (HPOS açık)
 ├── iyzico WooCommerce 3.5.28
-├── Nextend Social Login 3.1.13    ← Google girişi
 └── Kuka Island Core (kendi eklentimiz)
-    └── Site Görünümü paneli — 8 grup, 72 alan
+    └── Site Görünümü paneli — misafir mağaza ve içerik ayarları
 ```
 
 Yerel geliştirme Docker ile: MariaDB + WordPress + WP-CLI. `make reset` temiz volume'dan her şeyi kurar.
@@ -158,7 +157,7 @@ Dört ayrı panel yerine tek altyapı — hata yüzeyi dörtte bire indi.
 
 ## 5. WooCommerce ile nasıl çalışıyoruz
 
-**Vendor dosyalarına dokunulmaz.** Blocksy, WooCommerce, iyzico, Nextend — hiçbirinde tek satır değişiklik yok. `verify` bunu da ölçer.
+**Vendor dosyalarına dokunulmaz.** Blocksy, WooCommerce ve iyzico dosyalarında tek satır değişiklik yok. `verify` bunu da ölçer.
 
 **Override sayısı sabittir.** Her WooCommerce şablon override'ı `docs/AKTARMA_HARITASI.md` içinde gerekçesiyle kayıtlı. Sayı artacaksa gerekçe yazılır.
 
@@ -369,12 +368,13 @@ docs/qa/                       ekran görüntüleri
 | 2 | Docker/WP-CLI, Blocksy child, global nitelikler, 4 ürün / 50 varyasyon, HPOS, ölçüm raporları |
 | 3A | İlk aktarım — **tasarım kaydı, geri alındı** |
 | 3B | Gerçek aktarım — ham px 206→0, token 111→542 |
-| 3C | Paneller — sepet, hesap, filtre; ortak erişilebilirlik altyapısı |
+| 3C | Paneller — sepet, hesap (Faz 4A'da kaldırıldı), filtre; ortak erişilebilirlik altyapısı |
 | 3D | Sadakat denetimi — 24/24 sapma kapatıldı |
 | 3E | Yayın öncesi — sürüm pinleri, smoke, CI, runbook, N+1 264→118 |
 | 3F | İçerik — 6 yasal taslak, yardım sayfaları, merkezî şirket verisi, CSV şablonu |
 | 3G | Sepet düzeni, marka renkli kontroller, SSS akordiyonu, şirket bilgileri, WhatsApp |
 | 3H | Palmiye amblemi, duyuru şeridi, dil seçici altyapısı, arama çekmecesi, `/odeme` yeniden tasarımı, kupon dağıtım testi |
+| 4A | Müşteri onay turu — krem yüzeyler, yeni footer/manifesto, müşteri sözleşmeleri, 14 gün cayma hakkı, S–M–L, 4.000 TL kargo eşiği, misafir-only mağaza ve üyelik/sosyal giriş kaldırması |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
 
 ---
@@ -383,25 +383,19 @@ docs/qa/                       ekran görüntüleri
 
 ### Bizde
 
-- Cayma hakkı / değişim süresi ayrımı (aşağıda)
-- Beden setinin sadeleştirilmesi
 - Tam İngilizce sürüm ve panelde çift dilli alanlar
-- Checkout alan sırası ve zorunluluk ayarları
-- Bildirim kutusu okunabilirliği (metin rengi tanımsız, AA altında)
-- Ücretsiz kargo hak edildiğinde uygulanmıyor — eşik geçilse de sabit ücret seçili kalıyor
 - Safari / Firefox / iOS / Android turu ve gerçek cihazda Core Web Vitals — hiç yapılmadı
 
 ### Müşteride
 
 - **ETBİS kaydı** — iyzico başvurusunun önkoşulu
-- Yasal metinlerin hukuk onayı
+- `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı kararı
 - Gerçek ürünler, fotoğraf ve fiyatlarla (150 parça, çekim başlamadı)
 - iyzico sandbox anahtarı → §18.1'in 9 test senaryosu
 - **SMTP** (§4.4 zorunlu) — sipariş e-postaları buna bağlı
 - e-Arşiv entegratörü kararı — GİB Portal'ın API'si yok, otomatik fatura için özel entegratör aboneliği şart
 - Kombin indirimi kararı → varsa WPC Product Bundles Premium **$29 tek seferlik**
 - Logo SVG yatay lockup + font lisansı (§4.6 self-hosted zorunlu)
-- Google Cloud OAuth istemci kimliği ve gizli anahtarı
 
 ---
 
@@ -409,7 +403,7 @@ docs/qa/                       ekran görüntüleri
 
 1. **Ölç, tahmin etme.** Bu projede her "tamamlandı" iddiası ekran görüntüsü veya sayı ile desteklenir. Desteklenmiyorsa "doğrulanmadı" yaz.
 2. **Prototipi çevir, yeniden tasarlama.** `app-reference/` kaynaktır.
-3. **Vendor'a dokunma.** Blocksy, WooCommerce, iyzico, Nextend.
+3. **Vendor'a dokunma.** Blocksy, WooCommerce ve iyzico.
 4. **Ödeme ve vergi matematiğine kod yazma** (§17.3). Davranışı doğrula, raporla.
 5. **Ticari değer koda gömülmez.** Panelden okunur.
 6. **Token dışına çıkma.** px, hex, rgba, gölge — hepsi sıfır.
