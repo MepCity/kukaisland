@@ -1,2 +1,2 @@
-sku,urun_adi,kesim,kategori,renk,beden,fiyat,stok,gorsel_dosya_adlari,aciklama,kumas,bakim,kalip,model_olcusu
-ORNEK-TOP-001,Örnek Bikini Üstü,Bralet,Bikini Üstleri,Kobalt,36,2690,6,ornek-ust-kobalt-on.jpg|ornek-ust-kobalt-arka.jpg,Geçici örnek açıklama.,Kumaş içeriğini yazın.,Bakım talimatını yazın.,Kalıp bilgisini yazın.,Model boyu ve üzerindeki bedeni yazın.
+sku,urun_adi,urun_adi_en,kesim,kesim_en,kategori,kategori_en,renk,renk_en,beden,beden_en,fiyat,stok,gorsel_dosya_adlari,kisa_aciklama,kisa_aciklama_en,aciklama,aciklama_en,seo_basligi_en,meta_aciklamasi_en,kumas,bakim,kalip,model_olcusu
+ORNEK-TOP-001,Örnek Bikini Üstü,,Bralet,,Bikini Üstleri,,Kobalt,,36,,2690,6,ornek-ust-kobalt-on.jpg|ornek-ust-kobalt-arka.jpg,,,Geçici örnek açıklama.,,,,Kumaş içeriğini yazın.,Bakım talimatını yazın.,Kalıp bilgisini yazın.,Model boyu ve üzerindeki bedeni yazın.

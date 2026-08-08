@@ -31,7 +31,8 @@ $products_shortcode .= ']';
 			$category_slug = basename( untrailingslashit( wp_parse_url( $category_item['url'], PHP_URL_PATH ) ?: '' ) );
 			$category = get_term_by( 'slug', $category_slug, 'product_cat' );
 			$product_ids = $category instanceof WP_Term ? get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => array( array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $category->term_id ) ) ) ) : array(); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
-			$cut_names = $product_ids ? wp_get_object_terms( $product_ids, 'pa_kesim', array( 'fields' => 'names' ) ) : array();
+			$cut_terms = $product_ids ? wp_get_object_terms( $product_ids, 'pa_kesim', array( 'fields' => 'all' ) ) : array();
+			$cut_names = is_wp_error( $cut_terms ) ? array() : array_map( 'kuka_island_term_name', $cut_terms );
 			$cut_names = is_wp_error( $cut_names ) ? array() : array_values( array_unique( $cut_names ) );
 			?>
 			<a class="kuka-category-index__item" href="<?php echo esc_url( kuka_island_content_url( $category_item['url'] ) ); ?>">

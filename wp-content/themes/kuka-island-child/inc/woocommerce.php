@@ -55,8 +55,8 @@ add_action(
 	static function (): void {
 		global $product;
 		if ( ! $product instanceof WC_Product ) { return; }
-		$terms = wc_get_product_terms( $product->get_id(), 'pa_kesim', array( 'fields' => 'names' ) );
-		if ( $terms ) { echo '<p class="kuka-card__cut">' . esc_html( implode( ', ', $terms ) ) . '</p>'; }
+		$terms = wc_get_product_terms( $product->get_id(), 'pa_kesim', array( 'fields' => 'all' ) );
+		if ( $terms ) { echo '<p class="kuka-card__cut">' . esc_html( implode( ', ', array_map( 'kuka_island_term_name', $terms ) ) ) . '</p>'; }
 	},
 	15
 );
