@@ -90,8 +90,8 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'languages' => array(
 				'items' => "Türkçe|/\nEnglish|/en/",
-				'pending_urls' => '/en/',
-				'pending_note' => 'İngilizce sürüm yakında',
+				'pending_urls' => '',
+				'pending_note' => '',
 			),
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
@@ -106,8 +106,8 @@ final class Kuka_Island_Core_Site_Appearance {
 				'editorial_enabled' => true, 'editorial_title' => 'Ada Günlüğü', 'editorial_copy' => 'Şehirden kıyıya uzanan günlük üniforma.',
 				'editorial_image_id' => 0, 'editorial_video_id' => 0, 'editorial_url' => '/hakkimizda/', 'editorial_link_label' => 'Hikâyeyi oku',
 				'manifesto_enabled' => true,
-				'manifesto_line_1' => 'Güneş. Ten. Özgürlük.', 'manifesto_line_1_en' => 'Sun. Skin. Freedom.',
-				'manifesto_line_2' => 'Bir yer değil. Bir his.', 'manifesto_line_2_en' => 'Not a place. A feeling.',
+				'manifesto_line_1' => 'Güneş. Ten. Özgürlük.', 'manifesto_line_1_en' => '',
+				'manifesto_line_2' => 'Bir yer değil. Bir his.', 'manifesto_line_2_en' => '',
 				'services_enabled' => true,
 				'service_1_title' => 'Güvenli ödeme', 'service_1_copy' => 'iyzico altyapısı · 3D Secure', 'service_1_url' => '/mesafeli-satis-sozlesmesi/',
 				'service_2_title' => 'Kolay iade', 'service_2_copy' => '14 gün içinde cayma hakkı', 'service_2_url' => '/iade-degisim/',
