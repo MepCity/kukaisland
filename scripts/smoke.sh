@@ -25,6 +25,14 @@ fetch "$WP_URL" "$temporary_dir/home.html"
 grep -q 'class="kuka-hero' "$temporary_dir/home.html" || fail "home hero"
 ! grep -Eqi 'kuka-account|Hesabım|Hesap oluştur|Üye ol|Giriş yap' "$temporary_dir/home.html" || fail "home account copy"
 pass "home 200 + hero"
+fetch "${WP_URL%/}/en/" "$temporary_dir/home-en.html"
+grep -q '<html lang="en-US"' "$temporary_dir/home-en.html" || fail "English home locale"
+grep -q 'hreflang="tr"' "$temporary_dir/home-en.html" && grep -q 'hreflang="en"' "$temporary_dir/home-en.html" && grep -q 'hreflang="x-default"' "$temporary_dir/home-en.html" || fail "English home hreflang"
+fetch "${WP_URL%/}/wp-sitemap.xml" "$temporary_dir/sitemap.xml"
+grep -q 'wp-sitemap-english-1.xml' "$temporary_dir/sitemap.xml" || fail "English sitemap provider"
+fetch "${WP_URL%/}/wp-sitemap-english-1.xml" "$temporary_dir/sitemap-en.xml"
+grep -q '/en/kategori/bikini-ustleri/' "$temporary_dir/sitemap-en.xml" || fail "English taxonomy sitemap"
+! grep -q '/en/hesabim/' "$temporary_dir/sitemap-en.xml" || fail "redirecting account page in sitemap"
 
 fetch "${WP_URL%/}/magaza/" "$temporary_dir/catalog.html"
 catalog_count=$(grep -o 'data-product-card' "$temporary_dir/catalog.html" | wc -l | tr -d ' ')
@@ -33,6 +41,9 @@ filtered_count=$(grep -o 'data-product-card' "$temporary_dir/catalog-filtered.ht
 [ "$catalog_count" -gt 0 ] && [ "$filtered_count" -gt 0 ] && [ "$catalog_count" -ne "$filtered_count" ] || fail "catalog filter result change"
 grep -q 'kuka-active-filters' "$temporary_dir/catalog-filtered.html" || fail "catalog active filter"
 pass "catalog cards + filter changes result ($catalog_count -> $filtered_count)"
+fetch "${WP_URL%/}/en/magaza/" "$temporary_dir/catalog-en.html"
+grep -q 'lang="en-US"' "$temporary_dir/catalog-en.html" || fail "English catalog locale"
+grep -q '>Filter<' "$temporary_dir/catalog-en.html" || fail "English catalog controls"
 
 product_data=$(docker compose run --rm -T wp-cli wp eval '
 $products=wc_get_products(array("type"=>"variable","limit"=>-1));
@@ -46,8 +57,12 @@ grep -q 'form class="variations_form' "$temporary_dir/product.html" || fail "pro
 grep -q "\"id\":$out_variation_id" "$temporary_dir/product.html" || fail "out-of-stock variation data"
 grep -q '"available":false' "$temporary_dir/product.html" || fail "out-of-stock availability"
 pass "product variation + out-of-stock size ($out_size)"
+english_product_url=$(printf '%s' "$product_url" | sed "s#${WP_URL%/}#${WP_URL%/}/en#")
+fetch "$english_product_url" "$temporary_dir/product-en.html"
+grep -q 'lang="en-US"' "$temporary_dir/product-en.html" || fail "English product locale"
+grep -q "canonical.*${WP_URL%/}/en/urun/" "$temporary_dir/product-en.html" || fail "English product canonical"
 
-add_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/added.html" -w '%{http_code}' -X POST "$product_url" \
+add_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/added.html" -w '%{http_code}' -X POST "$english_product_url" \
   --data-urlencode "add-to-cart=$product_id" \
   --data-urlencode "product_id=$product_id" \
   --data-urlencode "variation_id=$variation_id" \
@@ -55,21 +70,23 @@ add_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/adde
   --data-urlencode "attribute_pa_renk=$color" \
   --data-urlencode "attribute_pa_beden=$size")
 [ "$add_code" = "200" ] || fail "add to cart HTTP $add_code"
-cart_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/cart.html" -w '%{http_code}' "${WP_URL%/}/sepet/")
+cart_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/cart.html" -w '%{http_code}' "${WP_URL%/}/en/sepet/")
 [ "$cart_code" = "200" ] || fail "cart HTTP $cart_code"
 grep -q "$color" "$temporary_dir/cart.html" && grep -q "$size" "$temporary_dir/cart.html" || fail "correct cart variation"
+grep -q 'lang="en-US"' "$temporary_dir/cart.html" || fail "English cart locale"
 pass "correct variation added to cart ($variation_id: $color/$size)"
 
 # A new HTTP client process reuses only WooCommerce's cookie jar. This models a
 # browser restart: no localStorage or custom cart store participates.
-restart_cart_code=$(curl -sS -L -b "$cookie_jar" -o "$temporary_dir/cart-after-restart.html" -w '%{http_code}' "${WP_URL%/}/sepet/")
+restart_cart_code=$(curl -sS -L -b "$cookie_jar" -o "$temporary_dir/cart-after-restart.html" -w '%{http_code}' "${WP_URL%/}/en/sepet/")
 [ "$restart_cart_code" = "200" ] || fail "cart after restart HTTP $restart_cart_code"
 grep -q "$color" "$temporary_dir/cart-after-restart.html" && grep -q "$size" "$temporary_dir/cart-after-restart.html" || fail "guest cart cookie persistence"
 
-checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout.html" -w '%{http_code}' "${WP_URL%/}/odeme/")
+checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout.html" -w '%{http_code}' "${WP_URL%/}/en/odeme/")
 [ "$checkout_code" = "200" ] || fail "checkout HTTP $checkout_code"
 [ "$(grep -o 'name="kuka_[^"]*_accepted"' "$temporary_dir/checkout.html" | sort -u | wc -l | tr -d ' ')" = "2" ] || fail "checkout legal consents"
 grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
+grep -q 'I have read and accept the Pre-information Form' "$temporary_dir/checkout.html" || fail "English checkout legal consent"
 # Raw HTML may contain translated account words inside third-party script data
 # even when no control is rendered. Assert the actual storefront structures;
 # visible text is covered separately by the browser acceptance scan.
@@ -79,7 +96,7 @@ grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout paym
 # Onay kapısı sunucuda doğrulanır: JS kapalıyken de onaysız gönderim reddedilmeli.
 checkout_nonce=$(grep -o 'name="woocommerce-process-checkout-nonce" value="[^"]*"' "$temporary_dir/checkout.html" | head -1 | sed 's/.*value="//;s/"$//')
 [ -n "$checkout_nonce" ] || fail "checkout nonce"
-curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-consent.html" -X POST "${WP_URL%/}/odeme/" \
+curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-consent.html" -X POST "${WP_URL%/}/en/odeme/" \
   --data-urlencode 'billing_first_name=Duman' --data-urlencode 'billing_last_name=Testi' \
   --data-urlencode 'billing_email=duman@example.com' --data-urlencode 'billing_phone=05309481996' \
   --data-urlencode 'billing_customer_type=personal' --data-urlencode 'billing_country=TR' \
@@ -87,15 +104,17 @@ curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-con
   --data-urlencode 'billing_city=Besiktas' --data-urlencode 'billing_state=TR34' \
   --data-urlencode 'payment_method=iyzico' \
   --data-urlencode "woocommerce-process-checkout-nonce=$checkout_nonce" \
-  --data-urlencode '_wp_http_referer=/odeme/' \
+  --data-urlencode '_wp_http_referer=/en/odeme/' \
   --data-urlencode 'woocommerce_checkout_place_order=Siparis ver' >/dev/null
-grep -q 'Ön Bilgilendirme Formu onayı zorunludur' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (preinfo)"
-grep -q 'Mesafeli Satış Sözleşmesi onayı zorunludur' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (distance sales)"
+grep -q 'Acceptance of the Pre-information Form is required' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (preinfo)"
+grep -q 'Acceptance of the Distance Sales Agreement is required' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (distance sales)"
 pass "checkout rendered + two-consent payment gate"
 
 account_code=$(curl -sS -o /dev/null -w '%{http_code}|%{redirect_url}' "${WP_URL%/}/hesabim/")
 [ "$account_code" = "302|${WP_URL%/}/" ] || fail "account 302 redirect ($account_code)"
 fetch "${WP_URL%/}/siparis-takibi/" "$temporary_dir/tracking.html"
 grep -q 'woocommerce-form-track-order' "$temporary_dir/tracking.html" || fail "order tracking form"
+fetch "${WP_URL%/}/en/siparis-takibi/" "$temporary_dir/tracking-en.html"
+grep -q 'woocommerce-form-track-order' "$temporary_dir/tracking-en.html" && grep -q 'lang="en-US"' "$temporary_dir/tracking-en.html" || fail "English order tracking form"
 
 echo "SMOKE=PASS (5/5)"
