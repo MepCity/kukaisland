@@ -57,6 +57,10 @@ Ana kanıtlar:
 - [Filtrede EN term meta](qa/faz5b/19-en-taxonomy-filter.jpg)
 - [İngilizce sipariş takibi](qa/faz5b/20-en-order-tracking.jpg)
 - [Tek kayıtlı dört ürün](qa/faz5b/21-product-list-four-records.jpg)
+- [Temiz seed EN değer sayımı](qa/faz5b/seed-english-values.txt)
+- [Birinci temiz reset + verify günlüğü](qa/faz5b/reset-verify-1.txt)
+- [İkinci temiz reset + verify günlüğü](qa/faz5b/reset-verify-2.txt)
+- [Vendor diff çıktısı](qa/faz5b/vendor-diff.txt)
 
 Responsive kanıtlar `qa/faz5b/responsive-{tr|en}-{320|390|768|1024|1280|1920}.jpg` adlandırmasıyla **12 görüntüdür**.
 
@@ -83,13 +87,15 @@ Responsive kanıtlar `qa/faz5b/responsive-{tr|en}-{320|390|768|1024|1280|1920}.j
 | 17 | Kısmi görsel + nihai HTML makine kanıtı | `14` başlık/gövde/ürün/takip İngilizceydi; görsel sonrası bulunan Türkçe ek içerik düzeltildi. Nihai `english-order-email.html` tamamen İngilizce, fakat düzeltme sonrası yeni ekran görüntüsü yok |
 | 18 | Karşılandı | E-posta ürün adı `EN-QA-KI-TOP-002`; `14` |
 | 19 | Karşılandı | Etiket, hata/onay metni ve AJAX özeti; `07` + English smoke |
-| 20 | Makine kanıtlı | Seed EN meta değerleri boş; otomatik çeviri servisi/kodu yok. Tarama çıktısı raporda, ayrı ekran görüntüsü yok |
+| 20 | Makine kanıtlı | Temiz reset sonrası ürün/sayfa, terim ve Site Görünümü EN seed değerleri ayrı ayrı `0`; `seed-english-values.txt`. Otomatik çeviri entegrasyonu yok; taramadaki tek eşleşme bu durumu sınayan verify deseni |
 | 21 | Karşılandı | Aktif çeviri eklentisi 0; `13` |
 | 22 | Karşılandı | 12/12 viewport taşma 0; uzun EN başlık 320'de taşma 0; 13 görüntü |
-| 23 | Son teslim kapısında ölçülecek | İki temiz `reset + verify`, English smoke 5/5 |
-| 24 | Push sonrası ölçülecek | GitHub Actions Quality + vendor değişikliği 0 |
+| 23 | Karşılandı | İki bağımsız temiz `make reset && make verify` turu `VERIFY=PASS`, her ikisinde smoke `5/5`; `reset-verify-1.txt`, `reset-verify-2.txt` |
+| 24 | Push sonrası ölçülecek | Vendor diff boş (`vendor-diff.txt`); GitHub Actions Quality push sonrasında ölçülecek |
 
 Görsel kanıtı bulunmayan 6, 7 ve 20 ile JSON-LD alt maddesi ve e-posta düzeltme-sonrası görüntüsü özellikle “ekran görüntülü karşılandı” olarak yazılmamıştır.
+
+İlk temiz tur, e-posta ek içeriğinin Türkçe locale'de önbelleğe alınmasını yakaladı; düzeltme ve yeniden başlatılan iki geçerli tur öncesindeki bu negatif regresyon kanıtı `reset-verify-failed-email.txt` dosyasında korunmuştur.
 
 ## Kapsam dışı
 
