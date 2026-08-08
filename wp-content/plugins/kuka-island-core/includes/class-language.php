@@ -13,6 +13,99 @@ function kuka_island_is_english(): bool {
 }
 
 final class Kuka_Island_Core_Language {
+	/** @return array<string, array<string, array{key:string,mode:string}>> */
+	public static function translation_fields(): array {
+		return array(
+			'brand' => array( 'social_links' => array( 'key' => 'social_links_labels_en', 'mode' => 'labels' ) ),
+			'announcement' => array(
+				'items' => array( 'key' => 'items_en', 'mode' => 'copy' ),
+				'link_labels' => array( 'key' => 'link_labels_en', 'mode' => 'copy' ),
+			),
+			'hero' => self::simple_fields( array( 'eyebrow', 'title', 'copy', 'button_label' ) ),
+			'home' => self::simple_fields( array(
+				'category_index_label', 'category_index_title', 'new_arrivals_title', 'new_arrivals_copy',
+				'editorial_title', 'editorial_copy', 'editorial_link_label', 'manifesto_line_1', 'manifesto_line_2',
+				'service_1_title', 'service_1_copy', 'service_2_title', 'service_2_copy', 'service_3_title', 'service_3_copy',
+			) ),
+			'navigation' => array(
+				'main' => array( 'key' => 'main_labels_en', 'mode' => 'labels' ),
+				'categories' => array( 'key' => 'categories_labels_en', 'mode' => 'labels' ),
+				'help' => array( 'key' => 'help_labels_en', 'mode' => 'labels' ),
+			),
+			'footer' => array_merge(
+				self::simple_fields( array( 'newsletter_eyebrow', 'newsletter_title', 'newsletter_copy', 'newsletter_consent' ) ),
+				array(
+					'help_links' => array( 'key' => 'help_links_labels_en', 'mode' => 'labels' ),
+					'legal_links' => array( 'key' => 'legal_links_labels_en', 'mode' => 'labels' ),
+				)
+			),
+			'commercial' => self::simple_fields( array(
+				'delivery_time', 'return_shipping_responsibility', 'shipping_copy', 'free_shipping_remaining_copy',
+				'free_shipping_ready_copy', 'flat_rate_copy', 'hygiene_copy', 'hygiene_defect_copy',
+				'hygiene_try_on_copy', 'secure_payment_copy', 'support_hours',
+			) ),
+		);
+	}
+
+	/** @param array<int, string> $keys @return array<string, array{key:string,mode:string}> */
+	private static function simple_fields( array $keys ): array {
+		$fields = array();
+		foreach ( $keys as $key ) { $fields[ $key ] = array( 'key' => $key . '_en', 'mode' => 'copy' ); }
+		return $fields;
+	}
+
+	public static function translation_config( string $group, string $key ): ?array {
+		return self::translation_fields()[ $group ][ $key ] ?? null;
+	}
+
+	/** Add empty English storage keys without inventing translated content. */
+	public static function with_translation_defaults( array $content ): array {
+		foreach ( self::translation_fields() as $group => $fields ) {
+			foreach ( $fields as $config ) {
+				if ( ! array_key_exists( $config['key'], $content[ $group ] ?? array() ) ) {
+					$content[ $group ][ $config['key'] ] = '';
+				}
+			}
+		}
+		return $content;
+	}
+
+	/** Resolve English values field-by-field, falling back to Turkish. */
+	public static function localized_content( array $content ): array {
+		$content = self::with_translation_defaults( $content );
+		if ( ! self::is_english_request() ) { return $content; }
+		foreach ( self::translation_fields() as $group => $fields ) {
+			foreach ( $fields as $source_key => $config ) {
+				$translated = $content[ $group ][ $config['key'] ] ?? '';
+				if ( 'labels' === $config['mode'] ) {
+					$content[ $group ][ $source_key ] = self::translated_labels( (string) ( $content[ $group ][ $source_key ] ?? '' ), (string) $translated );
+				} elseif ( is_array( $content[ $group ][ $source_key ] ?? null ) ) {
+					if ( is_array( $translated ) && array_filter( $translated, 'strlen' ) ) { $content[ $group ][ $source_key ] = $translated; }
+				} elseif ( '' !== trim( (string) $translated ) ) {
+					$content[ $group ][ $source_key ] = $translated;
+				}
+			}
+		}
+		return $content;
+	}
+
+	private static function translated_labels( string $source, string $translations ): string {
+		$labels = preg_split( '/\R/', $translations ) ?: array();
+		$rows   = preg_split( '/\R/', $source ) ?: array();
+		foreach ( $rows as $index => &$row ) {
+			$label = trim( (string) ( $labels[ $index ] ?? '' ) );
+			if ( '' === $label ) { continue; }
+			$parts = explode( '|', $row );
+			$parts[0] = $label;
+			$row = implode( '|', $parts );
+		}
+		return implode( "\n", $rows );
+	}
+
+	public static function translation_field_count(): int {
+		return array_sum( array_map( 'count', self::translation_fields() ) );
+	}
+
 	public function register(): void {
 		add_filter( 'query_vars', array( $this, 'query_vars' ) );
 		add_filter( 'rewrite_rules_array', array( $this, 'translated_rewrite_rules' ), 20 );
