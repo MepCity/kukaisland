@@ -27,9 +27,29 @@ add_action(
 );
 
 /**
- * Group the billing fields under readable headings: identity first, invoice
- * type second, address last. Only the documented `priority` contract is used;
- * every field keeps its WooCommerce key, type and validation.
+ * Which optional fields the operator has made mandatory.
+ *
+ * Only fields the law leaves to the seller are listed. Name, surname, e-mail,
+ * street address, province and postcode are required by the distance-selling
+ * rules, so they never appear in the panel and cannot be switched off.
+ *
+ * @return array<string, bool>
+ */
+function kuka_island_checkout_required_fields(): array {
+	$settings = kuka_island_content()['checkout'] ?? array();
+	return array(
+		'billing_phone'     => (bool) ( $settings['require_phone'] ?? true ),
+		'billing_company'   => (bool) ( $settings['require_company'] ?? false ),
+		'billing_address_2' => (bool) ( $settings['require_address_2'] ?? false ),
+		'billing_city'      => (bool) ( $settings['require_city'] ?? false ),
+	);
+}
+
+/**
+ * Group the billing fields under readable headings: personal details first,
+ * delivery address second, invoice details last. Only the documented
+ * `priority` and `required` contracts are used; every field keeps its
+ * WooCommerce key, type and validation.
  *
  * @param array<string, array<string, mixed>> $fields Checkout fields.
  * @return array<string, array<string, mixed>>
@@ -40,29 +60,37 @@ function kuka_island_checkout_field_order( array $fields ): array {
 		'billing_last_name'     => 20,
 		'billing_email'         => 30,
 		'billing_phone'         => 40,
-		'billing_customer_type' => 55,
-		'billing_company'       => 60,
-		'billing_tax_office'    => 61,
-		'billing_tax_number'    => 62,
-		'billing_country'       => 75,
-		'billing_address_1'     => 80,
-		'billing_address_2'     => 85,
-		'billing_postcode'      => 90,
-		'billing_city'          => 95,
-		'billing_state'         => 100,
+		'billing_country'       => 55,
+		'billing_address_1'     => 60,
+		'billing_address_2'     => 65,
+		'billing_postcode'      => 70,
+		'billing_city'          => 75,
+		'billing_state'         => 80,
+		'billing_customer_type' => 110,
+		'billing_company'       => 115,
+		'billing_tax_office'    => 116,
+		'billing_tax_number'    => 117,
 	);
 	foreach ( $priorities as $key => $priority ) {
 		if ( isset( $fields['billing'][ $key ] ) ) {
 			$fields['billing'][ $key ]['priority'] = $priority;
 		}
 	}
+	foreach ( kuka_island_checkout_required_fields() as $key => $required ) {
+		if ( isset( $fields['billing'][ $key ] ) ) {
+			$fields['billing'][ $key ]['required'] = $required;
+		}
+	}
 	if ( isset( $fields['billing']['billing_email'], $fields['billing']['billing_phone'] ) ) {
 		$fields['billing']['billing_email']['class'] = array( 'form-row-first' );
 		$fields['billing']['billing_phone']['class'] = array( 'form-row-last' );
 	}
+	// Fatura adresi bloğu yalnız adres bileşenlerini sorar; alıcı adı ve şirket
+	// bilgisi kişisel/fatura bölümlerinden gelir ve gönderimde kopyalanır.
+	unset( $fields['shipping']['shipping_first_name'], $fields['shipping']['shipping_last_name'], $fields['shipping']['shipping_company'] );
 	return $fields;
 }
-add_filter( 'woocommerce_checkout_fields', 'kuka_island_checkout_field_order', 20 );
+add_filter( 'woocommerce_checkout_fields', 'kuka_island_checkout_field_order', 30 );
 
 /**
  * Keep the country locale priorities in step with the field order above.
@@ -72,14 +100,32 @@ add_filter( 'woocommerce_checkout_fields', 'kuka_island_checkout_field_order', 2
  * the client. Without this filter the rendered order and the sorted order
  * disagree and the address block jumps on load.
  *
- * @param array<string, array<string, array<string, mixed>>> $locale Country locale map.
- * @return array<string, array<string, array<string, mixed>>>
+ * @return array<string, int>
  */
 function kuka_island_checkout_address_priorities(): array {
 	return array(
-		'phone' => 40, 'country' => 75, 'address_1' => 80,
-		'address_2' => 85, 'postcode' => 90, 'city' => 95, 'state' => 100,
+		'phone' => 40, 'country' => 55, 'address_1' => 60,
+		'address_2' => 65, 'postcode' => 70, 'city' => 75, 'state' => 80,
 	);
+}
+
+/**
+ * The same required flags, keyed the way the locale array is.
+ *
+ * WooCommerce's address-i18n script rebuilds the label and the
+ * `validate-required` class of every locale field on load, so a rule applied
+ * only to `woocommerce_checkout_fields` is correct on the server and undone in
+ * the browser — the phone rendered as "Telefon *" but read "(isteğe bağlı)"
+ * once the script ran.
+ *
+ * @return array<string, bool>
+ */
+function kuka_island_checkout_address_required(): array {
+	$required = array();
+	foreach ( kuka_island_checkout_required_fields() as $key => $value ) {
+		$required[ substr( $key, strlen( 'billing_' ) ) ] = $value;
+	}
+	return $required;
 }
 
 /**
@@ -90,10 +136,16 @@ function kuka_island_checkout_address_priorities(): array {
  * @return array<string, array<string, array<string, mixed>>>
  */
 function kuka_island_checkout_locale( array $locale ): array {
+	$required = kuka_island_checkout_address_required();
 	foreach ( array_keys( $locale ) as $code ) {
 		foreach ( kuka_island_checkout_address_priorities() as $field => $priority ) {
 			if ( isset( $locale[ $code ][ $field ] ) ) {
 				$locale[ $code ][ $field ]['priority'] = $priority;
+			}
+		}
+		foreach ( $required as $field => $is_required ) {
+			if ( isset( $locale[ $code ][ $field ] ) ) {
+				$locale[ $code ][ $field ]['required'] = $is_required;
 			}
 		}
 	}
@@ -111,6 +163,11 @@ function kuka_island_checkout_default_address_fields( array $fields ): array {
 	foreach ( kuka_island_checkout_address_priorities() as $field => $priority ) {
 		if ( isset( $fields[ $field ] ) ) {
 			$fields[ $field ]['priority'] = $priority;
+		}
+	}
+	foreach ( kuka_island_checkout_address_required() as $field => $is_required ) {
+		if ( isset( $fields[ $field ] ) ) {
+			$fields[ $field ]['required'] = $is_required;
 		}
 	}
 	if ( isset( $fields['phone'] ) ) {
@@ -136,8 +193,8 @@ add_filter( 'woocommerce_default_address_fields', 'kuka_island_checkout_default_
 function kuka_island_checkout_section_headings( string $field, string $key ): string {
 	if ( ! is_checkout() ) { return $field; }
 	$headings = array(
-		'billing_customer_type' => array( __( 'Fatura bilgileri', 'kuka-island' ), 50 ),
-		'billing_country'       => array( __( 'Fatura adresi', 'kuka-island' ), 70 ),
+		'billing_country'       => array( __( 'Teslimat adresi', 'kuka-island' ), 50 ),
+		'billing_customer_type' => array( __( 'Fatura bilgileri', 'kuka-island' ), 105 ),
 	);
 	if ( ! isset( $headings[ $key ] ) ) { return $field; }
 	list( $label, $priority ) = $headings[ $key ];
@@ -166,6 +223,40 @@ add_action(
 		echo '<h3 class="kuka-checkout-section kuka-checkout-section--first">' . esc_html__( 'Kişisel bilgiler', 'kuka-island' ) . '</h3>';
 	}
 );
+
+/**
+ * Swap the two addresses so WooCommerce keeps its own meaning of the fields.
+ *
+ * The form asks for the delivery address first and offers a separate invoice
+ * address behind the checkbox — the mirror of WooCommerce's own wording. In
+ * WooCommerce, `billing_*` is the invoice address and `shipping_*` the delivery
+ * one, so when the box is ticked the two posted address blocks are exchanged.
+ * With the box clear WooCommerce already copies billing to shipping, so one
+ * address serves both and nothing needs moving. Only address components move;
+ * name, e-mail, phone and the corporate invoice fields stay where they were
+ * entered, and no total is touched (§17.3).
+ *
+ * @param array<string, mixed> $data Posted checkout data.
+ * @return array<string, mixed>
+ */
+function kuka_island_checkout_swap_addresses( array $data ): array {
+	if ( empty( $data['ship_to_different_address'] ) ) {
+		return $data;
+	}
+	foreach ( array( 'country', 'address_1', 'address_2', 'postcode', 'city', 'state' ) as $part ) {
+		if ( ! array_key_exists( 'billing_' . $part, $data ) || ! array_key_exists( 'shipping_' . $part, $data ) ) {
+			continue;
+		}
+		$delivery                    = $data[ 'billing_' . $part ];
+		$data[ 'billing_' . $part ]  = $data[ 'shipping_' . $part ];
+		$data[ 'shipping_' . $part ] = $delivery;
+	}
+	$data['shipping_first_name'] = $data['billing_first_name'] ?? '';
+	$data['shipping_last_name']  = $data['billing_last_name'] ?? '';
+	$data['shipping_company']    = $data['billing_company'] ?? '';
+	return $data;
+}
+add_filter( 'woocommerce_checkout_posted_data', 'kuka_island_checkout_swap_addresses' );
 
 /**
  * Turn the panel delivery-time value into a concrete date window.
@@ -256,9 +347,9 @@ function kuka_island_checkout_help(): void {
 		$value = (string) ( $commercial[ $key ] ?? '' );
 		if ( '' !== trim( $value ) && ! kuka_island_is_placeholder( $value ) ) { $shipping[] = esc_html( $value ); }
 	}
-	if ( ! empty( $commercial['return_period_days'] ) ) {
-		/* translators: %d is the return window in days. */
-		$shipping[] = esc_html( sprintf( __( '%d gün içinde iade ve değişim', 'kuka-island' ), absint( $commercial['return_period_days'] ) ) );
+	if ( ! empty( $commercial['cayma_hakki_gun'] ) ) {
+		/* translators: %d is the statutory withdrawal window in days. */
+		$shipping[] = esc_html( sprintf( __( '%d gün içinde cayma hakkı', 'kuka-island' ), absint( $commercial['cayma_hakki_gun'] ) ) );
 	}
 
 	echo '<div class="kuka-checkout-help">';

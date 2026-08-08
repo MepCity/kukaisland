@@ -3,13 +3,11 @@
    için çok dar — toplamlar sütununu ~217px'e, ürün adını ~200px'e sıkıştırıp
    "Beden:" gibi kısa kelimeleri bile satır ortasından bölüyordu. Sayfanın
    kendi üst sınırı zaten .kuka-content-page üzerinden geliyor. */
-.woocommerce-cart .kuka-prose,
-.woocommerce-account .kuka-prose {
+.woocommerce-cart .kuka-prose {
   max-width: none;
 }
 
-.woocommerce-cart .entry-title,
-.woocommerce-account .entry-title {
+.woocommerce-cart .entry-title {
   margin: 0 0 var(--space-6);
   font-size: var(--text-heading-medium);
   font-weight: var(--weight-regular);
@@ -296,11 +294,54 @@
   padding-bottom: 0;
 }
 
+/* Bildirim kutuları. Önce yalnız zemin ve üst çizgi tanımlıydı; metin rengi
+   WooCommerce/Blocksy varsayılanından geliyordu ve krem zemin üzerinde
+   okunmuyordu. Renk artık token'la açıkça verilir ve üç durum üst çizgiyle
+   ayrışır. Soldaki boş kare, WooCommerce'in ikon fontuyla çizilen ::before
+   idi; projede 0 ikon fontu ilkesi olduğu için font yüklenmiyor ve yerinde
+   tofu kalıyordu — kural kapatıldı. */
+/* Hijyen ibaresi sepet sayfasında tablo ile toplamların altında durur. */
+.kuka-cart-hygiene {
+  max-width: var(--measure-table);
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
 .woocommerce-error,
 .woocommerce-info,
 .woocommerce-message {
   background: var(--color-sand);
+  color: var(--color-ink);
+  border-top: var(--space-0-5) solid var(--color-ink);
+  padding-left: var(--space-3);
+}
+
+.woocommerce-error::before,
+.woocommerce-info::before,
+.woocommerce-message::before,
+.woocommerce-error li::before,
+.woocommerce-info li::before,
+.woocommerce-message li::before {
+  content: none;
+}
+
+.woocommerce-error {
+  border-top-color: var(--color-error);
+}
+
+.woocommerce-message {
+  border-top-color: var(--color-success);
+}
+
+.woocommerce-info {
   border-top-color: var(--color-ink);
+}
+
+.woocommerce-error a,
+.woocommerce-info a,
+.woocommerce-message a {
+  color: var(--color-ink);
 }
 
 .kuka-cart-panel__content {
@@ -479,148 +520,6 @@
 .kuka-cart-panel__empty h2 {
   margin: var(--space-2) 0 var(--space-3);
   font-size: var(--text-heading-small);
-}
-
-.kuka-account-panel__content {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-8) var(--space-6);
-}
-
-.kuka-account-panel__content h2 {
-  margin: 0 0 var(--space-6);
-  font-size: var(--text-heading-small);
-  font-weight: var(--weight-regular);
-  line-height: var(--leading-heading);
-}
-
-.kuka-account-panel__intro {
-  max-width: var(--measure-copy-narrow);
-  margin: 0 0 var(--space-8);
-  color: var(--color-muted);
-}
-
-.kuka-account-panel__content nav {
-  border-top: var(--stroke) solid var(--color-line);
-}
-
-.kuka-account-panel__content nav a {
-  min-height: var(--control-large);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-block: var(--space-2);
-  border-bottom: var(--stroke) solid var(--color-line);
-  text-decoration: none;
-  transition: background var(--duration-micro) var(--ease-standard), color var(--duration-micro) var(--ease-standard);
-}
-
-.kuka-account-panel__content nav a:hover {
-  background: var(--color-sand);
-}
-
-.kuka-account-panel .woocommerce-form-login {
-  padding: 0;
-  border: 0;
-}
-
-.kuka-account-panel .woocommerce-form-login .form-row-first,
-.kuka-account-panel .woocommerce-form-login .form-row-last {
-  width: 100%;
-  float: none;
-}
-
-.kuka-account-panel .woocommerce-form-login p {
-  margin-bottom: var(--space-3);
-}
-
-.kuka-account-panel .woocommerce-form-login label {
-  display: block;
-  margin-bottom: var(--space-1);
-  font-size: var(--text-caption);
-}
-
-.kuka-account-panel .woocommerce-form-login input[type="text"],
-.kuka-account-panel .woocommerce-form-login input[type="password"] {
-  width: 100%;
-  min-height: var(--control-large);
-  padding-inline: 0;
-  background: transparent;
-  border: 0;
-  border-bottom: var(--stroke) solid var(--color-muted);
-}
-
-.kuka-account-panel .woocommerce-form-login__rememberme {
-  min-height: var(--control);
-  display: flex !important;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.kuka-account-panel .woocommerce-form-login__rememberme input {
-  width: var(--space-3);
-  height: var(--space-3);
-}
-
-.kuka-account-panel .lost_password,
-.kuka-account-panel__register {
-  font-size: var(--text-caption);
-}
-
-.kuka-account-panel .woocommerce-form-login .woocommerce-form-login__submit,
-.kuka-account-panel__register a {
-  width: 100%;
-  min-height: var(--control-large);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-micro);
-  letter-spacing: var(--tracking-label);
-  text-decoration: none;
-  text-transform: uppercase;
-}
-
-.kuka-account-panel .woocommerce-form-login .woocommerce-form-login__submit {
-  background: var(--color-ink) !important;
-  border-color: var(--color-ink) !important;
-  color: var(--color-white) !important;
-}
-
-.kuka-account-panel__register {
-  margin: var(--space-1) 0 0;
-}
-
-.kuka-account-panel__register a {
-  background: transparent;
-  border: var(--stroke) solid var(--color-ink);
-  color: var(--color-ink);
-}
-
-@media (max-width: 47.5em) {
-  .kuka-account-panel__content {
-    padding: var(--space-6) var(--space-3);
-  }
-}
-
-.kuka-account-panel__errors {
-  margin-bottom: var(--space-3);
-  padding: var(--space-2);
-  border: var(--stroke) solid var(--color-error);
-}
-
-.kuka-account-panel__errors .woocommerce-error {
-  margin: var(--space-1) 0 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--color-ink);
-}
-
-.kuka-account-panel__errors .woocommerce-error::before {
-  display: none;
 }
 
 /* 68em eşiği 1024px'i de kart düzeninde tutar; iki kolon sadece geniş

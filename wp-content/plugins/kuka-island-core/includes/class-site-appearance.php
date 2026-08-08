@@ -7,6 +7,8 @@ defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
+	/** Bumped whenever a stored field is retired, renamed or force-reset. */
+	private const SCHEMA_VERSION = 2;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -78,70 +80,83 @@ final class Kuka_Island_Core_Site_Appearance {
 		return array(
 			'brand' => array(
 				'logo_id' => 0, 'mobile_logo_id' => 0, 'emblem_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
-				'email' => 'hello@kukaisland.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
+				'email' => 'Gultekinkubraa@gmail.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
 				'social_links' => 'Instagram|https://www.instagram.com/kukaisland',
 			),
 			'announcement' => array(
 				'enabled' => true,
-				'items' => array( '1.500 TL üzeri siparişlerde ücretsiz kargo' ),
+				'items' => array( '4.000 TL üzeri siparişlerde ücretsiz kargo' ),
 				'link_labels' => array( '' ), 'link_urls' => array( '' ),
 			),
 			'languages' => array(
-				'items' => '',
+				'items' => "Türkçe|/\nEnglish|/en/",
+				'pending_urls' => '/en/',
+				'pending_note' => 'İngilizce sürüm yakında',
 			),
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
 				'title' => 'Adanın ritmini yanında taşı.', 'copy' => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
-				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'light',
+				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'dark',
 			),
 			'home' => array(
-				'category_index_enabled' => true, 'category_index_label' => 'Formunu bul', 'category_index_title' => 'Ürün kategorileri',
+				'category_index_enabled' => false, 'category_index_label' => 'Formunu bul', 'category_index_title' => 'Ürün kategorileri',
 				'new_arrivals_enabled' => true, 'new_arrivals_title' => 'Yeni Gelenler', 'new_arrivals_copy' => 'Yeni sezon seçkisi.',
 				'new_arrivals_source' => 'latest', 'source_category' => '', 'source_collection' => '', 'manual_product_ids' => '', 'presentation' => 'grid',
 				'card_swatches_enabled' => true, 'card_stock_enabled' => true,
 				'editorial_enabled' => true, 'editorial_title' => 'Ada Günlüğü', 'editorial_copy' => 'Şehirden kıyıya uzanan günlük üniforma.',
 				'editorial_image_id' => 0, 'editorial_video_id' => 0, 'editorial_url' => '/hakkimizda/', 'editorial_link_label' => 'Hikâyeyi oku',
-				'manifesto_enabled' => true, 'manifesto_title' => 'Az, iyi ve uzun ömürlü.', 'manifesto_copy' => 'Her parçayı tekrar tekrar giymek için tasarlıyoruz.',
+				'manifesto_enabled' => true,
+				'manifesto_line_1' => 'Güneş. Ten. Özgürlük.', 'manifesto_line_1_en' => 'Sun. Skin. Freedom.',
+				'manifesto_line_2' => 'Bir yer değil. Bir his.', 'manifesto_line_2_en' => 'Not a place. A feeling.',
 				'services_enabled' => true,
 				'service_1_title' => 'Güvenli ödeme', 'service_1_copy' => 'iyzico altyapısı · 3D Secure', 'service_1_url' => '/mesafeli-satis-sozlesmesi/',
-				'service_2_title' => 'Kolay değişim', 'service_2_copy' => '14 gün içinde değişim', 'service_2_url' => '/iade-degisim/',
+				'service_2_title' => 'Kolay iade', 'service_2_copy' => '14 gün içinde cayma hakkı', 'service_2_url' => '/iade-degisim/',
 				'service_3_title' => 'Destek', 'service_3_copy' => 'Hafta içi 09.00–18.00 · WhatsApp', 'service_3_url' => '',
 			),
 			'navigation' => array(
 				'main' => "Yeni Gelenler|/magaza/?orderby=date\nMarka / Hikâyemiz|/hakkimizda/",
 				'categories' => "Bikini|/kategori/bikini-ustleri/|1|1\nMayo|/kategori/mayolar/|1|1\nPlaj Giyim|/kategori/plaj-giyim/|1|1\nKoleksiyonlar|/magaza/|1|0",
-				'help' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade ve Değişim|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
+				'help' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
 			),
 			'footer' => array(
-				'brand_copy' => 'Günlük hayatın her ritmine uyum sağlayan zamansız parçalar.', 'newsletter_enabled' => true,
+				'newsletter_enabled' => true,
 				'newsletter_eyebrow' => 'Ada mektupları', 'newsletter_title' => 'Ada mektuplarına katıl',
 				'newsletter_copy' => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
 				'newsletter_consent' => 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
-				'help_links' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade ve Değişim|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
-				'legal_links' => "Gizlilik Politikası|/gizlilik-politikasi/\nÇerez Politikası|/cerez-politikasi/\nKVKK Aydınlatma Metni|/kvkk-aydinlatma-metni/\nİade ve Değişim|/iade-degisim/\nÖn Bilgilendirme Formu|/on-bilgilendirme-formu/\nMesafeli Satış Sözleşmesi|/mesafeli-satis-sozlesmesi/",
+				'help_links' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
+				// Üyelik sözleşmesi (/kullanim-kosullari/) üyelik sunulmadığı için
+				// listede yoktur; hukuk danışmanı kararı gelince eklenecek.
+				'legal_links' => "Mesafeli Satış Sözleşmesi|/mesafeli-satis-sozlesmesi/\nÖn Bilgilendirme Formu|/on-bilgilendirme-formu/\nCayma Hakkı ve İade|/iade-degisim/\nKVKK Aydınlatma Metni|/kvkk-aydinlatma-metni/\nGizlilik Politikası|/gizlilik-politikasi/\nÇerez Politikası|/cerez-politikasi/\nAçık Rıza Metni|/acik-riza-metni/",
 			),
 			'commercial' => array(
-				'free_shipping_threshold' => 1500, 'shipping_copy' => '1.500 TL üzeri siparişlerde ücretsiz kargo.',
+				'free_shipping_threshold' => 4000, 'shipping_copy' => '4.000 TL üzeri siparişlerde ücretsiz kargo.',
 				'free_shipping_remaining_copy' => 'Ücretsiz kargo için %s daha ekleyin.', 'free_shipping_ready_copy' => 'Ücretsiz kargo hakkınız hazır.',
 				'flat_shipping_fee' => 149, 'flat_rate_copy' => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
-				'shipping_carrier' => '[KARGO FİRMASI]', 'delivery_time' => '[TESLİMAT SÜRESİ]', 'return_period_days' => 14,
+				'shipping_carrier' => '[KARGO FİRMASI]', 'delivery_time' => '[TESLİMAT SÜRESİ]', 'cayma_hakki_gun' => 14,
 				'return_shipping_responsibility' => '[İADE KARGO ÜCRETİNİN KİME AİT OLDUĞU]',
-				'exchange_copy' => 'Değişim talebinizi teslimattan sonra 14 gün içinde iletebilirsiniz.',
+				'hygiene_copy' => 'Hijyen koruma bandı çıkarılmış, kullanılmış, yıkanmış, parfüm, krem veya deodorant kokusu bulunan, lekelenmiş ya da yeniden satılabilir niteliğini kaybetmiş bikini ve mayo ürünlerinde iade ve değişim kabul edilmez.',
+				'hygiene_defect_copy' => 'Ayıplı ürünlerde tüketicinin kanuni hakları saklıdır.',
+				'hygiene_try_on_copy' => 'Ürünü hijyen bandını sökmeden, iç çamaşırınızın üzerinden deneyebilirsiniz.',
 				'secure_payment_copy' => 'Ödeme bilgileriniz güvenli bağlantı üzerinden işlenir.', 'support_hours' => 'Hafta içi 09.00–18.00',
 			),
 			'legal' => array(
-				'company_title' => 'Kübra Gültekin', 'brand_name' => 'Kuka Island',
+				'company_title' => 'Kübra Gültekin', 'brand_name' => 'KUKA ISLAND',
 				'tax_number' => '4220658128', 'tax_office' => 'Beşiktaş',
-				'address' => 'Akat Mah. Ata Sk. Eti Sitesi A3 Blok No: 2 C İç Kapı No: 3 Beşiktaş / İstanbul',
-				'telephone' => '+90 530 948 19 96', 'etbis_number' => '[ETBİS NO]',
+				'address_full' => 'Akat Mah. Ata Sk. Eti Sitesi A3 Blok No: 2 C İç Kapı No: 3, Beşiktaş / İstanbul',
+				'address_short' => 'Akat Mh. Etiler',
+				'telephone' => '0530 948 19 96', 'mersis_number' => 'Bulunmamaktadır', 'etbis_number' => '[ETBİS NO]',
+			),
+			'checkout' => array(
+				'require_phone' => true, 'require_company' => false,
+				'require_address_2' => false, 'require_city' => false,
 			),
 			'content' => array(
-				'size_top_rows' => "34|XS|80–84|68–72|A–B\n36|S|84–88|72–76|A–B\n38|M|88–92|76–80|B–C\n40|L|92–98|80–84|C–D\n42|XL|98–104|84–88|C–D",
-				'size_bottom_rows' => "34|XS|62–66|88–92\n36|S|66–70|92–96\n38|M|70–74|96–100\n40|L|74–80|100–106\n42|XL|80–86|106–112",
-				'size_swimsuit_rows' => "34|XS|80–84|62–66|88–92\n36|S|84–88|66–70|92–96\n38|M|88–92|70–74|96–100\n40|L|92–98|74–80|100–106\n42|XL|98–104|80–86|106–112",
+				'size_top_rows' => "S|84–88|72–76|A–B\nM|88–92|76–80|B–C\nL|92–98|80–84|C–D",
+				'size_bottom_rows' => "S|66–70|92–96\nM|70–74|96–100\nL|74–80|100–106",
+				'size_swimsuit_rows' => "S|84–88|66–70|92–96\nM|88–92|70–74|96–100\nL|92–98|74–80|100–106",
 			),
-			'panels' => array(
-				'account_greeting' => 'Tekrar hoş geldiniz.', 'account_copy' => 'E-posta adresiniz ve şifrenizle giriş yapın.',
+			'membership' => array(
+				'enabled' => false, 'guest_session_hours' => 48,
 			),
 		);
 	}
@@ -157,7 +172,50 @@ final class Kuka_Island_Core_Site_Appearance {
 		if ( is_array( $saved ) && $legacy_main === ( $saved['navigation']['main'] ?? '' ) ) {
 			$saved['navigation']['main'] = self::defaults()['navigation']['main'];
 		}
-		return self::merge( self::defaults(), is_array( $saved ) ? $saved : array() );
+		return self::merge( self::defaults(), self::migrate( is_array( $saved ) ? $saved : array() ) );
+	}
+
+	/**
+	 * Carry a stored option forward to the current field contract.
+	 *
+	 * Retired fields would otherwise survive in the option row and keep feeding
+	 * the storefront even though the panel no longer shows them. Values that
+	 * simply moved keep the operator's own text; values the customer decided to
+	 * drop are removed outright.
+	 *
+	 * @param array<string, mixed> $saved Stored option value.
+	 * @return array<string, mixed>
+	 */
+	private static function migrate( array $saved ): array {
+		if ( ! $saved || self::SCHEMA_VERSION === ( $saved['schema_version'] ?? 0 ) ) {
+			return $saved;
+		}
+
+		// Adres tek alandı; yasal sayfalarda zorunlu açık adres ile pazarlama
+		// yüzeylerindeki kısa adres artık ayrı tutuluyor.
+		if ( isset( $saved['legal']['address'] ) && ! isset( $saved['legal']['address_full'] ) ) {
+			$saved['legal']['address_full'] = $saved['legal']['address'];
+		}
+		// Tek "iade/değişim süresi" alanı yalnız cayma hakkına indi (§20, Bölüm E).
+		if ( isset( $saved['commercial']['return_period_days'] ) && ! isset( $saved['commercial']['cayma_hakki_gun'] ) ) {
+			$saved['commercial']['cayma_hakki_gun'] = $saved['commercial']['return_period_days'];
+		}
+		unset(
+			$saved['legal']['address'],
+			$saved['commercial']['return_period_days'],
+			$saved['commercial']['exchange_copy'],
+			$saved['footer']['brand_copy'],
+			$saved['home']['manifesto_title'],
+			$saved['home']['manifesto_copy'],
+			$saved['panels']
+		);
+		// Kesim indeksi müşteri isteğiyle geri çekildi; eski kurulumlarda açık
+		// kalmasın diye bir kez kapatılır, sonra panelden açılabilir.
+		$saved['home']['category_index_enabled'] = false;
+		$saved['schema_version']                 = self::SCHEMA_VERSION;
+		update_option( self::OPTION_NAME, $saved, false );
+
+		return $saved;
 	}
 
 	/** @return array<string, array<string, array<string, mixed>>> */
@@ -189,7 +247,9 @@ final class Kuka_Island_Core_Site_Appearance {
 			'languages' => array(
 				'label'  => __( 'Dil Seçici', 'kuka-island-core' ),
 				'fields' => array(
-					'items' => array( __( 'Diller (Etiket|URL öneki) — tek satır seçici gizlenir', 'kuka-island-core' ), 'link_lines' ),
+					'items'        => array( __( 'Diller (Etiket|URL öneki) — tek satır seçici gizlenir', 'kuka-island-core' ), 'link_lines' ),
+					'pending_urls' => array( __( 'Henüz yayında olmayan dil URL’leri (virgülle) — bağlantı yerine bilgi gösterilir', 'kuka-island-core' ), 'text' ),
+					'pending_note' => array( __( 'Yayında olmayan dil için gösterilecek not', 'kuka-island-core' ), 'text' ),
 				),
 			),
 			'hero'         => array(
@@ -231,8 +291,10 @@ final class Kuka_Island_Core_Site_Appearance {
 					'editorial_url'      => array( __( 'Editoryal URL', 'kuka-island-core' ), 'url' ),
 					'editorial_link_label' => array( __( 'Editoryal bağlantı etiketi', 'kuka-island-core' ), 'text' ),
 					'manifesto_enabled' => array( __( 'Manifestoyu göster', 'kuka-island-core' ), 'checkbox' ),
-					'manifesto_title'    => array( __( 'Manifesto başlığı', 'kuka-island-core' ), 'text' ),
-					'manifesto_copy'     => array( __( 'Manifesto metni', 'kuka-island-core' ), 'textarea' ),
+					'manifesto_line_1'    => array( __( 'Manifesto 1. satır (Türkçe)', 'kuka-island-core' ), 'text' ),
+					'manifesto_line_1_en' => array( __( 'Manifesto 1. satır (İngilizce)', 'kuka-island-core' ), 'text' ),
+					'manifesto_line_2'    => array( __( 'Manifesto 2. satır (Türkçe)', 'kuka-island-core' ), 'text' ),
+					'manifesto_line_2_en' => array( __( 'Manifesto 2. satır (İngilizce)', 'kuka-island-core' ), 'text' ),
 					'services_enabled'   => array( __( 'Servis şeridini göster', 'kuka-island-core' ), 'checkbox' ),
 					'service_1_title'    => array( __( 'Servis 1 başlık', 'kuka-island-core' ), 'text' ),
 					'service_1_copy'     => array( __( 'Servis 1 açıklama', 'kuka-island-core' ), 'text' ),
@@ -256,7 +318,6 @@ final class Kuka_Island_Core_Site_Appearance {
 			'footer'       => array(
 				'label'  => __( '6. Footer', 'kuka-island-core' ),
 				'fields' => array(
-					'brand_copy'         => array( __( 'Marka metni', 'kuka-island-core' ), 'textarea' ),
 					'newsletter_enabled' => array( __( 'Bülteni göster', 'kuka-island-core' ), 'checkbox' ),
 					'newsletter_eyebrow' => array( __( 'Bülten üst başlığı', 'kuka-island-core' ), 'text' ),
 					'newsletter_title'   => array( __( 'Bülten başlığı', 'kuka-island-core' ), 'text' ),
@@ -273,13 +334,15 @@ final class Kuka_Island_Core_Site_Appearance {
 					'flat_shipping_fee'       => array( __( 'Standart kargo ücreti (TL)', 'kuka-island-core' ), 'number' ),
 					'shipping_carrier'        => array( __( 'Kargo firması', 'kuka-island-core' ), 'text' ),
 					'delivery_time'           => array( __( 'Tahmini teslimat süresi', 'kuka-island-core' ), 'text' ),
-					'return_period_days'      => array( __( 'İade/değişim süresi (gün)', 'kuka-island-core' ), 'number' ),
+					'cayma_hakki_gun'         => array( __( 'Cayma hakkı süresi (gün) — 6502 sayılı Kanun on dört gün öngörür, düşürülmemelidir', 'kuka-island-core' ), 'number' ),
 					'return_shipping_responsibility' => array( __( 'İade kargo ücreti sorumluluğu', 'kuka-island-core' ), 'text' ),
 					'shipping_copy'             => array( __( 'Kargo metni', 'kuka-island-core' ), 'textarea' ),
 					'free_shipping_remaining_copy' => array( __( 'Eşiğe kalan kargo metni (%s fiyat)', 'kuka-island-core' ), 'textarea' ),
 					'free_shipping_ready_copy' => array( __( 'Eşik tamamlandı metni', 'kuka-island-core' ), 'textarea' ),
 					'flat_rate_copy'            => array( __( 'Sabit kargo metni', 'kuka-island-core' ), 'textarea' ),
-					'exchange_copy'             => array( __( 'Değişim metni', 'kuka-island-core' ), 'textarea' ),
+					'hygiene_copy'              => array( __( 'Hijyen ibaresi', 'kuka-island-core' ), 'textarea' ),
+					'hygiene_defect_copy'       => array( __( 'Ayıplı ürün cümlesi', 'kuka-island-core' ), 'textarea' ),
+					'hygiene_try_on_copy'       => array( __( 'Bandı sökmeden deneme bilgisi', 'kuka-island-core' ), 'textarea' ),
 					'secure_payment_copy'       => array( __( 'Güvenli ödeme metni', 'kuka-island-core' ), 'textarea' ),
 					'support_hours'             => array( __( 'Destek saatleri', 'kuka-island-core' ), 'text' ),
 				),
@@ -291,24 +354,37 @@ final class Kuka_Island_Core_Site_Appearance {
 					'brand_name'    => array( __( 'İşletme adı', 'kuka-island-core' ), 'text' ),
 					'tax_number'    => array( __( 'VKN', 'kuka-island-core' ), 'text' ),
 					'tax_office'    => array( __( 'Vergi dairesi', 'kuka-island-core' ), 'text' ),
-					'address'       => array( __( 'Adres', 'kuka-island-core' ), 'textarea' ),
+					'address_full'  => array( __( 'Açık adres (yasal sayfalarda zorunlu; sözleşmelerdekiyle aynı kalmalı)', 'kuka-island-core' ), 'textarea' ),
+					'address_short' => array( __( 'Kısa adres (pazarlama yüzeyleri)', 'kuka-island-core' ), 'text' ),
 					'telephone'     => array( __( 'Yasal iletişim telefonu', 'kuka-island-core' ), 'text' ),
+					'mersis_number' => array( __( 'MERSİS numarası', 'kuka-island-core' ), 'text' ),
 					'etbis_number'  => array( __( 'ETBİS numarası', 'kuka-island-core' ), 'text' ),
 				),
 			),
-			'content'      => array(
-				'label'  => __( '9. Beden Rehberi Verileri', 'kuka-island-core' ),
+			'checkout'     => array(
+				'label'  => __( '9. Ödeme Formu Alanları', 'kuka-island-core' ),
+				'note'   => __( 'Ad, soyad, e-posta, adres, il ve posta kodu mesafeli satış mevzuatı gereği zorunludur; bu yüzden panelde açılıp kapatılamaz.', 'kuka-island-core' ),
 				'fields' => array(
-					'size_top_rows'      => array( __( 'Bikini üstü satırları (EU|Harf|Göğüs|Göğüs altı|Kupa)', 'kuka-island-core' ), 'size_rows' ),
-					'size_bottom_rows'   => array( __( 'Bikini altı satırları (EU|Harf|Bel|Kalça)', 'kuka-island-core' ), 'size_rows' ),
-					'size_swimsuit_rows' => array( __( 'Mayo satırları (EU|Harf|Göğüs|Bel|Kalça)', 'kuka-island-core' ), 'size_rows' ),
+					'require_phone'     => array( __( 'Telefon zorunlu', 'kuka-island-core' ), 'checkbox' ),
+					'require_company'   => array( __( 'Şirket adı zorunlu', 'kuka-island-core' ), 'checkbox' ),
+					'require_address_2' => array( __( 'Adres satırı 2 zorunlu', 'kuka-island-core' ), 'checkbox' ),
+					'require_city'      => array( __( 'İlçe zorunlu', 'kuka-island-core' ), 'checkbox' ),
 				),
 			),
-			'panels'       => array(
-				'label'  => __( '10. Panel Metinleri', 'kuka-island-core' ),
+			'content'      => array(
+				'label'  => __( '10. Beden Rehberi Verileri', 'kuka-island-core' ),
 				'fields' => array(
-					'account_greeting' => array( __( 'Hesap karşılama başlığı', 'kuka-island-core' ), 'text' ),
-					'account_copy'     => array( __( 'Hesap kısa açıklaması', 'kuka-island-core' ), 'textarea' ),
+					'size_top_rows'      => array( __( 'Bikini üstü satırları (Beden|Göğüs|Göğüs altı|Kupa)', 'kuka-island-core' ), 'size_rows' ),
+					'size_bottom_rows'   => array( __( 'Bikini altı satırları (Beden|Bel|Kalça)', 'kuka-island-core' ), 'size_rows' ),
+					'size_swimsuit_rows' => array( __( 'Mayo satırları (Beden|Göğüs|Bel|Kalça)', 'kuka-island-core' ), 'size_rows' ),
+				),
+			),
+			'membership'   => array(
+				'label'  => __( '11. Üyelik', 'kuka-island-core' ),
+				'note'   => __( 'Üyelik kapalıyken site hiçbir yerde hesap sormaz: misafir ödeme açık, kayıt ve giriş kapalıdır. Anahtar ileride açılırsa WooCommerce kayıt/giriş ayarları tek yerden yeniden etkinleşir; storefront hesap arayüzü ayrı bir yayın çalışması olarak eklenmelidir. Sipariş takibi sipariş numarası ve e-posta ile çalışmayı sürdürür.', 'kuka-island-core' ),
+				'fields' => array(
+					'enabled'             => array( __( 'Üyelik sistemini aç', 'kuka-island-core' ), 'checkbox' ),
+					'guest_session_hours' => array( __( 'Misafir sepeti ömrü (saat)', 'kuka-island-core' ), 'number' ),
 				),
 			),
 		);
@@ -382,6 +458,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				<?php foreach ( self::fields() as $group_key => $group ) : ?>
 					<fieldset id="<?php echo esc_attr( $group_key ); ?>" style="max-width:920px;background:#fff;border:1px solid #c3c4c7;margin:20px 0;padding:20px">
 						<legend style="font-size:16px;font-weight:600;padding:0 8px"><?php echo esc_html( $group['label'] ); ?></legend>
+						<?php if ( ! empty( $group['note'] ) ) : ?><p class="description"><?php echo esc_html( $group['note'] ); ?></p><?php endif; ?>
 						<table class="form-table" role="presentation"><tbody>
 						<?php foreach ( $group['fields'] as $field_key => $field ) : ?>
 							<?php $this->render_field( $group_key, $field_key, $field, $content[ $group_key ][ $field_key ] ?? '' ); ?>
@@ -482,7 +559,7 @@ final class Kuka_Island_Core_Site_Appearance {
 						$rows = array();
 						foreach ( preg_split( '/\R/', (string) $value ) ?: array() as $row ) {
 							$cells = array_values( array_filter( array_map( 'sanitize_text_field', explode( '|', $row ) ), static fn( string $cell ): bool => '' !== $cell ) );
-							if ( count( $cells ) >= 4 && count( $cells ) <= 5 ) { $rows[] = implode( '|', $cells ); }
+							if ( count( $cells ) >= 3 && count( $cells ) <= 5 ) { $rows[] = implode( '|', $cells ); }
 						}
 						$value = implode( "\n", array_slice( $rows, 0, 10 ) );
 						break;
@@ -543,6 +620,9 @@ final class Kuka_Island_Core_Site_Appearance {
 				$clean[ $group_key ][ $field_key ] = $value;
 			}
 		}
+		// Kaydedilen değer güncel alan sözleşmesini taşır; aksi hâlde her
+		// okumada geçiş yeniden çalışıp operatörün seçimini ezerdi.
+		$clean['schema_version'] = self::SCHEMA_VERSION;
 		return $clean;
 	}
 

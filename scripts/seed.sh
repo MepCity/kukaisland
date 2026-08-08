@@ -10,6 +10,7 @@ set +a
 
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed-attributes.php
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed.php
+docker compose run --rm wp-cli wp eval-file /project-scripts/migrate-sizes.php
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed-content.php
 
 if docker compose run --rm wp-cli wp user get [removed-manager-user] >/dev/null 2>&1; then

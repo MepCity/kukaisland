@@ -72,11 +72,17 @@ add_action(
 		}
 		$guide = $product->get_meta( '_kuka_size_guide' );
 		if ( $guide ) { echo '<a class="kuka-size-link" href="' . esc_url( home_url( '/' . trim( $guide, '/' ) . '/' ) ) . '">' . esc_html__( 'Beden rehberini aç', 'kuka-island' ) . '</a>'; }
-		$content = function_exists( 'kuka_island_content' ) ? kuka_island_content() : array();
-		$days    = absint( $content['commercial']['return_period_days'] ?? 14 );
-		echo '<details class="kuka-product-detail"><summary>' . esc_html__( 'Kargo, teslimat ve değişim', 'kuka-island' ) . '</summary><p>';
-		printf( esc_html__( 'İade veya değişim talebinizi teslimattan sonra %d gün içinde destek ekibine iletebilirsiniz. ', 'kuka-island' ), $days );
-		if ( class_exists( 'Kuka_Island_Core_Content' ) ) { echo esc_html( Kuka_Island_Core_Content::HYGIENE_POLICY ); }
+		// Cayma hakkı, hijyen ibaresi ve deneme bilgisi panelden okunur; ürün
+		// sayfasında hepsi tek akordiyonda toplanır (§20.2, Bölüm E).
+		$commercial = ( function_exists( 'kuka_island_content' ) ? kuka_island_content() : array() )['commercial'] ?? array();
+		$days       = absint( $commercial['cayma_hakki_gun'] ?? 14 );
+		echo '<details class="kuka-product-detail"><summary>' . esc_html__( 'Kargo, teslimat ve iade', 'kuka-island' ) . '</summary><p>';
+		/* translators: %d is the statutory withdrawal window in days. */
+		printf( esc_html__( 'Cayma bildiriminizi teslimattan sonra %d gün içinde iletebilirsiniz.', 'kuka-island' ), $days );
+		foreach ( array( 'hygiene_try_on_copy', 'hygiene_copy', 'hygiene_defect_copy' ) as $key ) {
+			$copy = trim( (string) ( $commercial[ $key ] ?? '' ) );
+			if ( '' !== $copy ) { echo ' ' . esc_html( $copy ); }
+		}
 		echo '</p></details>';
 	},
 	35
@@ -93,6 +99,25 @@ add_action(
 		}
 	},
 	5
+);
+
+/**
+ * Hygiene notice on the cart page. The wording is the customer's own and is
+ * panel-owned, so the cart, the product page and the return page always read
+ * the same sentence.
+ */
+add_action(
+	'woocommerce_after_cart_table',
+	static function (): void {
+		$commercial = ( function_exists( 'kuka_island_content' ) ? kuka_island_content() : array() )['commercial'] ?? array();
+		$sentences  = array();
+		foreach ( array( 'hygiene_copy', 'hygiene_defect_copy' ) as $key ) {
+			$copy = trim( (string) ( $commercial[ $key ] ?? '' ) );
+			if ( '' !== $copy ) { $sentences[] = $copy; }
+		}
+		if ( ! $sentences ) { return; }
+		echo '<p class="kuka-cart-hygiene" data-kuka-hygiene-policy>' . esc_html( implode( ' ', $sentences ) ) . '</p>';
+	}
 );
 
 add_filter( 'woocommerce_structured_data_product', static function ( array $markup ): array { unset( $markup['review'], $markup['aggregateRating'] ); return $markup; } );

@@ -219,7 +219,11 @@ update_option( 'woocommerce_single_image_width', '1080' );
 update_option( 'woocommerce_thumbnail_cropping', 'custom' );
 update_option( 'woocommerce_thumbnail_cropping_custom_width', '4' );
 update_option( 'woocommerce_thumbnail_cropping_custom_height', '5' );
-update_option( 'woocommerce_enable_myaccount_registration', 'yes' );
+// Üyelik sunulmuyor: misafir ödeme açık, kayıt ve giriş kapalı. Aynı değerler
+// Kuka_Island_Core_Membership tarafından çalışma anında da zorlanır.
+update_option( 'woocommerce_enable_myaccount_registration', 'no' );
+update_option( 'woocommerce_enable_checkout_login_reminder', 'no' );
+update_option( 'users_can_register', '0' );
 
 $attribute_ids = array(
 	'renk'  => kuka_seed_attribute( 'Renk', 'renk' ),
@@ -245,7 +249,8 @@ $terms  = array( 'colors' => array(), 'sizes' => array(), 'cuts' => array(), 'ca
 foreach ( $colors as $slug => $color ) {
 	$terms['colors'][ $slug ] = kuka_seed_term( 'pa_renk', $color[0], $slug, array( 'kuka_swatch_hex' => $color[1] ) );
 }
-foreach ( array( '34', '36', '38', '40', '42', 'XS', 'S', 'M', 'L', 'XL' ) as $size ) {
+// Müşteri beden setini S · M · L olarak sadeleştirdi (§13.4.1).
+foreach ( array( 'S', 'M', 'L' ) as $size ) {
 	$terms['sizes'][ sanitize_title( $size ) ] = kuka_seed_term( 'pa_beden', $size, sanitize_title( $size ) );
 }
 foreach ( array( 'asimetrik' => 'Asimetrik', 'bralet' => 'Bralet', 'tek-parca' => 'Tek Parça', 'klasik' => 'Klasik' ) as $slug => $name ) {
@@ -285,7 +290,7 @@ $common_meta = array(
 	'_kuka_material'   => '%78 geri dönüştürülmüş poliamid, %22 elastan',
 	'_kuka_care'       => 'Elde, soğuk suda yıkayın. Gölgede düz kurutun.',
 	'_kuka_fit'        => 'Standart kalıp; iki beden arasındaysanız büyük bedeni seçin.',
-	'_kuka_model_info' => 'Model 178 cm boyunda ve 36 beden giymektedir. Pilot veri.',
+	'_kuka_model_info' => 'Model 178 cm boyunda ve M beden giymektedir. Pilot veri.',
 	'_kuka_size_guide' => 'beden-rehberi',
 );
 $all_colors = array(
@@ -296,10 +301,10 @@ $all_colors = array(
 	'terracotta' => array( 'image' => 'azur-bikini-bottom.jpg', 'gallery' => array( 'azur-bikini-bottom.jpg', 'azur-bikini-bottom-detail.jpg', 'cobalt-set.jpg' ) ),
 );
 $product_specs = array(
-	array( 'sku' => 'KI-TOP-001', 'name' => 'Asimetrik Bikini Üstü', 'slug' => 'asimetrik-bikini-ustu', 'price' => 2890, 'category' => 'bikini-ustleri', 'cut' => 'asimetrik', 'featured' => 'noir-asymmetric-top.jpg', 'gallery' => array( 'noir-asymmetric-top-detail.jpg', 'cobalt-set.jpg' ), 'colors' => $all_colors, 'sizes' => array( '34', '36', '38', '40', '42', 'xs', 's' ), 'short' => 'Tek omuz çizgisi ve ayarlanabilir metal halka detayı.', 'description' => 'Bedene kontrollü biçimde oturan, çıkarılabilir pedli asimetrik bikini üstü.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Tek Omuzlu Asimetrik Bikini Üstü', '_kuka_meta_description' => 'Tek omuzlu, çıkarılabilir pedli Asimetrik Bikini Üstü. Bağımsız beden seçimi ve Kuka Island renk seçeneklerini keşfedin.' ) ) ),
-	array( 'sku' => 'KI-TOP-002', 'name' => 'Azur Bralet Bikini Üstü', 'slug' => 'azur-bralet-bikini-ustu', 'price' => 2690, 'category' => 'bikini-ustleri', 'cut' => 'bralet', 'featured' => 'azur-bralet-top.jpg', 'gallery' => array( 'azur-bralet-top-detail.jpg', 'cobalt-set.jpg' ), 'colors' => array( 'kobalt' => $all_colors['kobalt'] ), 'sizes' => array( '34', '36', '38', '40', '42' ), 'short' => 'Geniş alt bantlı, destekli bralet form.', 'description' => 'Hareket sırasında dengeli destek sağlayan bralet bikini üstü.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Destekli Azur Bralet Bikini Üstü', '_kuka_meta_description' => 'Geniş alt bantlı ve destekli Azur Bralet Bikini Üstü. Kobalt rengi ve 34–42 beden seçeneklerini inceleyin.' ) ) ),
-	array( 'sku' => 'KI-ONE-001', 'name' => 'Noir Tek Omuz Mayo', 'slug' => 'noir-tek-omuz-mayo', 'price' => 4290, 'category' => 'mayolar', 'cut' => 'tek-parca', 'featured' => 'noir-one-piece.jpg', 'gallery' => array( 'noir-one-piece-detail.jpg', 'hero-aegean-black-mobile.jpg' ), 'colors' => array( 'siyah' => $all_colors['siyah'] ), 'sizes' => array( '34', '36', '38', '40', '42' ), 'short' => 'Heykelsi tek omuz çizgisi ve kontrollü bel formu.', 'description' => 'Suda ve kıyıda kullanılmak üzere tasarlanan tek omuz mayo.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Noir Tek Omuz Mayo', '_kuka_meta_description' => 'Heykelsi tek omuz çizgili Noir Mayo. Kontrollü bel formunu ve 34–42 beden seçeneklerini keşfedin.' ) ) ),
-	array( 'sku' => 'KI-BTM-004', 'name' => 'Azur Klasik Bikini Altı', 'slug' => 'azur-klasik-bikini-alti', 'price' => 2290, 'category' => 'bikini-altlari', 'cut' => 'klasik', 'featured' => 'azur-bikini-bottom.jpg', 'gallery' => array( 'azur-bikini-bottom-detail.jpg', 'cobalt-set.jpg' ), 'colors' => array( 'kobalt' => $all_colors['kobalt'] ), 'sizes' => array( '34', '36', '38', '40', '42' ), 'short' => 'Orta kapama ve ayarlanabilir yan detay.', 'description' => 'Gün boyu rahatlık için orta kapamalı klasik bikini altı.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Azur Klasik Bikini Altı', '_kuka_meta_description' => 'Orta kapamalı Azur Klasik Bikini Altı. Ayarlanabilir yan detay ve 34–42 beden seçeneklerini inceleyin.' ) ) ),
+	array( 'sku' => 'KI-TOP-001', 'name' => 'Asimetrik Bikini Üstü', 'slug' => 'asimetrik-bikini-ustu', 'price' => 2890, 'category' => 'bikini-ustleri', 'cut' => 'asimetrik', 'featured' => 'noir-asymmetric-top.jpg', 'gallery' => array( 'noir-asymmetric-top-detail.jpg', 'cobalt-set.jpg' ), 'colors' => $all_colors, 'sizes' => array( 's', 'm', 'l' ), 'short' => 'Tek omuz çizgisi ve ayarlanabilir metal halka detayı.', 'description' => 'Bedene kontrollü biçimde oturan, çıkarılabilir pedli asimetrik bikini üstü.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Tek Omuzlu Asimetrik Bikini Üstü', '_kuka_meta_description' => 'Tek omuzlu, çıkarılabilir pedli Asimetrik Bikini Üstü. Bağımsız beden seçimi ve Kuka Island renk seçeneklerini keşfedin.' ) ) ),
+	array( 'sku' => 'KI-TOP-002', 'name' => 'Azur Bralet Bikini Üstü', 'slug' => 'azur-bralet-bikini-ustu', 'price' => 2690, 'category' => 'bikini-ustleri', 'cut' => 'bralet', 'featured' => 'azur-bralet-top.jpg', 'gallery' => array( 'azur-bralet-top-detail.jpg', 'cobalt-set.jpg' ), 'colors' => array( 'kobalt' => $all_colors['kobalt'] ), 'sizes' => array( 's', 'm', 'l' ), 'short' => 'Geniş alt bantlı, destekli bralet form.', 'description' => 'Hareket sırasında dengeli destek sağlayan bralet bikini üstü.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Destekli Azur Bralet Bikini Üstü', '_kuka_meta_description' => 'Geniş alt bantlı ve destekli Azur Bralet Bikini Üstü. Kobalt rengi ve S–L beden seçeneklerini inceleyin.' ) ) ),
+	array( 'sku' => 'KI-ONE-001', 'name' => 'Noir Tek Omuz Mayo', 'slug' => 'noir-tek-omuz-mayo', 'price' => 4290, 'category' => 'mayolar', 'cut' => 'tek-parca', 'featured' => 'noir-one-piece.jpg', 'gallery' => array( 'noir-one-piece-detail.jpg', 'hero-aegean-black-mobile.jpg' ), 'colors' => array( 'siyah' => $all_colors['siyah'] ), 'sizes' => array( 's', 'm', 'l' ), 'short' => 'Heykelsi tek omuz çizgisi ve kontrollü bel formu.', 'description' => 'Suda ve kıyıda kullanılmak üzere tasarlanan tek omuz mayo.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Noir Tek Omuz Mayo', '_kuka_meta_description' => 'Heykelsi tek omuz çizgili Noir Mayo. Kontrollü bel formunu ve S–L beden seçeneklerini keşfedin.' ) ) ),
+	array( 'sku' => 'KI-BTM-004', 'name' => 'Azur Klasik Bikini Altı', 'slug' => 'azur-klasik-bikini-alti', 'price' => 2290, 'category' => 'bikini-altlari', 'cut' => 'klasik', 'featured' => 'azur-bikini-bottom.jpg', 'gallery' => array( 'azur-bikini-bottom-detail.jpg', 'cobalt-set.jpg' ), 'colors' => array( 'kobalt' => $all_colors['kobalt'] ), 'sizes' => array( 's', 'm', 'l' ), 'short' => 'Orta kapama ve ayarlanabilir yan detay.', 'description' => 'Gün boyu rahatlık için orta kapamalı klasik bikini altı.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Azur Klasik Bikini Altı', '_kuka_meta_description' => 'Orta kapamalı Azur Klasik Bikini Altı. Ayarlanabilir yan detay ve S–L beden seçeneklerini inceleyin.' ) ) ),
 );
 
 $product_ids = array();
@@ -333,46 +338,9 @@ foreach ( $commerce_pages as $page_key => $page_data ) {
 }
 update_option( 'woocommerce_permalinks', array( 'product_base' => '/urun', 'category_base' => '/kategori', 'tag_base' => '/urun-etiketi', 'attribute_base' => '' ) );
 
-/** Build one reset-safe WordPress navigation menu. */
-function kuka_seed_menu( string $name, array $items ): int {
-	$menu = wp_get_nav_menu_object( $name );
-	$menu_id = $menu ? (int) $menu->term_id : wp_create_nav_menu( $name );
-	if ( is_wp_error( $menu_id ) ) { WP_CLI::error( $menu_id->get_error_message() ); }
-	if ( wp_get_nav_menu_items( $menu_id ) ) { return (int) $menu_id; }
-	$created = array();
-	foreach ( $items as $key => $item ) {
-		$created[ $key ] = wp_update_nav_menu_item(
-			$menu_id,
-			0,
-			array(
-				'menu-item-title'     => $item['title'],
-				'menu-item-url'       => home_url( $item['url'] ),
-				'menu-item-status'    => 'publish',
-				'menu-item-type'      => 'custom',
-				'menu-item-parent-id' => isset( $item['parent'] ) ? ( $created[ $item['parent'] ] ?? 0 ) : 0,
-			)
-		);
-	}
-	return (int) $menu_id;
-}
-
-// The primary header navigation is sourced from the Site Appearance panel
-// (§8.2 / §15.2), so it is not seeded as a WordPress nav menu. The footer
-// category menu remains a WordPress menu because the footer renders it with
-// wp_nav_menu().
-$footer_menu = kuka_seed_menu(
-	'Kuka Island Footer Kategoriler',
-	array(
-		'new' => array( 'title' => 'Yeni Gelenler', 'url' => '/magaza/?orderby=date' ),
-		'tops' => array( 'title' => 'Bikini Üstleri', 'url' => '/kategori/bikini-ustleri/' ),
-		'bottoms' => array( 'title' => 'Bikini Altları', 'url' => '/kategori/bikini-altlari/' ),
-		'one_piece' => array( 'title' => 'Mayolar', 'url' => '/kategori/mayolar/' ),
-		'beachwear' => array( 'title' => 'Plaj Giyim', 'url' => '/kategori/plaj-giyim/' ),
-	)
-);
-$locations = get_theme_mod( 'nav_menu_locations', array() );
-$locations['footer_categories'] = $footer_menu;
-set_theme_mod( 'nav_menu_locations', $locations );
+// Navigasyonun tamamı Site Görünümü panelinden gelir (§8.2 / §15.2); footer
+// kategori sütunu müşteri isteğiyle kaldırıldığı için ayrı bir WordPress
+// menüsü de seed edilmez.
 
 // Turkey zone with provisional values pending customer confirmation.
 $zone_id = 0;

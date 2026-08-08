@@ -45,7 +45,21 @@ $products_shortcode .= ']';
 <?php endif; ?>
 <?php if ( ! empty( $home['new_arrivals_enabled'] ) ) : ?><section class="kuka-home-products kuka-home-products--<?php echo esc_attr( $home['presentation'] ?? 'grid' ); ?> kuka-section"><div class="kuka-section-heading"><div><p class="kuka-eyebrow"><?php esc_html_e( 'Koleksiyon', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['new_arrivals_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['new_arrivals_copy'] ?? '' ); ?></p></div><a class="kuka-text-link" href="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>"><?php esc_html_e( 'Tümünü gör', 'kuka-island' ); ?><span aria-hidden="true">↗</span></a></div><?php echo do_shortcode( $products_shortcode ); ?></section><?php endif; ?>
 <?php if ( ! empty( $home['editorial_enabled'] ) ) : ?><section class="kuka-editorial kuka-section"><div class="kuka-editorial__image"><?php if ( ! empty( $home['editorial_video_id'] ) ) : ?><?php echo wp_video_shortcode( array( 'src' => wp_get_attachment_url( absint( $home['editorial_video_id'] ) ) ) ); ?><?php else : ?><?php echo wp_get_attachment_image( absint( $home['editorial_image_id'] ?? 0 ), 'full' ); ?><?php endif; ?></div><div><p class="kuka-eyebrow"><?php esc_html_e( 'Editoryal', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['editorial_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['editorial_copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $home['editorial_url'] ?? '/hakkimizda/' ) ); ?>"><?php echo esc_html( $home['editorial_link_label'] ?? __( 'Hikâyeyi oku', 'kuka-island' ) ); ?></a></div></section><?php endif; ?>
-<?php if ( ! empty( $home['manifesto_enabled'] ) ) : ?><section class="kuka-manifesto kuka-section"><p class="kuka-eyebrow"><?php esc_html_e( 'Manifesto', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['manifesto_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['manifesto_copy'] ?? '' ); ?></p></section><?php endif; ?>
+<?php /* Manifesto iki dilli kalıcıdır: Türkçe satır ana metin, İngilizce satır
+         hemen altında ikincil. Dört satırın dördü de panelden gelir; tam
+         İngilizce sürüm geldiğinde blok dil seçimine bağlanacak. */ ?>
+<?php if ( ! empty( $home['manifesto_enabled'] ) ) : ?><section class="kuka-manifesto kuka-section"><p class="kuka-eyebrow"><?php esc_html_e( 'Manifesto', 'kuka-island' ); ?></p>
+<?php foreach ( array( array( 'manifesto_line_1', 'manifesto_line_1_en' ), array( 'manifesto_line_2', 'manifesto_line_2_en' ) ) as $manifesto_index => $manifesto_line ) :
+	$manifesto_tr = trim( (string) ( $home[ $manifesto_line[0] ] ?? '' ) );
+	$manifesto_en = trim( (string) ( $home[ $manifesto_line[1] ] ?? '' ) );
+	if ( '' === $manifesto_tr && '' === $manifesto_en ) { continue; }
+	?>
+	<div class="kuka-manifesto__line">
+		<?php if ( '' !== $manifesto_tr ) : ?><?php if ( 0 === $manifesto_index ) : ?><h2><?php echo esc_html( $manifesto_tr ); ?></h2><?php else : ?><p class="kuka-manifesto__tr"><?php echo esc_html( $manifesto_tr ); ?></p><?php endif; ?><?php endif; ?>
+		<?php if ( '' !== $manifesto_en ) : ?><p class="kuka-manifesto__en" lang="en"><?php echo esc_html( $manifesto_en ); ?></p><?php endif; ?>
+	</div>
+<?php endforeach; ?>
+</section><?php endif; ?>
 <?php if ( ! empty( $home['services_enabled'] ) ) : ?>
 <section class="kuka-services" aria-label="<?php esc_attr_e( 'Servis güvenceleri', 'kuka-island' ); ?>">
 <?php foreach ( array( 'service_1', 'service_2', 'service_3' ) as $service_index => $service_key ) :

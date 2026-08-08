@@ -15,15 +15,19 @@ defined( 'ABSPATH' ) || exit;
 <div class="woocommerce-shipping-fields">
 	<?php if ( true === WC()->cart->needs_shipping_address() ) : ?>
 
-		<h3 class="kuka-checkout-section"><?php esc_html_e( 'Teslimat adresi', 'kuka-island' ); ?></h3>
-
+		<?php /* Blok, teslimat adresinden farklı bir FATURA adresi sorar. WooCommerce'in
+		         alan adları korunur (checkout.js bloğu bu id/class üzerinden açıp kapatır);
+		         kutu işaretlenirse iki adres `woocommerce_checkout_posted_data` üzerinde
+		         yer değiştirir, böylece fatura yine `billing_*` alanlarından üretilir. */ ?>
 		<p id="ship-to-different-address" class="kuka-checkout-toggle">
 			<label class="woocommerce-form__label woocommerce-form__label-for-checkbox checkbox">
-				<input id="ship-to-different-address-checkbox" class="woocommerce-form__input woocommerce-form__input-checkbox input-checkbox" <?php checked( apply_filters( 'woocommerce_ship_to_different_address_checked', 'shipping' === get_option( 'woocommerce_ship_to_destination' ) ? 1 : 0 ), 1 ); ?> type="checkbox" name="ship_to_different_address" value="1" /> <span><?php esc_html_e( 'Teslimat adresim fatura adresimden farklı', 'kuka-island' ); ?></span>
+				<input id="ship-to-different-address-checkbox" class="woocommerce-form__input woocommerce-form__input-checkbox input-checkbox" <?php checked( apply_filters( 'woocommerce_ship_to_different_address_checked', 0 ), 1 ); ?> type="checkbox" name="ship_to_different_address" value="1" /> <span><?php esc_html_e( 'Fatura adresim teslimat adresimden farklı', 'kuka-island' ); ?></span>
 			</label>
 		</p>
 
 		<div class="shipping_address">
+
+			<h3 class="kuka-checkout-section"><?php esc_html_e( 'Fatura adresi', 'kuka-island' ); ?></h3>
 
 			<?php do_action( 'woocommerce_before_checkout_shipping_form', $checkout ); ?>
 

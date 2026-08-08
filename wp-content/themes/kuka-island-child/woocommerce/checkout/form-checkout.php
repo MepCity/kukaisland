@@ -16,7 +16,7 @@ do_action( 'woocommerce_before_checkout_form', $checkout );
 
 // If checkout registration is disabled and not logged in, the user cannot checkout.
 if ( ! $checkout->is_registration_enabled() && $checkout->is_registration_required() && ! is_user_logged_in() ) {
-	echo esc_html( apply_filters( 'woocommerce_checkout_must_be_logged_in_message', __( 'Ödeme yapmak için giriş yapmalısınız.', 'kuka-island' ) ) );
+	echo esc_html__( 'Ödeme şu anda kullanılamıyor.', 'kuka-island' );
 	return;
 }
 

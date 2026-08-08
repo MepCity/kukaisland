@@ -32,6 +32,7 @@
   --text-caption: 12px;
   --text-body: 14px;
   --text-body-large: 16px;
+  --text-heading-newsletter: clamp(20px, 2vw, 28px);
   --text-heading-small: clamp(28px, 3vw, 48px);
   --text-heading-medium: clamp(42px, 6vw, 92px);
   --text-heading-section: clamp(44px, 5.5vw, 80px);
@@ -68,6 +69,8 @@
   --measure-content: 1200px;
   --measure-wide: 1440px;
   --measure-product-info: 440px;
+  --footer-emblem-size: clamp(28px, 4vw, 44px);
+  --footer-brand-size: clamp(32px, 6vw, 72px);
   --measure-table: 760px;
   --hero-min-height: 640px;
   --hero-max-height: 860px;
