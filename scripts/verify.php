@@ -222,5 +222,5 @@ WP_CLI::line(
 	. '|body:' . ( str_contains( $english_email_html, 'Hi EN-QA' ) ? 'yes' : 'no' )
 	. '|product:' . ( str_contains( $english_email_html, 'EN-QA-PRODUCT' ) ? 'yes' : 'no' )
 	. '|tracking:' . ( str_contains( $english_email_html, 'Track your order with your order number and email address' ) ? 'yes' : 'no' )
-	. '|additional:' . ( str_contains( $english_email_html, 'Thanks again!' ) ? 'yes' : 'no' )
+	. '|additional:' . ( str_contains( $english_email_html, 'Thanks for using' ) ? 'yes' : 'no' )
 );
