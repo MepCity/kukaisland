@@ -64,14 +64,12 @@ a:focus-visible {
   color: var(--color-ink);
 }
 
-/* On ink/dark surfaces (footer, overlay header) keep the inherited light text
-   on hover instead of dropping to the dark ink token. */
-.kuka-footer a:hover,
-.kuka-footer a:focus-visible,
+/* Fotoğraf üstüne binen yüzeylerde (overlay header, açık tonlu hero) devralınan
+   metin rengi korunur; koyu ink token'ına düşerse görsel üstünde okunmaz. */
 .kuka-header--overlay a:hover,
 .kuka-header--overlay a:focus-visible,
-.kuka-hero a:hover,
-.kuka-hero a:focus-visible {
+.kuka-hero--light a:hover,
+.kuka-hero--light a:focus-visible {
   color: inherit;
 }
 
@@ -189,22 +187,17 @@ progress {
 .woocommerce input[type="radio"],
 .woocommerce-shipping-method input[type="radio"],
 .kuka-newsletter input[type="checkbox"],
-.kuka-legal-consents input[type="checkbox"],
-.kuka-account-panel input[type="checkbox"] {
+.kuka-legal-consents input[type="checkbox"] {
   -webkit-appearance: auto;
   appearance: auto;
   accent-color: var(--color-ink);
 }
 
-/* Koyu zeminde (footer, hero) dolgu rengi açık kalır. */
-.kuka-footer input[type="checkbox"],
-.kuka-footer input[type="radio"],
-.kuka-footer input[type="range"],
-.kuka-footer progress,
-.kuka-hero input[type="checkbox"],
-.kuka-hero input[type="radio"],
-.kuka-hero input[type="range"],
-.kuka-hero progress {
+/* Koyu kalan tek büyük yüzey açık tonlu hero'dur; orada dolgu açık kalır. */
+.kuka-hero--light input[type="checkbox"],
+.kuka-hero--light input[type="radio"],
+.kuka-hero--light input[type="range"],
+.kuka-hero--light progress {
   accent-color: var(--color-white);
 }
 
@@ -213,9 +206,9 @@ progress {
   outline-offset: var(--space-0-5) !important;
 }
 
-.kuka-footer :focus-visible,
 .kuka-mobile-menu :focus-visible,
-.kuka-hero :focus-visible {
+.kuka-services__cell:focus-visible,
+.kuka-hero--light :focus-visible {
   outline-color: var(--color-white) !important;
 }
 
@@ -254,8 +247,8 @@ progress {
   justify-content: center;
   gap: var(--space-2);
   padding-inline: var(--content-gutter);
-  background: var(--color-ink);
-  color: var(--color-white);
+  background: var(--color-sand);
+  color: var(--color-ink);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   line-height: 1;
@@ -304,7 +297,7 @@ progress {
   align-items: center;
   gap: var(--space-0-5);
   cursor: pointer;
-  color: var(--color-white);
+  color: var(--color-ink);
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
@@ -318,8 +311,21 @@ progress {
 .kuka-lang-switcher__button::after {
   content: "▾";
   font-size: var(--text-micro);
-  color: var(--color-muted-on-ink);
+  color: var(--color-muted);
   transition: transform var(--duration-fast) var(--ease-out);
+}
+
+/* Henüz yayında olmayan dil: tıklanamaz satır, yanında kısa bir not. */
+.kuka-lang-switcher__pending {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.kuka-lang-switcher__pending small {
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .kuka-lang-switcher[open] .kuka-lang-switcher__button::after {
@@ -374,8 +380,13 @@ progress {
 .kuka-header--overlay {
   position: absolute;
   top: var(--announcement-height);
-  color: var(--color-white);
+  color: var(--color-ink);
   background: transparent;
+  border-color: color-mix(in srgb, var(--color-ink) 25%, transparent);
+}
+
+.kuka-header--overlay-light {
+  color: var(--color-white);
   border-color: color-mix(in srgb, var(--color-white) 25%, transparent);
 }
 
@@ -803,20 +814,26 @@ progress {
   gap: var(--space-3);
 }
 
+/* Görsel yokken görünen zemin kremdir ve metin koyudur. Fotoğraf varsa metnin
+   okunurluğunu perde sağlar: koyu metinde açık (paper) perde, açık metinde
+   (panelden "light" seçilirse) koyu (ink) perde. Perde olmadan iki durumda da
+   metin fotoğrafın parlak/koyu bölgelerinde kayboluyordu. */
 .kuka-hero {
   min-height: min(var(--hero-max-height), calc(100svh - var(--announcement-height)));
   display: flex;
   align-items: flex-end;
   padding: var(--space-12) var(--content-gutter);
-  background-color: var(--color-ink);
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-ink) 52%, transparent), transparent), var(--hero-desktop);
+  background-color: var(--color-paper);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-paper) 78%, transparent), color-mix(in srgb, var(--color-paper) 20%, transparent)), var(--hero-desktop);
   background-position: center;
   background-size: cover;
-  color: var(--color-white);
+  color: var(--color-ink);
 }
 
-.kuka-hero--dark {
-  color: var(--color-ink);
+.kuka-hero--light {
+  background-color: var(--color-ink);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-ink) 52%, transparent), transparent), var(--hero-desktop);
+  color: var(--color-white);
 }
 
 .kuka-hero--center {
@@ -941,24 +958,38 @@ progress {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  background: var(--color-ink);
-  color: var(--color-white);
+  gap: var(--space-6);
+  background: var(--color-paper);
+  color: var(--color-ink);
 }
 
 .kuka-manifesto h2 {
   max-width: var(--measure-heading);
+  margin: 0;
   color: inherit;
 }
 
-.kuka-manifesto > p:last-child {
-  max-width: var(--measure-copy);
+/* Türkçe satır ana metin, İngilizce satır hemen altında ikincil. */
+.kuka-manifesto__tr {
+  max-width: var(--measure-heading);
+  margin: 0;
+  font-size: var(--text-heading-section);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-tight);
+}
+
+.kuka-manifesto__en {
+  max-width: var(--measure-heading);
+  margin: var(--space-1) 0 0;
+  color: var(--color-muted);
   font-size: var(--text-body-large);
 }
 
+/* Sitede koyu kahvenin kaldığı tek büyük yüzey: servis şeridi hücreleri.
+   Zeminin tamamı kreme döndüğü için hücreler bilinçli olarak ters çevrildi. */
 .kuka-services {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-block: var(--stroke) solid var(--color-line);
 }
 
 .kuka-services__cell {
@@ -970,8 +1001,9 @@ progress {
   row-gap: var(--space-0-5);
   align-content: center;
   padding: var(--space-3) var(--content-gutter);
-  border-right: var(--stroke) solid var(--color-line);
-  color: inherit;
+  background: var(--color-ink);
+  border-right: var(--stroke) solid var(--color-ink-line);
+  color: var(--color-white);
   text-decoration: none;
   transition: background var(--duration-fast) var(--ease-standard);
 }
@@ -980,8 +1012,10 @@ progress {
   border-right: 0;
 }
 
-.kuka-services__cell:hover {
-  background: var(--color-sand);
+.kuka-services__cell:hover,
+.kuka-services__cell:focus-visible {
+  background: var(--color-ink-soft);
+  color: var(--color-white);
 }
 
 .kuka-services__number {
@@ -1004,7 +1038,7 @@ progress {
 .kuka-services__copy {
   grid-column: 2;
   align-self: start;
-  color: var(--color-muted);
+  color: var(--color-muted-on-ink);
   font-size: var(--text-micro);
 }
 
@@ -1017,8 +1051,8 @@ progress {
 
 .kuka-footer {
   padding: var(--space-12) var(--content-gutter) var(--space-3);
-  background: var(--color-ink);
-  color: var(--color-white);
+  background: var(--color-sand);
+  color: var(--color-ink);
 }
 
 /* Yüzen WhatsApp destek düğmesi — sade, marka renginde; checkout'ta gizli. */
@@ -1076,42 +1110,22 @@ progress {
   display: none;
 }
 
-/* Nextend Social Login butonları marka diline çekilir (§11.2 aksan yok).
-   Eklenti panelden yapılandırılmadıysa buton hiç render olmaz. */
-.nsl-container {
-  margin-top: var(--space-3);
-}
-
-.nsl-container-block .nsl-button {
-  background: var(--color-ink) !important;
-  color: var(--color-white) !important;
-  border: var(--stroke) solid var(--color-ink) !important;
-  border-radius: 0 !important;
-  font-family: var(--font-mono);
-  font-size: var(--text-micro);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.nsl-container-block .nsl-button:hover,
-.nsl-container-block .nsl-button:focus-visible {
-  background: var(--color-ink-soft) !important;
-  border-color: var(--color-ink-soft) !important;
-  color: var(--color-white) !important;
-}
-
+/* Bülten artık bir davet kadar yer kaplıyor; üst başlık sütunu da metnin
+   yanına çekilir, yoksa küçülen başlığın solunda boş bir alan kalıyordu. */
 .kuka-newsletter {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: var(--space-3);
-  padding-bottom: var(--space-12);
+  grid-template-columns: max-content minmax(0, var(--measure-copy));
+  gap: var(--space-6);
+  padding-bottom: var(--space-8);
 }
 
+/* Bülten daveti footer'da bir davet kadar yer kaplar; sayfayı ezen
+   --text-heading-medium ölçeğinden kendi ölçüsüne indirildi. */
 .kuka-newsletter h2 {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-1-5);
   color: inherit;
-  font-size: var(--text-heading-medium);
-  font-weight: var(--weight-regular);
+  font-size: var(--text-heading-newsletter);
+  font-weight: var(--weight-medium);
   line-height: var(--leading-heading);
   letter-spacing: var(--tracking-tight);
 }
@@ -1122,13 +1136,13 @@ progress {
 
 .kuka-newsletter__label,
 .kuka-newsletter__consent {
-  color: var(--color-muted-on-ink);
+  color: var(--color-muted);
   font-size: var(--text-micro);
 }
 
 .kuka-newsletter__field {
   display: flex;
-  border-bottom: var(--stroke) solid var(--color-ink-line);
+  border-bottom: var(--stroke) solid var(--color-line);
 }
 
 .kuka-newsletter__field input {
@@ -1136,14 +1150,14 @@ progress {
   flex: 1;
   padding-block: var(--space-2);
   background: transparent;
-  color: var(--color-white);
+  color: var(--color-ink);
   border: 0;
 }
 
 .kuka-newsletter__field button {
   padding-inline: var(--space-3);
   background: transparent;
-  color: var(--color-white);
+  color: var(--color-ink);
   border: 0;
 }
 
@@ -1160,12 +1174,13 @@ progress {
   margin: 0;
 }
 
+/* Kategoriler sütunu kaldırıldı; kalan üç sütun eşit paylaşır. */
 .kuka-footer-links {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-6);
   padding: var(--space-6) 0 var(--space-12);
-  border-top: var(--stroke) solid color-mix(in srgb, var(--color-white) 20%, transparent);
+  border-top: var(--stroke) solid var(--color-line);
 }
 
 .kuka-footer-links ul {
@@ -1183,25 +1198,44 @@ progress {
 }
 
 .kuka-footer-title {
-  color: var(--color-muted-on-ink);
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--stroke) solid var(--color-line);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
+/* Alt şerit tek kolondur: ortada büyük marka kilidi, altında telif satırı.
+   Slogan, iletişim ve şirket/adres satırları kaldırıldı — iletişim WhatsApp
+   düğmesinde, açık adres yasal sayfalarda duruyor. */
 .kuka-footer-bottom {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: var(--space-6);
-  padding-top: var(--space-3);
-  border-top: var(--stroke) solid color-mix(in srgb, var(--color-white) 20%, transparent);
-  color: var(--color-muted-on-ink);
+  justify-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-8);
+  border-top: var(--stroke) solid var(--color-line);
+  color: var(--color-muted);
   font-size: var(--text-micro);
+  text-align: center;
 }
 
-.kuka-footer-bottom .kuka-logo {
-  color: var(--color-white);
+.kuka-footer-brand {
+  gap: var(--space-3);
+  color: var(--color-ink);
+  font-size: var(--footer-brand-size);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-tight);
+}
+
+.kuka-footer-brand .kuka-logo__emblem {
+  height: var(--footer-emblem-size);
+}
+
+.kuka-footer-copyright {
+  margin: 0;
 }
 
 @media (max-width: 68.75em) {
@@ -1218,7 +1252,7 @@ progress {
   }
 
   /* Arama dar ekranda da erişilebilir kalır; gizlenecek başka eylem yok. */
-  .kuka-header-actions > a:not(.kuka-bag-button):not(.kuka-account-button):not(.kuka-search-button) {
+  .kuka-header-actions > a:not(.kuka-bag-button):not(.kuka-search-button) {
     display: none;
   }
 
@@ -1236,17 +1270,17 @@ progress {
   .kuka-hero {
     min-height: calc(100svh - var(--announcement-height));
     padding-bottom: var(--space-8);
+    background-image: linear-gradient(0deg, color-mix(in srgb, var(--color-paper) 82%, transparent), color-mix(in srgb, var(--color-paper) 20%, transparent)), var(--hero-mobile);
+  }
+
+  .kuka-hero--light {
     background-image: linear-gradient(0deg, color-mix(in srgb, var(--color-ink) 55%, transparent), transparent), var(--hero-mobile);
   }
 
-  .kuka-section-heading,
-  .kuka-footer-bottom {
-    align-items: flex-start;
-    grid-template-columns: 1fr;
-  }
-
   .kuka-section-heading {
+    align-items: flex-start;
     flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .kuka-category-index {

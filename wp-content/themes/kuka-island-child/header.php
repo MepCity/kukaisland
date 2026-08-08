@@ -5,26 +5,15 @@ $site_content = kuka_island_content();
 $announcements = $site_content['announcement']['items'] ?? array();
 $main_menu = kuka_island_header_menu();
 $overlay_header = is_front_page();
+// Üstüne bindiği hero açık tonlu metin kullanıyorsa header de açık kalır;
+// hero krem/koyu metne döndüğünde beyaz header yazısı görünmez olurdu.
+$overlay_light = $overlay_header && 'light' === ( $site_content['hero']['text_tone'] ?? 'dark' );
 // Ödeme adımında çıkış yolu azaltılır: menü, arama ve panel tetikleyicileri
 // yerine yalnız marka kilidi ve sepete dönüş kalır. Sipariş alındı sayfası
 // akışın dışındadır; orada tam header geri gelir.
 $checkout_flow = function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page();
 $has_logo = ! empty( $site_content['brand']['logo_id'] );
-$emblem_html = '';
-if ( ! $has_logo ) {
-	if ( ! empty( $site_content['brand']['emblem_id'] ) ) {
-		// Müşteri yükleyecek görsel raster (PNG) olabilir; currentColor devralamaz, bu beklenen sınır.
-		$emblem_html = wp_get_attachment_image( absint( $site_content['brand']['emblem_id'] ), 'full', false, array( 'class' => 'kuka-logo__emblem', 'alt' => '', 'aria-hidden' => 'true' ) );
-	} else {
-		// <img src="...svg"> ile referanslanan SVG'de currentColor sayfanın rengini devralamaz
-		// (izole render bağlamı); satır içi <svg> gömmek tek çalışan yol. Statik tema varlığı,
-		// kullanıcı girdisi değil — sanitize gerekmez.
-		$palmiye_path = get_stylesheet_directory() . '/assets/img/palmiye.svg';
-		if ( file_exists( $palmiye_path ) ) {
-			$emblem_html = preg_replace( '/<svg /', '<svg class="kuka-logo__emblem" ', file_get_contents( $palmiye_path ), 1 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		}
-	}
-}
+$emblem_html = $has_logo ? '' : kuka_island_emblem_markup();
 ?><!doctype html>
 <html <?php language_attributes(); ?>>
 <head>
@@ -46,7 +35,13 @@ if ( ! $has_logo ) {
 					<summary class="kuka-lang-switcher__button" aria-haspopup="listbox" aria-expanded="false"><?php echo esc_html( $current_lang['label'] ); ?></summary>
 					<ul class="kuka-lang-switcher__list" role="listbox">
 						<?php foreach ( $languages as $lang ) : ?>
-							<li role="option"><a href="<?php echo esc_url( kuka_island_content_url( $lang['url'] ) ); ?>" hreflang="<?php echo esc_attr( basename( trim( $lang['url'], '/' ) ) ); ?>"><?php echo esc_html( $lang['label'] ); ?></a></li>
+							<?php /* Henüz yayında olmayan dil bağlantı olarak basılmaz; kırık bağlantı
+							         yerine devre dışı bir satır ve "yakında" notu kalır. */ ?>
+							<?php if ( kuka_island_language_is_pending( $lang['url'] ) ) : ?>
+								<li role="option" aria-disabled="true"><span class="kuka-lang-switcher__pending"><?php echo esc_html( $lang['label'] ); ?> <small><?php echo esc_html( kuka_island_language_pending_note() ); ?></small></span></li>
+							<?php else : ?>
+								<li role="option"><a href="<?php echo esc_url( kuka_island_content_url( $lang['url'] ) ); ?>" hreflang="<?php echo esc_attr( basename( trim( $lang['url'], '/' ) ) ); ?>"><?php echo esc_html( $lang['label'] ); ?></a></li>
+							<?php endif; ?>
 						<?php endforeach; ?>
 					</ul>
 				</details>
@@ -64,7 +59,7 @@ if ( ! $has_logo ) {
 		</span>
 	</div>
 <?php endif; ?>
-<header class="kuka-header<?php echo $overlay_header ? ' kuka-header--overlay' : ''; ?><?php echo $checkout_flow ? ' kuka-header--checkout' : ''; ?>" data-site-header>
+<header class="kuka-header<?php echo $overlay_header ? ' kuka-header--overlay' : ''; ?><?php echo $overlay_light ? ' kuka-header--overlay-light' : ''; ?><?php echo $checkout_flow ? ' kuka-header--checkout' : ''; ?>" data-site-header>
 	<?php if ( $checkout_flow ) : ?>
 	<a class="kuka-header-back" href="<?php echo esc_url( wc_get_cart_url() ); ?>"><span aria-hidden="true">←</span><?php esc_html_e( 'Sepete dön', 'kuka-island' ); ?></a>
 	<?php else : ?>
@@ -81,7 +76,6 @@ if ( ! $has_logo ) {
 	<?php else : ?>
 	<div class="kuka-header-actions">
 		<a class="kuka-icon-button kuka-search-button" href="<?php echo esc_url( home_url( '/?s=&post_type=product' ) ); ?>" data-panel-trigger="kuka-search-panel" aria-controls="kuka-search-panel" aria-expanded="false" aria-label="<?php esc_attr_e( 'Ürün ara', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'search' ); // phpcs:ignore ?></a>
-		<a class="kuka-icon-button kuka-account-button" href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) ); ?>" data-panel-trigger="kuka-account-panel" aria-label="<?php esc_attr_e( 'Hesabı aç', 'kuka-island' ); ?>" aria-controls="kuka-account-panel" aria-expanded="false"><?php echo kuka_island_icon( 'account' ); // phpcs:ignore ?></a>
 		<a class="kuka-icon-button kuka-bag-button" href="<?php echo esc_url( wc_get_cart_url() ); ?>" data-panel-trigger="kuka-cart-panel" aria-label="<?php esc_attr_e( 'Sepeti aç', 'kuka-island' ); ?>" aria-controls="kuka-cart-panel" aria-expanded="false"><?php echo kuka_island_icon( 'bag' ); // phpcs:ignore ?><?php echo kuka_island_cart_count_markup(); // phpcs:ignore ?></a>
 	</div>
 	<?php endif; ?>
@@ -109,11 +103,6 @@ if ( ! $has_logo ) {
 			<ul><?php foreach ( array_slice( $search_menu, 0, 5 ) as $item ) : ?><li><a href="<?php echo esc_url( kuka_island_content_url( $item['url'] ) ); ?>"><?php echo esc_html( $item['label'] ); ?></a></li><?php endforeach; ?></ul>
 		</nav>
 	<?php endif; ?>
-</aside>
-<div class="kuka-panel-overlay kuka-panel-overlay--light" data-panel-overlay hidden></div>
-<aside id="kuka-account-panel" class="kuka-side-panel kuka-account-panel" role="dialog" aria-modal="true" aria-labelledby="kuka-account-panel-title" aria-hidden="true" inert <?php echo kuka_island_account_panel_requires_attention() ? 'data-panel-open-on-load' : ''; ?>>
-	<div class="kuka-panel-head"><span id="kuka-account-panel-title"><?php esc_html_e( 'Hesap', 'kuka-island' ); ?></span><button class="kuka-icon-button" type="button" data-panel-close aria-label="<?php esc_attr_e( 'Hesap panelini kapat', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'close' ); // phpcs:ignore ?></button></div>
-	<?php kuka_island_account_panel_content(); ?>
 </aside>
 <div class="kuka-panel-overlay kuka-panel-overlay--light" data-panel-overlay hidden></div>
 <aside id="kuka-cart-panel" class="kuka-side-panel kuka-cart-panel" role="dialog" aria-modal="true" aria-labelledby="kuka-cart-panel-title" aria-hidden="true" inert>

@@ -31,18 +31,14 @@ docker compose run --rm wp-cli wp language core install tr_TR --activate
 docker compose run --rm wp-cli wp plugin install woocommerce --version=11.0.0 --activate
 docker compose run --rm wp-cli wp plugin install blocksy-companion --version=2.1.51 --activate
 docker compose run --rm wp-cli wp plugin install iyzico-woocommerce --version=3.5.28 --activate
-# Sosyal giriş eklentisi kurulur ama hemen etkinleştirilmez: etkinleşme
-# kancası aynı turdaki bir sonraki WP-CLI çağrısının komut kaydını bozuyor.
-# Etkinleştirme, tema ve dil adımlarından sonra tek seferde yapılır.
-docker compose run --rm wp-cli wp plugin install nextend-facebook-connect --version=3.1.13
+docker compose run --rm wp-cli wp plugin install loginizer --version=2.0.8 --activate
 docker compose run --rm wp-cli wp language plugin install woocommerce tr_TR
 docker compose run --rm wp-cli wp theme install blocksy --version=2.1.51
 docker compose run --rm wp-cli wp theme activate kuka-island-child
-docker compose run --rm wp-cli wp plugin activate kuka-island-core nextend-facebook-connect
-# Nextend etkinleştikten sonraki ilk yüklemede kurulumunu tamamlayıp tarayıcıyı
-# yönlendiriyor; WP-CLI bu yönlendirmede süreci sonlandırdığı için ardından
-# gelen komut yarıda kalıyordu. Yönlendirme burada bilerek bir kez tüketilir.
-docker compose run --rm wp-cli wp option get nsl-version >/dev/null 2>&1 || true
+docker compose run --rm wp-cli wp plugin activate kuka-island-core
+# Üyelik kaldırıldı; sosyal giriş eklentisi artık kurulmaz ve önceki bir
+# kurulumdan kalmışsa silinir.
+docker compose run --rm wp-cli wp plugin delete nextend-facebook-connect >/dev/null 2>&1 || true
 ./scripts/seed.sh
 
 echo "Kurulum hazır: $WP_URL"

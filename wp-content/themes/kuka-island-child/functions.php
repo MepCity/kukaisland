@@ -17,8 +17,6 @@ add_action(
 		register_nav_menus(
 			array(
 				'primary' => __( 'Ana mağaza menüsü', 'kuka-island' ),
-				'footer_categories' => __( 'Footer kategoriler', 'kuka-island' ),
-				'footer_legal' => __( 'Footer yasal', 'kuka-island' ),
 			)
 		);
 	}
@@ -105,13 +103,35 @@ add_filter( 'coming-soon_template', 'kuka_island_coming_soon_template', 20 );
 function kuka_island_icon( string $name ): string {
 	$paths = array(
 		'search' => '<circle cx="11" cy="11" r="6.5" stroke="currentColor"/><path d="m16 16 4.5 4.5" stroke="currentColor"/>',
-		'account' => '<circle cx="12" cy="8" r="3.5" stroke="currentColor"/><path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" stroke="currentColor"/>',
 		'bag' => '<path d="M5 8.5h14l-1 12H6l-1-12Z" stroke="currentColor"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9" stroke="currentColor"/>',
 		'menu' => '<path d="M3 7h18M3 17h18" stroke="currentColor"/>',
 		'close' => '<path d="m4 4 16 16M20 4 4 20" stroke="currentColor"/>',
 	);
 	if ( ! isset( $paths[ $name ] ) ) { return ''; }
 	return '<svg class="kuka-icon kuka-icon--' . esc_attr( $name ) . '" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">' . $paths[ $name ] . '</svg>';
+}
+
+/**
+ * Palm emblem markup shared by the header lockup and the footer brand lock.
+ *
+ * `<img src="...svg">` cannot inherit the page colour (isolated render
+ * context), so the theme asset is inlined; the panel emblem may be a raster
+ * upload, which is the expected limit. Both are static/theme-owned, so no
+ * sanitisation is required.
+ */
+function kuka_island_emblem_markup(): string {
+	static $markup = null;
+	if ( null !== $markup ) { return $markup; }
+	$emblem_id = absint( kuka_island_content()['brand']['emblem_id'] ?? 0 );
+	if ( $emblem_id ) {
+		$markup = (string) wp_get_attachment_image( $emblem_id, 'full', false, array( 'class' => 'kuka-logo__emblem', 'alt' => '', 'aria-hidden' => 'true' ) );
+		return $markup;
+	}
+	$path   = get_stylesheet_directory() . '/assets/img/palmiye.svg';
+	$markup = file_exists( $path )
+		? (string) preg_replace( '/<svg /', '<svg class="kuka-logo__emblem" ', file_get_contents( $path ), 1 ) // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		: '';
+	return $markup;
 }
 
 /** @return array<string, mixed> */
@@ -192,6 +212,25 @@ function kuka_island_whatsapp_url(): string {
  */
 function kuka_island_languages(): array {
 	return kuka_island_menu_lines( (string) ( kuka_island_content()['languages']['items'] ?? '' ) );
+}
+
+/**
+ * Whether a language entry points at a translation that is not published yet.
+ * Listed URLs render as a disabled row instead of a link, so the selector can
+ * be visible before the second language exists without producing a 404.
+ */
+function kuka_island_language_is_pending( string $url ): bool {
+	$pending = array_filter( array_map( 'trim', explode( ',', (string) ( kuka_island_content()['languages']['pending_urls'] ?? '' ) ) ) );
+	$needle  = trailingslashit( trim( $url ) );
+	foreach ( $pending as $candidate ) {
+		if ( trailingslashit( $candidate ) === $needle ) { return true; }
+	}
+	return false;
+}
+
+function kuka_island_language_pending_note(): string {
+	$note = trim( (string) ( kuka_island_content()['languages']['pending_note'] ?? '' ) );
+	return '' === $note ? __( 'Yakında', 'kuka-island' ) : $note;
 }
 
 require_once get_stylesheet_directory() . '/inc/assets.php';

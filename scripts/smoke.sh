@@ -23,6 +23,7 @@ fetch() {
 
 fetch "$WP_URL" "$temporary_dir/home.html"
 grep -q 'class="kuka-hero' "$temporary_dir/home.html" || fail "home hero"
+! grep -Eqi 'kuka-account|Hesabım|Hesap oluştur|Üye ol|Giriş yap' "$temporary_dir/home.html" || fail "home account copy"
 pass "home 200 + hero"
 
 fetch "${WP_URL%/}/magaza/" "$temporary_dir/catalog.html"
@@ -59,10 +60,17 @@ cart_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/car
 grep -q "$color" "$temporary_dir/cart.html" && grep -q "$size" "$temporary_dir/cart.html" || fail "correct cart variation"
 pass "correct variation added to cart ($variation_id: $color/$size)"
 
+# A new HTTP client process reuses only WooCommerce's cookie jar. This models a
+# browser restart: no localStorage or custom cart store participates.
+restart_cart_code=$(curl -sS -L -b "$cookie_jar" -o "$temporary_dir/cart-after-restart.html" -w '%{http_code}' "${WP_URL%/}/sepet/")
+[ "$restart_cart_code" = "200" ] || fail "cart after restart HTTP $restart_cart_code"
+grep -q "$color" "$temporary_dir/cart-after-restart.html" && grep -q "$size" "$temporary_dir/cart-after-restart.html" || fail "guest cart cookie persistence"
+
 checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout.html" -w '%{http_code}' "${WP_URL%/}/odeme/")
 [ "$checkout_code" = "200" ] || fail "checkout HTTP $checkout_code"
 [ "$(grep -o 'name="kuka_[^"]*_accepted"' "$temporary_dir/checkout.html" | sort -u | wc -l | tr -d ' ')" = "2" ] || fail "checkout legal consents"
 grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
+! grep -Eqi 'Hesabım|Hesap oluştur|Üye ol|Giriş yap|createaccount|woocommerce-form-login-toggle' "$temporary_dir/checkout.html" || fail "checkout account copy"
 [ "$(grep -c 'name="kuka_[a-z_]*_accepted" value="1" required' "$temporary_dir/checkout.html" | tr -d ' ')" -ge 2 ] || fail "checkout consent required attribute"
 
 # Onay kapısı sunucuda doğrulanır: JS kapalıyken de onaysız gönderim reddedilmeli.
@@ -81,5 +89,10 @@ curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-con
 grep -q 'Ön Bilgilendirme Formu onayı zorunludur' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (preinfo)"
 grep -q 'Mesafeli Satış Sözleşmesi onayı zorunludur' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (distance sales)"
 pass "checkout rendered + two-consent payment gate"
+
+account_code=$(curl -sS -o /dev/null -w '%{http_code}|%{redirect_url}' "${WP_URL%/}/hesabim/")
+[ "$account_code" = "302|${WP_URL%/}/" ] || fail "account 302 redirect ($account_code)"
+fetch "${WP_URL%/}/siparis-takibi/" "$temporary_dir/tracking.html"
+grep -q 'woocommerce-form-track-order' "$temporary_dir/tracking.html" || fail "order tracking form"
 
 echo "SMOKE=PASS (5/5)"

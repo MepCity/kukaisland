@@ -121,37 +121,3 @@ add_filter( 'woocommerce_add_to_cart_fragments', 'kuka_island_cart_fragments' );
 
 /** A non-JavaScript add-to-cart submission finishes on the full cart page. */
 add_filter( 'woocommerce_add_to_cart_redirect', static fn(): string => wc_get_cart_url() );
-
-/** Whether a failed native WooCommerce login should reopen the account panel. */
-function kuka_island_account_panel_requires_attention(): bool {
-	return isset( $_POST['login'] ) && wc_notice_count( 'error' ) > 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- WooCommerce validates its own login nonce.
-}
-
-/** Render native account actions or WooCommerce's nonce-protected login form. */
-function kuka_island_account_panel_content(): void {
-	?>
-	<div class="kuka-account-panel__content">
-		<?php if ( is_user_logged_in() ) :
-			$user = wp_get_current_user();
-			?>
-			<p class="kuka-eyebrow"><?php esc_html_e( 'Hoş geldiniz', 'kuka-island' ); ?></p>
-			<h2><?php echo esc_html( $user->display_name ); ?></h2>
-			<nav aria-label="<?php esc_attr_e( 'Hesap işlemleri', 'kuka-island' ); ?>">
-				<a href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) ); ?>"><?php esc_html_e( 'Hesabım', 'kuka-island' ); ?><span aria-hidden="true">→</span></a>
-				<a href="<?php echo esc_url( wc_get_account_endpoint_url( 'orders' ) ); ?>"><?php esc_html_e( 'Siparişler', 'kuka-island' ); ?><span aria-hidden="true">→</span></a>
-				<a href="<?php echo esc_url( wc_get_account_endpoint_url( 'edit-address' ) ); ?>"><?php esc_html_e( 'Adresler', 'kuka-island' ); ?><span aria-hidden="true">→</span></a>
-				<a href="<?php echo esc_url( wc_logout_url() ); ?>"><?php esc_html_e( 'Çıkış yap', 'kuka-island' ); ?><span aria-hidden="true">→</span></a>
-			</nav>
-		<?php else : ?>
-			<?php $panel_content = kuka_island_content()['panels'] ?? array(); ?>
-			<h2><?php echo esc_html( $panel_content['account_greeting'] ?? __( 'Tekrar hoş geldiniz.', 'kuka-island' ) ); ?></h2>
-			<p class="kuka-account-panel__intro"><?php echo esc_html( $panel_content['account_copy'] ?? __( 'E-posta adresiniz ve şifrenizle giriş yapın.', 'kuka-island' ) ); ?></p>
-			<?php if ( kuka_island_account_panel_requires_attention() ) : ?>
-				<div class="kuka-account-panel__errors" role="alert"><strong><?php esc_html_e( 'Giriş tamamlanamadı.', 'kuka-island' ); ?></strong><?php wc_print_notices(); ?></div>
-			<?php endif; ?>
-			<?php woocommerce_login_form( array( 'redirect' => wc_get_page_permalink( 'myaccount' ) ) ); ?>
-			<p class="kuka-account-panel__register"><a href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) . '#customer_login' ); ?>"><?php esc_html_e( 'Hesap oluştur', 'kuka-island' ); ?></a></p>
-		<?php endif; ?>
-	</div>
-	<?php
-}

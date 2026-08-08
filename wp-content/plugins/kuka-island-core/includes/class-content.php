@@ -6,8 +6,6 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Content {
-	public const LEGAL_DRAFT_WARNING = 'Hukuki taslak uyarısı: Bu metin Kuka Island için özgün olarak hazırlanmış bir çalışma taslağıdır; müşteri veya hukuk danışmanı onayı olmadan yürürlüğe girmez.';
-	public const HYGIENE_POLICY = 'Koruyucu unsur, hijyen bandı veya mühür teslimden sonra açılmışsa; ürünün niteliği ve yürürlükteki mevzuat değerlendirilerek cayma hakkı istisnası uygulanabilir. Bu sonuç otomatik değildir ve her talep kendi koşullarıyla incelenir.';
 
 	/**
 	 * Build a wa.me link from a free-form phone number.
@@ -32,27 +30,33 @@ final class Kuka_Island_Core_Content {
 	}
 
 	public function register(): void {
-		add_shortcode( 'kuka_legal_warning', array( $this, 'legal_warning' ) );
 		add_shortcode( 'kuka_company_details', array( $this, 'company_details' ) );
 		add_shortcode( 'kuka_hygiene_policy', array( $this, 'hygiene_policy' ) );
+		add_shortcode( 'kuka_hygiene_try_on', array( $this, 'hygiene_try_on' ) );
+		add_shortcode( 'kuka_preinfo_products', array( $this, 'preinfo_products' ) );
+		add_shortcode( 'kuka_payment_methods', array( $this, 'payment_methods' ) );
 		add_shortcode( 'kuka_value', array( $this, 'value' ) );
 		add_shortcode( 'kuka_contact_details', array( $this, 'contact_details' ) );
 		add_shortcode( 'kuka_size_guide', array( $this, 'size_guide' ) );
 	}
 
-	public function legal_warning(): string {
-		return '<p class="kuka-legal-warning"><strong>' . esc_html( self::LEGAL_DRAFT_WARNING ) . '</strong></p>';
-	}
-
+	/**
+	 * Seller block used by every contract page. The labels and their order match
+	 * the customer's signed PDFs so the published page and the contract read the
+	 * same; the values come from the panel so one edit reaches all of them.
+	 */
 	public function company_details(): string {
 		$legal = Kuka_Island_Core_Site_Appearance::get()['legal'];
+		$brand = Kuka_Island_Core_Site_Appearance::get()['brand'];
 		$rows  = array(
-			__( 'Satıcı / unvan', 'kuka-island-core' ) => $legal['company_title'],
-			__( 'İşletme adı', 'kuka-island-core' ) => $legal['brand_name'],
-			__( 'VKN', 'kuka-island-core' ) => $legal['tax_number'],
-			__( 'Vergi dairesi', 'kuka-island-core' ) => $legal['tax_office'],
-			__( 'Adres', 'kuka-island-core' ) => $legal['address'],
+			__( 'Satıcı', 'kuka-island-core' ) => $legal['company_title'],
+			__( 'Marka', 'kuka-island-core' ) => $legal['brand_name'],
+			__( 'Vergi Dairesi', 'kuka-island-core' ) => $legal['tax_office'],
+			__( 'Vergi Kimlik No', 'kuka-island-core' ) => $legal['tax_number'],
+			__( 'Adres', 'kuka-island-core' ) => $legal['address_full'],
 			__( 'Telefon', 'kuka-island-core' ) => $legal['telephone'],
+			__( 'E-posta', 'kuka-island-core' ) => $brand['email'],
+			__( 'MERSİS No', 'kuka-island-core' ) => $legal['mersis_number'],
 			__( 'ETBİS numarası', 'kuka-island-core' ) => $legal['etbis_number'],
 		);
 		$html  = '<dl class="kuka-company-details">';
@@ -64,8 +68,100 @@ final class Kuka_Island_Core_Content {
 		return $html . '</dl>';
 	}
 
+	/**
+	 * The customer's own hygiene wording, followed by the defective-goods
+	 * sentence their return contract (§6, §10) requires so the notice cannot be
+	 * read as overriding statutory rights.
+	 */
 	public function hygiene_policy(): string {
-		return '<span data-kuka-hygiene-policy>' . esc_html( self::HYGIENE_POLICY ) . '</span>';
+		$commercial = Kuka_Island_Core_Site_Appearance::get()['commercial'];
+		$sentences  = array_filter(
+			array(
+				trim( (string) ( $commercial['hygiene_copy'] ?? '' ) ),
+				trim( (string) ( $commercial['hygiene_defect_copy'] ?? '' ) ),
+			)
+		);
+		if ( ! $sentences ) { return ''; }
+		return '<span data-kuka-hygiene-policy>' . esc_html( implode( ' ', $sentences ) ) . '</span>';
+	}
+
+	/**
+	 * Enabled payment methods, read from WooCommerce rather than restated in the
+	 * contract text. The customer's PDF leaves this as a bracketed placeholder.
+	 */
+	public function payment_methods(): string {
+		if ( ! function_exists( 'WC' ) || ! WC()->payment_gateways() ) { return ''; }
+		$titles = array();
+		foreach ( WC()->payment_gateways()->get_available_payment_gateways() as $gateway ) {
+			$titles[] = $gateway->get_title();
+		}
+		if ( ! $titles ) { return esc_html__( 'internet sitesinde sunulan ödeme yöntemleri', 'kuka-island-core' ); }
+		return '<span data-kuka-payment-methods>' . esc_html( implode( ' / ', $titles ) ) . '</span>';
+	}
+
+	public function hygiene_try_on(): string {
+		$copy = trim( (string) ( Kuka_Island_Core_Site_Appearance::get()['commercial']['hygiene_try_on_copy'] ?? '' ) );
+		return '' === $copy ? '' : '<span data-kuka-hygiene-try-on>' . esc_html( $copy ) . '</span>';
+	}
+
+	/**
+	 * Pre-information form §2 — the order the consumer is about to place.
+	 *
+	 * The Mesafeli Sözleşmeler Yönetmeliği wants this form shown with the
+	 * concrete order before the contract is formed, so the block reads the live
+	 * cart. Every figure is asked of WooCommerce (§17.3); nothing is recomputed
+	 * here. With an empty cart the page stays the general information page the
+	 * customer's PDF describes.
+	 */
+	public function preinfo_products(): string {
+		if ( ! function_exists( 'WC' ) || ! WC()->cart || WC()->cart->is_empty() ) {
+			return '<p>' . esc_html__( 'Siparişe konu ürünün adı, bedeni, rengi, adedi, birim fiyatı, kargo bedeli ve KDV dahil toplam tutarı; siparişiniz onaylanmadan önce bu formda ve sipariş özetinde gösterilir.', 'kuka-island-core' ) . '</p>';
+		}
+
+		$cart = WC()->cart;
+		$rows = '';
+		foreach ( $cart->get_cart() as $item ) {
+			$product = $item['data'] ?? null;
+			if ( ! $product instanceof WC_Product ) { continue; }
+			$size  = '';
+			$color = '';
+			foreach ( (array) ( $item['variation'] ?? array() ) as $taxonomy => $slug ) {
+				$label = wc_attribute_label( str_replace( 'attribute_', '', (string) $taxonomy ) );
+				$term  = get_term_by( 'slug', (string) $slug, str_replace( 'attribute_', '', (string) $taxonomy ) );
+				$name  = $term instanceof WP_Term ? $term->name : (string) $slug;
+				if ( str_contains( (string) $taxonomy, 'beden' ) ) { $size = $name; }
+				if ( str_contains( (string) $taxonomy, 'renk' ) ) { $color = $name; }
+				unset( $label );
+			}
+			$rows .= '<tr>'
+				. '<th scope="row">' . esc_html( $product->get_name() ) . '</th>'
+				. '<td>' . esc_html( '' !== $size ? $size : '—' ) . '</td>'
+				. '<td>' . esc_html( '' !== $color ? $color : '—' ) . '</td>'
+				. '<td>' . esc_html( (string) (int) $item['quantity'] ) . '</td>'
+				. '<td>' . wp_kses_post( wc_price( wc_get_price_to_display( $product ) ) ) . '</td>'
+				. '<td>' . wp_kses_post( $cart->get_product_subtotal( $product, (int) $item['quantity'] ) ) . '</td>'
+				. '</tr>';
+		}
+		if ( '' === $rows ) { return ''; }
+
+		$shipping = (float) $cart->get_shipping_total() > 0
+			? wc_price( (float) $cart->get_shipping_total() )
+			: esc_html__( 'Ücretsiz', 'kuka-island-core' );
+
+		return '<div class="kuka-table-scroll" tabindex="0"><table class="kuka-preinfo-order">'
+			. '<caption>' . esc_html__( 'Siparişinizin güncel bilgileri', 'kuka-island-core' ) . '</caption>'
+			. '<thead><tr>'
+			. '<th scope="col">' . esc_html__( 'Ürün', 'kuka-island-core' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Beden', 'kuka-island-core' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Renk', 'kuka-island-core' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Adet', 'kuka-island-core' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Birim fiyat', 'kuka-island-core' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Ara toplam', 'kuka-island-core' ) . '</th>'
+			. '</tr></thead><tbody>' . $rows . '</tbody>'
+			. '<tfoot>'
+			. '<tr><th scope="row" colspan="5">' . esc_html__( 'Kargo/teslimat', 'kuka-island-core' ) . '</th><td>' . wp_kses_post( $shipping ) . '</td></tr>'
+			. '<tr><th scope="row" colspan="5">' . esc_html__( 'Toplam (KDV dahil)', 'kuka-island-core' ) . '</th><td>' . wp_kses_post( wc_price( (float) $cart->get_total( 'edit' ) ) ) . '</td></tr>'
+			. '</tfoot></table></div>';
 	}
 
 	/** @param array<string, string> $attributes */
@@ -77,11 +173,19 @@ final class Kuka_Island_Core_Content {
 			'flat_shipping_fee' => wc_price( (float) $content['commercial']['flat_shipping_fee'] ),
 			'shipping_carrier' => esc_html( (string) $content['commercial']['shipping_carrier'] ),
 			'delivery_time' => esc_html( (string) $content['commercial']['delivery_time'] ),
-			'return_period_days' => esc_html( (string) absint( $content['commercial']['return_period_days'] ) ),
+			'cayma_hakki_gun' => esc_html( (string) absint( $content['commercial']['cayma_hakki_gun'] ) ),
 			'return_shipping_responsibility' => esc_html( (string) $content['commercial']['return_shipping_responsibility'] ),
 			'support_hours' => esc_html( (string) $content['commercial']['support_hours'] ),
 			'email' => esc_html( (string) $content['brand']['email'] ),
 			'phone' => esc_html( (string) $content['brand']['phone'] ),
+			'address_full' => esc_html( (string) $content['legal']['address_full'] ),
+			'address_short' => esc_html( (string) $content['legal']['address_short'] ),
+			'company_title' => esc_html( (string) $content['legal']['company_title'] ),
+			'brand_name' => esc_html( (string) $content['legal']['brand_name'] ),
+			'telephone' => esc_html( (string) $content['legal']['telephone'] ),
+			'tax_office' => esc_html( (string) $content['legal']['tax_office'] ),
+			'tax_number' => esc_html( (string) $content['legal']['tax_number'] ),
+			'mersis_number' => esc_html( (string) $content['legal']['mersis_number'] ),
 		);
 		$name = sanitize_key( (string) $attributes['name'] );
 		return isset( $values[ $name ] ) ? '<span data-kuka-value="' . esc_attr( $name ) . '">' . wp_kses_post( $values[ $name ] ) . '</span>' : '';
@@ -106,9 +210,9 @@ final class Kuka_Island_Core_Content {
 	public function size_guide(): string {
 		$rows = Kuka_Island_Core_Site_Appearance::get()['content'];
 		$html = '<div class="kuka-size-guide">';
-		$html .= $this->size_table( __( 'Bikini üstü', 'kuka-island-core' ), array( 'EU', __( 'Harf', 'kuka-island-core' ), __( 'Göğüs (cm)', 'kuka-island-core' ), __( 'Göğüs altı (cm)', 'kuka-island-core' ), __( 'Kupa', 'kuka-island-core' ) ), (string) $rows['size_top_rows'] );
-		$html .= $this->size_table( __( 'Bikini altı', 'kuka-island-core' ), array( 'EU', __( 'Harf', 'kuka-island-core' ), __( 'Bel (cm)', 'kuka-island-core' ), __( 'Kalça (cm)', 'kuka-island-core' ) ), (string) $rows['size_bottom_rows'] );
-		$html .= $this->size_table( __( 'Mayo', 'kuka-island-core' ), array( 'EU', __( 'Harf', 'kuka-island-core' ), __( 'Göğüs (cm)', 'kuka-island-core' ), __( 'Bel (cm)', 'kuka-island-core' ), __( 'Kalça (cm)', 'kuka-island-core' ) ), (string) $rows['size_swimsuit_rows'] );
+		$html .= $this->size_table( __( 'Bikini üstü', 'kuka-island-core' ), array( __( 'Beden', 'kuka-island-core' ), __( 'Göğüs (cm)', 'kuka-island-core' ), __( 'Göğüs altı (cm)', 'kuka-island-core' ), __( 'Kupa', 'kuka-island-core' ) ), (string) $rows['size_top_rows'] );
+		$html .= $this->size_table( __( 'Bikini altı', 'kuka-island-core' ), array( __( 'Beden', 'kuka-island-core' ), __( 'Bel (cm)', 'kuka-island-core' ), __( 'Kalça (cm)', 'kuka-island-core' ) ), (string) $rows['size_bottom_rows'] );
+		$html .= $this->size_table( __( 'Mayo', 'kuka-island-core' ), array( __( 'Beden', 'kuka-island-core' ), __( 'Göğüs (cm)', 'kuka-island-core' ), __( 'Bel (cm)', 'kuka-island-core' ), __( 'Kalça (cm)', 'kuka-island-core' ) ), (string) $rows['size_swimsuit_rows'] );
 		return $html . '</div>';
 	}
 
