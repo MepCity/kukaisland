@@ -8,6 +8,7 @@ $home = $content['home'] ?? array();
 $whatsapp_url = kuka_island_whatsapp_url();
 $desktop = ! empty( $hero['desktop_image_id'] ) ? wp_get_attachment_image_url( $hero['desktop_image_id'], 'full' ) : '';
 $mobile = ! empty( $hero['mobile_image_id'] ) ? wp_get_attachment_image_url( $hero['mobile_image_id'], 'full' ) : $desktop;
+$hero_overlay_strength = min( 100, max( 0, absint( $hero['overlay_strength'] ?? 78 ) ) );
 $category_items = array_values( array_filter( kuka_island_category_navigation(), static fn( array $item ): bool => $item['home'] ) );
 $products_shortcode = '[products limit="4" columns="4" orderby="date"';
 if ( 'featured' === ( $home['new_arrivals_source'] ?? 'latest' ) ) { $products_shortcode .= ' visibility="featured"'; }
@@ -18,7 +19,7 @@ if ( ! empty( $home['source_collection'] ) ) { $products_shortcode .= ' tag="' .
 $products_shortcode .= ']';
 ?>
 <?php if ( ! empty( $hero['enabled'] ) ) : ?>
-<section class="kuka-hero kuka-hero--<?php echo esc_attr( $hero['text_tone'] ?? 'light' ); ?> kuka-hero--<?php echo esc_attr( $hero['alignment'] ?? 'left' ); ?>" style="--hero-desktop:url('<?php echo esc_url( $desktop ); ?>');--hero-mobile:url('<?php echo esc_url( $mobile ); ?>')">
+<section class="kuka-hero kuka-hero--<?php echo esc_attr( $hero['text_tone'] ?? 'light' ); ?> kuka-hero--<?php echo esc_attr( $hero['alignment'] ?? 'left' ); ?>" style="--hero-desktop:url('<?php echo esc_url( $desktop ); ?>');--hero-mobile:url('<?php echo esc_url( $mobile ); ?>');--hero-overlay-strength:<?php echo esc_attr( (string) $hero_overlay_strength ); ?>">
 	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><?php echo esc_html( $hero['title'] ?? '' ); ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
 </section>
 <?php endif; ?>
