@@ -5,7 +5,7 @@ defined( 'ABSPATH' ) || exit;
 
 /** Return the one active storefront language code. */
 function kuka_island_locale(): string {
-	return Kuka_Island_Core_Language::is_english_request() ? 'en' : 'tr';
+	return Kuka_Island_Core_Language::is_english_context() ? 'en' : 'tr';
 }
 
 function kuka_island_is_english(): bool {
@@ -122,10 +122,15 @@ final class Kuka_Island_Core_Language {
 		add_action( 'woocommerce_checkout_create_order', array( $this, 'save_order_locale' ), 20 );
 		add_filter( 'woocommerce_allow_switching_email_locale', array( $this, 'switch_email_locale' ), 20, 2 );
 		add_filter( 'woocommerce_allow_restoring_email_locale', array( $this, 'restore_email_locale' ), 20, 2 );
+		foreach ( array( 'customer_processing_order', 'customer_completed_order', 'customer_on_hold_order', 'customer_refunded_order', 'customer_invoice', 'customer_note', 'customer_failed_order' ) as $email_id ) {
+			add_filter( 'woocommerce_email_heading_' . $email_id, array( $this, 'english_email_heading' ), 20, 3 );
+			add_filter( 'woocommerce_email_subject_' . $email_id, array( $this, 'english_email_subject' ), 20, 3 );
+			add_filter( 'woocommerce_email_additional_content_' . $email_id, array( $this, 'english_email_additional_content' ), 20, 3 );
+		}
 	}
 
 	public function english_interface( string $translation, string $text, string $domain ): string {
-		if ( ! self::is_english_request() || ! in_array( $domain, array( 'kuka-island', 'kuka-island-core' ), true ) ) { return $translation; }
+		if ( ! self::is_english_context() || ! in_array( $domain, array( 'kuka-island', 'kuka-island-core' ), true ) ) { return $translation; }
 		$map = array(
 			'Ada mektupları' => 'Island letters', 'Yardım' => 'Help', 'Yasal' => 'Legal', 'Sosyal' => 'Social',
 			'WhatsApp destek' => 'WhatsApp support', 'Formunu bul' => 'Find your shape', 'Ürün kategorileri' => 'Product categories',
@@ -177,7 +182,7 @@ final class Kuka_Island_Core_Language {
 
 	public function english_plural_interface( string $translation, string $single, string $plural, int $number, string $domain ): string {
 		unset( $plural );
-		if ( ! self::is_english_request() || 'kuka-island' !== $domain ) { return $translation; }
+		if ( ! self::is_english_context() || 'kuka-island' !== $domain ) { return $translation; }
 		$map = array( '%d ürün' => '%d products', '%d renk' => '%d colors' );
 		return isset( $map[ $single ] ) ? sprintf( $map[ $single ], $number ) : $translation;
 	}
@@ -208,10 +213,35 @@ final class Kuka_Island_Core_Language {
 		return $allow;
 	}
 
+	public function english_email_heading( string $heading, $object, WC_Email $email ): string {
+		if ( ! $object instanceof WC_Order || 'en_US' !== $object->get_meta( '_kuka_order_locale', true ) ) { return $heading; }
+		return $email->format_string( $email->get_default_heading() );
+	}
+
+	public function english_email_subject( string $subject, $object, WC_Email $email ): string {
+		if ( ! $object instanceof WC_Order || 'en_US' !== $object->get_meta( '_kuka_order_locale', true ) ) { return $subject; }
+		return $email->format_string( $email->get_default_subject() );
+	}
+
+	public function english_email_additional_content( string $content, $object, WC_Email $email ): string {
+		if ( ! $object instanceof WC_Order || 'en_US' !== $object->get_meta( '_kuka_order_locale', true ) || ! method_exists( $email, 'get_default_additional_content' ) ) { return $content; }
+		return $email->format_string( $email->get_default_additional_content() );
+	}
+
 	public static function is_english_request(): bool {
-		if ( 'en' === (string) get_query_var( 'kuka_lang', '' ) ) { return true; }
+		global $wp_query;
+		if ( $wp_query instanceof WP_Query && 'en' === (string) $wp_query->get( 'kuka_lang', '' ) ) { return true; }
 		$path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ), PHP_URL_PATH );
-		return (bool) preg_match( '#^/en(?:/|$)#', $path );
+		if ( (bool) preg_match( '#^/en(?:/|$)#', $path ) ) { return true; }
+		if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || isset( $_GET['wc-ajax'] ) ) {
+			$referer_path = (string) wp_parse_url( wp_unslash( $_SERVER['HTTP_REFERER'] ?? '' ), PHP_URL_PATH );
+			return (bool) preg_match( '#^/en(?:/|$)#', $referer_path );
+		}
+		return false;
+	}
+
+	public static function is_english_context(): bool {
+		return self::$email_locale_switched || self::is_english_request();
 	}
 
 	public function query_vars( array $vars ): array {
@@ -243,7 +273,7 @@ final class Kuka_Island_Core_Language {
 	/** Prefix ordinary storefront home URLs on an English request. */
 	public function filter_home_url( string $url, string $path, ?string $scheme, ?int $blog_id ): string {
 		unset( $scheme, $blog_id );
-		if ( ! self::is_english_request() || str_starts_with( ltrim( $path, '/' ), 'en/' ) ) { return $url; }
+		if ( ! self::is_english_context() || str_starts_with( ltrim( $path, '/' ), 'en/' ) ) { return $url; }
 		if ( preg_match( '#^(wp-admin|wp-login\.php|wp-json)(?:/|$)#', ltrim( $path, '/' ) ) ) { return $url; }
 		return self::url_for_language( $url, 'en' );
 	}
@@ -296,7 +326,15 @@ final class Kuka_Island_English_Sitemap_Provider extends WP_Sitemaps_Provider {
 		if ( 1 !== (int) $page_num ) { return array(); }
 		$urls = array( array( 'loc' => Kuka_Island_Core_Language::url_for_language( (string) get_option( 'home' ) . '/', 'en' ) ) );
 		foreach ( get_posts( array( 'post_type' => array( 'page', 'product' ), 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids' ) ) as $post_id ) {
+			if ( function_exists( 'wc_get_page_id' ) && wc_get_page_id( 'myaccount' ) === (int) $post_id ) { continue; }
 			$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( get_permalink( $post_id ), 'en' ) );
+		}
+		foreach ( array( 'product_cat', 'pa_renk', 'pa_kesim', 'pa_beden' ) as $taxonomy ) {
+			if ( ! taxonomy_exists( $taxonomy ) ) { continue; }
+			foreach ( get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false ) ) as $term ) {
+				$term_url = get_term_link( $term );
+				if ( ! is_wp_error( $term_url ) ) { $urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( $term_url, 'en' ) ); }
+			}
 		}
 		if ( function_exists( 'wc_get_page_permalink' ) ) {
 			$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( wc_get_page_permalink( 'shop' ), 'en' ) );
