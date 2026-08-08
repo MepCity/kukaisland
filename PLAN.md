@@ -122,7 +122,7 @@ Yasal metinlerin nihai onayı müşteri veya hukuk danışmanındadır (§10.9, 
 ### 3.5 Kapsam yaklaşımı
 
 - İlk sürüm kapsamı §30 ve §31'de sayılıdır ve korunması esastır.
-- e-Fatura, pazaryeri, özel kargo API'si, çoklu dil, yüzlerce ürünün elle girilmesi ve sınırsız revizyon ilk sürüm kapsamı dışındadır.
+- e-Fatura, pazaryeri, özel kargo API'si, yüzlerce ürünün elle girilmesi ve sınırsız revizyon ilk sürüm kapsamı dışındadır. Türkçe/İngilizce arayüz Faz 5B kapsam eklemesiyle yapılmıştır; ihracat, çoklu para birimi ve İngilizce hukuk metinleri kapsam dışıdır.
 - Yeni sayfa veya yeni özellik talebi revizyon değil kapsam değişikliğidir ve ayrıca değerlendirilir.
 
 ---
@@ -1343,7 +1343,7 @@ Onay yazılı alınır — kısa bir "tasarımı onaylıyorum" e-postası yeterl
 
 ### Faz 8 — Sonraki entegrasyonlar
 
-Kargo firması API'si · e-Fatura · pazaryeri entegratörü · sepet hatırlatma · yorum hatırlatma · gelişmiş otomasyon · iade/değişim portalı · çoklu dil/para birimi · ERP/muhasebe.
+Kargo firması API'si · e-Fatura · pazaryeri entegratörü · sepet hatırlatma · yorum hatırlatma · gelişmiş otomasyon · iade/değişim portalı · ikiden fazla dil/çoklu para birimi · ERP/muhasebe.
 
 Her biri ayrı keşif, kapsam ve kabul kriteri gerektirir.
 
@@ -1427,7 +1427,7 @@ Kod dışı paralel çıktılar: güncel müşteri soruları · fotoğraf adland
 
 ## 31. İlk sürüme dahil olmayanlar
 
-e-Fatura · pazaryeri entegrasyonu · özel kargo API'si · iade/değişim portalı · çoklu dil · çoklu para birimi · ERP/muhasebe · profesyonel fotoğraf çekimi · **ürün yorumları ve puanlama** · **takım set indirimi (bundle fiyat kuralı)** · **ana sayfa video alanı** · ürün açıklama metinleri · logo ve tam kurumsal kimlik tasarımı (ayrıca kararlaştırılmadıkça) · yüzlerce ürünün elle temizlenmesi ve girilmesi · **adlandırma kuralına uymayan görsellerin elle eşleştirilmesi** · sınırsız revizyon · özel mobil uygulama · sadakat/puan programı · abonelik sistemi · gelişmiş pazarlama otomasyonları · devir sonrası sürekli bakım ve destek · referans sitelerin birebir kopyası · **referans sitelerin görsel ve yasal metinlerinin kullanımı** (§3.3.1).
+e-Fatura · pazaryeri entegrasyonu · özel kargo API'si · iade/değişim portalı · ikiden fazla dil · çoklu para birimi · ERP/muhasebe · profesyonel fotoğraf çekimi · **ürün yorumları ve puanlama** · **takım set indirimi (bundle fiyat kuralı)** · **ana sayfa video alanı** · ürün açıklama metinleri · logo ve tam kurumsal kimlik tasarımı (ayrıca kararlaştırılmadıkça) · yüzlerce ürünün elle temizlenmesi ve girilmesi · **adlandırma kuralına uymayan görsellerin elle eşleştirilmesi** · sınırsız revizyon · özel mobil uygulama · sadakat/puan programı · abonelik sistemi · gelişmiş pazarlama otomasyonları · devir sonrası sürekli bakım ve destek · referans sitelerin birebir kopyası · **referans sitelerin görsel ve yasal metinlerinin kullanımı** (§3.3.1). Türkçe/İngilizce arayüz Faz 5B'de sonradan kapsama alınmıştır; yasal İngilizce çeviri ve ihracat altyapısı alınmamıştır.
 
 ---
 
@@ -1584,6 +1584,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-09 | Faz 5B Türkçe/İngilizce arayüzü eklentisiz, URL-kaynaklı özel katmandır: Türkçe ön eksiz, İngilizce `/en/`; ürün/sayfa için ikinci kayıt yoktur, EN değerler aynı kayıt metasındadır | TranslatePress ürün düzenleme akışında çeviri istemez; WPML/Polylang ikinci kayıt ve yıllık bağımlılık getirir. Tek stok/fiyat kaynağı ve bakım anlaşmasız mimari korunur |
+| 2026-08-09 | İngilizce alan boşsa Türkçe fallback gösterilir; sekiz hukuk metninin EN alanı boş ve üstte Türkçe sürümün bağlayıcı olduğu notu vardır | Otomatik/uydurma çeviri yapılmaz; hukuk metninin sorumluluğu müşterinin hukuk danışmanındadır |
+| 2026-08-09 | Sipariş dili `_kuka_order_locale` olarak kaydedilir ve müşteri e-postası gönderilirken locale geçici olarak o dile alınır | URL ile seçilen checkout dili e-posta ve sipariş sonrası yüzeylerde korunur; ürün/fiyat/stok tek kayıttan kalır |
 | 2026-08-09 | Faz 4C hero perdesi yalnız metin tarafına alındı ve yoğunluğu panelden yönetilir | Ürün fotoğrafını soldurmadan metinde AA kontrastı korumak; %78 varsayılanında muhafazakâr alt sınır 7.66:1'dir |
 | 2026-08-09 | Manifesto daha kısa iki içerik satırına indirildi; Hakkımızda açılışı aynı panel alanına bağlandı; PDF kaynak metni ayrı blokta birebir korunur | Ana sayfa yüksekliğini azaltırken marka hikâyesini yeniden yazmamak ve tek içerik kaynağını korumak |
 | 2026-08-09 | Bülten yalnız onaylı kayıt toplar; onay metni/tarih/IP saklanır, panelde liste/CSV vardır, toplu gönderim yoktur | JS'siz ve denetlenebilir kayıt gerekir; ticari elektronik ileti gönderimi İYS/hukuk süreci tamamlanmadan kapsam dışıdır |
@@ -1809,9 +1812,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 4A müşteri onay turu tamamlandı: açık renk yüzeyler, footer/manifesto, müşteri hukuk metinleri, yalnız 14 gün cayma hakkı, S–M–L bedenler, 4.000 TL ücretsiz kargo, checkout alanları, görünür dil seçici ve okunur bildirimler
 - [x] Faz 4B onay düzeltmeleri tamamlandı: editoryal başlık yedi genişlikte kelime bölünmeden sığıyor, menü etiketi “Hikâyemiz”, beden sırası `order` term metasıyla S–M–L
 - [x] Faz 4C arayüz ve bülten kapsamı tamamlandı: yerel hero perdesi, AA kontrast, dengeli footer, kısa manifesto, PDF'le eş Hakkımızda ve onay kanıtlı/JS'siz bülten kayıtları
+- [x] Faz 5B iki dil desteği tamamlandı: `/en/` route/SEO, 42 panel alan çifti, aynı kayıtta ürün/taksonomi/sayfa EN metaları, Türkçe fallback ve sipariş locale'i; çeviri eklentisi/otomatik çeviri yok
 - [x] Üyelik, hesap paneli ve sosyal giriş geri çekildi; misafir ödeme, 48 saatlik panel kontrollü WooCommerce oturumu ve sipariş numarası + e-posta takip akışı korundu
 - [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
-- [ ] İkinci dil kararı verilince dil seçici listesi çeviri eklentisinden beslenecek
+- [x] Dil seçici URL-kaynaklı Türkçe/İngilizce karşılıklara bağlandı; çerez ve çeviri eklentisi kullanılmıyor
 - [x] Veridyen test yayını için deploy arşiv betiği ve sağlayıcıya özgü runbook hazırlandı; fiili deploy yapılmadı
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak

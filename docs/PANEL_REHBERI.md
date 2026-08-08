@@ -2,6 +2,17 @@
 
 Günlük kullanıcı `kuka_manager` hesabıyla giriş yapar. Sol menüde **Kuka Island → Başlangıç** günlük işlerin bağlantılı haritasıdır; içerik ayarları **Kuka Island → Site Görünümü** altındadır. Sayfanın altındaki **Site görünümünü kaydet** düğmesi nonce ve `manage_woocommerce` yetkisiyle çalışır.
 
+## Türkçe ve İngilizce içerik
+
+- Site Görünümü'ndeki çevrilebilir alanlar aynı satırda **Türkçe** ve **English** olarak görünür. Toplam 42 içerik alanının İngilizce ikizi vardır.
+- URL, medya, telefon, VKN, kargo tutarı, gün sayısı ve benzeri ortak/sayısal alanların İngilizce ikizi yoktur; iki dil aynı değeri kullanır.
+- English alanı boş bırakılırsa vitrinde Türkçe kaynak gösterilir. Sistem otomatik çeviri yapmaz ve boş sayfa üretmez.
+- Bağlantı listelerinde English sütununa yalnız etiketler aynı satır sırasında yazılır; URL Türkçe kaynaktaki ortak değer olarak kalır.
+- Ürün düzenlemede **English product content**, sayfa düzenlemede **English page content**, kategori/renk/kesim/beden düzenlemede **English name** alanı kullanılır. Fiyat, stok, SKU, varyasyon ve görseller ortak kalır.
+- Yasal sayfaların İngilizce alanlarını hukuk danışmanından onaylı metin gelmeden doldurmayın. Boşken ziyaretçi Türkçe bağlayıcı metni açıklama notuyla görür.
+
+Görsel örnekler: [iki dilli Site Görünümü](qa/faz5b/08-site-appearance-bilingual.jpg), [ürün EN alanları](qa/faz5b/09-product-english-fields.jpg), [sayfa EN alanları](qa/faz5b/11-page-english-fields.jpg), [terim EN alanı](qa/faz5b/10-taxonomy-english-field.jpg).
+
 ## Site Görünümü grupları
 
 1. **Marka:** medya seçicili masaüstü/mobil logo, favicon, sosyal paylaşım görseli, e-posta, telefon, WhatsApp ve `Etiket|URL` sosyal bağlantıları.

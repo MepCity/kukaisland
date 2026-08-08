@@ -25,7 +25,17 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 
 ## İlk sürümden sonraki fazlar
 
-İlk canlı sürümden sonraki fazlarda değerlendirilecek işler: e-Fatura; pazaryeri bağlantıları; özel kargo API'si; iade/değişim portalı; çoklu dil ve para birimi; ERP/muhasebe bağlantısı; profesyonel çekimin üretilmesi; ürün yorumları ve puanlama; takım set indirimi; ana sayfa videosu; ürün açıklama metinlerinin yazılması; ayrıca anlaşılmadıkça logo ve tam kurumsal kimlik tasarımı; özel mobil uygulama; sadakat/puan ve abonelik sistemi; gelişmiş pazarlama otomasyonları; devir sonrası sürekli bakım/destek. Bunlar iptal edilmiş değildir; sonraki fazların kapsamıdır. Yüzlerce ürünün elle temizlenmesi/girilmesi, kurala aykırı fotoğrafların elle eşleştirilmesi, sınırsız revizyon ve referans sitelerin birebir kopyalanması da mevcut kapsamda değildir.
+İlk canlı sürümden sonraki fazlarda değerlendirilecek işler: e-Fatura; pazaryeri bağlantıları; özel kargo API'si; iade/değişim portalı; ikiden fazla dil ve çoklu para birimi; ERP/muhasebe bağlantısı; profesyonel çekimin üretilmesi; ürün yorumları ve puanlama; takım set indirimi; ana sayfa videosu; ürün açıklama metinlerinin yazılması; ayrıca anlaşılmadıkça logo ve tam kurumsal kimlik tasarımı; özel mobil uygulama; sadakat/puan ve abonelik sistemi; gelişmiş pazarlama otomasyonları; devir sonrası sürekli bakım/destek. Bunlar iptal edilmiş değildir; sonraki fazların kapsamıdır. Yüzlerce ürünün elle temizlenmesi/girilmesi, kurala aykırı fotoğrafların elle eşleştirilmesi, sınırsız revizyon ve referans sitelerin birebir kopyalanması da mevcut kapsamda değildir.
+
+## Faz 5B iki dil kapsamı
+
+- İngilizce sürüm Türkiye'ye satış yapan mağazada yabancı ziyaretçinin arayüzü anlayacağı varsayımıyla kurulmuştur; ihracat altyapısı değildir.
+- Para birimi iki dilde de TRY'dir. Çoklu para birimi, yurt dışı kargo, ihracat faturası ve yabancı tüketici hukuku kapsam dışıdır.
+- İngilizce URL'ler `/en/` ön eki kullanır; ürün, kategori ve sayfa slug'ları Türkçe kalır. İngilizce slug/redirect çalışması ayrı kapsamdır.
+- İngilizce alanlar otomatik çevrilmez. Boş ürün, terim, panel veya sayfa alanında Türkçe kaynak bilgi notuyla gösterilir.
+- Sekiz yasal metnin İngilizce çevirisi yapılmamıştır; EN alanları boştur. `/en/` yasal sayfası bağlayıcı sürümün Türkçe olduğunu bildirip Türkçe metni gösterir.
+- Mevcut geçmiş siparişlerde dil metası yoktur; Faz 5B sonrasında checkout'ta oluşan siparişler `tr_TR` veya `en_US` locale'iyle kaydedilir.
+- E-posta HTML'i doğru locale'de üretilebilir; gerçek posta kutusuna teslim/SPF/DKIM/DMARC doğrulaması SMTP kurulumu beklediği için kapsam dışı kalır.
 
 ## Onaylanan tasarım gereksinimleri
 
@@ -49,7 +59,7 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 ## Faz 4A kapsam sınırı
 
 - **Üyelik ve sosyal giriş kaldırıldı.** Storefront misafir ödeme ile çalışır; `/hesabim/` WooCommerce iç bağımlılıkları için durur ve ana sayfaya 302 yönlenir. Nextend kurulmaz. Yönetici girişi ve Loginizer kapsam dışı değildir; `wp-login.php` kullanılmaya devam eder.
-- **Dil seçici görünür, İngilizce içerik henüz yoktur.** `/en/` tıklanabilir kırık bağlantı olarak basılmaz; seçicide “İngilizce sürüm yakında” gösterilir. Tam çeviri ve olası yurt dışı satış ayrı fazdır.
+- **Dil seçici Türkçe/English olarak çalışır.** `/en/` Faz 5B'de yayındadır; müşteri tarafından doldurulmayan İngilizce içerik Türkçe kaynağa düşer. Yurt dışı satış ayrı fazdır.
 - **Ödeme sayfasında "Teslimat yöntemi" ayrı bir form bölümü değildir.** Kargo yöntemi seçimi WooCommerce'in `update_order_review` parçasında yaşar ve yalnız orada yenilenir; sipariş özeti kolonunda, kargo tutarının hemen üstünde görünür. Sol kolona taşımak parçayı bozar ve checkout akışını yeniden yazmayı gerektirirdi (§17.3).
 - **Tahmini teslim tarihi panelde sayı olmadan gösterilmez.** `Site Görünümü → Ticari Bilgiler → Tahmini teslimat süresi` alanı `[TESLİMAT SÜRESİ]` yer tutucusunda kaldığı sürece özet kolonunda tarih satırı hiç açılmaz. Alana "2-4 iş günü" gibi bir değer girildiğinde tarih aralığı iş günü sayılarak hesaplanır.
 - **KDV satırı yoktur.** `woocommerce_calc_taxes = no`; toplam satırındaki "KDV dahil" ibaresi fiyatların vergi dâhil girildiği kabulünü belirtir. Vergi yapılandırılırsa hem özet hem kupon denetim betiği vergi matrahını ayrıca raporlar.
