@@ -14,7 +14,7 @@ $emblem_html = kuka_island_emblem_markup();
 <footer class="kuka-footer">
 	<?php if ( ! empty( $site_content['footer']['newsletter_enabled'] ) ) : ?><section class="kuka-newsletter" aria-labelledby="kuka-newsletter-title">
 		<p class="kuka-eyebrow"><?php echo esc_html( $site_content['footer']['newsletter_eyebrow'] ?? __( 'Ada mektupları', 'kuka-island' ) ); ?></p>
-		<div><h2 id="kuka-newsletter-title"><?php echo esc_html( $site_content['footer']['newsletter_title'] ?? '' ); ?></h2><p><?php echo esc_html( $site_content['footer']['newsletter_copy'] ?? '' ); ?></p><p class="kuka-newsletter__disabled"><?php esc_html_e( 'E-posta kaydı yakında açılacak.', 'kuka-island' ); ?></p></div>
+		<div><h2 id="kuka-newsletter-title"><?php echo esc_html( $site_content['footer']['newsletter_title'] ?? '' ); ?></h2><p><?php echo esc_html( $site_content['footer']['newsletter_copy'] ?? '' ); ?></p><?php echo Kuka_Island_Core_Newsletter::form(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
 	</section><?php endif; ?>
 	<?php /* Kategoriler sütunu kaldırıldı; kategoriler header menüsünde zaten var. */ ?>
 	<section class="kuka-footer-links">

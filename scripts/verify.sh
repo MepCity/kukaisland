@@ -61,6 +61,7 @@ grep -hoE 'var\(--[a-z0-9-]+' wp-content/themes/kuka-island-child/assets/css/*.c
 grep -hoE -- '--[a-z0-9-]+[[:space:]]*:' wp-content/themes/kuka-island-child/assets/css/tokens.css | sed -E 's/^--//;s/[[:space:]]*:.*$//' | sort -u > "$defined_tokens"
 undefined_tokens=$(comm -23 "$used_tokens" "$defined_tokens" | grep -Ev '^(hero-desktop|hero-mobile|swatch-color|zoom-scale|zoom-x|zoom-y)$' | wc -l | tr -d ' ')
 rm "$used_tokens" "$defined_tokens"
+newsletter_mail_calls=$(search_count 'wp_mail[[:space:]]*\(' wp-content/plugins/kuka-island-core/includes/class-newsletter.php)
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -75,6 +76,7 @@ CSS_RAW_PX_OUTSIDE_TOKENS=$raw_px
 CSS_SHADOWS=$shadows
 LOCKED_DESIGN_CONTROLS=$locked_controls
 CSS_UNDEFINED_TOKENS=$undefined_tokens
+NEWSLETTER_WP_MAIL_CALLS=$newsletter_mail_calls
 EOF
 
 failures=0
@@ -111,6 +113,11 @@ expect_line "three size guide tables" "SIZE_GUIDE_TABLES=3"
 expect_line "size set narrowed to S M L" "SIZE_TERMS=S,M,L"
 expect_line "size term menu order" "SIZE_TERM_ORDER=S:0|M:1|L:2"
 expect_line "story menu label" "STORY_MENU_LABEL=Hikâyemiz"
+expect_line "brand story matches source PDF" "BRAND_STORY_PDF_MATCH=yes"
+expect_line "About opening follows panel" "ABOUT_OPENING_PANEL_BOUND=yes"
+expect_line "newsletter table" "NEWSLETTER_TABLE=ready"
+expect_line "native required newsletter form" "NEWSLETTER_FORM=native-required"
+expect_line "newsletter notification panel field" "NEWSLETTER_NOTIFICATION_FIELD=panel"
 expect_line "retired panel fields removed" "RETIRED_PANEL_FIELDS="
 expect_line "membership disabled" "MEMBERSHIP_ENABLED=no"
 expect_line "guest-only account options" "ACCOUNT_OPTIONS=guest:yes|checkout_signup:no|checkout_login:no|myaccount_registration:no|users_can_register:0"
@@ -129,6 +136,7 @@ expect_value "raw theme pixel values" "$raw_px" "0"
 expect_value "theme shadows" "$shadows" "0"
 expect_value "root overflow mask" "$overflow_masks" "0"
 expect_value "undefined CSS tokens" "$undefined_tokens" "0"
+expect_value "single-record notification only" "$newsletter_mail_calls" "1"
 
 if [ "$failures" -ne 0 ]; then
   echo "VERIFY=FAIL ($failures)" >&2
