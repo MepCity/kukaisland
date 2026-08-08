@@ -152,16 +152,26 @@
 }
 
 /* Marka hikâyesi müşterinin kendi metnidir; PDF'teki bilinçli kısa satırlar ve
-   paragraf boşlukları korunur, ortalanmış sayfa düzeni sakin kalır. */
+   paragraf boşlukları korunur. Açılış, kaynak metinden ayrı ve panel bağlıdır. */
 .kuka-brand-story {
-  max-width: var(--measure-copy);
-  margin-inline: auto;
-  text-align: center;
-  font-size: var(--text-body-large);
+	max-width: var(--measure-content);
+	font-size: var(--text-body-large);
 }
 
-.kuka-brand-story p {
-  margin-block: var(--space-6);
+.kuka-brand-story__opening {
+	max-width: var(--measure-heading);
+	margin: 0 0 var(--space-12);
+	font-size: var(--text-heading-medium);
+	line-height: var(--leading-display);
+	letter-spacing: var(--tracking-tight);
+}
+
+.kuka-brand-story__source {
+	max-width: var(--measure-copy);
+}
+
+.kuka-brand-story__source p {
+	margin-block: var(--space-4);
 }
 
 .kuka-brand-story__lede {
@@ -175,11 +185,20 @@
 }
 
 .kuka-brand-story__sign {
-  margin-top: var(--space-12);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+	display: grid;
+	gap: var(--space-1);
+	margin-top: var(--space-12);
+	padding-top: var(--space-4);
+	border-top: var(--stroke) solid var(--color-line);
+	font-family: var(--font-mono);
+	font-size: var(--text-caption);
+	letter-spacing: var(--tracking-label);
+	text-transform: uppercase;
+}
+
+.kuka-brand-story__sign strong {
+	font-size: var(--text-body-large);
+	font-weight: var(--weight-medium);
 }
 
 /* Ön bilgilendirme formu §2 — sepetteki gerçek kalemler. */

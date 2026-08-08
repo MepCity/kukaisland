@@ -38,6 +38,13 @@ final class Kuka_Island_Core_Content {
 		add_shortcode( 'kuka_value', array( $this, 'value' ) );
 		add_shortcode( 'kuka_contact_details', array( $this, 'contact_details' ) );
 		add_shortcode( 'kuka_size_guide', array( $this, 'size_guide' ) );
+		add_shortcode( 'kuka_manifesto_line_2', array( $this, 'manifesto_line_2' ) );
+	}
+
+	/** The About-page opening follows the same panel value as the home manifesto. */
+	public function manifesto_line_2(): string {
+		$copy = trim( (string) ( Kuka_Island_Core_Site_Appearance::get()['home']['manifesto_line_2'] ?? '' ) );
+		return '' === $copy ? '' : '<span data-kuka-manifesto-opening>' . esc_html( $copy ) . '</span>';
 	}
 
 	/**

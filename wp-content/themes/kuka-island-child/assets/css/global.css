@@ -979,7 +979,7 @@ progress {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: var(--space-6);
+  gap: var(--space-4);
   background: var(--color-paper);
   color: var(--color-ink);
 }
@@ -988,6 +988,13 @@ progress {
   max-width: var(--measure-heading);
   margin: 0;
   color: inherit;
+}
+
+.kuka-manifesto__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-copy));
+  gap: var(--space-4);
+  align-items: end;
 }
 
 /* Türkçe satır ana metin, İngilizce satır hemen altında ikincil. */
@@ -1244,11 +1251,18 @@ progress {
 }
 
 .kuka-footer-brand {
-  gap: var(--space-3);
+	gap: var(--space-2);
   color: var(--color-ink);
   font-size: var(--footer-brand-size);
   font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-tight);
+}
+
+@media (max-width: 47.5em) {
+  .kuka-manifesto__line {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
 }
 
 .kuka-footer-brand .kuka-logo__emblem {

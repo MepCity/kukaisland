@@ -38,7 +38,7 @@
   --text-heading-section: clamp(44px, 5.5vw, 80px);
   --text-heading-panel: clamp(44px, 5vw, 66px);
   --text-heading-editorial: clamp(52px, 7vw, 104px);
-  --text-heading-manifesto: clamp(64px, 10vw, 168px);
+  --text-heading-manifesto: clamp(42px, 5.5vw, 80px);
   --text-heading-large: clamp(52px, 8.4vw, 136px);
   --text-display: clamp(68px, 11vw, 184px);
   --weight-regular: 440;
@@ -70,14 +70,14 @@
   --measure-content: 1200px;
   --measure-wide: 1440px;
   --measure-product-info: 440px;
-  --footer-emblem-size: clamp(28px, 4vw, 44px);
-  --footer-brand-size: clamp(32px, 6vw, 72px);
+  --footer-emblem-size: clamp(24px, 3vw, 36px);
+  --footer-brand-size: clamp(30px, 4.5vw, 58px);
   --measure-table: 760px;
   --hero-min-height: 640px;
   --hero-max-height: 860px;
   --hero-overlay-strength: 78;
   --editorial-max-height: 900px;
-  --manifesto-min-height: 780px;
+  --manifesto-min-height: 520px;
   --service-min-height: 148px;
   --category-row-height: 104px;
   --category-row-height-mobile: 88px;
@@ -117,10 +117,10 @@
     --text-heading-section: 48px;
     --text-heading-panel: 48px;
     --text-heading-editorial: clamp(52px, 21vw, 76px);
-    --text-heading-manifesto: 24vw;
+    --text-heading-manifesto: clamp(36px, 12vw, 52px);
     --text-heading-large: clamp(52px, 17vw, 76px);
     --text-display: clamp(64px, 19vw, 128px);
-    --manifesto-min-height: 640px;
+    --manifesto-min-height: 420px;
     --service-min-height: 104px;
   }
 }
