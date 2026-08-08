@@ -13,7 +13,7 @@ $cuts = wc_get_product_terms( $product->get_id(), 'pa_kesim', array( 'fields' =>
 if ( is_wp_error( $cuts ) ) { $cuts = array(); }
 $colors = wc_get_product_terms( $product->get_id(), 'pa_renk', array( 'fields' => 'all' ) );
 if ( is_wp_error( $colors ) ) { $colors = array(); }
-$sizes = wc_get_product_terms( $product->get_id(), 'pa_beden', array( 'fields' => 'all' ) );
+$sizes = wc_get_product_terms( $product->get_id(), 'pa_beden', array( 'fields' => 'all', 'orderby' => 'menu_order' ) );
 if ( is_wp_error( $sizes ) ) { $sizes = array(); }
 $color_by_slug = array();
 if ( is_array( $colors ) ) {

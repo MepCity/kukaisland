@@ -142,11 +142,14 @@ WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['bran
 WP_CLI::line( 'COMMERCIAL_CONTENT=' . implode( '|', array( $site_content['commercial']['flat_shipping_fee'] ?? '', $site_content['commercial']['free_shipping_threshold'] ?? '', $site_content['commercial']['cayma_hakki_gun'] ?? '' ) ) );
 WP_CLI::line( 'GUEST_SESSION_HOURS=' . absint( $site_content['membership']['guest_session_hours'] ?? 0 ) );
 WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', array_values( array_filter( array( 'return_period_days', 'exchange_copy' ), static fn( string $key ): bool => isset( $site_content['commercial'][ $key ] ) ) ) ) );
-WP_CLI::line( 'SIZE_TERMS=' . implode( ',', wp_list_pluck( get_terms( array( 'taxonomy' => 'pa_beden', 'hide_empty' => false, 'orderby' => 'term_id' ) ), 'name' ) ) );
+$size_terms = get_terms( array( 'taxonomy' => 'pa_beden', 'hide_empty' => false, 'orderby' => 'menu_order' ) );
+WP_CLI::line( 'SIZE_TERMS=' . implode( ',', wp_list_pluck( $size_terms, 'name' ) ) );
+WP_CLI::line( 'SIZE_TERM_ORDER=' . implode( '|', array_map( static fn( WP_Term $term ): string => $term->name . ':' . get_term_meta( $term->term_id, 'order', true ), $size_terms ) ) );
 WP_CLI::line( 'TYPOGRAPHY_TEST_PAGE=' . ( get_page_by_path( 'tipografi-testi' ) ? 'yes' : 'no' ) );
 $menu_rows = function_exists( 'kuka_island_header_menu' ) ? wp_list_pluck( kuka_island_header_menu(), 'label' ) : array();
 WP_CLI::line( 'PRIMARY_MENU=' . implode( '|', $menu_rows ) );
 WP_CLI::line( 'PRIMARY_MENU_COUNT=' . count( $menu_rows ) );
+WP_CLI::line( 'STORY_MENU_LABEL=' . ( in_array( 'Hikâyemiz', $menu_rows, true ) ? 'Hikâyemiz' : 'missing' ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
 $out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
 WP_CLI::line( 'LOW_STOCK_VARIATIONS=' . count( $low_stock ) );

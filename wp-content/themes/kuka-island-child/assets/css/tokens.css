@@ -37,7 +37,8 @@
   --text-heading-medium: clamp(42px, 6vw, 92px);
   --text-heading-section: clamp(44px, 5.5vw, 80px);
   --text-heading-panel: clamp(44px, 5vw, 66px);
-  --text-heading-editorial: clamp(64px, 10vw, 168px);
+  --text-heading-editorial: clamp(52px, 7vw, 104px);
+  --text-heading-manifesto: clamp(64px, 10vw, 168px);
   --text-heading-large: clamp(52px, 8.4vw, 136px);
   --text-display: clamp(68px, 11vw, 184px);
   --weight-regular: 440;
@@ -114,7 +115,8 @@
     --text-heading-medium: 48px;
     --text-heading-section: 48px;
     --text-heading-panel: 48px;
-    --text-heading-editorial: 24vw;
+    --text-heading-editorial: clamp(52px, 21vw, 76px);
+    --text-heading-manifesto: 24vw;
     --text-heading-large: clamp(52px, 17vw, 76px);
     --text-display: clamp(64px, 19vw, 128px);
     --manifesto-min-height: 640px;

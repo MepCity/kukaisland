@@ -28,13 +28,19 @@ const KUKA_SIZE_MAP = array(
 );
 const KUKA_SIZE_KEEP = array( 's' => 'S', 'm' => 'M', 'l' => 'L' );
 
-foreach ( KUKA_SIZE_KEEP as $slug => $name ) {
-	if ( ! get_term_by( 'slug', $slug, 'pa_beden' ) ) {
+foreach ( array_values( KUKA_SIZE_KEEP ) as $order => $name ) {
+	$slug = sanitize_title( $name );
+	$term = get_term_by( 'slug', $slug, 'pa_beden' );
+	if ( ! $term ) {
 		$created = wp_insert_term( $name, 'pa_beden', array( 'slug' => $slug ) );
 		if ( is_wp_error( $created ) ) {
 			WP_CLI::error( $created->get_error_message() );
 		}
+		$term_id = (int) $created['term_id'];
+	} else {
+		$term_id = (int) $term->term_id;
 	}
+	update_term_meta( $term_id, 'order', $order );
 }
 
 $moved   = 0;

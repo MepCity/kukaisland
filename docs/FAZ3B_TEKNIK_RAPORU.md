@@ -26,7 +26,7 @@ WooCommerce override sayısı **2**:
 
 ## Etkileşim kanıtı
 
-- Ana menü iki seviyeli WordPress menüsüdür: `Yeni Gelenler`, `Bikini > Bikini Üstleri / Bikini Altları / Takımlar`, `Mayo`, `Plaj Giyim`, `Koleksiyonlar`, `Marka / Hikâyemiz`.
+- Ana menü iki seviyeli WordPress menüsüdür: `Yeni Gelenler`, `Bikini > Bikini Üstleri / Bikini Altları / Takımlar`, `Mayo`, `Plaj Giyim`, `Koleksiyonlar`, `Hikâyemiz`.
 - Filtre çekmecesi `role="dialog"`, `inert`, Escape, odak dönüşü ve gerçek form submit sözleşmesini geçti. `?ki_cut[]=asimetrik` sunucu yanıtında sonuç sayısı 4'ten 1'e indi ve kaldırılabilir `Asimetrik` chip'i göründü.
 - Kart oku URL'i değiştirmeden aktif görseli `0 → 1` yaptı; sayaç `1 / 3 → 2 / 3` oldu. Kontroller native düğme olduğu için klavye ve dokunma girdisini korur.
 - Renk ve beden grupları `radiogroup/radio` semantiğindedir. Renk hedefleri **48×48 px**, beden hedefleri en az **70.3×48 px** ölçüldü. Sağ ok odağı ve seçimi Kobalt'tan Kum'a taşıdı; native `pa_renk` değeri `kum` oldu.
