@@ -137,7 +137,8 @@ function kuka_island_emblem_markup(): string {
 /** @return array<string, mixed> */
 function kuka_island_content(): array {
 	if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
-		return Kuka_Island_Core_Site_Appearance::get();
+		$content = Kuka_Island_Core_Site_Appearance::get();
+		return class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::localized_content( $content ) : $content;
 	}
 	return array();
 }

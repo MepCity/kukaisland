@@ -173,7 +173,8 @@ final class Kuka_Island_Core_Site_Appearance {
 		if ( is_array( $saved ) && $legacy_main === ( $saved['navigation']['main'] ?? '' ) ) {
 			$saved['navigation']['main'] = self::defaults()['navigation']['main'];
 		}
-		return self::merge( self::defaults(), self::migrate( is_array( $saved ) ? $saved : array() ) );
+		$content = self::merge( self::defaults(), self::migrate( is_array( $saved ) ? $saved : array() ) );
+		return class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::with_translation_defaults( $content ) : $content;
 	}
 
 	/**
@@ -225,7 +226,7 @@ final class Kuka_Island_Core_Site_Appearance {
 
 	/** @return array<string, array<string, array<string, mixed>>> */
 	private static function fields(): array {
-		return array(
+		$groups = array(
 			'brand'        => array(
 				'label'  => __( '1. Marka', 'kuka-island-core' ),
 				'fields' => array(
@@ -395,6 +396,23 @@ final class Kuka_Island_Core_Site_Appearance {
 				),
 			),
 		);
+		if ( ! class_exists( 'Kuka_Island_Core_Language' ) ) { return $groups; }
+		foreach ( Kuka_Island_Core_Language::translation_fields() as $group_key => $translations ) {
+			if ( ! isset( $groups[ $group_key ] ) ) { continue; }
+			$rebuilt = array();
+			$target_keys = array_column( $translations, 'key' );
+			foreach ( $groups[ $group_key ]['fields'] as $field_key => $field ) {
+				if ( in_array( $field_key, $target_keys, true ) ) { continue; }
+				$rebuilt[ $field_key ] = $field;
+				$config = $translations[ $field_key ] ?? null;
+				if ( $config ) {
+					$type = 'labels' === $config['mode'] ? 'lines' : $field[1];
+					$rebuilt[ $config['key'] ] = array( sprintf( 'English — %s', wp_strip_all_tags( (string) $field[0] ) ), $type );
+				}
+			}
+			$groups[ $group_key ]['fields'] = $rebuilt;
+		}
+		return $groups;
 	}
 
 	public function add_menu(): void {
@@ -454,6 +472,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		<div class="wrap kuka-island-settings">
 			<h1><?php esc_html_e( 'Kuka Island / Site Görünümü', 'kuka-island-core' ); ?></h1>
 			<p><?php esc_html_e( 'Yalnızca içerik ve ticari metinler burada yönetilir. Renk, tipografi ve ölçüler temanın tasarım sözleşmesindedir.', 'kuka-island-core' ); ?></p>
+			<div class="notice notice-info inline"><p><strong>Türkçe + English:</strong> <?php esc_html_e( 'Çevrilebilir alanlar aynı satırda iki sütundur. English alanı boş bırakılırsa vitrinde Türkçe metin gösterilir; URL, sayı, medya ve şirket verisi tek kaynaktır.', 'kuka-island-core' ); ?></p></div>
 			<?php if ( isset( $_GET['updated'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended ?>
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Site görünümü kaydedildi.', 'kuka-island-core' ); ?></p></div>
 			<?php endif; ?>
@@ -465,10 +484,13 @@ final class Kuka_Island_Core_Site_Appearance {
 				<?php foreach ( self::fields() as $group_key => $group ) : ?>
 					<fieldset id="<?php echo esc_attr( $group_key ); ?>" style="max-width:920px;background:#fff;border:1px solid #c3c4c7;margin:20px 0;padding:20px">
 						<legend style="font-size:16px;font-weight:600;padding:0 8px"><?php echo esc_html( $group['label'] ); ?></legend>
+						<p class="description"><strong>Türkçe</strong> kaynak · <strong>English</strong> çeviri · boş English alanı Türkçe fallback kullanır.</p>
 						<?php if ( ! empty( $group['note'] ) ) : ?><p class="description"><?php echo esc_html( $group['note'] ); ?></p><?php endif; ?>
 						<table class="form-table" role="presentation"><tbody>
 						<?php foreach ( $group['fields'] as $field_key => $field ) : ?>
-							<?php $this->render_field( $group_key, $field_key, $field, $content[ $group_key ][ $field_key ] ?? '' ); ?>
+							<?php if ( str_ends_with( $field_key, '_en' ) || str_ends_with( $field_key, '_labels_en' ) ) { continue; } ?>
+							<?php $translation = class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_config( $group_key, $field_key ) : null; ?>
+							<?php $this->render_field( $group_key, $field_key, $field, $content[ $group_key ][ $field_key ] ?? '', $translation, $content ); ?>
 						<?php endforeach; ?>
 						</tbody></table>
 					</fieldset>
@@ -480,7 +502,7 @@ final class Kuka_Island_Core_Site_Appearance {
 	}
 
 	/** @param array<int, string> $field */
-	private function render_field( string $group_key, string $field_key, array $field, mixed $value ): void {
+	private function render_field( string $group_key, string $field_key, array $field, mixed $value, ?array $translation = null, array $content = array() ): void {
 		$name = sprintf( 'site_content[%s][%s]', $group_key, $field_key );
 		$type = $field[1];
 		if ( in_array( $type, array( 'lines', 'url_lines' ), true ) && is_array( $value ) ) {
@@ -489,7 +511,8 @@ final class Kuka_Island_Core_Site_Appearance {
 		?>
 		<tr>
 			<th scope="row"><label for="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>"><?php echo esc_html( $field[0] ); ?></label></th>
-			<td>
+			<td<?php echo $translation ? ' style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem"' : ''; ?>>
+			<?php if ( $translation ) : ?><div><p><strong>Türkçe</strong></p><?php endif; ?>
 			<?php if ( 'checkbox' === $type ) : ?>
 				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="0">
 				<input id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( (bool) $value ); ?>>
@@ -511,9 +534,21 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php else : ?>
 				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number', 'percentage' ), true ) ? ( 'email' === $type ? 'email' : 'number' ) : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?> <?php echo 'percentage' === $type ? 'min="0" max="100" step="1"' : ''; ?>>
 			<?php endif; ?>
+			<?php if ( $translation ) : ?></div><div><p><strong>English</strong></p><?php $translated_field = self::fields()[ $group_key ]['fields'][ $translation['key'] ]; $this->render_control( $group_key, $translation['key'], $translated_field, $content[ $group_key ][ $translation['key'] ] ?? '' ); ?></div><?php endif; ?>
 			</td>
 		</tr>
 		<?php
+	}
+
+	/** Render a control without a table row, used by the English half of a pair. */
+	private function render_control( string $group_key, string $field_key, array $field, mixed $value ): void {
+		$name = sprintf( 'site_content[%s][%s]', $group_key, $field_key );
+		$type = $field[1];
+		if ( in_array( $type, array( 'textarea', 'lines', 'url_lines', 'link_lines', 'size_rows' ), true ) ) {
+			?><textarea class="large-text" rows="4" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( is_array( $value ) ? implode( "\n", $value ) : (string) $value ); ?></textarea><?php
+		} else {
+			?><input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="text" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>"><?php
+		}
 	}
 
 	public function save(): void {
