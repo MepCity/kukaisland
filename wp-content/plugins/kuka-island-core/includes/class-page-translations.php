@@ -42,7 +42,9 @@ final class Kuka_Island_Core_Page_Translations {
 	public function title( string $title, int $post_id ): string {
 		if ( is_admin() || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() || 'page' !== get_post_type( $post_id ) ) { return $title; }
 		$english = trim( (string) get_post_meta( $post_id, '_kuka_title_en', true ) );
-		return '' !== $english ? $english : $title;
+		if ( '' !== $english ) { return $english; }
+		$technical_titles = array( 'magaza' => 'Shop', 'sepet' => 'Cart', 'odeme' => 'Checkout', 'hesabim' => 'My account' );
+		return $technical_titles[ (string) get_post_field( 'post_name', $post_id ) ] ?? $title;
 	}
 
 	public function content( string $content ): string {
@@ -51,6 +53,7 @@ final class Kuka_Island_Core_Page_Translations {
 		$english = trim( (string) get_post_meta( $post_id, '_kuka_content_en', true ) );
 		if ( '' !== $english ) { return $english; }
 		$slug = (string) get_post_field( 'post_name', $post_id );
+		if ( in_array( $slug, array( 'magaza', 'sepet', 'odeme', 'hesabim' ), true ) ) { return $content; }
 		$message = in_array( $slug, self::LEGAL_SLUGS, true )
 			? __( 'The legally binding version of this document is Turkish. The Turkish text is shown below.', 'kuka-island-core' )
 			: __( 'An English translation is not available yet. The Turkish content is shown below.', 'kuka-island-core' );
