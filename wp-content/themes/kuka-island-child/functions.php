@@ -48,6 +48,7 @@ add_filter( 'blocksy:breadcrumbs:items-array', 'kuka_island_breadcrumb_items' );
  * and a newer WooCommerce privacy string.
  */
 function kuka_island_translation_gaps( string $translation, string $text, string $domain ): string {
+	if ( function_exists( 'kuka_island_is_english' ) && kuka_island_is_english() ) { return $translation; }
 	$maps = array(
 		'blocksy' => array(
 			'Product' => 'Ürün',
