@@ -9,6 +9,7 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Fotoğraflar lisanslı veya proje için hazırlanmış yer tutuculardır; gerçek ürün çekimleri değildir.
 - Hakkımızda metni müşterinin teslim ettiği manifesto PDF'inden birebir aktarılmıştır.
 - **SMTP yayın engelidir.** Üyelik olmadığı için sipariş e-postası müşterinin siparişle temel bağıdır. Canlıya almadan önce gönderici alan adı SPF/DKIM/DMARC kayıtlarıyla doğrulanmalı; sipariş alındı, durum ve kişiselleştirilmiş sipariş takip bağlantısı gerçek posta kutularında teslim testi görmelidir.
+- Bülten formu yalnız onaylı kayıt ve kanıt saklar; toplu veya otomatik pazarlama e-postası göndermez. Bildirim adresi boş bırakılabilir ve bu durumda kayıt yine veritabanında tutulur. Ticari ileti gönderimine geçmeden önce İYS süreci, onay metni, saklama süresi ve silme prosedürü hukuk danışmanıyla kesinleştirilmelidir.
 
 ## Müşteri girdisi bekleyen konular
 
