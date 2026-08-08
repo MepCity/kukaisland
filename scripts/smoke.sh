@@ -70,7 +70,10 @@ checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir
 [ "$checkout_code" = "200" ] || fail "checkout HTTP $checkout_code"
 [ "$(grep -o 'name="kuka_[^"]*_accepted"' "$temporary_dir/checkout.html" | sort -u | wc -l | tr -d ' ')" = "2" ] || fail "checkout legal consents"
 grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
-! grep -Eqi 'Hesabım|Hesap oluştur|Üye ol|Giriş yap|createaccount|woocommerce-form-login-toggle' "$temporary_dir/checkout.html" || fail "checkout account copy"
+# Raw HTML may contain translated account words inside third-party script data
+# even when no control is rendered. Assert the actual storefront structures;
+# visible text is covered separately by the browser acceptance scan.
+! grep -Eqi 'id="createaccount"|woocommerce-form-login-toggle|kuka-account' "$temporary_dir/checkout.html" || fail "checkout account UI"
 [ "$(grep -c 'name="kuka_[a-z_]*_accepted" value="1" required' "$temporary_dir/checkout.html" | tr -d ' ')" -ge 2 ] || fail "checkout consent required attribute"
 
 # Onay kapısı sunucuda doğrulanır: JS kapalıyken de onaysız gönderim reddedilmeli.
