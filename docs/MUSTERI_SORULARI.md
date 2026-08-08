@@ -2,14 +2,20 @@
 
 Bu form, tasarımı ve mağaza altyapısını yanlış varsayımlarla kalıcılaştırmamak için hazırlanmıştır. Kısa cevaplar yeterlidir. Cevabı henüz belli olmayan maddeler `Karar verilmedi` olarak işaretlenebilir.
 
+## Faz 5B — önce yanıtlanacak İngilizce kapsamı
+
+1. İngilizce ne için? (a) Türkiye'ye satış + yabancı ziyaretçinin arayüzü anlaması → Faz 5B yeterli. (b) Yurt dışına satış → ihracat faturası, yabancı tüketici hukuku, çoklu para birimi ve kargo ayrı kapsamdır.
+2. Sekiz sözleşmenin İngilizce çevirisi hukuk danışmanınızdan alınacak mı, yoksa İngilizce sürümde bağlayıcılık notuyla Türkçe metin mi kalsın?
+
+Faz 5B, yanıt gelene kadar **(a)** varsayımıyla kurulmuştur. Yasal İngilizce alanlar bilerek boş bırakılmıştır.
+
 ## Faz 4A — hukuk danışmanına iletilecek öncelikli sorular
 
 1. Sitede değişim sunulmayacak. Cayma Hakkı ve İade Sözleşmesi §5 (Beden Değişimi) maddesinin metinden çıkarılması için hukuk danışmanınıza iletir misiniz?
 2. Sitede üyelik sunulmayacak. `03 Üyelik ve E-Ticaret Sitesi Kullanım Sözleşmesi` üyelik hükümleri içeriyor. Hukuk danışmanınız bu metni üyeliksiz kullanıma göre sadeleştirsin mi, yoksa yayından kaldıralım mı?
 3. Ön Bilgilendirme Formu sipariş e-postasına da eklenmeli mi?
-4. İngilizce sürüm yurt dışına satış için mi, yoksa yabancı ziyaretçinin arayüzü anlaması için mi kullanılacak? Yurt dışı satış seçilirse ihracat faturası, uygulanacak tüketici hukuku ve çoklu para birimi ayrı kapsam olarak planlanacaktır.
-5. Yeni bülten kayıt bildirimleri hangi e-posta adresine gönderilsin? Alan boş bırakılırsa kayıtlar panelde tutulur, bildirim gönderilmez.
-6. Ticari elektronik ileti gönderimi başlamadan önce İYS kaydı, bülten onay metni, kayıt saklama süresi ve silme talebi prosedürünü hukuk danışmanınızla onaylar mısınız?
+4. Yeni bülten kayıt bildirimleri hangi e-posta adresine gönderilsin? Alan boş bırakılırsa kayıtlar panelde tutulur, bildirim gönderilmez.
+5. Ticari elektronik ileti gönderimi başlamadan önce İYS kaydı, bülten onay metni, kayıt saklama süresi ve silme talebi prosedürünü hukuk danışmanınızla onaylar mısınız?
 
 ## Tasarımı başlatmak için gerekli
 
@@ -74,5 +80,5 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 | Girdi | Durum | Nereye girilecek |
 |---|---|---|
 | Palmiye amblemi | **Teslim alındı** — vektör (SVG) hâli temizlenip temaya alındı (`assets/img/palmiye.svg`) | Farklı bir amblem istenirse Site Görünümü → Marka → *Amblem* alanından yüklenir; boş bırakılırsa palmiye kullanılır. |
-| İngilizce sürümün amacı | Bekleniyor; seçici görünür, `/en/` yayında olmadığı için “yakında” durumundadır | Yukarıdaki öncelikli soruya göre ayrı faz |
+| İngilizce sürümün amacı | Bekleniyor; `/en/` Faz 5B'de Türkiye'ye satış + yabancı ziyaretçi varsayımıyla yayındadır | Faz 5B sorularına göre ihracat için ayrı faz |
 | Kupon kullanılacak mı, hangi tür (sabit tutar / yüzde) | Bilgi | Kupon alanı ödeme sayfasında hazır; WooCommerce → Kuponlar altından tanımlanır. |

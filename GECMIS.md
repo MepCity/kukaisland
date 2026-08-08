@@ -1,6 +1,6 @@
 # Kuka Island — geliştirme serüveni
 
-Bu belge **neyi neden yaptığımızı** anlatır. `PLAN.md` sözleşmedir, §38 karar defteridir (162 karar), bu dosya ise hikâyedir: hangi yollara girdik, nerede geri döndük, hangi kuralları neden koyduk.
+Bu belge **neyi neden yaptığımızı** anlatır. `PLAN.md` sözleşmedir, §38 karar defteridir (177 karar), bu dosya ise hikâyedir: hangi yollara girdik, nerede geri döndük, hangi kuralları neden koyduk.
 
 Projeye yeni katılan bir yapay zekâ ya da geliştirici önce bunu okumalı. Sonra `PLAN.md` §38 ve §39'a bakmalı.
 
@@ -350,7 +350,7 @@ Beş smoke akışı: ana sayfa + hero · katalog kartları ve filtre · ürün v
 ### Her turda güncellenen belgeler
 
 ```
-PLAN.md §38   karar günlüğü (162 karar)
+PLAN.md §38   karar günlüğü (177 karar)
 PLAN.md §39   mevcut durum
 docs/BILINEN_SINIRLAMALAR.md
 docs/MUSTERI_SORULARI.md
@@ -377,6 +377,7 @@ docs/qa/                       ekran görüntüleri
 | 4A | Müşteri onay turu — krem yüzeyler, yeni footer/manifesto, müşteri sözleşmeleri, 14 gün cayma hakkı, S–M–L, 4.000 TL kargo eşiği, misafir-only mağaza ve üyelik/sosyal giriş kaldırması |
 | 4B | Onay düzeltmeleri — Ada Günlüğü başlık ölçeği, “Hikâyemiz” menüsü ve deterministik S–M–L term sırası |
 | 4C | Hero fotoğrafını koruyan panel perdesi, kısa manifesto, yeniden tasarlanan PDF-eş Hakkımızda, dengeli footer ve onay kanıtlı JS'siz bülten kaydı |
+| 5B | Eklentisiz `/en/` katmanı, 42 panel alan çifti, aynı kayıtta ürün/sayfa/terim EN metaları, SEO hreflang ve sipariş locale'i |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
 
 ---
@@ -385,7 +386,7 @@ docs/qa/                       ekran görüntüleri
 
 ### Bizde
 
-- Tam İngilizce sürüm ve panelde çift dilli alanlar
+- İngilizce ürün/içerik/yasal metinlerinin müşteri ve hukuk danışmanı tarafından doldurulması
 - Safari / Firefox / iOS / Android turu ve gerçek cihazda Core Web Vitals — hiç yapılmadı
 
 ### Müşteride
