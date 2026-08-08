@@ -39,4 +39,4 @@ Faz 4C hero, marka anlatısı ve bülten kayıt kapsamı tamamlandı. Canlıya d
 
 ## Kabul durumu
 
-1–17 numaralı kriterler yukarıdaki kod, ölçüm ve görsellerle karşılandı. `make reset && make verify` temiz volume'dan art arda iki kez `VERIFY=PASS` ve `SMOKE=PASS (5/5)` verdi. Kriter 18'in uzak CI bölümü ilk push sonrasında ayrıca işlenecektir; CI sonucu gelmeden tüm kriterler tamamlandı sayılmaz.
+1–17 numaralı kriterler yukarıdaki kod, ölçüm ve görsellerle karşılandı. `make reset && make verify` temiz volume'dan art arda iki kez `VERIFY=PASS` ve `SMOKE=PASS (5/5)` verdi. İlk push için GitHub Actions Quality çalışması `31281699822` temiz production stack, kabul ve smoke adımlarının tamamında geçti. Böylece 18 kriterin tamamı kanıtlandı.
