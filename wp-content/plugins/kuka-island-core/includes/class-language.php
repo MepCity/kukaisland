@@ -13,6 +13,7 @@ function kuka_island_is_english(): bool {
 }
 
 final class Kuka_Island_Core_Language {
+	private static bool $email_locale_switched = false;
 	/** @return array<string, array<string, array{key:string,mode:string}>> */
 	public static function translation_fields(): array {
 		return array(
@@ -116,6 +117,95 @@ final class Kuka_Island_Core_Language {
 		add_action( 'wp_head', array( $this, 'language_metadata' ), 0 );
 		add_filter( 'wp_sitemaps_enabled', '__return_true' );
 		add_action( 'init', array( $this, 'register_sitemap_provider' ), 20 );
+		add_filter( 'gettext', array( $this, 'english_interface' ), 20, 3 );
+		add_filter( 'ngettext', array( $this, 'english_plural_interface' ), 20, 5 );
+		add_action( 'woocommerce_checkout_create_order', array( $this, 'save_order_locale' ), 20 );
+		add_filter( 'woocommerce_allow_switching_email_locale', array( $this, 'switch_email_locale' ), 20, 2 );
+		add_filter( 'woocommerce_allow_restoring_email_locale', array( $this, 'restore_email_locale' ), 20, 2 );
+	}
+
+	public function english_interface( string $translation, string $text, string $domain ): string {
+		if ( ! self::is_english_request() || ! in_array( $domain, array( 'kuka-island', 'kuka-island-core' ), true ) ) { return $translation; }
+		$map = array(
+			'Ada mektupları' => 'Island letters', 'Yardım' => 'Help', 'Yasal' => 'Legal', 'Sosyal' => 'Social',
+			'WhatsApp destek' => 'WhatsApp support', 'Formunu bul' => 'Find your shape', 'Ürün kategorileri' => 'Product categories',
+			'Koleksiyon' => 'Collection', 'Tümünü gör' => 'View all', 'Editoryal' => 'Editorial', 'Hikâyeyi oku' => 'Read the story',
+			'Servis güvenceleri' => 'Service assurances', 'Ana sayfa' => 'Home', 'İçeriğe geç' => 'Skip to content',
+			'Duyurular' => 'Announcements', 'Sepete dön' => 'Back to cart', 'Menüyü aç' => 'Open menu', 'Ana menü' => 'Main menu',
+			'Ürün ara' => 'Search products', 'Sepeti aç' => 'Open cart', 'Menü' => 'Menu', 'Menüyü kapat' => 'Close menu',
+			'Mobil menü' => 'Mobile menu', 'Ara' => 'Search', 'Aramayı kapat' => 'Close search', 'Ne arıyorsunuz?' => 'What are you looking for?',
+			'Ürün, renk veya kesim' => 'Product, color or cut', 'Hızlı bağlantılar' => 'Quick links', 'Sık aranan' => 'Popular searches',
+			'Sepeti kapat' => 'Close cart', 'Tükendi' => 'Sold out', 'Sınırlı' => 'Limited', 'Yeni' => 'New',
+			'Renk seçimi' => 'Color selection', 'Beden seçimi' => 'Size selection', 'Stokta' => 'In stock', 'Aktif filtreler' => 'Active filters',
+			'Filtrele' => 'Filter', 'Filtreleri kapat' => 'Close filters', 'Stokta olanlar' => 'In stock only', 'Kesim' => 'Cut',
+			'Renk' => 'Color', 'Beden' => 'Size', 'Temizle' => 'Clear', 'Sonuçları gör' => 'View results',
+			'Bu seçimde ürün bulunamadı.' => 'No products were found for this selection.', 'Filtrelerden birini kaldırarak yeniden deneyin.' => 'Remove a filter and try again.',
+			'Filtreleri temizle' => 'Clear filters', 'Teslimat adresi' => 'Shipping address', 'Fatura bilgileri' => 'Billing details',
+			'Kişisel bilgiler' => 'Personal information', 'Sepet' => 'Cart', 'Bilgiler ve ödeme' => 'Details and payment', 'Onay' => 'Confirmation',
+			'Ödeme adımları' => 'Checkout steps', 'Yardım gerekiyor mu?' => 'Need help?', 'Güvenli ödeme' => 'Secure payment',
+			'Kargo ve iade' => 'Shipping and returns', 'Sepetiniz boş' => 'Your cart is empty', 'Ada seçkisini keşfedin.' => 'Explore the island selection.',
+			'Alışverişe başla' => 'Start shopping', 'Ara toplam' => 'Subtotal', 'Ödemeye geç' => 'Proceed to checkout', 'Sepete git' => 'View cart',
+			'Ön Bilgilendirme Formu' => 'Pre-information Form', 'Mesafeli Satış Sözleşmesi' => 'Distance Sales Agreement',
+			'Malzeme' => 'Material', 'Bakım' => 'Care', 'Kalıp' => 'Fit', 'Model' => 'Model', 'Beden rehberini aç' => 'Open size guide',
+			'Kargo, teslimat ve iade' => 'Shipping, delivery and returns', 'Birlikte iyi gider' => 'Pairs well with', 'Parçayı incele' => 'View item',
+			'Ödeme şu anda kullanılamıyor.' => 'Payment is currently unavailable.', 'Ödeme' => 'Checkout', 'Sipariş özeti' => 'Order summary',
+			'Fatura adresim teslimat adresimden farklı' => 'My billing address is different from my shipping address', 'Fatura adresi' => 'Billing address',
+			'Sipariş notu' => 'Order note', 'Sepeti düzenle' => 'Edit cart', 'Adet' => 'Quantity', 'Kupon kodunuz varsa girin' => 'Enter your coupon code',
+			'Kupon kodu' => 'Coupon code', 'Uygula' => 'Apply', 'Tahmini teslim' => 'Estimated delivery', 'Toplam' => 'Total', 'KDV dahil' => 'VAT included',
+			'Renk seçenekleri' => 'Color options', 'Önceki fotoğraf' => 'Previous photo', 'Sonraki fotoğraf' => 'Next photo',
+			'Eski fiyat:' => 'Previous price:', 'Yeni fiyat:' => 'New price:', 'Beden stokları' => 'Size availability',
+			'Ürün görseli' => 'Product image', 'Önceki ürün fotoğrafı' => 'Previous product photo', 'Sonraki ürün fotoğrafı' => 'Next product photo',
+			'Galeriyi kapat' => 'Close gallery', 'Yakınlaştır' => 'Zoom', 'Şirket unvanı' => 'Company name', 'Fatura türü' => 'Invoice type',
+			'Bireysel' => 'Personal', 'Kurumsal' => 'Business', 'Vergi dairesi' => 'Tax office', 'VKN (10 hane)' => 'Tax number (10 digits)',
+			'Kurumsal fatura için şirket unvanı zorunludur.' => 'Company name is required for a business invoice.',
+			'Kurumsal fatura için vergi dairesi zorunludur.' => 'Tax office is required for a business invoice.',
+			'VKN 10 rakamdan oluşmalıdır.' => 'The tax number must contain 10 digits.',
+			'Ön Bilgilendirme Formu onayı zorunludur.' => 'Acceptance of the Pre-information Form is required.',
+			'Mesafeli Satış Sözleşmesi onayı zorunludur.' => 'Acceptance of the Distance Sales Agreement is required.',
+			'Siparişinizi sipariş numarası ve e-posta adresinizle takip edin' => 'Track your order with your order number and email address',
+			'Siparişinizi sipariş numaranız ve e-posta adresinizle takip edin' => 'Track your order with your order number and email address',
+			'<a href="%s" target="_blank" rel="noopener">Ön Bilgilendirme Formu</a>’nu okudum ve kabul ediyorum.' => '<a href="%s" target="_blank" rel="noopener">I have read and accept the Pre-information Form</a>.',
+			'<a href="%s" target="_blank" rel="noopener">Mesafeli Satış Sözleşmesi</a>’ni okudum ve kabul ediyorum.' => '<a href="%s" target="_blank" rel="noopener">I have read and accept the Distance Sales Agreement</a>.',
+			'%1$s; tam ekran aç (%2$d/%3$d)' => '%1$s; open fullscreen (%2$d/%3$d)', '%s rengini seç' => 'Select %s',
+			'%s beden tükendi' => 'Size %s is sold out', '%s beden stokta' => 'Size %s is in stock', '%s filtresini kaldır' => 'Remove %s filter',
+			'Sepet / %d' => 'Cart / %d', '%s adedi' => '%s quantity', '%d gün içinde cayma hakkı' => '%d-day right of withdrawal',
+			'Cayma bildiriminizi teslimattan sonra %d gün içinde iletebilirsiniz.' => 'You may submit your withdrawal notice within %d days after delivery.',
+			'%s ürün galerisi' => '%s product gallery', '%s galerisi' => '%s gallery', '%s ürününü incele' => 'View %s',
+		);
+		return $map[ $text ] ?? $translation;
+	}
+
+	public function english_plural_interface( string $translation, string $single, string $plural, int $number, string $domain ): string {
+		unset( $plural );
+		if ( ! self::is_english_request() || 'kuka-island' !== $domain ) { return $translation; }
+		$map = array( '%d ürün' => '%d products', '%d renk' => '%d colors' );
+		return isset( $map[ $single ] ) ? sprintf( $map[ $single ], $number ) : $translation;
+	}
+
+	public function save_order_locale( WC_Order $order ): void {
+		$order->update_meta_data( '_kuka_order_locale', self::is_english_request() ? 'en_US' : 'tr_TR' );
+	}
+
+	public function switch_email_locale( bool $allow, WC_Email $email ): bool {
+		$order = $email->object instanceof WC_Order ? $email->object : null;
+		if ( $order && 'en_US' === $order->get_meta( '_kuka_order_locale', true ) ) {
+			switch_to_locale( 'en_US' );
+			if ( function_exists( 'WC' ) ) { WC()->load_plugin_textdomain(); }
+			self::$email_locale_switched = true;
+			return false;
+		}
+		return $allow;
+	}
+
+	public function restore_email_locale( bool $allow, WC_Email $email ): bool {
+		unset( $email );
+		if ( self::$email_locale_switched ) {
+			restore_previous_locale();
+			if ( function_exists( 'WC' ) ) { WC()->load_plugin_textdomain(); }
+			self::$email_locale_switched = false;
+			return false;
+		}
+		return $allow;
 	}
 
 	public static function is_english_request(): bool {
