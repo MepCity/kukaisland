@@ -35,6 +35,8 @@ $seller_block = '[kuka_company_details]';
 $brand_story = kuka_content_html(
 	array(
 		'<div class="kuka-brand-story">',
+		'<p class="kuka-brand-story__opening">[kuka_manifesto_line_2]</p>',
+		'<div class="kuka-brand-story__source">',
 		'<p class="kuka-brand-story__lede">KUKA ISLAND<br>Hayatta bazen sıfırdan başlamak gerekir.</p>',
 		'<p>Benim için KUKA ISLAND tam olarak böyle başladı.</p>',
 		'<p>Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim.</p>',
@@ -44,7 +46,8 @@ $brand_story = kuka_content_html(
 		'<p>Bu yolculuk daha yeni başlıyor.</p>',
 		'<p>İyi ki buradasın.</p>',
 		'<p>Ve bu hikâyenin ilk sayfalarında bize eşlik ediyorsun.</p>',
-		'<p class="kuka-brand-story__sign">Love,<br>KÜBRA</p>',
+		'<footer class="kuka-brand-story__sign"><span>Love,</span><strong>KÜBRA</strong></footer>',
+		'</div>',
 		'</div>',
 	)
 );
