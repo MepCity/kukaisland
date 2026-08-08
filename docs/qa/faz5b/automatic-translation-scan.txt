@@ -1,0 +1,1 @@
+scripts/verify.php:96:$translation_plugins = array_filter( (array) get_option( 'active_plugins', array() ), static fn( string $plugin ): bool => (bool) preg_match( '/polylang|sitepress|wpml|translatepress|weglot|gtranslate/i', $plugin ) );
