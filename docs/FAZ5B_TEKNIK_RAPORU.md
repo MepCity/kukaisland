@@ -91,7 +91,7 @@ Responsive kanıtlar `qa/faz5b/responsive-{tr|en}-{320|390|768|1024|1280|1920}.j
 | 21 | Karşılandı | Aktif çeviri eklentisi 0; `13` |
 | 22 | Karşılandı | 12/12 viewport taşma 0; uzun EN başlık 320'de taşma 0; 13 görüntü |
 | 23 | Karşılandı | İki bağımsız temiz `make reset && make verify` turu `VERIFY=PASS`, her ikisinde smoke `5/5`; `reset-verify-1.txt`, `reset-verify-2.txt` |
-| 24 | Push sonrası ölçülecek | Vendor diff boş (`vendor-diff.txt`); GitHub Actions Quality push sonrasında ölçülecek |
+| 24 | Karşılandı | Vendor diff boş (`vendor-diff.txt`); GitHub Actions Quality run `31284362895` production checks PASS |
 
 Görsel kanıtı bulunmayan 6, 7 ve 20 ile JSON-LD alt maddesi ve e-posta düzeltme-sonrası görüntüsü özellikle “ekran görüntülü karşılandı” olarak yazılmamıştır.
 
