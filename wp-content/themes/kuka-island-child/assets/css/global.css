@@ -814,17 +814,15 @@ progress {
   gap: var(--space-3);
 }
 
-/* Görsel yokken görünen zemin kremdir ve metin koyudur. Fotoğraf varsa metnin
-   okunurluğunu perde sağlar: koyu metinde açık (paper) perde, açık metinde
-   (panelden "light" seçilirse) koyu (ink) perde. Perde olmadan iki durumda da
-   metin fotoğrafın parlak/koyu bölgelerinde kayboluyordu. */
+/* Fotoğraf tek başına, tam doygunlukta kalır. Okunurluk perdesi yalnız metin
+   kutusunun ::before katmanındadır; yoğunluğu Site Görünümü panelinden gelir. */
 .kuka-hero {
   min-height: min(var(--hero-max-height), calc(100svh - var(--announcement-height)));
   display: flex;
   align-items: flex-end;
   padding: var(--space-12) var(--content-gutter);
   background-color: var(--color-paper);
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-paper) 78%, transparent), color-mix(in srgb, var(--color-paper) 20%, transparent)), var(--hero-desktop);
+  background-image: var(--hero-desktop);
   background-position: center;
   background-size: cover;
   color: var(--color-ink);
@@ -832,7 +830,6 @@ progress {
 
 .kuka-hero--light {
   background-color: var(--color-ink);
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-ink) 52%, transparent), transparent), var(--hero-desktop);
   color: var(--color-white);
 }
 
@@ -847,7 +844,24 @@ progress {
 }
 
 .kuka-hero__content {
+  position: relative;
+  isolation: isolate;
+  width: min(100%, var(--measure-heading));
   max-width: var(--measure-heading);
+  padding: var(--space-4);
+}
+
+.kuka-hero__content::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: var(--color-paper);
+  opacity: calc(var(--hero-overlay-strength) / 100);
+}
+
+.kuka-hero--light .kuka-hero__content::before {
+  background: var(--color-ink);
 }
 
 .kuka-hero h1 {
@@ -1277,11 +1291,11 @@ progress {
   .kuka-hero {
     min-height: calc(100svh - var(--announcement-height));
     padding-bottom: var(--space-8);
-    background-image: linear-gradient(0deg, color-mix(in srgb, var(--color-paper) 82%, transparent), color-mix(in srgb, var(--color-paper) 20%, transparent)), var(--hero-mobile);
+    background-image: var(--hero-mobile);
   }
 
   .kuka-hero--light {
-    background-image: linear-gradient(0deg, color-mix(in srgb, var(--color-ink) 55%, transparent), transparent), var(--hero-mobile);
+    background-image: var(--hero-mobile);
   }
 
   .kuka-section-heading {

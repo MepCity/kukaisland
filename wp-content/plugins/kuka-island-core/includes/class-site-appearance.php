@@ -96,7 +96,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
 				'title' => 'Adanın ritmini yanında taşı.', 'copy' => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
-				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'dark',
+				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'dark', 'overlay_strength' => 78,
 			),
 			'home' => array(
 				'category_index_enabled' => false, 'category_index_label' => 'Formunu bul', 'category_index_title' => 'Ürün kategorileri',
@@ -269,6 +269,7 @@ final class Kuka_Island_Core_Site_Appearance {
 					'button_url'       => array( __( 'Buton URL', 'kuka-island-core' ), 'url' ),
 					'alignment'        => array( __( 'Hizalama (left/center/right)', 'kuka-island-core' ), 'alignment' ),
 					'text_tone'        => array( __( 'Metin tonu (light/dark)', 'kuka-island-core' ), 'tone' ),
+					'overlay_strength' => array( __( 'Metin perdesi yoğunluğu (%)', 'kuka-island-core' ), 'percentage' ),
 				),
 			),
 			'home'         => array(
@@ -506,7 +507,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php elseif ( in_array( $type, array( 'textarea', 'lines', 'url_lines', 'link_lines', 'size_rows' ), true ) ) : ?>
 				<textarea class="large-text" rows="<?php echo 'size_rows' === $type ? '7' : '4'; ?>" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>"><?php echo esc_textarea( (string) $value ); ?></textarea>
 			<?php else : ?>
-				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number' ), true ) ? $type : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?>>
+				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number', 'percentage' ), true ) ? ( 'email' === $type ? 'email' : 'number' ) : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?> <?php echo 'percentage' === $type ? 'min="0" max="100" step="1"' : ''; ?>>
 			<?php endif; ?>
 			</td>
 		</tr>
@@ -545,6 +546,9 @@ final class Kuka_Island_Core_Site_Appearance {
 						break;
 					case 'number':
 						$value = max( 0, absint( $value ) );
+						break;
+					case 'percentage':
+						$value = min( 100, max( 0, absint( $value ) ) );
 						break;
 					case 'media_image':
 					case 'media_video':

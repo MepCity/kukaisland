@@ -75,6 +75,7 @@
   --measure-table: 760px;
   --hero-min-height: 640px;
   --hero-max-height: 860px;
+  --hero-overlay-strength: 78;
   --editorial-max-height: 900px;
   --manifesto-min-height: 780px;
   --service-min-height: 148px;
