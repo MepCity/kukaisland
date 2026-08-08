@@ -2,6 +2,13 @@
 
 Bu form, tasarımı ve mağaza altyapısını yanlış varsayımlarla kalıcılaştırmamak için hazırlanmıştır. Kısa cevaplar yeterlidir. Cevabı henüz belli olmayan maddeler `Karar verilmedi` olarak işaretlenebilir.
 
+## Faz 4A — hukuk danışmanına iletilecek öncelikli sorular
+
+1. Sitede değişim sunulmayacak. Cayma Hakkı ve İade Sözleşmesi §5 (Beden Değişimi) maddesinin metinden çıkarılması için hukuk danışmanınıza iletir misiniz?
+2. Sitede üyelik sunulmayacak. `03 Üyelik ve E-Ticaret Sitesi Kullanım Sözleşmesi` üyelik hükümleri içeriyor. Hukuk danışmanınız bu metni üyeliksiz kullanıma göre sadeleştirsin mi, yoksa yayından kaldıralım mı?
+3. Ön Bilgilendirme Formu sipariş e-postasına da eklenmeli mi?
+4. İngilizce sürüm yurt dışına satış için mi, yoksa yabancı ziyaretçinin arayüzü anlaması için mi kullanılacak? Yurt dışı satış seçilirse ihracat faturası, uygulanacak tüketici hukuku ve çoklu para birimi ayrı kapsam olarak planlanacaktır.
+
 ## Tasarımı başlatmak için gerekli
 
 1. Marka adı ve yazımı kesin olarak nedir? (`Kuka Island` geçici çalışma adıdır.)
@@ -35,7 +42,7 @@ Bu form, tasarımı ve mağaza altyapısını yanlış varsayımlarla kalıcıla
 
 - Çalışma adı: Kuka Island.
 - Bikini üstü ve altı ayrı ürün; eşleşen parçalar birbirine bağlanır.
-- Beden sistemi: 34–42.
+- Beden sistemi: S–M–L.
 - Dil ve para birimi: Türkçe / TRY.
 - Her renk ayrı varyasyon ve ayrı galeri taşıyabilir.
 - Tasarımda özgün demo içerikleri kullanılacaktır.
@@ -48,28 +55,22 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 |---|---|---|
 | Satıcı/unvan, VKN, vergi dairesi, adres, telefon | **Girildi** (Kübra Gültekin / 4220658128 / Beşiktaş VD / Akat Mah. adresi / +90 530 948 19 96) | Site Görünümü → Şirket ve Yasal Bilgiler |
 | ETBİS numarası | Hâlâ bekleniyor; yer tutucu kalır (`[ETBİS NO]`) | Site Görünümü → Şirket ve Yasal Bilgiler |
-| MERSİS numarası | Şahıs işletmesi olduğu için alan kaldırıldı; TC Kimlik No bilinçli olarak hiçbir yere girilmedi | — |
+| MERSİS numarası | Müşteri sözleşmelerindeki gibi `Bulunmamaktadır` | Site Görünümü → Şirket ve Yasal Bilgiler |
 | Kargo firması ve tahmini teslimat süresi | Bekleniyor | Site Görünümü → Ticari Bilgiler |
-| Standart kargo ücreti ve ücretsiz kargo eşiği onayı | Pilot değerler 149 TL / 1.500 TL | Site Görünümü → Ticari Bilgiler |
+| Standart kargo ücreti ve ücretsiz kargo eşiği onayı | Pilot değerler 149 TL / 4.000 TL | Site Görünümü → Ticari Bilgiler |
 | İade kargo ücretinin kime ait olduğu | Bekleniyor | Site Görünümü → Ticari Bilgiler |
-| Hijyen bandı/mühür operasyon kararı | Bekleniyor; metin koşullu ve otomatik ret kurmuyor | Yasal metin onayı + ürün operasyonu |
-| Yasal taslakların hukuk/şirket onayı | Bekleniyor | Onay sonrası sayfa metinleri ve merkezî yer tutucular |
-| Gerçek marka kuruluş hikâyesi | Bekleniyor; Hakkımızda metni geçici | Sayfalar → Hakkımızda |
+| Hijyen bandı/mühür operasyon kararı | Müşteri metni ürün, sepet ve iade sayfasına eklendi; ayıplı ürün hakları saklı tutuldu | Site Görünümü → Ticari Bilgiler |
+| Yasal metinler | Sekiz metin müşteriden teslim alındı; `03` üyelik sözleşmesi için yukarıdaki hukuk kararı bekleniyor | Sayfalar + Site Görünümü yer tutucuları |
+| Gerçek marka kuruluş hikâyesi | Teslim alındı; PDF metni `/hakkimizda/` sayfasına aktarıldı | Sayfalar → Hakkımızda |
 | Gerçek ürün kataloğu, fiyat, stok ve fotoğraflar | Bekleniyor; dört ürün pilot şablon | Ürünler veya CSV şablonu |
 | SMTP hesabı ve DNS kayıtları | Veridyen test yayını öncesi müşteri açacak | Hosting/DNS + seçilen SMTP eklentisi |
 | Coming soon altında test erişim yöntemi | Müşteri seçimi bekleniyor | `DEPLOY_RUNBOOK.md` §6 |
 | iyzico sandbox/canlı aktivasyonu | Bekleniyor; canlı anahtar repoya girilmeyecek | WooCommerce ödeme ayarları / secret alanı |
 
-## Faz 3H sonunda eklenen girdiler
+## Faz 4A sonunda kalan girdiler
 
 | Girdi | Durum | Nereye girilecek |
 |---|---|---|
-| Google OAuth **istemci kimliği** (Client ID) | Bekleniyor | Yönetim → Nextend Social Login → Google. Google Cloud Console'da OAuth 2.0 istemcisi açılır. |
-| Google OAuth **gizli anahtarı** (Client Secret) | Bekleniyor; **repoya girilmeyecek** | Aynı ekran. Anahtar yalnız sunucuda tutulur; depoda hiçbir kopyası bulunmaz. |
-| Google konsolunda **yetkili yönlendirme URL'si** | Canlı alan adı belli olunca | `https://<alan-adi>/wp-login.php?loginSocial=google`. Nextend ayar ekranı doğru adresi kendisi yazar; oradan kopyalanır. |
-| Google OAuth **onay ekranı** bilgileri (uygulama adı, logo, gizlilik politikası URL'si) | Bekleniyor | Google Cloud Console → OAuth consent screen. Gizlilik politikası URL'si `/gizlilik-politikasi/` sayfasıdır. |
 | Palmiye amblemi | **Teslim alındı** — vektör (SVG) hâli temizlenip temaya alındı (`assets/img/palmiye.svg`) | Farklı bir amblem istenirse Site Görünümü → Marka → *Amblem* alanından yüklenir; boş bırakılırsa palmiye kullanılır. |
-| İkinci dil kararı (İngilizce) | Bekleniyor | Karar verilince Site Görünümü → Dil Seçici alanına `Etiket\|/önek/` satırları girilir; tek satırda seçici gizli kalır. |
+| İngilizce sürümün amacı | Bekleniyor; seçici görünür, `/en/` yayında olmadığı için “yakında” durumundadır | Yukarıdaki öncelikli soruya göre ayrı faz |
 | Kupon kullanılacak mı, hangi tür (sabit tutar / yüzde) | Bilgi | Kupon alanı ödeme sayfasında hazır; WooCommerce → Kuponlar altından tanımlanır. |
-
-**Not (Google anahtarları):** Gizli anahtar e-posta veya mesajla paylaşılmamalı; müşteri panelde kendisi girmeli ya da geçici bir parola yöneticisiyle iletmelidir. Depoda `git grep` ile anahtar aranmış, sıfır sonuç bulunmuştur.

@@ -367,7 +367,7 @@ URL yapısı Türkçe, kısa ve kalıcı olmalıdır. Sonradan değiştirmek SEO
 /iletisim/
 /sss/
 /kargo-ve-teslimat/
-/iade-ve-degisim/
+/iade-degisim/
 /gizlilik-politikasi/
 /kvkk-aydinlatma-metni/
 /cerez-politikasi/
@@ -425,7 +425,7 @@ Kesim listesi 4. sorunun cevabına göre kesinleşir. Liste uzarsa mega menü se
 
 - Beden Rehberi
 - Kargo ve Teslimat
-- İade ve Değişim
+- İade
 - Sık Sorulan Sorular
 - İletişim
 - Sipariş Takibi
@@ -597,7 +597,7 @@ Amaç: ürün fotoğrafını merkeze almak, beden/renk seçimini hatasız yaptı
 - Düşük stok mesajı, yalnızca gerçek stok verisiyle
 - Sepete ekle
 - Favoriye ekle, kapsam dahilindeyse
-- Akordiyon: Ürün detayları / Kumaş ve bakım / Kalıp ve beden önerisi / Model ölçüleri / Kargo, teslimat ve değişim
+- Akordiyon: Ürün detayları / Kumaş ve bakım / Kalıp ve beden önerisi / Model ölçüleri / Kargo, teslimat ve iade
 - **İade akordiyonunda hijyen istisnası açıkça yazılır** (§20.2)
 
 **İlişkili içerikler:** Takımı tamamla, benzer ürünler, son görüntülenenler (gerekirse sonraki faz).
@@ -641,7 +641,7 @@ Giriş / kayıt · siparişler · sipariş detayı · adresler · hesap bilgiler
 
 ### 10.9 İçerik ve yasal sayfalar
 
-Hakkımızda · İletişim · SSS · Kargo ve teslimat · İade ve değişim · Gizlilik · KVKK · Çerez politikası · Mesafeli satış sözleşmesi · Ön bilgilendirme formu.
+Hakkımızda · İletişim · SSS · Kargo ve teslimat · Cayma Hakkı ve İade · Gizlilik · KVKK · Çerez politikası · Mesafeli satış sözleşmesi · Ön bilgilendirme formu.
 
 Yasal metinler geliştirici tarafından hukuki danışmanlık verilerek oluşturulmuş sayılmaz. Müşteri veya hukuk danışmanı nihai metinleri onaylamalıdır.
 
@@ -896,7 +896,7 @@ Talimat ayrı bir tek sayfalık belge olarak teslim edilir ve teslim tarihi kayd
 
 **Footer:** kısa marka metni · newsletter metni · yardım bağlantıları · şirket bilgileri · sosyal medya.
 
-**Global ticari mesajlar:** ücretsiz kargo limiti metni · değişim süresi metni · destek çalışma saatleri · güvenli ödeme kısa metni.
+**Global ticari mesajlar:** ücretsiz kargo limiti metni · 14 günlük cayma hakkı metni · destek çalışma saatleri · güvenli ödeme kısa metni.
 
 ### 15.3 Panelden açılmayacak alanlar
 
@@ -1584,6 +1584,14 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-08 | Müşteri değişim hizmeti sunmamayı seçti; sitede yalnız 14 günlük cayma hakkı anlatılır. `04_Cayma_Hakki_ve_Iade_Sozlesmesi` `/iade-degisim/` URL'sinde, “Cayma Hakkı ve İade” başlığıyla kalır | URL atıfları kırılmaz. Sözleşme §5 ile tutarsızlık müşteriye bildirildi, metin bizim tarafımızdan değiştirilmedi |
+| 2026-08-08 | Üyelik sistemi ve Nextend Social Login kaldırıldı; misafir ödeme kod tarafından zorlanır, `/hesabim/` silinmeden ana sayfaya 302 yönlenir, `/siparis-takibi/` kalır | WooCommerce misafir sepeti kendi oturum tablosu ve çereziyle çalışır; ayrı localStorage sepeti yazmak kargo/kupon/stok/vergi sözleşmesini böler. `03` üyelik sözleşmesi hukuk kararı gelene kadar taslaktır |
+| 2026-08-08 | Google girişi Faz 3H'de eklendi, Faz 4A'da üyelik kaldırıldığı için geri çekildi | Toplanmayan hesap ve sosyal profil verisini vaat etmek hem arayüz hem KVKK metniyle tutarsız olurdu; Loginizer yönetici girişi için kalır |
+| 2026-08-08 | Büyük koyu yüzeyler kreme, servis hücreleri koyu kahveye çevrildi; footer üç sütuna ve ortalanmış marka kilidine indi | Müşteri onayı: sayfa daha açık olurken servis şeridi ayrışır; marka paleti ve AA kontrast korunur |
+| 2026-08-08 | Beden seti S–M–L ile sınırlandı; 50 varyasyon önce yeni terimlere taşındı, eski terimler sonra kaldırıldı | Müşterinin “şimdilik” talebi ürünleri kırmadan uygulandı; global nitelik modeli ileride yeni terim eklemeye açık kaldı |
+| 2026-08-08 | Ana sayfa kategori/kesim indeksi varsayılan kapalıya alındı, panel anahtarı korundu | Önceki onay müşteri tarafından geri çekildi; kodu silmeden ve boşluk bırakmadan geri alınabilir kılındı |
+| 2026-08-08 | Müşterinin sekiz PDF hukuk metni sayfalara aktarıldı; köşeli parantezli ticari değerler panel kısa kodlarına bağlandı | Müşteri metinleri yeniden yazılmadı; sipariş bazlı Ön Bilgilendirme Formu WooCommerce sepetinden dinamik dolar |
+| 2026-08-08 | Ücretsiz kargo eşiği 4.000 TL oldu; eşik karşılanınca yalnız ücretsiz yöntem gösterilir | Panel tek kaynaktır; WooCommerce tutar hesabı yeniden yazılmadan yalnız sunulan yöntemler filtrelenir |
 | 2026-08-06 | Google ile giriş **kapsam eklemesi** olarak kabul edildi; Nextend Social Login kurulur, gizli anahtar depoya hiçbir biçimde girmez, buton anahtar yokken render olmaz | Sosyal giriş ilk sürüm listesinde değildi; müşteri istediği için eklendi. Anahtarın depoda tutulması sızıntı riski, panelde tutulması geri alınabilir bir karardır |
 | 2026-08-06 | Duyuru şeridi tek mesaja indirildi; "Kolay değişim" ve "Güvenli ödeme" yalnız ana sayfa servis şeridinde kalır | Aynı iki vaadin iki şeritte tekrarı ekranın en üstündeki tek satırlık alanı harcıyordu |
 | 2026-08-06 | Dil seçici duyuru şeridinin **sağ ucunda** mutlak konumlanır; kargo mesajı akışta ortalanır | Üç sütunlu grid'de seçici genişledikçe ortadaki sütunu itip mesajı "kalan alanın ortası"na kaydırıyordu; mutlak konum mesajı sayfanın gerçek ortasında tutar |
@@ -1794,7 +1802,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 3F içerik tamamlandı: altı yasal taslak, yardım/marka sayfaları, merkezî şirket/ticari/beden verisi, dört ürün SEO alanı ve CSV şablonu
 - [x] Faz 3G mağaza deneyimi tamamlandı: sepet sayfası düzeni, marka renkli form kontrolleri, SSS akordiyonu, gerçek şirket bilgileri, WhatsApp telefon alanı + yüzen düğme ve işlevsel servis şeridi
 - [x] Faz 3H tamamlandı: palmiye amblemi (SVG), sadeleşen duyuru şeridi + panelden yönetilen dil seçici altyapısı, arama çekmecesi, yumuşak açılıp kapanan akordiyonlar ve `/odeme` sayfasının iki kolonlu yeniden tasarımı; kupon dağıtımı kuruşu kuruşuna doğrulandı — ayrıntı `docs/FAZ3H_TEKNIK_RAPORU.md`
-- [ ] Google ile giriş (kapsam eklemesi) canlı alan adı ve OAuth anahtarı geldiğinde etkinleştirilip görsel olarak doğrulanacak
+- [x] Faz 4A müşteri onay turu tamamlandı: açık renk yüzeyler, footer/manifesto, müşteri hukuk metinleri, yalnız 14 gün cayma hakkı, S–M–L bedenler, 4.000 TL ücretsiz kargo, checkout alanları, görünür dil seçici ve okunur bildirimler
+- [x] Üyelik, hesap paneli ve sosyal giriş geri çekildi; misafir ödeme, 48 saatlik panel kontrollü WooCommerce oturumu ve sipariş numarası + e-posta takip akışı korundu
+- [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
 - [ ] İkinci dil kararı verilince dil seçici listesi çeviri eklentisinden beslenecek
 - [x] Veridyen test yayını için deploy arşiv betiği ve sağlayıcıya özgü runbook hazırlandı; fiili deploy yapılmadı
 - [ ] iyzico ve satış akışı bağlanacak
@@ -1806,9 +1816,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 - iyzico üye işyeri başvurusu (şirket bilgileri hazır, başvuru için yasal sayfalar canlıda olmalı — §20.1)
 - ETBİS kaydı
-- Hijyen bandı kararı (§20.2) ve e-Fatura durumunun mali müşavirle netleşmesi
+- `04` §5 ve `03` üyelik sözleşmesi için hukuk danışmanı kararı; e-Fatura durumunun mali müşavirle netleşmesi
 - Fotoğraf çekimi — müşteri sorumluluğunda; `docs/FOTOGRAF_TALIMATI.md` çekim öncesi teslim edilmeye hazır
-- Kesim listesi, renk sayıları, fiyatlar, kargo firması ve ücretsiz kargo limiti
+- Kesim listesi, renk sayıları, fiyatlar ve kargo firması
 - Müşteri tarafında tek karar vericinin belirlenmesi (§27.2 iki revizyon turu için gerekli)
 - Sunum erişim yolunun seçilmesi, kontrollü yayın ve canlı `IMAGES` doğrulaması
 

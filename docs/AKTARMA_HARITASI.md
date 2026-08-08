@@ -62,7 +62,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 
 ## İçerik aktarımı
 
-`data/catalog-copy.ts` kayıtları WordPress sayfalarına dönüşür: Koleksiyonlar, Mesafeli Satış Sözleşmesi, Ön Bilgilendirme Formu, İade ve Değişim, KVKK Aydınlatma Metni, Çerez Politikası, Gizlilik Politikası, Beden Rehberi, Kargo ve Teslimat, SSS, İletişim, Sipariş Takibi, Hakkımızda ve Hesabım. Yasal taslaklar şirket/hukuk onayı olmadan yürürlükte metin olarak yayınlanmaz.
+`data/catalog-copy.ts` kayıtları WordPress sayfalarına dönüşür: Koleksiyonlar, Mesafeli Satış Sözleşmesi, Ön Bilgilendirme Formu, Cayma Hakkı ve İade, KVKK Aydınlatma Metni, Çerez Politikası, Gizlilik Politikası, Beden Rehberi, Kargo ve Teslimat, SSS, İletişim, Sipariş Takibi ve Hakkımızda. `/hesabim/` WooCommerce iç bağımlılığı için korunur fakat storefront'ta bağlantısı yoktur ve ana sayfaya 302 yönlenir.
 
 ## Veri modeli notları
 
@@ -91,7 +91,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Mobil menü soldan; filtre, sepet ve hesap sağdan açılır. Sepet/hesap header'ın sağ eylemlerinden geldiği için aynı yönü paylaşır.
 - Dört yan panel `data-panel-trigger`, bitişik `data-panel-overlay`, `role="dialog"`, `aria-modal`, `aria-labelledby` ve kapalıyken `inert` sözleşmesine sahiptir. Açma/kapama, Escape, Tab döngüsü, scroll kilidi ve odak iadesi yalnız `assets/js/storefront.js` içindedir.
 - Sepet markup'ı `inc/storefront-panels.php` içindedir. Adet/kaldırma native WooCommerce sepet formuna nonce ile POST edilir; `woocommerce_add_to_cart_fragments` panel gövdesini ve header sayacını yeniler. JS'siz ekleme `/sepet` sayfasına yönlenir.
-- Hesap paneli `woocommerce_login_form()` ve WooCommerce endpoint URL'lerini kullanır. Başarısız girişte Türkçe metinli `role="alert"` paneli yeniden açar; kayıt seçeneği native Hesabım sayfasında aktiftir.
+- Üyelik ve hesap paneli Faz 4A'da kaldırıldı. Misafir ödeme WooCommerce'in kendi sepet/oturum modeliyle çalışır; sipariş takibi sipariş numarası ve e-posta ile yapılır.
 - `--duration-micro` 240 ms, `--duration-panel` 420 ms'tir. Menü çizgisi ve giriş hareketi `--ease-out`, buton/chip/durum değişimleri `--ease-standard` kullanır. Reduced-motion global olarak sıfırlar.
 - Dört yan panelin tamamı açık `paper` %55 örtü kullanır; ürün görsellerinde `filter` uygulanmaz.
 
