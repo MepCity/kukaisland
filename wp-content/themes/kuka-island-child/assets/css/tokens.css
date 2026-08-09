@@ -73,8 +73,6 @@
   --measure-content: 1200px;
   --measure-wide: 1440px;
   --measure-product-info: 440px;
-  --footer-emblem-size: clamp(24px, 3vw, 36px);
-  --footer-brand-size: clamp(30px, 4.5vw, 58px);
   --measure-table: 760px;
   --hero-min-height: 640px;
   --hero-max-height: 860px;
