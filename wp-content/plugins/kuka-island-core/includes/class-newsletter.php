@@ -66,7 +66,7 @@ final class Kuka_Island_Core_Newsletter {
 		$html .= '<input type="hidden" name="action" value="kuka_newsletter_subscribe">';
 		$html .= wp_nonce_field( 'kuka_newsletter_subscribe', 'kuka_newsletter_nonce', true, false );
 		$html .= '<label class="kuka-newsletter__label" for="kuka-newsletter-email">' . esc_html__( 'E-posta adresi', 'kuka-island-core' ) . '</label>';
-		$html .= '<div class="kuka-newsletter__field"><input id="kuka-newsletter-email" name="email" type="email" autocomplete="email" required><button type="submit">' . esc_html__( 'Katıl', 'kuka-island-core' ) . '</button></div>';
+		$html .= '<div class="kuka-newsletter__field"><input id="kuka-newsletter-email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required><button class="kuka-button" type="submit">' . esc_html__( 'Katıl', 'kuka-island-core' ) . '</button></div>';
 		$html .= '<div class="kuka-newsletter__trap" aria-hidden="true"><label for="kuka-newsletter-company">' . esc_html__( 'Şirket', 'kuka-island-core' ) . '</label><input id="kuka-newsletter-company" name="company" type="text" tabindex="-1" autocomplete="off"></div>';
 		$html .= '<label class="kuka-newsletter__consent"><input type="checkbox" name="consent" value="1" required><span>' . esc_html( $consent ) . '</span></label>';
 		return $html . '</form>';
