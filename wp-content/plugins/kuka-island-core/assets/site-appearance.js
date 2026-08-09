@@ -1,6 +1,55 @@
 (() => {
   "use strict";
 
+  const search = document.querySelector("[data-kuka-field-search]");
+  const panels = [...document.querySelectorAll("[data-kuka-panel]")];
+  const tabs = [...document.querySelectorAll("[data-kuka-tab]")];
+  const activeInput = document.querySelector("[data-kuka-active-tab]");
+  const searchStatus = document.querySelector("[data-kuka-search-status]");
+
+  const activateTab = (key, updateUrl = false) => {
+	panels.forEach((panel) => panel.classList.toggle("is-active", panel.dataset.kukaPanel === key));
+	tabs.forEach((tab) => tab.classList.toggle("nav-tab-active", tab.dataset.kukaTab === key));
+	if (activeInput) activeInput.value = key;
+	if (updateUrl) {
+	  const url = new URL(window.location.href);
+	  url.searchParams.set("tab", key);
+	  window.history.replaceState({}, "", url);
+	}
+  };
+
+  tabs.forEach((tab) => tab.addEventListener("click", (event) => {
+	event.preventDefault();
+	if (search) search.value = "";
+	panels.forEach((panel) => panel.classList.remove("is-search-result"));
+	activateTab(tab.dataset.kukaTab, true);
+  }));
+
+  search?.addEventListener("input", () => {
+	const query = search.value.trim().toLocaleLowerCase("tr");
+	let matches = 0;
+	panels.forEach((panel) => {
+	  let panelMatches = 0;
+	  panel.querySelectorAll(".form-table > tbody > tr").forEach((row) => {
+		const visible = !query || row.textContent.toLocaleLowerCase("tr").includes(query);
+		row.hidden = !visible;
+		if (visible && query) panelMatches += 1;
+	  });
+	  panel.classList.toggle("is-search-result", Boolean(query && panelMatches));
+	  panel.classList.toggle("is-active", !query && panel.dataset.kukaPanel === activeInput?.value);
+	  matches += panelMatches;
+	});
+	if (searchStatus) searchStatus.textContent = query ? `${matches} alan bulundu.` : "";
+  });
+
+  document.querySelectorAll("input[type='text'], input[type='email'], textarea").forEach((control) => {
+	const counter = control.closest("td")?.querySelector("[data-kuka-character-count]");
+	if (!counter) return;
+	const update = () => { counter.textContent = String(control.value.length); };
+	control.addEventListener("input", update);
+	update();
+  });
+
   document.addEventListener("click", (event) => {
 	const addScene = event.target.closest("[data-kuka-story-add]");
 	const removeScene = event.target.closest("[data-kuka-story-remove]");
@@ -60,12 +109,17 @@
       const attachment = frame.state().get("selection").first().toJSON();
       input.value = String(attachment.id);
       preview.replaceChildren();
-      if (attachment.type === "image") {
+	  if (attachment.type === "image") {
         const image = document.createElement("img");
         image.src = attachment.sizes?.thumbnail?.url || attachment.url;
         image.alt = "";
         image.width = 80;
-        preview.append(image);
+		preview.append(image);
+		const warning = field.parentElement?.querySelector("[data-kuka-alt-warning]");
+		if (warning) {
+		  warning.textContent = attachment.alt ? `Alternatif metin: ${attachment.alt}` : "Uyarı: Bu görselin alternatif metni boş.";
+		  warning.classList.toggle("kuka-alt-warning", !attachment.alt);
+		}
       } else {
         preview.textContent = attachment.filename;
       }
