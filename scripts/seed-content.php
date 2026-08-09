@@ -454,12 +454,12 @@ if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 	$current['home']['editorial_image_id'] = $attachment_id( 'cobalt-set.jpg' );
 	$current['story']['scenes'] = $defaults['story']['scenes'];
 	$story_media = array(
-		array( 'hero-aegean-black.jpg', 'hero-aegean-black-mobile.jpg', 'light' ),
-		array( 'cobalt-set.jpg', 'cobalt-set.jpg', 'dark' ),
-		array( 'noir-asymmetric-top-detail.jpg', 'noir-asymmetric-top.jpg', 'dark' ),
-		array( 'cobalt-asymmetric-top-detail.jpg', 'cobalt-asymmetric-top.jpg', 'dark' ),
-		array( 'hero-aegean-black.jpg', 'hero-aegean-black-mobile.jpg', 'light' ),
-		array( 'noir-one-piece-detail.jpg', 'noir-one-piece.jpg', 'dark' ),
+		array( 'story-01-desktop.jpg', 'story-01-mobile.jpg', 'dark' ),
+		array( 'story-02-desktop.jpg', 'story-02-mobile.jpg', 'dark' ),
+		array( 'story-03-desktop.jpg', 'story-03-mobile.jpg', 'dark' ),
+		array( 'story-04-desktop.jpg', 'story-04-mobile.jpg', 'dark' ),
+		array( 'story-05-desktop.jpg', 'story-05-mobile.jpg', 'dark' ),
+		array( 'story-06-desktop.jpg', 'story-06-mobile.jpg', 'dark' ),
 	);
 	foreach ( $story_media as $scene_index => $scene_media ) {
 		$desktop_id = $attachment_id( $scene_media[0] );

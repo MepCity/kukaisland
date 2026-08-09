@@ -38,7 +38,7 @@
   --text-heading-medium: clamp(42px, 6vw, 92px);
   --text-heading-section: clamp(44px, 5.5vw, 80px);
   --text-heading-panel: clamp(44px, 5vw, 66px);
-  --text-heading-editorial: clamp(52px, 7vw, 104px);
+	--text-heading-editorial: clamp(44px, 5.5vw, 82px);
   --text-heading-manifesto: clamp(42px, 5.5vw, 80px);
   --text-heading-hero: clamp(52px, 5.8vw, 84px);
   --text-heading-hero-long: clamp(42px, 4vw, 58px);
@@ -84,7 +84,20 @@
 	--story-copy-width: 680px;
 	--story-article-size: 900px;
 	--story-transition: 420ms;
+	--story-transition-copy: 560ms;
+	--story-transition-media: 720ms;
 	--story-line-delay: 90ms;
+	--story-ease: cubic-bezier(0.22, 1, 0.36, 1);
+	--story-gradient-dark-soft: rgba(18, 12, 6, 0.72);
+	--story-gradient-dark-medium: rgba(18, 12, 6, 0.82);
+	--story-gradient-dark-strong: rgba(18, 12, 6, 0.9);
+	--story-gradient-light-soft: rgba(251, 248, 242, 0.66);
+	--story-gradient-light-medium: rgba(251, 248, 242, 0.74);
+	--story-gradient-light-strong: rgba(251, 248, 242, 0.84);
+	--story-gradient-color: var(--story-gradient-light-medium);
+	--story-gradient-hold: 52%;
+	--story-gradient-center-hold: 58%;
+	--story-gradient-extent: 88%;
   --service-min-height: 148px;
   --category-row-height: 104px;
   --category-row-height-mobile: 88px;
@@ -123,7 +136,7 @@
     --text-heading-medium: 48px;
     --text-heading-section: 48px;
     --text-heading-panel: 48px;
-    --text-heading-editorial: clamp(52px, 21vw, 76px);
+		--text-heading-editorial: clamp(38px, 12vw, 52px);
     --text-heading-manifesto: clamp(36px, 12vw, 52px);
     --text-heading-hero: clamp(42px, 12vw, 52px);
     --text-heading-hero-long: clamp(32px, 9vw, 38px);

@@ -1,0 +1,16 @@
+{
+  "story_js_sha256_current": "ca56f63cea00820973b9b3ca23849eb9153b429877cdb6538199ef803baea178",
+  "story_js_sha256_faz6a_baseline": "ab1f8332ce43992ca6a4bc0eb047ad83613e88f32b33179a4e035223d2355026",
+  "mechanics_file_byte_identical": false,
+  "observer_mechanics_unchanged": true,
+  "media_handoff_load_guarded": true,
+  "next_scene_warmed_after_opening": true,
+  "intersection_observer": true,
+  "observer_cleanup": true,
+  "scroll_listener": false,
+  "server_rendered_story_dom": true,
+  "reduced_motion_match_media": true,
+  "reduced_motion_removes_data_enhanced": true,
+  "mobile_runtime_removes_data_enhanced": true,
+  "notes": "IntersectionObserver, sticky, cleanup, no-scroll-listener, reduced-motion and mobile/JS-off fallback behavior remains unchanged. The media handoff now waits for a deferred target image to load before hiding the current image, preventing a blank final scene after a fast jump. Fresh 320–480 px browser checks confirm the non-enhanced fallback."
+}

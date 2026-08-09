@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 6;
+	private const SCHEMA_VERSION = 8;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -95,7 +95,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
-				'title' => 'Adanın ritmini yanında taşı.', 'copy' => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
+				'title' => 'Kaçışınız için tasarlandı. Est. 2026', 'copy' => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
 				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'dark',
 			),
 			'home' => array(
@@ -103,7 +103,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'new_arrivals_enabled' => true, 'new_arrivals_title' => 'Yeni Gelenler', 'new_arrivals_copy' => 'Yeni sezon seçkisi.',
 				'new_arrivals_source' => 'latest', 'source_category' => '', 'source_collection' => '', 'manual_product_ids' => '', 'presentation' => 'grid',
 				'card_swatches_enabled' => true, 'card_stock_enabled' => true,
-				'editorial_enabled' => true, 'editorial_title' => 'Ada Günlüğü', 'editorial_copy' => 'Şehirden kıyıya uzanan günlük üniforma.',
+				'editorial_enabled' => true, 'editorial_title' => 'Sonsuz yazlar için tasarlandı', 'editorial_copy' => 'Şehirden kıyıya uzanan günlük üniforma.',
 				'editorial_image_id' => 0, 'editorial_video_id' => 0, 'editorial_url' => '/hakkimizda/', 'editorial_link_label' => 'Hikâyeyi oku',
 				'manifesto_enabled' => true,
 				'manifesto_line_1' => 'Güneş. Ten. Özgürlük.', 'manifesto_line_1_en' => 'Sun. Skin. Freedom.',
@@ -115,12 +115,12 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'story' => array(
 				'scenes' => array(
-					array( 'text' => "Bir yer değil. Bir his.", 'text_en' => "Not a place. A feeling.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light' ),
-					array( 'text' => "Hayatta bazen sıfırdan başlamak gerekir.\n\nBenim için KUKA ISLAND tam olarak böyle başladı.", 'text_en' => "Sometimes, life asks you to begin again.\n\nThat is exactly how KUKA ISLAND began for me.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light' ),
-					array( 'text' => 'Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim.', 'text_en' => 'As I turned a new page, I did not want to create just another brand. I wanted to bring everything that makes me feel good together under one roof.', 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light' ),
-					array( 'text' => "Denizi…\nYazı…\nÖzgürlüğü…\nVe kadınların kendini en güzel hissettiği anları…", 'text_en' => "The sea…\nSummer…\nFreedom…\nAnd those moments when women feel most beautiful in their own skin…", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light', 'reveal_lines' => true ),
-					array( 'text' => "İşte KUKA ISLAND böyle doğdu.\n\nHer koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor.", 'text_en' => "That is how KUKA ISLAND came to life.\n\nEvery collection is made for more than a single season—to bring back that same feeling, even when you wear it years from now.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ),
-					array( 'text' => "Bu yolculuk daha yeni başlıyor.\n\nİyi ki buradasın.\n\nVe bu hikâyenin ilk sayfalarında bize eşlik ediyorsun.\n\nLove,\nKÜBRA", 'text_en' => "This journey is only just beginning.\n\nI am so glad you are here.\n\nAnd that you are with us for the first pages of this story.\n\nLove,\nKÜBRA", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ),
+					array( 'text' => "Bir yer değil. Bir his.", 'text_en' => "Not a place. A feeling.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ) + self::story_art_direction( 0 ),
+					array( 'text' => "Hayatta bazen sıfırdan başlamak gerekir.\n\nBenim için KUKA ISLAND tam olarak böyle başladı.", 'text_en' => "Sometimes, life asks you to begin again.\n\nThat is exactly how KUKA ISLAND began for me.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ) + self::story_art_direction( 1 ),
+					array( 'text' => 'Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim.', 'text_en' => 'As I turned a new page, I did not want to create just another brand. I wanted to bring everything that makes me feel good together under one roof.', 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ) + self::story_art_direction( 2 ),
+					array( 'text' => "Denizi…\nYazı…\nÖzgürlüğü…\nVe kadınların kendini en güzel hissettiği anları…", 'text_en' => "The sea…\nSummer…\nFreedom…\nAnd those moments when women feel most beautiful in their own skin…", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark', 'reveal_lines' => true ) + self::story_art_direction( 3 ),
+					array( 'text' => "İşte KUKA ISLAND böyle doğdu.\n\nHer koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor.", 'text_en' => "That is how KUKA ISLAND came to life.\n\nEvery collection is made for more than a single season—to bring back that same feeling, even when you wear it years from now.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ) + self::story_art_direction( 4 ),
+					array( 'text' => "Bu yolculuk daha yeni başlıyor.\n\nİyi ki buradasın.\n\nVe bu hikâyenin ilk sayfalarında bize eşlik ediyorsun.\n\nLove,\nKÜBRA", 'text_en' => "This journey is only just beginning.\n\nI am so glad you are here.\n\nAnd that you are with us for the first pages of this story.\n\nLove,\nKÜBRA", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ) + self::story_art_direction( 5 ),
 				),
 			),
 			'navigation' => array(
@@ -170,6 +170,19 @@ final class Kuka_Island_Core_Site_Appearance {
 				'enabled' => false, 'guest_session_hours' => 48,
 			),
 		);
+	}
+
+	/** @return array<string, string> */
+	private static function story_art_direction( int $index ): array {
+		$directions = array(
+			array( 'transition_type' => 'zoom-out', 'text_position' => 'left-bottom', 'gradient_intensity' => 'medium' ),
+			array( 'transition_type' => 'crossfade-left', 'text_position' => 'left-center', 'gradient_intensity' => 'strong' ),
+			array( 'transition_type' => 'fade-center', 'text_position' => 'center', 'gradient_intensity' => 'medium' ),
+			array( 'transition_type' => 'line-sequence', 'text_position' => 'left-center', 'gradient_intensity' => 'strong' ),
+			array( 'transition_type' => 'grow-right', 'text_position' => 'right-center', 'gradient_intensity' => 'strong' ),
+			array( 'transition_type' => 'gather', 'text_position' => 'center', 'gradient_intensity' => 'medium' ),
+		);
+		return $directions[ $index ] ?? array( 'transition_type' => 'fade-center', 'text_position' => 'left-bottom', 'gradient_intensity' => 'medium' );
 	}
 
 	/**
@@ -222,6 +235,17 @@ final class Kuka_Island_Core_Site_Appearance {
 			$old_story_label             = sprintf( '%s / %s', 'Marka', 'Hikâyemiz' );
 			$saved['navigation']['main'] = str_replace( $old_story_label, 'Hikâyemiz', (string) $saved['navigation']['main'] );
 		}
+		if ( isset( $saved['story']['scenes'] ) && is_array( $saved['story']['scenes'] ) ) {
+			foreach ( $saved['story']['scenes'] as $index => &$scene ) {
+				if ( ! is_array( $scene ) ) { continue; }
+				$scene += self::story_art_direction( (int) $index );
+				if ( in_array( (int) $index, array( 0, 1, 2, 3 ), true ) ) {
+					$scene['text_tone']    = 'dark';
+					$scene['text_tone_en'] = 'dark';
+				}
+			}
+			unset( $scene );
+		}
 		unset(
 			$saved['languages']['items_en'],
 			$saved['brand']['social_links_labels_en'],
@@ -237,6 +261,12 @@ final class Kuka_Island_Core_Site_Appearance {
 		// Dil adları teknik yönlendirme sözleşmesidir; iki vitrinde de her dil
 		// kendi adıyla görünür. Eski çeviri turunda kaydedilmiş etiketleri taşıma.
 		$saved['languages']['items'] = self::defaults()['languages']['items'];
+		// Faz 6B kapanış geri bildirimi: ana sayfanın iki başlığı marka diliyle
+		// birlikte yenilendi; eski kayıtlar yeni metni gölgelememeli.
+		$saved['hero']['title']               = self::defaults()['hero']['title'];
+		$saved['hero']['title_en']            = 'Designed for your escape. Est. 2026';
+		$saved['home']['editorial_title']     = self::defaults()['home']['editorial_title'];
+		$saved['home']['editorial_title_en']  = 'Designed for endless summers';
 		// Kesim indeksi müşteri isteğiyle geri çekildi; eski kurulumlarda açık
 		// kalmasın diye bir kez kapatılır, sonra panelden açılabilir.
 		$saved['home']['category_index_enabled'] = false;
@@ -604,6 +634,26 @@ final class Kuka_Island_Core_Site_Appearance {
 		$number = is_numeric( $index ) ? str_pad( (string) ( (int) $index + 1 ), 2, '0', STR_PAD_LEFT ) : '';
 		/* translators: %s is the two-digit scene number shown in the story repeater. */
 		$scene_label = sprintf( __( 'Sahne %s', 'kuka-island-core' ), $number );
+		$transition_options = array(
+			'zoom-out' => __( 'Fotoğraf uzaklaşır / metin alttan', 'kuka-island-core' ),
+			'crossfade-left' => __( 'Çapraz erime / metin soldan', 'kuka-island-core' ),
+			'fade-center' => __( 'Çapraz erime / merkezde belirme', 'kuka-island-core' ),
+			'line-sequence' => __( 'Sabit fotoğraf / satır sırası', 'kuka-island-core' ),
+			'grow-right' => __( 'Fotoğraf büyür / metin sağdan', 'kuka-island-core' ),
+			'gather' => __( 'Çapraz erime / merkezde toplanma', 'kuka-island-core' ),
+		);
+		$position_options = array(
+			'left-bottom' => __( 'Sol alt', 'kuka-island-core' ),
+			'left-center' => __( 'Sol orta', 'kuka-island-core' ),
+			'center' => __( 'Merkez', 'kuka-island-core' ),
+			'right-center' => __( 'Sağ orta', 'kuka-island-core' ),
+		);
+		$gradient_options = array(
+			'none' => __( 'Yok', 'kuka-island-core' ),
+			'soft' => __( 'Yumuşak', 'kuka-island-core' ),
+			'medium' => __( 'Orta', 'kuka-island-core' ),
+			'strong' => __( 'Güçlü', 'kuka-island-core' ),
+		);
 		?>
 		<fieldset data-kuka-story-scene style="border:1px solid #c3c4c7;margin:0 0 1rem;padding:1rem">
 			<legend data-kuka-story-number style="font-weight:600;padding:0 0.5rem"><?php echo esc_html( $scene_label ); ?></legend>
@@ -612,6 +662,9 @@ final class Kuka_Island_Core_Site_Appearance {
 				<div><p><strong>Türkçe</strong></p><label><?php esc_html_e( 'Metin', 'kuka-island-core' ); ?><textarea class="large-text" rows="7" name="<?php echo esc_attr( $prefix . '[text]' ); ?>"><?php echo esc_textarea( (string) ( $scene['text'] ?? '' ) ); ?></textarea></label><?php $this->render_story_media( $prefix, 'desktop_image_id', __( 'Masaüstü görsel', 'kuka-island-core' ), absint( $scene['desktop_image_id'] ?? 0 ) ); ?><?php $this->render_story_media( $prefix, 'mobile_image_id', __( 'Mobil görsel', 'kuka-island-core' ), absint( $scene['mobile_image_id'] ?? 0 ) ); ?><label><?php esc_html_e( 'Metin tonu', 'kuka-island-core' ); ?><select name="<?php echo esc_attr( $prefix . '[text_tone]' ); ?>"><option value="light" <?php selected( 'light', $scene['text_tone'] ?? 'light' ); ?>><?php esc_html_e( 'Açık metin', 'kuka-island-core' ); ?></option><option value="dark" <?php selected( 'dark', $scene['text_tone'] ?? 'light' ); ?>><?php esc_html_e( 'Koyu metin', 'kuka-island-core' ); ?></option></select></label></div>
 				<div><p><strong>English</strong></p><label><?php esc_html_e( 'Text', 'kuka-island-core' ); ?><textarea class="large-text" rows="7" name="<?php echo esc_attr( $prefix . '[text_en]' ); ?>"><?php echo esc_textarea( (string) ( $scene['text_en'] ?? '' ) ); ?></textarea></label><?php $this->render_story_media( $prefix, 'desktop_image_id_en', __( 'Desktop image', 'kuka-island-core' ), absint( $scene['desktop_image_id_en'] ?? 0 ) ); ?><?php $this->render_story_media( $prefix, 'mobile_image_id_en', __( 'Mobile image', 'kuka-island-core' ), absint( $scene['mobile_image_id_en'] ?? 0 ) ); ?><label><?php esc_html_e( 'Text tone', 'kuka-island-core' ); ?><select name="<?php echo esc_attr( $prefix . '[text_tone_en]' ); ?>"><option value="light" <?php selected( 'light', $scene['text_tone_en'] ?? 'light' ); ?>><?php esc_html_e( 'Light text', 'kuka-island-core' ); ?></option><option value="dark" <?php selected( 'dark', $scene['text_tone_en'] ?? 'light' ); ?>><?php esc_html_e( 'Dark text', 'kuka-island-core' ); ?></option></select></label></div>
 			</div>
+			<p><label><?php esc_html_e( 'Geçiş tipi', 'kuka-island-core' ); ?> <select name="<?php echo esc_attr( $prefix . '[transition_type]' ); ?>"><?php foreach ( $transition_options as $value => $label ) : ?><option value="<?php echo esc_attr( $value ); ?>" <?php selected( $value, $scene['transition_type'] ?? 'fade-center' ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?></select></label></p>
+			<p><label><?php esc_html_e( 'Metin konumu', 'kuka-island-core' ); ?> <select name="<?php echo esc_attr( $prefix . '[text_position]' ); ?>"><?php foreach ( $position_options as $value => $label ) : ?><option value="<?php echo esc_attr( $value ); ?>" <?php selected( $value, $scene['text_position'] ?? 'left-bottom' ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?></select></label></p>
+			<p><label><?php esc_html_e( 'Okuma gradyanı', 'kuka-island-core' ); ?> <select name="<?php echo esc_attr( $prefix . '[gradient_intensity]' ); ?>"><?php foreach ( $gradient_options as $value => $label ) : ?><option value="<?php echo esc_attr( $value ); ?>" <?php selected( $value, $scene['gradient_intensity'] ?? 'medium' ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?></select></label></p>
 			<p><input type="hidden" name="<?php echo esc_attr( $prefix . '[reveal_lines]' ); ?>" value="0"><label><input type="checkbox" name="<?php echo esc_attr( $prefix . '[reveal_lines]' ); ?>" value="1" <?php checked( ! empty( $scene['reveal_lines'] ) ); ?>> <?php esc_html_e( 'Satırları sırayla aç (kısa, bilinçli satır dizileri için)', 'kuka-island-core' ); ?></label></p>
 		</fieldset>
 		<?php
@@ -677,6 +730,9 @@ final class Kuka_Island_Core_Site_Appearance {
 								'mobile_image_id_en' => absint( $scene['mobile_image_id_en'] ?? 0 ),
 								'text_tone' => in_array( $scene['text_tone'] ?? '', array( 'light', 'dark' ), true ) ? $scene['text_tone'] : 'light',
 								'text_tone_en' => in_array( $scene['text_tone_en'] ?? '', array( 'light', 'dark' ), true ) ? $scene['text_tone_en'] : 'light',
+								'transition_type' => in_array( $scene['transition_type'] ?? '', array( 'zoom-out', 'crossfade-left', 'fade-center', 'line-sequence', 'grow-right', 'gather' ), true ) ? $scene['transition_type'] : 'fade-center',
+								'text_position' => in_array( $scene['text_position'] ?? '', array( 'left-bottom', 'left-center', 'center', 'right-center' ), true ) ? $scene['text_position'] : 'left-bottom',
+								'gradient_intensity' => in_array( $scene['gradient_intensity'] ?? '', array( 'none', 'soft', 'medium', 'strong' ), true ) ? $scene['gradient_intensity'] : 'medium',
 								'reveal_lines' => '1' === (string) ( $scene['reveal_lines'] ?? '0' ),
 							);
 						}

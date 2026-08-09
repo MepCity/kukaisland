@@ -67,7 +67,7 @@ final class Kuka_Island_Core_Language {
 			),
 			'hero' => array(
 				'eyebrow_en' => 'KUKA ISLAND / NEW SEASON',
-				'title_en' => 'Carry the rhythm of the island with you.',
+				'title_en' => 'Designed for your escape. Est. 2026',
 				'copy_en' => 'Clean, confident pieces made to move with you all day.',
 				'button_label_en' => 'Discover new arrivals',
 			),
@@ -76,7 +76,7 @@ final class Kuka_Island_Core_Language {
 				'category_index_title_en' => 'Product categories',
 				'new_arrivals_title_en' => 'New Arrivals',
 				'new_arrivals_copy_en' => 'A first look at the new-season edit.',
-				'editorial_title_en' => 'Island Journal',
+				'editorial_title_en' => 'Designed for endless summers',
 				'editorial_copy_en' => 'An everyday uniform, from the city to the shore.',
 				'editorial_link_label_en' => 'Read the story',
 				'manifesto_line_1_en' => 'Sun. Skin. Freedom.',

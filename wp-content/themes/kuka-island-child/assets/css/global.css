@@ -357,8 +357,13 @@ progress {
 }
 
 .kuka-lang-switcher__list a:hover,
-.kuka-lang-switcher__list a:focus-visible,
-.kuka-lang-switcher__list a[aria-current] {
+.kuka-lang-switcher__list a:focus-visible {
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-underline-offset: var(--space-0-5);
+}
+
+.kuka-lang-switcher__list li[aria-selected="true"] a {
   color: var(--color-ink);
 }
 
@@ -408,6 +413,15 @@ progress {
 .has-js .home .kuka-announcement a:hover,
 .has-js .home .kuka-announcement a:focus-visible {
   color: inherit;
+}
+
+.has-js .home .kuka-announcement .kuka-lang-switcher__list a:hover,
+.has-js .home .kuka-announcement .kuka-lang-switcher__list a:focus-visible {
+  color: var(--color-muted);
+}
+
+.has-js .home .kuka-announcement .kuka-lang-switcher__list li[aria-selected="true"] a {
+  color: var(--color-ink);
 }
 
 .kuka-header.is-scrolled {
@@ -883,6 +897,11 @@ progress {
   font-size: var(--text-heading-hero-long);
 }
 
+.kuka-hero__est {
+  display: block;
+  white-space: nowrap;
+}
+
 .kuka-hero__content > p:not(.kuka-eyebrow) {
   max-width: var(--measure-copy);
   font-size: var(--text-body-large);
@@ -946,6 +965,12 @@ progress {
 .kuka-category-index__arrow {
   font-size: var(--text-body-large);
   text-align: right;
+}
+
+/* FE0E forces the diagonal arrow to remain a text glyph in mobile Safari. */
+.kuka-text-arrow {
+  font-family: var(--font-sans);
+  font-variant-emoji: text;
 }
 
 .kuka-editorial {

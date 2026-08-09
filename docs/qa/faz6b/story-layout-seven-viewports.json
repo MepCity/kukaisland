@@ -1,0 +1,24 @@
+{
+  "url": "http://localhost:8080/hakkimizda/",
+  "method": "In-app Browser runtime inspection after the second clean reset",
+  "results": [
+    { "width": 320, "scroll_width": 320, "overflow": false, "enhanced": false, "scenes": 6 },
+    { "width": 360, "scroll_width": 360, "overflow": false, "enhanced": false, "scenes": 6 },
+    { "width": 390, "scroll_width": 390, "overflow": false, "enhanced": false, "scenes": 6 },
+    { "width": 480, "scroll_width": 480, "overflow": false, "enhanced": false, "scenes": 6 },
+    { "width": 768, "scroll_width": 768, "overflow": false, "enhanced": true, "scenes": 6 },
+    { "width": 1024, "scroll_width": 1024, "overflow": false, "enhanced": true, "scenes": 6 },
+    { "width": 1440, "scroll_width": 1440, "overflow": false, "enhanced": true, "scenes": 6 }
+  ],
+  "mobile_390": {
+    "picture_source_elements": 12,
+    "heart_color": "rgb(60, 42, 18)",
+    "signature_strong_color": "rgb(60, 42, 18)",
+    "same_color": true
+  },
+  "desktop_1440": {
+    "heart_color": "rgb(18, 12, 6)",
+    "signature_strong_color": "rgb(18, 12, 6)",
+    "same_color": true
+  }
+}

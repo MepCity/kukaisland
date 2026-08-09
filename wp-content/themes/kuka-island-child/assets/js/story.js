@@ -10,6 +10,7 @@
   const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const desktop = window.matchMedia("(min-width: 48em)");
   let observer = null;
+  let requestedMediaIndex = 0;
 
   const hydrate = (root) => {
     root.querySelectorAll("[data-story-src]").forEach((image) => {
@@ -22,10 +23,30 @@
     });
   };
 
+  const activateMedia = (index) => {
+    const item = media[index];
+    if (!item) return;
+    requestedMediaIndex = index;
+    hydrate(item);
+    const image = item.querySelector("img");
+    const reveal = () => {
+      if (requestedMediaIndex !== index) return;
+      media.forEach((mediaItem, mediaIndex) => mediaItem.classList.toggle("is-active", mediaIndex === index));
+    };
+    if (index === 0 || (image?.complete && image.naturalWidth > 0)) {
+      reveal();
+      return;
+    }
+    image?.addEventListener("load", reveal, { once: true });
+  };
+
   const activate = (index) => {
     scenes.forEach((scene, sceneIndex) => scene.classList.toggle("is-active", sceneIndex === index));
-    media.forEach((item, mediaIndex) => item.classList.toggle("is-active", mediaIndex === index));
-    if (media[index]) hydrate(media[index]);
+    activateMedia(index);
+    // Do not add a second image to the opening request set. Once the visitor
+    // starts moving through the story, warm the next scene so the original
+    // horizon image is ready before the closing copy takes over.
+    if (index > 0 && media[index + 1]) hydrate(media[index + 1]);
   };
 
   const stop = () => {

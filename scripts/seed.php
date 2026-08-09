@@ -282,10 +282,53 @@ $media_specs = array(
 	'cobalt-set.jpg' => 'Kobalt kombin görünümü',
 	'hero-aegean-black.jpg' => 'Ege kıyısında siyah mayo yatay görünüm',
 	'hero-aegean-black-mobile.jpg' => 'Ege kıyısında siyah mayo dikey görünüm',
+	'story-01-desktop.jpg' => 'Sakin deniz ve gün doğumu ufku, yatay kadraj',
+	'story-01-mobile.jpg' => 'Sakin deniz ve gün doğumu ufku, dikey kadraj',
+	'story-02-desktop.jpg' => 'Sabah ışığında boş kumsal, yatay kadraj',
+	'story-02-mobile.jpg' => 'Sabah ışığında boş kumsal, dikey kadraj',
+	'story-03-desktop.jpg' => 'Nötr beton yüzey dokusu, yatay kadraj',
+	'story-03-mobile.jpg' => 'Nötr beton yüzey dokusu, dikey kadraj',
+	'story-04-desktop.jpg' => 'Su yüzeyinde güneş parıltısı, yatay kadraj',
+	'story-04-mobile.jpg' => 'Su yüzeyinde güneş parıltısı, dikey kadraj',
+	'story-05-desktop.jpg' => 'Güneşte kum ve mercan gölgeleri, yatay kadraj',
+	'story-05-mobile.jpg' => 'Güneşte kum ve mercan gölgeleri, dikey kadraj',
+	'story-06-desktop.jpg' => 'Geniş gökyüzü ve açık deniz ufku, yatay kadraj',
+	'story-06-mobile.jpg' => 'Geniş gökyüzü ve açık deniz ufku, dikey kadraj',
 );
 $media = array();
 foreach ( $media_specs as $file => $alt ) {
 	$media[ $file ] = kuka_seed_media( $file, $alt );
+}
+
+if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
+	$site_content = Kuka_Island_Core_Site_Appearance::get();
+	$story_art = array(
+		array( 'zoom-out', 'left-bottom', 'medium' ),
+		array( 'crossfade-left', 'left-center', 'strong' ),
+		array( 'fade-center', 'center', 'medium' ),
+		array( 'line-sequence', 'left-center', 'strong' ),
+		array( 'grow-right', 'right-center', 'strong' ),
+		array( 'gather', 'center', 'medium' ),
+	);
+	foreach ( $site_content['story']['scenes'] as $index => &$scene ) {
+		if ( ! isset( $story_art[ $index ] ) ) { continue; }
+		$desktop = $media[ sprintf( 'story-%02d-desktop.jpg', $index + 1 ) ];
+		$mobile  = $media[ sprintf( 'story-%02d-mobile.jpg', $index + 1 ) ];
+		$scene['desktop_image_id']    = $desktop;
+		$scene['desktop_image_id_en'] = $desktop;
+		$scene['mobile_image_id']     = $mobile;
+		$scene['mobile_image_id_en']  = $mobile;
+		$scene['transition_type']     = $story_art[ $index ][0];
+		$scene['text_position']       = $story_art[ $index ][1];
+		$scene['gradient_intensity']  = $story_art[ $index ][2];
+		if ( 2 === $index ) {
+			$scene['text_tone']    = 'dark';
+			$scene['text_tone_en'] = 'dark';
+		}
+	}
+	unset( $scene );
+	$site_content['schema_version'] = 7;
+	update_option( Kuka_Island_Core_Site_Appearance::OPTION_NAME, $site_content, false );
 }
 
 $common_meta = array(
