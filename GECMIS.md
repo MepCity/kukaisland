@@ -379,6 +379,8 @@ docs/qa/                       ekran görüntüleri
 | 4C | Hero fotoğrafını koruyan panel perdesi, kısa manifesto, yeniden tasarlanan PDF-eş Hakkımızda, dengeli footer ve onay kanıtlı JS'siz bülten kaydı |
 | 5B | Eklentisiz `/en/` katmanı, 42 panel alan çifti, aynı kayıtta ürün/sayfa/terim EN metaları, SEO hreflang ve sipariş locale'i |
 | 5C | Perdesiz hero ve fotoğraftan bağımsız beyaz/koyu header durumları, panel kontrollü kargo kupon tabanı, yasal dışı İngilizce ilk geçiş, header ölçekli footer kilidi, erişilebilir bülten formu ve tek kaynaklı footer WhatsApp satırı |
+| 5D | İki dilde alt tabana bağlı hero, uzun başlık tokenı, yedi genişlikte satır bazlı render kontrastı ve panel uzunluk/ton rehberi |
+| 5E | Merkezî `/en/` public URL sürekliliği, dile bağlı cart fragments/AJAX, çevrilmeyen alan sınıfı ve Türkçe/İngilizce yedi adımlı ticaret E2E'si |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
 
 ---

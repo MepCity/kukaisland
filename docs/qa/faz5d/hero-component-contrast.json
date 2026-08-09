@@ -1,0 +1,464 @@
+[
+  {
+    "width": 320,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        212,
+        207,
+        201
+      ],
+      "contrast": 12.55
+    },
+    "copy": {
+      "rgb": [
+        172,
+        170,
+        167
+      ],
+      "contrast": 8.38
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 320,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        214,
+        209,
+        201
+      ],
+      "contrast": 12.79
+    },
+    "copy": {
+      "rgb": [
+        141,
+        140,
+        139
+      ],
+      "contrast": 5.79
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 390,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        206,
+        201,
+        195
+      ],
+      "contrast": 11.81
+    },
+    "copy": {
+      "rgb": [
+        169,
+        168,
+        165
+      ],
+      "contrast": 8.17
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 390,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        198,
+        192,
+        185
+      ],
+      "contrast": 10.77
+    },
+    "copy": {
+      "rgb": [
+        141,
+        140,
+        139
+      ],
+      "contrast": 5.79
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 768,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        235,
+        230,
+        224
+      ],
+      "contrast": 15.66
+    },
+    "copy": {
+      "rgb": [
+        233,
+        228,
+        223
+      ],
+      "contrast": 15.38
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 768,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        234,
+        229,
+        224
+      ],
+      "contrast": 15.53
+    },
+    "copy": {
+      "rgb": [
+        233,
+        228,
+        223
+      ],
+      "contrast": 15.38
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1024,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        235,
+        230,
+        224
+      ],
+      "contrast": 15.66
+    },
+    "copy": {
+      "rgb": [
+        231,
+        226,
+        222
+      ],
+      "contrast": 15.11
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1024,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        231,
+        225,
+        219
+      ],
+      "contrast": 14.98
+    },
+    "copy": {
+      "rgb": [
+        226,
+        220,
+        214
+      ],
+      "contrast": 14.29
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1280,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        232,
+        226,
+        221
+      ],
+      "contrast": 15.13
+    },
+    "copy": {
+      "rgb": [
+        221,
+        214,
+        208
+      ],
+      "contrast": 13.51
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1280,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        235,
+        230,
+        226
+      ],
+      "contrast": 15.68
+    },
+    "copy": {
+      "rgb": [
+        227,
+        221,
+        216
+      ],
+      "contrast": 14.43
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1440,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        237,
+        232,
+        227
+      ],
+      "contrast": 15.96
+    },
+    "copy": {
+      "rgb": [
+        228,
+        222,
+        217
+      ],
+      "contrast": 14.57
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1440,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        232,
+        226,
+        222
+      ],
+      "contrast": 15.14
+    },
+    "copy": {
+      "rgb": [
+        219,
+        213,
+        207
+      ],
+      "contrast": 13.35
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1920,
+    "language": "tr",
+    "eyebrow": {
+      "rgb": [
+        235,
+        230,
+        226
+      ],
+      "contrast": 15.68
+    },
+    "copy": {
+      "rgb": [
+        222,
+        216,
+        211
+      ],
+      "contrast": 13.76
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  },
+  {
+    "width": 1920,
+    "language": "en",
+    "eyebrow": {
+      "rgb": [
+        239,
+        234,
+        230
+      ],
+      "contrast": 16.27
+    },
+    "copy": {
+      "rgb": [
+        223,
+        217,
+        212
+      ],
+      "contrast": 13.89
+    },
+    "button": {
+      "foreground": [
+        255,
+        253,
+        248
+      ],
+      "background": [
+        60,
+        42,
+        18
+      ],
+      "contrast": 13.48
+    }
+  }
+]
