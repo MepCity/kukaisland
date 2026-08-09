@@ -123,7 +123,7 @@ final class Kuka_Island_Core_Newsletter {
 	}
 
 	public function admin_menu(): void {
-		add_submenu_page( 'woocommerce', __( 'Bülten Kayıtları', 'kuka-island-core' ), __( 'Bülten Kayıtları', 'kuka-island-core' ), 'manage_woocommerce', 'kuka-newsletter', array( $this, 'admin_page' ) );
+		add_submenu_page( 'kuka-island', __( 'Bülten Kayıtları', 'kuka-island-core' ), __( 'Bülten Kayıtları', 'kuka-island-core' ), 'manage_woocommerce', 'kuka-newsletter', array( $this, 'admin_page' ) );
 	}
 
 	public function admin_page(): void {
