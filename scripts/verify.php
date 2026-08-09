@@ -142,7 +142,23 @@ foreach ( Kuka_Island_Core_Language::translation_fields() as $group => $fields )
 		$appearance_english_values += is_array( $value ) ? ( array_filter( $value, 'strlen' ) ? 1 : 0 ) : ( '' !== trim( (string) $value ) ? 1 : 0 );
 	}
 }
-WP_CLI::line( 'SITE_APPEARANCE_EN_VALUES=' . $appearance_english_values . '/42' );
+WP_CLI::line( 'SITE_APPEARANCE_EN_VALUES=' . $appearance_english_values . '/' . Kuka_Island_Core_Language::translation_field_count() );
+$translation_keys = array();
+foreach ( Kuka_Island_Core_Language::translation_fields() as $group => $fields ) {
+	$translation_keys[ $group ] = array_column( $fields, 'key' );
+}
+$unexpected_twins = array();
+foreach ( $site_content as $group => $values ) {
+	if ( ! is_array( $values ) ) { continue; }
+	foreach ( array_keys( $values ) as $key ) {
+		if ( str_ends_with( (string) $key, '_en' ) && ! in_array( $key, $translation_keys[ $group ] ?? array(), true ) ) {
+			$unexpected_twins[] = $group . '.' . $key;
+		}
+	}
+}
+WP_CLI::line( 'LANGUAGE_ITEMS=' . str_replace( "\n", '|', (string) ( $site_content['languages']['items'] ?? '' ) ) );
+WP_CLI::line( 'LANGUAGE_ITEMS_EN=' . ( array_key_exists( 'items_en', $site_content['languages'] ?? array() ) ? 'present' : 'absent' ) );
+WP_CLI::line( 'NONTRANSLATABLE_TWINS=' . ( $unexpected_twins ? implode( ',', $unexpected_twins ) : '0' ) );
 $product_english_values = 0;
 foreach ( wc_get_products( array( 'type' => 'variable', 'limit' => -1, 'return' => 'ids' ) ) as $product_id ) {
 	foreach ( array( '_kuka_name_en', '_kuka_description_en', '_kuka_short_description_en', '_kuka_material_en', '_kuka_care_en', '_kuka_fit_en', '_kuka_model_info_en', '_kuka_seo_title_en', '_kuka_meta_description_en' ) as $key ) {
@@ -244,6 +260,17 @@ $_SERVER['REQUEST_URI'] = '/en/odeme/';
 $language->save_order_locale( $locale_order );
 if ( null === $request_uri ) { unset( $_SERVER['REQUEST_URI'] ); } else { $_SERVER['REQUEST_URI'] = $request_uri; }
 WP_CLI::line( 'ORDER_LOCALE_META=' . $locale_order->get_meta( '_kuka_order_locale', true ) );
+$request_uri = $_SERVER['REQUEST_URI'] ?? null;
+$_SERVER['REQUEST_URI'] = '/en/odeme/';
+$public_urls = array( wc_get_cart_url(), wc_get_checkout_url() );
+$first_product_id = wc_get_products( array( 'limit' => 1, 'return' => 'ids' ) )[0] ?? 0;
+if ( $first_product_id ) { $public_urls[] = get_permalink( $first_product_id ); }
+$received_url = apply_filters( 'woocommerce_get_checkout_order_received_url', home_url( '/odeme/order-received/123/?key=wc_order_test' ), new WC_Order() );
+$iyzico_url = apply_filters( 'woocommerce_get_return_url', home_url( '/odeme/order-received/123/?key=wc_order_test' ), new WC_Order() );
+if ( null === $request_uri ) { unset( $_SERVER['REQUEST_URI'] ); } else { $_SERVER['REQUEST_URI'] = $request_uri; }
+WP_CLI::line( 'ENGLISH_PUBLIC_URLS=' . ( count( array_filter( $public_urls, static fn( string $url ): bool => str_starts_with( $url, home_url( '/en/' ) ) ) ) === count( $public_urls ) ? 'prefixed' : 'failed' ) );
+WP_CLI::line( 'ORDER_RECEIVED_LANGUAGE=' . ( str_contains( $received_url, '/en/odeme/order-received/' ) ? 'preserved' : 'failed' ) );
+WP_CLI::line( 'IYZICO_RETURN_LANGUAGE=' . ( str_contains( $iyzico_url, '/en/odeme/order-received/' ) ? 'preserved' : 'failed' ) );
 $email = WC()->mailer()->get_emails()['WC_Email_Customer_Processing_Order'];
 $email->object = $locale_order;
 $before_email_locale = get_locale();

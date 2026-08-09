@@ -17,7 +17,6 @@ final class Kuka_Island_Core_Language {
 	/** @return array<string, array<string, array{key:string,mode:string}>> */
 	public static function translation_fields(): array {
 		return array(
-			'brand' => array( 'social_links' => array( 'key' => 'social_links_labels_en', 'mode' => 'labels' ) ),
 			'announcement' => array(
 				'items' => array( 'key' => 'items_en', 'mode' => 'copy' ),
 				'link_labels' => array( 'key' => 'link_labels_en', 'mode' => 'copy' ),
@@ -62,7 +61,6 @@ final class Kuka_Island_Core_Language {
 	/** First-pass English copy supplied for every non-legal Site Appearance field. */
 	public static function translation_defaults(): array {
 		return array(
-			'brand' => array( 'social_links_labels_en' => 'Instagram' ),
 			'announcement' => array(
 				'items_en' => array( 'Free shipping on orders over ₺4,000' ),
 				'link_labels_en' => array( 'Learn more' ),
@@ -121,6 +119,9 @@ final class Kuka_Island_Core_Language {
 
 	/** Add the reviewed first-pass English defaults to the field contract. */
 	public static function with_translation_defaults( array $content ): array {
+		// Teknik, sayısal, medya, şirket ve marka alanları tek kaynaktır. Faz 5B
+		// öncesinden kalan yanlış ikizler vitrinde ya da panelde yeniden belirmesin.
+		unset( $content['languages']['items_en'], $content['brand']['social_links_labels_en'] );
 		$defaults = self::translation_defaults();
 		foreach ( self::translation_fields() as $group => $fields ) {
 			foreach ( $fields as $config ) {
@@ -175,6 +176,11 @@ final class Kuka_Island_Core_Language {
 		add_filter( 'determine_locale', array( $this, 'request_locale' ), 1 );
 		add_action( 'wp', array( $this, 'switch_runtime_locale' ), 1 );
 		add_filter( 'home_url', array( $this, 'filter_home_url' ), 20, 4 );
+		foreach ( array( 'post_link', 'page_link', 'post_type_link', 'term_link', 'paginate_links', 'woocommerce_get_cart_url', 'woocommerce_get_checkout_url', 'woocommerce_get_myaccount_page_permalink', 'woocommerce_get_checkout_order_received_url', 'woocommerce_get_return_url' ) as $url_filter ) {
+			add_filter( $url_filter, array( $this, 'filter_public_url' ), 20 );
+		}
+		add_filter( 'wp_redirect', array( $this, 'filter_public_redirect' ), 20, 2 );
+		add_action( 'wp', array( $this, 'remember_storefront_language' ), 2 );
 		add_action( 'wp_head', array( $this, 'language_metadata' ), 0 );
 		add_filter( 'wp_sitemaps_enabled', '__return_true' );
 		add_action( 'init', array( $this, 'register_sitemap_provider' ), 20 );
@@ -306,8 +312,11 @@ final class Kuka_Island_Core_Language {
 		$path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ), PHP_URL_PATH );
 		if ( (bool) preg_match( '#^/en(?:/|$)#', $path ) ) { return true; }
 		if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || isset( $_GET['wc-ajax'] ) ) {
+			$requested = sanitize_key( (string) wp_unslash( $_REQUEST['kuka_lang'] ?? '' ) );
+			if ( in_array( $requested, array( 'tr', 'en' ), true ) ) { return 'en' === $requested; }
 			$referer_path = (string) wp_parse_url( wp_unslash( $_SERVER['HTTP_REFERER'] ?? '' ), PHP_URL_PATH );
-			return (bool) preg_match( '#^/en(?:/|$)#', $referer_path );
+			if ( '' !== $referer_path ) { return (bool) preg_match( '#^/en(?:/|$)#', $referer_path ); }
+			if ( function_exists( 'WC' ) && WC()->session ) { return 'en' === WC()->session->get( 'kuka_storefront_language', 'tr' ); }
 		}
 		return false;
 	}
@@ -342,12 +351,39 @@ final class Kuka_Island_Core_Language {
 		}
 	}
 
+	/** Persist the last normal storefront language in WooCommerce's guest session. */
+	public function remember_storefront_language(): void {
+		if ( is_admin() || ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ! function_exists( 'WC' ) || ! WC()->session ) { return; }
+		WC()->session->set( 'kuka_storefront_language', self::is_english_request() ? 'en' : 'tr' );
+	}
+
 	/** Prefix ordinary storefront home URLs on an English request. */
 	public function filter_home_url( string $url, string $path, ?string $scheme, ?int $blog_id ): string {
 		unset( $scheme, $blog_id );
 		if ( ! self::is_english_context() || str_starts_with( ltrim( $path, '/' ), 'en/' ) ) { return $url; }
-		if ( preg_match( '#^(wp-admin|wp-login\.php|wp-json)(?:/|$)#', ltrim( $path, '/' ) ) ) { return $url; }
+		if ( self::is_technical_url( $url ) ) { return $url; }
 		return self::url_for_language( $url, 'en' );
+	}
+
+	/** Prefix every internal public permalink generated outside home_url(). */
+	public function filter_public_url( mixed $url ): mixed {
+		if ( ! is_string( $url ) || ! self::is_english_context() || self::is_technical_url( $url ) ) { return $url; }
+		return self::url_for_language( $url, 'en' );
+	}
+
+	/** Keep public English redirects in-language without touching technical endpoints. */
+	public function filter_public_redirect( string $location, int $status ): string {
+		unset( $status );
+		return (string) $this->filter_public_url( $location );
+	}
+
+	private static function is_technical_url( string $url ): bool {
+		$home = untrailingslashit( (string) get_option( 'home' ) );
+		if ( ! str_starts_with( $url, $home ) ) { return true; }
+		$path = ltrim( (string) wp_parse_url( $url, PHP_URL_PATH ), '/' );
+		if ( preg_match( '#^(?:en/)?(?:wp-admin|wp-login\.php|wp-json)(?:/|$)#', $path ) ) { return true; }
+		parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $query );
+		return isset( $query['wc-ajax'] ) || str_contains( $path, 'admin-ajax.php' );
 	}
 
 	public static function url_for_language( string $url, string $language ): string {
