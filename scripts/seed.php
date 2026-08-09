@@ -209,7 +209,16 @@ update_option( 'woocommerce_price_decimal_sep', ',' );
 update_option( 'woocommerce_default_country', 'TR' );
 update_option( 'woocommerce_calc_taxes', 'no' );
 update_option( 'woocommerce_enable_guest_checkout', 'yes' );
-update_option( 'woocommerce_coming_soon', 'no' );
+// Gerçek lansman onayına kadar iki ayrı koruma birlikte kalır: WooCommerce
+// yakında ekranı ziyaretçiyi mağazadan uzak tutar, WordPress noindex işareti
+// arama motorlarının içeriği dizine eklememesini ister.
+update_option( 'woocommerce_coming_soon', 'yes' );
+update_option( 'woocommerce_store_pages_only', 'no' );
+update_option( 'blog_public', '0' );
+update_option( 'woocommerce_private_link', 'yes' );
+if ( ! get_option( 'woocommerce_share_key' ) ) {
+	update_option( 'woocommerce_share_key', wp_generate_password( 32, false ), false );
+}
 update_option( 'woocommerce_enable_signup_and_login_from_checkout', 'no' );
 update_option( 'woocommerce_checkout_privacy_policy_text', 'Kişisel verileriniz siparişinizi işlemek, site deneyiminizi desteklemek ve [privacy_policy] sayfamızda açıklanan diğer amaçlar için kullanılacaktır.' );
 update_option( 'woocommerce_custom_orders_table_enabled', 'yes' );
