@@ -40,6 +40,11 @@ function kuka_island_cart_fragment_name( $params, string $handle ) {
 	$language                = function_exists( 'kuka_island_locale' ) ? kuka_island_locale() : 'tr';
 	$signature               = kuka_island_child_asset_version( 'inc/storefront-panels.php' ) . '-' . kuka_island_child_asset_version( 'assets/js/cart.js' ) . '-' . $language;
 	$params['fragment_name'] = 'wc_fragments_kuka_' . substr( md5( $signature ), 0, 12 );
+	// Fragment HTML'i dile göre ayrıyken ortak hash anahtarı kullanmak, diğer
+	// dildeki eski boş fragment'in yeni sepet hash'iyle geçerli sanılmasına yol
+	// açar. Hash'i de aynı dil sınırına al; cookie hash'i ortak kaldığı için dil
+	// değişiminde eski cache uyuşmaz ve WooCommerce sunucudan doğru sepeti çeker.
+	$params['cart_hash_key'] = (string) ( $params['cart_hash_key'] ?? 'wc_cart_hash' ) . '_' . $language;
 	if ( 'en' === $language ) {
 		$params['wc_ajax_url'] = (string) ( $params['wc_ajax_url'] ?? '' ) . '&kuka_lang=en';
 	}

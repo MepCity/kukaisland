@@ -14,7 +14,9 @@ Sipariş alındı URL'i ve iyzico'nun kullandığı WooCommerce dönüş filtres
 
 ## Cart fragments ve AJAX
 
-Fragment imzası panel/script mtime değerlerine ek olarak `tr` veya `en` içeriyor; iki dil aynı sessionStorage anahtarını paylaşmıyor. İngilizce `wc_ajax_url`, `%%endpoint%%` yer tutucusunu bozmadan `kuka_lang=en` parametresi taşır. Dil çözüm sırası açık istek parametresi, Referer ve mevcutsa WooCommerce oturumudur. Referer verilmeden yapılan `get_refreshed_fragments&kuka_lang=en` isteği İngilizce “Return to shop” ve `/en/magaza/` döndürdü.
+Fragment imzası panel/script mtime değerlerine ek olarak `tr` veya `en` içeriyor; iki dil aynı sessionStorage fragment anahtarını paylaşmıyor. Sepet hash anahtarı da dile göre ayrıldı. Aksi hâlde İngilizce sepete ekleme ortak hash'i güncellerken Türkçe taraftaki eski “boş sepet” fragment'i yeni hash ile geçerli sanılıyordu. Cookie hash'i ortak kaldığı için dil değişiminde eski dil cache'i artık uyuşmuyor ve WooCommerce doğru sepeti sunucudan yeniliyor.
+
+İngilizce `wc_ajax_url`, `%%endpoint%%` yer tutucusunu bozmadan `kuka_lang=en` parametresi taşır. Dil çözüm sırası açık istek parametresi, Referer ve mevcutsa WooCommerce oturumudur. Referer verilmeden yapılan `get_refreshed_fragments&kuka_lang=en` isteği İngilizce “Return to shop” ve `/en/magaza/` döndürdü. Gerçek tarayıcı testinde Türkçe boş sepet cache'i oluşturuldu, İngilizce vitrinde ürün eklendi ve seçiciden Türkçeye dönüldü: sayaç `1`, sepet satırı `1`, boş durum `false`. [Türkçe sepet çekmecesi](qa/faz5e/cart-language-switch-tr.png).
 
 ## Dil adları ve çevrilmeyen alanlar
 
@@ -42,8 +44,7 @@ Filtre çekmeceleri de ayrı kaydedildi: [TR](qa/faz5e/surface-tr-filter.png), [
 
 - Public İngilizce URL sürekliliği ve sayfa bazlı link taraması: geçti.
 - Sipariş alındı / iyzico dönüş yolu: İngilizce bağlam korundu.
-- Dil bağımlı fragment anahtarı ve Referer olmayan AJAX: geçti.
+- Dil bağımlı fragment/hash anahtarı, Referer olmayan AJAX ve EN → TR sepet geçişi: geçti.
 - `languages.items_en`: yok; beklenmeyen çeviri ikizi: `0`.
 - Türkçe ve İngilizce ticaret akışı: yedişer görüntüyle doğrulandı.
 - Token disiplini, gölge ve vendor değişikliği: `0`.
-

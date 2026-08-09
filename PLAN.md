@@ -1584,6 +1584,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-09 | Dile göre ayrılan WooCommerce fragment HTML'iyle birlikte `cart_hash_key` de dile göre ayrılır; WooCommerce session cookie ve gerçek sepet ortak kalır | İngilizce sepete ekleme sonrası Türkçe taraftaki eski boş fragment'in ortak yeni hash ile yanlışlıkla geçerli sayılmasını önlemek |
 | 2026-08-09 | Faz 5E'de tüm public İngilizce permalink, WooCommerce URL ve yönlendirmeleri tek `/en/` dönüştürücüsünden geçer; teknik admin/REST/AJAX uçları ön eksiz kalır. Cart fragments anahtarı ve AJAX dil parametresi dile bağlıdır | İngilizce ürün → sepet → ödeme → sipariş alındı zincirinin Türkçe URL veya fragment içeriğine düşmesini önlemek |
 | 2026-08-09 | Dil adları, marka adları, URL/sayı/medya/renk/telefon/şirket alanları çevrilmeyen tek-kaynak sınıfıdır; seçici her iki vitrinde `Türkçe / English` gösterir | Teknik ve marka değerlerinde gereksiz `_en` ikizlerinin ayrışmasını önlemek; her dilin adını kendi dilinde korumak |
 | 2026-08-09 | Faz 5D hero içeriği alt tabana bağlıdır; uzun başlık ayrı tokenla küçülür ve iki dil her görsel kabulde birlikte ölçülür | İngilizce metnin Türkçeden uzun olması nedeniyle tek dildeki kontrast ve yerleşim sonucunu diğer dile genellememek |
