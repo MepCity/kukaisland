@@ -27,7 +27,19 @@ jobs:
         run: |
           mkdir -p seed-media
           pixel='/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q=='
-          for name in noir-asymmetric-top noir-asymmetric-top-detail cobalt-asymmetric-top cobalt-asymmetric-top-detail noir-one-piece noir-one-piece-detail azur-bikini-bottom azur-bikini-bottom-detail azur-bralet-top azur-bralet-top-detail cobalt-set hero-aegean-black hero-aegean-black-mobile; do
+          for name in \
+            noir-asymmetric-top noir-asymmetric-top-detail \
+            cobalt-asymmetric-top cobalt-asymmetric-top-detail \
+            noir-one-piece noir-one-piece-detail \
+            azur-bikini-bottom azur-bikini-bottom-detail \
+            azur-bralet-top azur-bralet-top-detail \
+            cobalt-set hero-aegean-black hero-aegean-black-mobile \
+            story-01-desktop story-01-mobile \
+            story-02-desktop story-02-mobile \
+            story-03-desktop story-03-mobile \
+            story-04-desktop story-04-mobile \
+            story-05-desktop story-05-mobile \
+            story-06-desktop story-06-mobile; do
             printf '%s' "$pixel" | base64 --decode > "seed-media/$name.jpg"
           done
       - name: Install clean production stack

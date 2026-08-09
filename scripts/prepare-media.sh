@@ -7,6 +7,15 @@ source_dir="$prototype_dir/public/images/demo"
 target_dir="$project_dir/seed-media"
 
 prepare_story_media() {
+	story_media_missing=0
+	for number in 01 02 03 04 05 06; do
+		if [ ! -f "$target_dir/story-$number-desktop.jpg" ] || [ ! -f "$target_dir/story-$number-mobile.jpg" ]; then
+			story_media_missing=1
+			break
+		fi
+	done
+	[ "$story_media_missing" -eq 0 ] && return 0
+
 	story_tmp=$(mktemp -d "${TMPDIR:-/tmp}/kuka-story-6b.XXXXXX")
 	trap 'rm -rf "$story_tmp"' EXIT HUP INT TERM
 
