@@ -81,6 +81,6 @@ Kanıtlar: [varsayılan](qa/faz5c/footer-newsletter-whatsapp-desktop.png), [tele
 | 17–22 | Karşılandı | İngilizce tarama, ürün/sayfa seed sayıları ve F bölümündeki render kanıtları |
 | 23 | Karşılandı | İki eski tasarım + güncel header ölçekli footer |
 | 24 | Karşılandı | Token kapıları 0; yedi genişlikte ölçülen yatay taşma 0 |
-| 25 | Yerel kapılar karşılandı; CI sonucu push sonrası izlenecek | İki temiz `make reset && make verify`: `VERIFY=PASS`, smoke `5/5` |
+| 25 | Karşılandı | İki temiz `make reset && make verify`: `VERIFY=PASS`, smoke `5/5`; GitHub Quality `31288968579` başarılı |
 | 26–35 | Karşılandı | I bölümündeki ölçüm, native POST ve altı render kanıtı |
 | 36–39 | Karşılandı | J bölümündeki varsayılan/boş/değişen tek kaynak kanıtları |
