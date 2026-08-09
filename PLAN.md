@@ -908,6 +908,16 @@ Basit form alanları ACF ile veya WordPress Settings/Meta API kullanılarak Kuka
 
 Bu yüzden özel form alanları yalnızca müşterinin gerçekten sık dokunacağı 3–4 alanda kullanılır (hero, kampanya blokları, kategori kutucukları). Geri kalan yerde kilitli blok desenleri tercih edilir; bu yaklaşım üçüncü taraf bağımlılığını azaltır fakat bakım ihtiyacını sıfırlamaz.
 
+### 15.5 Faz 7 operatör sözleşmesi
+
+Site Görünümü ölçümü **13 sekme, 105 görünen satır ve 146 saklanan kontrol**dür; 41 kontrol aynı satırdaki `(EN)` karşılığıdır. Sekmeler WordPress `nav-tab-wrapper` desenini kullanır, aktif sekme URL'de kalır, alan araması bütün sekmeleri filtreler ve yapışkan kaydet çubuğu kayıttan sonra aynı sekmeye döner.
+
+Ürün, sayfa ve kategori/nitelik terimlerinde Türkçe kaynak ile `(EN)` karşılığı aynı ekrandadır. Eski ayrı “English product/page content” kutuları yoktur. Ürün yayın kontrol listesi bilgilendiricidir ve yayınlamayı engellemez.
+
+Palmiye ikonlu `Kuka Island` menüsünde Başlangıç, Site Görünümü, Yönetim Haritası ve Bülten Kayıtları bulunur. Başlangıç mağaza/noindex durumunu ve eyleme bağlı tutarlılık uyarılarını gösterir; Yönetim Haritası görevden doğrudan doğru WordPress/WooCommerce ekranına götürür.
+
+Gerçek lansman onayına kadar `woocommerce_coming_soon=yes` ve `blog_public=0` birlikte korunur. Otomatik storefront testi WooCommerce'in gizli özel önizleme anahtarını yerel olarak okur; anahtar yazdırılmaz veya depoya girmez.
+
 ---
 
 ## 16. Teknik mimari
@@ -1584,6 +1594,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-09 | Faz 7 paneli görev odaklı Başlangıç/Yönetim Haritası, 13 sekmeli ve aranabilir Site Görünümü, yan yana TR/EN düzenleyiciler ve engellemeyen ürün kontrol listesi kullanır; yakında + noindex korunur | Bakım anlaşması olmayan, teknik seviyesi düşük mağaza sahibinin ekran aramadan doğru yazma kaynağına ulaşması ve kabul sırasında mağazanın/indeksin açılmaması |
 | 2026-08-09 | Faz 6A marka hikâyesi altı sahneli, panel kontrollü ve `IntersectionObserver` tabanlı kaydırma anlatısına dönüştü; `48em` altı, JS kapalı ve `prefers-reduced-motion: reduce` durumları aynı sunucu DOM'undan düz makale gösterir | Kaydırmayı ele geçirmeden editoryal anlatı sağlamak; mobil adres çubuğu/`100svh` kırılganlığını, hareket hassasiyetini ve JS bağımlılığını içerikten ayırmak |
 | 2026-08-09 | Dile göre ayrılan WooCommerce fragment HTML'iyle birlikte `cart_hash_key` de dile göre ayrılır; WooCommerce session cookie ve gerçek sepet ortak kalır | İngilizce sepete ekleme sonrası Türkçe taraftaki eski boş fragment'in ortak yeni hash ile yanlışlıkla geçerli sayılmasını önlemek |
 | 2026-08-09 | Faz 5E'de tüm public İngilizce permalink, WooCommerce URL ve yönlendirmeleri tek `/en/` dönüştürücüsünden geçer; teknik admin/REST/AJAX uçları ön eksiz kalır. Cart fragments anahtarı ve AJAX dil parametresi dile bağlıdır | İngilizce ürün → sepet → ödeme → sipariş alındı zincirinin Türkçe URL veya fragment içeriğine düşmesini önlemek |

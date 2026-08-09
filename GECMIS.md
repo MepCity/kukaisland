@@ -220,7 +220,26 @@ Müşteri bandı uygulayacağını Ağustos 2026'da bildirdi; metin kesinleştir
 
 ---
 
-## 8. Rapor güvenilirliği — projenin en pahalı dersi
+## 8. Faz 7 — paneli müşterinin zihnine göre kurmak
+
+Site Görünümü büyürken panel 13 grup ve 146 saklanan kontrole ulaştı. Teknik olarak her alan vardı ama operatör 105 satırlık tek bir kaydırma duvarında doğru alanı bulmak zorundaydı. Ürün ve sayfa İngilizceleri ayrı, İngilizce başlıklı kutulardaydı; bülten kayıtları da Kuka Island yerine WooCommerce altında kalmıştı.
+
+Faz 7'de ölçüt “alan var mı?” değil, **“mağaza sahibi nereye gideceğini biliyor mu?”** oldu:
+
+- Site Görünümü 13 numaralı sekmeye ayrıldı; URL aktif sekmeyi, kayıt aynı sekmeyi koruyor. Tüm sekmeleri tarayan alan araması ve yapışkan kaydet çubuğu eklendi.
+- Ürün, sayfa ve taksonomide Türkçe kaynak ile `(EN)` aynı ekrana alındı; eski ayrı English kutuları kaldırıldı.
+- Başlangıç ekranı mağaza/noindex durumu, ürün özeti, görev kartları ve eyleme bağlı 12 tutarlılık denetimi gösteriyor.
+- Yönetim Haritası “ne yapmak istiyorum?” sorusundan doğru WordPress/WooCommerce ekranına doğrudan gidiyor.
+- Ürün yayın kontrol listesi eksikleri sayıyor ama yayını engellemiyor; bakım anlaşmasız işletmede görünür yardım kapı bekçiliğinden daha güvenli.
+- Bülten Kayıtları palmiye ikonlu Kuka Island menüsüne taşındı.
+
+Ek müşteri geri bildiriminde hero başlığı Türkçe ve İngilizcede cümle + `Est. 2026` olarak iki görsel satıra ayrıldı; geniş ekranda cümle bölünmüyor. Aynı turda yerel seed'in mağazayı yanlışlıkla canlı ve indekslenebilir yaptığı ölçüldü. Seed ve aktif yerel ayar **Çok yakında + noindex** durumuna alındı; smoke testi yalnız gizli WooCommerce önizleme anahtarıyla çalışıyor.
+
+Alanların tamamı, yazma kaynakları, çakışmalar ve bilinçli kilitler `docs/PANEL_HARITASI.md` içinde kayıtlıdır.
+
+---
+
+## 9. Rapor güvenilirliği — projenin en pahalı dersi
 
 Alt ajanlar defalarca "karşılandı" dedi, ekran görüntüsü alınınca olmadığı görüldü.
 
@@ -261,7 +280,7 @@ Ajan "puppeteer yok" diyerek görsel doğrulamayı atlamıştı. Oysa macOS'ta C
 
 ---
 
-## 9. Güvenlik olayları
+## 10. Güvenlik olayları
 
 **Şifre commit'lendi.** `docs/FAZ3D_TEKNIK_RAPORU.md:9` içinde yönetici şifresi GitHub'a gitti. HEAD'den kaldırıldı; yerel geliştirme şifresi olduğu için geçmiş bilinçli olarak yeniden yazılmadı. Şifre daha sonra döndürüldü.
 
@@ -271,7 +290,7 @@ Ajan "puppeteer yok" diyerek görsel doğrulamayı atlamıştı. Oysa macOS'ta C
 
 ---
 
-## 10. Hosting ve deploy serüveni
+## 11. Hosting ve deploy serüveni
 
 ### Hosting seçimi
 
@@ -322,7 +341,7 @@ Ekranda: palmiye SVG'si, **KUKA / ISLAND**, `by Kübra Gültekin`, `ÇOK YAKINDA
 
 ---
 
-## 11. Çalışma kuralları
+## 12. Çalışma kuralları
 
 ### Commit (§16.2.1)
 
@@ -360,7 +379,7 @@ docs/qa/                       ekran görüntüleri
 
 ---
 
-## 12. Faz haritası
+## 13. Faz haritası
 
 | Faz | Ne oldu |
 |---|---|
@@ -381,11 +400,13 @@ docs/qa/                       ekran görüntüleri
 | 5C | Perdesiz hero ve fotoğraftan bağımsız beyaz/koyu header durumları, panel kontrollü kargo kupon tabanı, yasal dışı İngilizce ilk geçiş, header ölçekli footer kilidi, erişilebilir bülten formu ve tek kaynaklı footer WhatsApp satırı |
 | 5D | İki dilde alt tabana bağlı hero, uzun başlık tokenı, yedi genişlikte satır bazlı render kontrastı ve panel uzunluk/ton rehberi |
 | 5E | Merkezî `/en/` public URL sürekliliği, dile bağlı cart fragments/AJAX, çevrilmeyen alan sınıfı ve Türkçe/İngilizce yedi adımlı ticaret E2E'si |
+| 6A | Altı sahneli, panel kontrollü, JS kapalı/mobil/reduced-motion güvenli marka hikâyesi |
+| 7 | Görev odaklı yönetim haritası, durum/uyarı başlangıcı, 13 sekmeli arama, TR/EN yan yana düzenleme, ürün kontrol listesi ve korunan yakında/noindex |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
 
 ---
 
-## 13. Şu an açık olanlar
+## 14. Şu an açık olanlar
 
 ### Bizde
 
@@ -405,7 +426,7 @@ docs/qa/                       ekran görüntüleri
 
 ---
 
-## 14. Bu belgeyi okuyan yapay zekâya
+## 15. Bu belgeyi okuyan yapay zekâya
 
 1. **Ölç, tahmin etme.** Bu projede her "tamamlandı" iddiası ekran görüntüsü veya sayı ile desteklenir. Desteklenmiyorsa "doğrulanmadı" yaz.
 2. **Prototipi çevir, yeniden tasarlama.** `app-reference/` kaynaktır.
