@@ -381,13 +381,13 @@ progress {
   position: absolute;
   top: var(--announcement-height);
   color: var(--color-ink);
-  background: transparent;
-  border-color: color-mix(in srgb, var(--color-ink) 25%, transparent);
+  background: color-mix(in srgb, var(--color-paper) var(--header-surface-strength), transparent);
+  border-color: var(--color-line);
 }
 
 .kuka-header--overlay-light {
-  color: var(--color-white);
-  border-color: color-mix(in srgb, var(--color-white) 25%, transparent);
+  color: var(--color-ink);
+  border-color: var(--color-line);
 }
 
 .kuka-header.is-scrolled {
@@ -815,7 +815,7 @@ progress {
 }
 
 /* Fotoğraf tek başına, tam doygunlukta kalır. Okunurluk perdesi yalnız metin
-   kutusunun ::before katmanındadır; yoğunluğu Site Görünümü panelinden gelir. */
+   alanının yumuşak geçişli ::before katmanındadır; yoğunluğu panelden gelir. */
 .kuka-hero {
   min-height: min(var(--hero-max-height), calc(100svh - var(--announcement-height)));
   display: flex;
@@ -846,7 +846,7 @@ progress {
 .kuka-hero__content {
   position: relative;
   isolation: isolate;
-  width: min(100%, var(--measure-heading));
+  width: min(calc(100% - var(--space-12)), var(--measure-heading));
   max-width: var(--measure-heading);
   padding: var(--space-4);
 }
@@ -854,14 +854,14 @@ progress {
 .kuka-hero__content::before {
   position: absolute;
   z-index: -1;
-  inset: 0;
+  inset: 0 calc(-1 * var(--space-12)) 0 0;
   content: "";
-  background: var(--color-paper);
+  background: linear-gradient(to right, var(--color-paper) 0%, var(--color-paper) 72%, transparent 100%);
   opacity: calc(var(--hero-overlay-strength) / 100);
 }
 
 .kuka-hero--light .kuka-hero__content::before {
-  background: var(--color-ink);
+  background: linear-gradient(to right, var(--color-ink) 0%, var(--color-ink) 72%, transparent 100%);
 }
 
 .kuka-hero h1 {
@@ -1331,6 +1331,19 @@ progress {
 
   .kuka-hero--light {
     background-image: var(--hero-mobile);
+  }
+
+  .kuka-hero__content::before {
+    inset: calc(-1 * var(--space-6)) 0 0;
+    background: linear-gradient(to bottom, transparent 0%, var(--color-paper) 18%, var(--color-paper) 100%);
+  }
+
+  .kuka-hero__content {
+    width: min(100%, var(--measure-heading));
+  }
+
+  .kuka-hero--light .kuka-hero__content::before {
+    background: linear-gradient(to bottom, transparent 0%, var(--color-ink) 18%, var(--color-ink) 100%);
   }
 
   .kuka-section-heading {
