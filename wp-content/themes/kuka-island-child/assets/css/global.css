@@ -1164,47 +1164,82 @@ progress {
 }
 
 .kuka-newsletter form {
-  margin-top: var(--space-6);
+  width: min(100%, var(--measure-copy));
+  margin-top: var(--space-3);
 }
 
 .kuka-newsletter__label,
 .kuka-newsletter__consent {
-  color: var(--color-muted);
+  color: var(--color-ink);
   font-size: var(--text-micro);
+}
+
+.kuka-newsletter__label {
+  display: block;
+  margin-bottom: var(--space-1);
 }
 
 .kuka-newsletter__field {
   display: flex;
-  border-bottom: var(--stroke) solid var(--color-line);
+  align-items: stretch;
+  gap: var(--space-2);
 }
 
 .kuka-newsletter__field input {
   min-width: 0;
+  min-height: var(--control-large);
   flex: 1;
   padding-block: var(--space-2);
   background: transparent;
   color: var(--color-ink);
   border: 0;
+  border-bottom: var(--stroke) solid var(--color-line);
 }
 
-.kuka-newsletter__field button {
-  padding-inline: var(--space-3);
-  background: transparent;
-  color: var(--color-ink);
-  border: 0;
+.kuka-newsletter__field input:focus-visible {
+  border-bottom-color: var(--color-ink);
+}
+
+.kuka-newsletter__field input:user-invalid {
+  border-bottom-color: var(--color-error);
 }
 
 .kuka-newsletter__consent {
-  min-height: var(--control);
+  min-height: var(--control-large);
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  margin-top: var(--space-2);
+  cursor: pointer;
 }
 
 .kuka-newsletter__consent input {
-  width: var(--space-3);
-  height: var(--space-3);
+  appearance: none;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: 0 0 var(--icon-size);
   margin: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: var(--stroke) solid var(--color-ink);
+  border-radius: 0;
+}
+
+.kuka-newsletter__consent input::after {
+  content: "✓";
+  color: var(--color-paper);
+  font-size: var(--text-caption);
+  line-height: 1;
+  transform: scale(0);
+}
+
+.kuka-newsletter__consent input:checked {
+  background: var(--color-ink);
+}
+
+.kuka-newsletter__consent input:checked::after {
+  transform: scale(1);
 }
 
 .kuka-newsletter__trap {
@@ -1221,7 +1256,9 @@ progress {
 }
 
 .kuka-newsletter__message--error {
+  padding-block: var(--space-1);
   color: var(--color-error);
+  border-top: var(--stroke) solid currentColor;
 }
 
 .kuka-newsletter__message--success {
@@ -1384,6 +1421,15 @@ progress {
 
   .kuka-newsletter {
     padding-bottom: var(--space-8);
+  }
+
+  .kuka-newsletter__field {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kuka-newsletter__field .kuka-button {
+    width: 100%;
   }
 
   .kuka-services__cell {
