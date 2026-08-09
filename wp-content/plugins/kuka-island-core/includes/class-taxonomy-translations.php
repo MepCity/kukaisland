@@ -28,13 +28,13 @@ final class Kuka_Island_Core_Taxonomy_Translations {
 
 	public function add_field(): void {
 		wp_nonce_field( 'kuka_term_english', 'kuka_term_english_nonce' );
-		echo '<div class="form-field"><label for="kuka_name_en">' . esc_html__( 'English name', 'kuka-island-core' ) . '</label><input name="kuka_name_en" id="kuka_name_en" type="text"><p>' . esc_html__( 'Leave empty to show the Turkish term name.', 'kuka-island-core' ) . '</p></div>';
+		echo '<div class="form-field kuka-term-pair-row"><div class="kuka-paired-fields"><div><label for="kuka_name_tr">' . esc_html__( 'Ad (Türkçe)', 'kuka-island-core' ) . '</label><input name="tag-name" id="kuka_name_tr" type="text" required></div><div><label for="kuka_name_en">' . esc_html__( 'Ad (EN)', 'kuka-island-core' ) . '</label><input name="kuka_name_en" id="kuka_name_en" type="text"><p>' . esc_html__( 'Boşsa Türkçe ad gösterilir.', 'kuka-island-core' ) . '</p></div></div></div>';
 	}
 
 	public function edit_field( WP_Term $term ): void {
 		$value = (string) get_term_meta( $term->term_id, '_kuka_name_en', true );
 		wp_nonce_field( 'kuka_term_english', 'kuka_term_english_nonce' );
-		echo '<tr class="form-field"><th scope="row"><label for="kuka_name_en">' . esc_html__( 'English name', 'kuka-island-core' ) . '</label></th><td><input name="kuka_name_en" id="kuka_name_en" type="text" value="' . esc_attr( $value ) . '"><p class="description">' . esc_html__( 'Leave empty to show the Turkish term name.', 'kuka-island-core' ) . '</p></td></tr>';
+		echo '<tr class="form-field kuka-term-pair-row"><th scope="row">' . esc_html__( 'Terim adı', 'kuka-island-core' ) . '</th><td><div class="kuka-paired-fields"><div><label for="kuka_name_tr"><strong>' . esc_html__( 'Ad (Türkçe)', 'kuka-island-core' ) . '</strong></label><input name="name" id="kuka_name_tr" type="text" value="' . esc_attr( $term->name ) . '" required></div><div><label for="kuka_name_en"><strong>' . esc_html__( 'Ad (EN)', 'kuka-island-core' ) . '</strong></label><input name="kuka_name_en" id="kuka_name_en" type="text" value="' . esc_attr( $value ) . '"><p class="description">' . esc_html__( 'Boşsa Türkçe ad gösterilir.', 'kuka-island-core' ) . '</p></div></div></td></tr>';
 	}
 
 	public function save( int $term_id ): void {
