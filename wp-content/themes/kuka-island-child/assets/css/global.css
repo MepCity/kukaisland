@@ -381,13 +381,33 @@ progress {
   position: absolute;
   top: var(--announcement-height);
   color: var(--color-ink);
-  background: color-mix(in srgb, var(--color-paper) var(--header-surface-strength), transparent);
+  background: var(--color-paper);
   border-color: var(--color-line);
 }
 
-.kuka-header--overlay-light {
-  color: var(--color-ink);
-  border-color: var(--color-line);
+/* JS açıkken ana sayfanın ilk görünümünde tüm header öğeleri fotoğraftan
+   bağımsız beyazdır. Yalnız header yüksekliğini kaplayan koyu yüzey fotoğrafı
+   görünür bırakır; JS kapalıysa bu kural hiç devreye girmez ve kâğıt/koyu
+   varsayılan güvenli fallback olarak kalır. */
+.has-js .home .kuka-header--overlay:not(.is-scrolled) {
+  color: var(--color-white);
+  background: color-mix(in srgb, var(--color-ink) var(--header-hero-surface-strength), transparent);
+  border-color: color-mix(in srgb, var(--color-white) var(--header-hero-surface-strength), transparent);
+}
+
+.has-js .home .kuka-announcement {
+  color: var(--color-white);
+  background: color-mix(in srgb, var(--color-ink) var(--header-hero-surface-strength), var(--color-sand));
+}
+
+.has-js .home .kuka-announcement .kuka-lang-switcher__button,
+.has-js .home .kuka-announcement .kuka-lang-switcher__button::after {
+  color: inherit;
+}
+
+.has-js .home .kuka-announcement a:hover,
+.has-js .home .kuka-announcement a:focus-visible {
+  color: inherit;
 }
 
 .kuka-header.is-scrolled {
@@ -814,8 +834,8 @@ progress {
   gap: var(--space-3);
 }
 
-/* Fotoğraf tek başına, tam doygunlukta kalır. Okunurluk perdesi yalnız metin
-   alanının yumuşak geçişli ::before katmanındadır; yoğunluğu panelden gelir. */
+/* Müşteri kararı: hero fotoğrafı hiçbir perde veya gradient olmadan tam
+   görünür; metin tonu fotoğrafın metin bölgesine göre panelden seçilir. */
 .kuka-hero {
   min-height: min(var(--hero-max-height), calc(100svh - var(--announcement-height)));
   display: flex;
@@ -844,31 +864,16 @@ progress {
 }
 
 .kuka-hero__content {
-  position: relative;
-  isolation: isolate;
-  width: min(calc(100% - var(--space-12)), var(--measure-heading));
-  max-width: var(--measure-heading);
+  width: min(calc(100% - var(--space-12)), var(--measure-hero-copy));
+  max-width: var(--measure-hero-copy);
   padding: var(--space-4);
 }
 
-.kuka-hero__content::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0 calc(-1 * var(--space-12)) 0 0;
-  content: "";
-  background: linear-gradient(to right, var(--color-paper) 0%, var(--color-paper) 72%, transparent 100%);
-  opacity: calc(var(--hero-overlay-strength) / 100);
-}
-
-.kuka-hero--light .kuka-hero__content::before {
-  background: linear-gradient(to right, var(--color-ink) 0%, var(--color-ink) 72%, transparent 100%);
-}
-
 .kuka-hero h1 {
-  max-width: var(--measure-heading);
+  max-width: var(--measure-hero-copy);
   margin: var(--space-2) 0 var(--space-3);
   color: inherit;
-  font-size: var(--text-heading-large);
+  font-size: var(--text-heading-hero);
   font-weight: var(--weight-regular);
   line-height: var(--leading-display);
   letter-spacing: var(--tracking-tight);
@@ -1333,17 +1338,8 @@ progress {
     background-image: var(--hero-mobile);
   }
 
-  .kuka-hero__content::before {
-    inset: calc(-1 * var(--space-6)) 0 0;
-    background: linear-gradient(to bottom, transparent 0%, var(--color-paper) 18%, var(--color-paper) 100%);
-  }
-
   .kuka-hero__content {
-    width: min(100%, var(--measure-heading));
-  }
-
-  .kuka-hero--light .kuka-hero__content::before {
-    background: linear-gradient(to bottom, transparent 0%, var(--color-ink) 18%, var(--color-ink) 100%);
+    width: min(100%, var(--measure-hero-copy));
   }
 
   .kuka-section-heading {

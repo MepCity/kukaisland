@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 3;
+	private const SCHEMA_VERSION = 4;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -96,7 +96,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
 				'title' => 'Adanın ritmini yanında taşı.', 'copy' => 'Gün boyu hareket eden, sade ve güçlü parçalar.',
-				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'dark', 'overlay_strength' => 78,
+				'button_label' => 'Yeni gelenleri keşfet', 'button_url' => '/magaza/', 'alignment' => 'left', 'text_tone' => 'dark',
 			),
 			'home' => array(
 				'category_index_enabled' => false, 'category_index_label' => 'Formunu bul', 'category_index_title' => 'Ürün kategorileri',
@@ -210,6 +210,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			$saved['legal']['address'],
 			$saved['commercial']['return_period_days'],
 			$saved['commercial']['exchange_copy'],
+			$saved['hero']['overlay_strength'],
 			$saved['footer']['brand_copy'],
 			$saved['home']['manifesto_title'],
 			$saved['home']['manifesto_copy'],
@@ -270,8 +271,7 @@ final class Kuka_Island_Core_Site_Appearance {
 					'button_label'     => array( __( 'Buton etiketi', 'kuka-island-core' ), 'text' ),
 					'button_url'       => array( __( 'Buton URL', 'kuka-island-core' ), 'url' ),
 					'alignment'        => array( __( 'Hizalama (left/center/right)', 'kuka-island-core' ), 'alignment' ),
-					'text_tone'        => array( __( 'Metin tonu (light/dark)', 'kuka-island-core' ), 'tone' ),
-					'overlay_strength' => array( __( 'Metin perdesi yoğunluğu (%)', 'kuka-island-core' ), 'percentage' ),
+					'text_tone'        => array( __( 'Metin tonu', 'kuka-island-core' ), 'tone' ),
 				),
 			),
 			'home'         => array(
@@ -530,6 +530,12 @@ final class Kuka_Island_Core_Site_Appearance {
 					<option value="yes" <?php selected( 'yes', $value ); ?>><?php esc_html_e( 'İndirimden önceki tutar', 'kuka-island-core' ); ?></option>
 				</select>
 				<p class="description"><?php esc_html_e( 'Varsayılanda kupon indirimi eşiğe uygulanır. “İndirimden önce” seçilirse ücretsiz kargo uygunluğu kupon uygulanmadan önceki ara toplamla değerlendirilir.', 'kuka-island-core' ); ?></p>
+			<?php elseif ( 'tone' === $type ) : ?>
+				<select id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>">
+					<option value="light" <?php selected( 'light', $value ); ?>><?php esc_html_e( 'Açık metin', 'kuka-island-core' ); ?></option>
+					<option value="dark" <?php selected( 'dark', $value ); ?>><?php esc_html_e( 'Koyu metin', 'kuka-island-core' ); ?></option>
+				</select>
+				<p class="description"><?php esc_html_e( 'Fotoğrafınızın metin bölgesi koyuysa açık, açıksa koyu seçin.', 'kuka-island-core' ); ?></p>
 			<?php elseif ( 'category_navigation' === $type ) : ?>
 				<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Kategori', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'URL', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Üst menü', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Ana sayfa indeksi', 'kuka-island-core' ); ?></th></tr></thead><tbody>
 				<?php foreach ( self::parse_category_navigation( (string) $value ) as $index => $item ) : ?>

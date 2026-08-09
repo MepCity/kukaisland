@@ -130,8 +130,18 @@
   }
 
   const header = document.querySelector("[data-site-header]");
-  const syncHeader = () => header?.classList.toggle("is-scrolled", window.scrollY > 16);
+	let headerThreshold = header?.getBoundingClientRect().height || 0;
+	const syncHeader = () => {
+		if (!header) return;
+		const scrolled = window.scrollY >= headerThreshold;
+		header.classList.toggle("is-scrolled", scrolled);
+		document.documentElement.classList.toggle("kuka-header-scrolled", scrolled);
+	};
   window.addEventListener("scroll", syncHeader, { passive: true });
+	window.addEventListener("resize", () => {
+		if (!header?.classList.contains("is-scrolled")) headerThreshold = header?.getBoundingClientRect().height || 0;
+		syncHeader();
+	}, { passive: true });
   syncHeader();
 
   document.documentElement.dataset.kukaIslandTheme = "ready";
