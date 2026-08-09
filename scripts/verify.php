@@ -183,6 +183,10 @@ WP_CLI::line( 'MYACCOUNT_PAGE=' . ( $account_page_id > 0 && get_post( $account_p
 $size_html = do_shortcode( '[kuka_size_guide]' );
 WP_CLI::line( 'SIZE_GUIDE_TABLES=' . substr_count( $size_html, '<table>' ) );
 WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['brand']['social_links'] ?? '' ), 'https://www.instagram.com/kukaisland' ) ? 'yes' : 'no' ) );
+$footer_source = (string) file_get_contents( get_stylesheet_directory() . '/footer.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+WP_CLI::line( 'FOOTER_WHATSAPP_SOURCE=' . ( str_contains( $footer_source, 'if ( $whatsapp_url )' ) && str_contains( $footer_source, '>WhatsApp ↗</a>' ) ? 'phone-helper' : 'missing' ) );
+$whatsapp_test_url = Kuka_Island_Core_Content::whatsapp_url( '0532 111 22 33' );
+WP_CLI::line( 'WHATSAPP_PHONE_RULE=' . ( '' === Kuka_Island_Core_Content::whatsapp_url( '' ) && str_ends_with( $whatsapp_test_url, '/905321112233' ) ? 'empty-hidden|number-derived' : 'failed' ) );
 WP_CLI::line( 'COMMERCIAL_CONTENT=' . implode( '|', array( $site_content['commercial']['flat_shipping_fee'] ?? '', $site_content['commercial']['free_shipping_threshold'] ?? '', $site_content['commercial']['cayma_hakki_gun'] ?? '' ) ) );
 WP_CLI::line( 'FREE_SHIPPING_IGNORE_DISCOUNTS=' . ( $site_content['commercial']['ignore_discounts'] ?? 'missing' ) );
 global $wpdb;
@@ -196,7 +200,13 @@ $free_shipping_options = $wpdb->get_col(
 $free_shipping_values = array_map( static fn( string $option_name ): string => (string) ( get_option( $option_name, array() )['ignore_discounts'] ?? 'missing' ), $free_shipping_options );
 WP_CLI::line( 'FREE_SHIPPING_IGNORE_DISCOUNTS_SYNC=' . ( $free_shipping_values && 1 === count( array_unique( $free_shipping_values ) ) ? reset( $free_shipping_values ) : 'mismatch' ) );
 WP_CLI::line( 'GUEST_SESSION_HOURS=' . absint( $site_content['membership']['guest_session_hours'] ?? 0 ) );
-WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', array_values( array_filter( array( 'return_period_days', 'exchange_copy' ), static fn( string $key ): bool => isset( $site_content['commercial'][ $key ] ) ) ) ) );
+$retired_panel_fields = array_values( array_filter( array( 'return_period_days', 'exchange_copy' ), static fn( string $key ): bool => isset( $site_content['commercial'][ $key ] ) ) );
+if ( isset( $site_content['hero']['overlay_strength'] ) ) { $retired_panel_fields[] = 'overlay_strength'; }
+WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', $retired_panel_fields ) );
+$theme_css = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$theme_tokens = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/tokens.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+WP_CLI::line( 'HERO_OVERLAY_LAYER=' . ( str_contains( $theme_css, '.kuka-hero__content::before' ) || str_contains( $theme_tokens, '--hero-overlay-strength' ) ? 'present' : 'absent' ) );
+WP_CLI::line( 'HEADER_TOP_MODE=' . ( str_contains( $theme_css, '.has-js .home .kuka-header--overlay:not(.is-scrolled)' ) ? 'photo-white-to-paper-dark' : 'missing' ) );
 $size_terms = get_terms( array( 'taxonomy' => 'pa_beden', 'hide_empty' => false, 'orderby' => 'menu_order' ) );
 WP_CLI::line( 'SIZE_TERMS=' . implode( ',', wp_list_pluck( $size_terms, 'name' ) ) );
 WP_CLI::line( 'SIZE_TERM_ORDER=' . implode( '|', array_map( static fn( WP_Term $term ): string => $term->name . ':' . get_term_meta( $term->term_id, 'order', true ), $size_terms ) ) );
@@ -218,6 +228,7 @@ $newsletter_table = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb
 $newsletter_form = class_exists( 'Kuka_Island_Core_Newsletter' ) ? Kuka_Island_Core_Newsletter::form() : '';
 WP_CLI::line( 'NEWSLETTER_TABLE=' . ( $newsletter_table ? 'ready' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_FORM=' . ( str_contains( $newsletter_form, 'method="post"' ) && str_contains( $newsletter_form, 'name="consent" value="1" required' ) ? 'native-required' : 'missing' ) );
+WP_CLI::line( 'NEWSLETTER_UI=' . ( str_contains( $newsletter_form, 'placeholder="name@example.com"' ) && str_contains( $newsletter_form, 'class="kuka-button"' ) ? 'label+placeholder|site-button' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_NOTIFICATION_FIELD=' . ( array_key_exists( 'newsletter_notification_email', $site_content['footer'] ?? array() ) ? 'panel' : 'missing' ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
 $out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
