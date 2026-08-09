@@ -1,0 +1,11 @@
+#adminmenu #toplevel_page_kuka-island .wp-menu-image img {
+	display: block;
+	box-sizing: border-box;
+	width: 20px !important;
+	height: 34px !important;
+	margin: 0 auto;
+	padding: 7px 0 !important;
+	object-fit: contain;
+	filter: brightness(0) invert(1);
+	opacity: 1;
+}
