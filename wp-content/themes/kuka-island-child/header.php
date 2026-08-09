@@ -5,9 +5,6 @@ $site_content = kuka_island_content();
 $announcements = $site_content['announcement']['items'] ?? array();
 $main_menu = kuka_island_header_menu();
 $overlay_header = is_front_page();
-// Üstüne bindiği hero açık tonlu metin kullanıyorsa header de açık kalır;
-// hero krem/koyu metne döndüğünde beyaz header yazısı görünmez olurdu.
-$overlay_light = $overlay_header && 'light' === ( $site_content['hero']['text_tone'] ?? 'dark' );
 // Ödeme adımında çıkış yolu azaltılır: menü, arama ve panel tetikleyicileri
 // yerine yalnız marka kilidi ve sepete dönüş kalır. Sipariş alındı sayfası
 // akışın dışındadır; orada tam header geri gelir.
@@ -19,6 +16,7 @@ $emblem_html = $has_logo ? '' : kuka_island_emblem_markup();
 <head>
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script>document.documentElement.classList.add('has-js');</script>
 	<?php wp_head(); ?>
 </head>
 <body <?php body_class(); ?>>
@@ -59,7 +57,7 @@ $emblem_html = $has_logo ? '' : kuka_island_emblem_markup();
 		</span>
 	</div>
 <?php endif; ?>
-<header class="kuka-header<?php echo $overlay_header ? ' kuka-header--overlay' : ''; ?><?php echo $overlay_light ? ' kuka-header--overlay-light' : ''; ?><?php echo $checkout_flow ? ' kuka-header--checkout' : ''; ?>" data-site-header>
+<header class="kuka-header<?php echo $overlay_header ? ' kuka-header--overlay' : ''; ?><?php echo $checkout_flow ? ' kuka-header--checkout' : ''; ?>" data-site-header>
 	<?php if ( $checkout_flow ) : ?>
 	<a class="kuka-header-back" href="<?php echo esc_url( wc_get_cart_url() ); ?>"><span aria-hidden="true">←</span><?php esc_html_e( 'Sepete dön', 'kuka-island' ); ?></a>
 	<?php else : ?>

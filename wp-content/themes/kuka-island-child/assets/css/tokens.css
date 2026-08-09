@@ -39,6 +39,7 @@
   --text-heading-panel: clamp(44px, 5vw, 66px);
   --text-heading-editorial: clamp(52px, 7vw, 104px);
   --text-heading-manifesto: clamp(42px, 5.5vw, 80px);
+  --text-heading-hero: clamp(52px, 5.8vw, 84px);
   --text-heading-large: clamp(52px, 8.4vw, 136px);
   --text-display: clamp(68px, 11vw, 184px);
   --weight-regular: 440;
@@ -61,12 +62,13 @@
   --focus-outline-width: 2px;
   --stroke: 1px;
   --header-height: 64px;
-  --header-surface-strength: 82%;
+  --header-hero-surface-strength: 72%;
   --announcement-height: 24px;
   --panel-width: 480px;
   --filter-panel-width: 640px;
   --measure-copy: 420px;
   --measure-copy-narrow: 380px;
+  --measure-hero-copy: 520px;
   --measure-heading: 980px;
   --measure-content: 1200px;
   --measure-wide: 1440px;
@@ -76,7 +78,6 @@
   --measure-table: 760px;
   --hero-min-height: 640px;
   --hero-max-height: 860px;
-  --hero-overlay-strength: 78;
   --editorial-max-height: 900px;
   --manifesto-min-height: 520px;
   --service-min-height: 148px;
@@ -119,6 +120,7 @@
     --text-heading-panel: 48px;
     --text-heading-editorial: clamp(52px, 21vw, 76px);
     --text-heading-manifesto: clamp(36px, 12vw, 52px);
+    --text-heading-hero: clamp(52px, 17vw, 68px);
     --text-heading-large: clamp(52px, 17vw, 76px);
     --text-display: clamp(64px, 19vw, 128px);
     --manifesto-min-height: 420px;
