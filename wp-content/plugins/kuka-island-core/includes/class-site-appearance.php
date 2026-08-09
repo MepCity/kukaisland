@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 4;
+	private const SCHEMA_VERSION = 5;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -207,6 +207,8 @@ final class Kuka_Island_Core_Site_Appearance {
 			$saved['navigation']['main'] = str_replace( $old_story_label, 'Hikâyemiz', (string) $saved['navigation']['main'] );
 		}
 		unset(
+			$saved['languages']['items_en'],
+			$saved['brand']['social_links_labels_en'],
 			$saved['legal']['address'],
 			$saved['commercial']['return_period_days'],
 			$saved['commercial']['exchange_copy'],
@@ -216,6 +218,9 @@ final class Kuka_Island_Core_Site_Appearance {
 			$saved['home']['manifesto_copy'],
 			$saved['panels']
 		);
+		// Dil adları teknik yönlendirme sözleşmesidir; iki vitrinde de her dil
+		// kendi adıyla görünür. Eski çeviri turunda kaydedilmiş etiketleri taşıma.
+		$saved['languages']['items'] = self::defaults()['languages']['items'];
 		// Kesim indeksi müşteri isteğiyle geri çekildi; eski kurulumlarda açık
 		// kalmasın diye bir kez kapatılır, sonra panelden açılabilir.
 		$saved['home']['category_index_enabled'] = false;
@@ -253,6 +258,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'languages' => array(
 				'label'  => __( 'Dil Seçici', 'kuka-island-core' ),
+				'note'   => __( 'Dil adları çevrilmez; her dil kendi dilinde yazılır.', 'kuka-island-core' ),
 				'fields' => array(
 					'items'        => array( __( 'Diller (Etiket|URL öneki) — tek satır seçici gizlenir', 'kuka-island-core' ), 'link_lines' ),
 					'pending_urls' => array( __( 'Henüz yayında olmayan dil URL’leri (virgülle) — bağlantı yerine bilgi gösterilir', 'kuka-island-core' ), 'text' ),
@@ -535,7 +541,7 @@ final class Kuka_Island_Core_Site_Appearance {
 					<option value="light" <?php selected( 'light', $value ); ?>><?php esc_html_e( 'Açık metin', 'kuka-island-core' ); ?></option>
 					<option value="dark" <?php selected( 'dark', $value ); ?>><?php esc_html_e( 'Koyu metin', 'kuka-island-core' ); ?></option>
 				</select>
-				<p class="description"><?php esc_html_e( 'Fotoğrafınızın metin bölgesi koyuysa açık, açıksa koyu seçin.', 'kuka-island-core' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Metnin yerleştiği fotoğraf bölgesi koyuysa “Açık metin”, açıksa “Koyu metin” seçin; görsel veya başlık değiştiğinde iki dilde de önizleyip kontrastı yeniden kontrol edin.', 'kuka-island-core' ); ?></p>
 			<?php elseif ( 'category_navigation' === $type ) : ?>
 				<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Kategori', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'URL', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Üst menü', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Ana sayfa indeksi', 'kuka-island-core' ); ?></th></tr></thead><tbody>
 				<?php foreach ( self::parse_category_navigation( (string) $value ) as $index => $item ) : ?>
@@ -547,6 +553,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php else : ?>
 				<input class="regular-text" id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="<?php echo esc_attr( in_array( $type, array( 'email', 'number', 'percentage' ), true ) ? ( 'email' === $type ? 'email' : 'number' ) : 'text' ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" <?php echo 'number' === $type ? 'min="0"' : ''; ?> <?php echo 'percentage' === $type ? 'min="0" max="100" step="1"' : ''; ?>>
 			<?php endif; ?>
+			<?php if ( 'hero' === $group_key && 'title' === $field_key ) : ?><p class="description"><?php esc_html_e( 'Uzun başlıklar fotoğrafın koyu bölgesine taşabilir; yükledikten sonra kontrol edin.', 'kuka-island-core' ); ?></p><?php endif; ?>
 			<?php if ( $translation ) : ?></div><div><p><strong>English</strong></p><?php $translated_field = self::fields()[ $group_key ]['fields'][ $translation['key'] ]; $this->render_control( $group_key, $translation['key'], $translated_field, $content[ $group_key ][ $translation['key'] ] ?? '' ); ?></div><?php endif; ?>
 			</td>
 		</tr>

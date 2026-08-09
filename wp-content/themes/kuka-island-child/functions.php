@@ -217,10 +217,13 @@ function kuka_island_whatsapp_url(): string {
  * @return array<int, array{label:string,url:string}>
  */
 function kuka_island_languages(): array {
-	return array(
-		array( 'label' => 'tr' === kuka_island_locale() ? 'Türkçe' : 'Turkish', 'url' => Kuka_Island_Core_Language::current_url( 'tr' ), 'code' => 'tr' ),
-		array( 'label' => 'en' === kuka_island_locale() ? 'English' : 'İngilizce', 'url' => Kuka_Island_Core_Language::current_url( 'en' ), 'code' => 'en' ),
-	);
+	$rows  = kuka_island_menu_lines( (string) ( Kuka_Island_Core_Site_Appearance::get()['languages']['items'] ?? '' ) );
+	$codes = array( 'tr', 'en' );
+	return array_values( array_map( static fn( array $row, int $index ): array => array(
+		'label' => $row['label'],
+		'url'   => Kuka_Island_Core_Language::current_url( $codes[ $index ] ?? $codes[0] ),
+		'code'  => $codes[ $index ] ?? $codes[0],
+	), $rows, array_keys( $rows ) ) );
 }
 
 /**
