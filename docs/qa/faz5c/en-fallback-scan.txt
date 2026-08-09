@@ -1,0 +1,22 @@
+Faz 5C Bölüm F — İngilizce fallback taraması
+Tarih: 2026-08-09
+
+Yasal olmayan sayfalar (kuka-translation-notice sayısı):
+beden-rehberi: 0
+hakkimizda: 0
+iletisim: 0
+kargo-teslimat: 0
+sik-sorulan-sorular: 0
+siparis-takibi: 0
+ticari-elektronik-ileti-onayi: 0
+
+Yasal örnek:
+mesafeli-satis-sozlesmesi: 1
+Uyarı: The legally binding version of this document is Turkish. The Turkish text is shown below.
+
+Seed/verify:
+LEGAL_EN_VALUES=0/16
+NONLEGAL_EN_VALUES=16/16
+SITE_APPEARANCE_EN_VALUES=42/42
+PRODUCT_EN_VALUES=36/36
+ABOUT_EN_RHYTHM=yes

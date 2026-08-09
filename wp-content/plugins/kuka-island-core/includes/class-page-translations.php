@@ -13,6 +13,7 @@ final class Kuka_Island_Core_Page_Translations {
 		add_action( 'add_meta_boxes_page', array( $this, 'add_box' ) );
 		add_action( 'save_post_page', array( $this, 'save' ), 20, 2 );
 		add_filter( 'the_title', array( $this, 'title' ), 20, 2 );
+		add_filter( 'document_title_parts', array( $this, 'document_title' ), 20 );
 		add_filter( 'the_content', array( $this, 'content' ), 8 );
 	}
 
@@ -24,7 +25,7 @@ final class Kuka_Island_Core_Page_Translations {
 		wp_nonce_field( 'kuka_page_english', 'kuka_page_english_nonce' );
 		$title = (string) get_post_meta( $post->ID, '_kuka_title_en', true );
 		$content = (string) get_post_meta( $post->ID, '_kuka_content_en', true );
-		echo '<p>' . esc_html__( 'Leave empty to show the Turkish title and content. Shortcodes are processed in both languages.', 'kuka-island-core' ) . '</p>';
+		echo '<p>' . esc_html__( 'English content is a first editorial pass and can be refined here. Shortcodes are processed in both languages.', 'kuka-island-core' ) . '</p>';
 		if ( in_array( $post->post_name, self::LEGAL_SLUGS, true ) ) {
 			echo '<p><strong>' . esc_html__( 'Legal translation must be supplied by the customer’s legal adviser; it is intentionally empty in the seed.', 'kuka-island-core' ) . '</strong></p>';
 		}
@@ -47,6 +48,13 @@ final class Kuka_Island_Core_Page_Translations {
 		return $technical_titles[ (string) get_post_field( 'post_name', $post_id ) ] ?? $title;
 	}
 
+	public function document_title( array $parts ): array {
+		if ( ! is_page() || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() ) { return $parts; }
+		$english = trim( (string) get_post_meta( get_queried_object_id(), '_kuka_title_en', true ) );
+		if ( '' !== $english ) { $parts['title'] = $english; }
+		return $parts;
+	}
+
 	public function content( string $content ): string {
 		if ( ! is_page() || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() ) { return $content; }
 		$post_id = get_queried_object_id();
@@ -54,9 +62,8 @@ final class Kuka_Island_Core_Page_Translations {
 		if ( '' !== $english ) { return $english; }
 		$slug = (string) get_post_field( 'post_name', $post_id );
 		if ( in_array( $slug, array( 'magaza', 'sepet', 'odeme', 'hesabim' ), true ) ) { return $content; }
-		$message = in_array( $slug, self::LEGAL_SLUGS, true )
-			? __( 'The legally binding version of this document is Turkish. The Turkish text is shown below.', 'kuka-island-core' )
-			: __( 'An English translation is not available yet. The Turkish content is shown below.', 'kuka-island-core' );
+		if ( ! in_array( $slug, self::LEGAL_SLUGS, true ) ) { return $content; }
+		$message = __( 'The legally binding version of this document is Turkish. The Turkish text is shown below.', 'kuka-island-core' );
 		return '<aside class="kuka-translation-notice" role="note">' . esc_html( $message ) . '</aside>' . $content;
 	}
 }

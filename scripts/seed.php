@@ -247,20 +247,21 @@ $colors = array(
 );
 $terms  = array( 'colors' => array(), 'sizes' => array(), 'cuts' => array(), 'categories' => array() );
 foreach ( $colors as $slug => $color ) {
-	$terms['colors'][ $slug ] = kuka_seed_term( 'pa_renk', $color[0], $slug, array( 'kuka_swatch_hex' => $color[1] ) );
+	$color_names_en = array( 'siyah' => 'Black', 'kobalt' => 'Cobalt', 'kum' => 'Sand', 'zeytin' => 'Olive', 'terracotta' => 'Terracotta', 'beyaz' => 'White' );
+	$terms['colors'][ $slug ] = kuka_seed_term( 'pa_renk', $color[0], $slug, array( 'kuka_swatch_hex' => $color[1], '_kuka_name_en' => $color_names_en[ $slug ] ) );
 }
 // WooCommerce menu_order sıralaması `order` term metasını okur. Yeni bedenler
 // de aynı tanım tablosuna sıra değeri eklenerek oluşturulur.
 foreach ( array( 's' => array( 'S', 0 ), 'm' => array( 'M', 1 ), 'l' => array( 'L', 2 ) ) as $slug => $size ) {
-	$terms['sizes'][ $slug ] = kuka_seed_term( 'pa_beden', $size[0], $slug, array( 'order' => $size[1] ) );
+	$terms['sizes'][ $slug ] = kuka_seed_term( 'pa_beden', $size[0], $slug, array( 'order' => $size[1], '_kuka_name_en' => $size[0] ) );
 }
-foreach ( array( 'asimetrik' => 'Asimetrik', 'bralet' => 'Bralet', 'tek-parca' => 'Tek Parça', 'klasik' => 'Klasik' ) as $slug => $name ) {
-	$terms['cuts'][ $slug ] = kuka_seed_term( 'pa_kesim', $name, $slug );
+foreach ( array( 'asimetrik' => array( 'Asimetrik', 'Asymmetric' ), 'bralet' => array( 'Bralet', 'Bralette' ), 'tek-parca' => array( 'Tek Parça', 'One-piece' ), 'klasik' => array( 'Klasik', 'Classic' ) ) as $slug => $names ) {
+	$terms['cuts'][ $slug ] = kuka_seed_term( 'pa_kesim', $names[0], $slug, array( '_kuka_name_en' => $names[1] ) );
 }
-foreach ( array( 'bikini-ustleri' => 'Bikini Üstleri', 'bikini-altlari' => 'Bikini Altları', 'mayolar' => 'Mayolar', 'plaj-giyim' => 'Plaj Giyim' ) as $slug => $name ) {
-	$terms['categories'][ $slug ] = kuka_seed_term( 'product_cat', $name, $slug );
+foreach ( array( 'bikini-ustleri' => array( 'Bikini Üstleri', 'Bikini Tops' ), 'bikini-altlari' => array( 'Bikini Altları', 'Bikini Bottoms' ), 'mayolar' => array( 'Mayolar', 'Swimsuits' ), 'plaj-giyim' => array( 'Plaj Giyim', 'Beachwear' ) ) as $slug => $names ) {
+	$terms['categories'][ $slug ] = kuka_seed_term( 'product_cat', $names[0], $slug, array( '_kuka_name_en' => $names[1] ) );
 }
-$terms['categories']['takimlar'] = kuka_seed_term( 'product_cat', 'Takımlar', 'takimlar' );
+$terms['categories']['takimlar'] = kuka_seed_term( 'product_cat', 'Takımlar', 'takimlar', array( '_kuka_name_en' => 'Sets' ) );
 $uncategorized = get_term_by( 'slug', 'uncategorized', 'product_cat' );
 if ( $uncategorized ) {
 	update_option( 'default_product_cat', $terms['categories']['bikini-ustleri'] );
@@ -292,6 +293,10 @@ $common_meta = array(
 	'_kuka_care'       => 'Elde, soğuk suda yıkayın. Gölgede düz kurutun.',
 	'_kuka_fit'        => 'Standart kalıp; iki beden arasındaysanız büyük bedeni seçin.',
 	'_kuka_model_info' => 'Model 178 cm boyunda ve M beden giymektedir. Pilot veri.',
+	'_kuka_material_en'   => '78% recycled polyamide, 22% elastane',
+	'_kuka_care_en'       => 'Hand wash in cold water. Dry flat in the shade.',
+	'_kuka_fit_en'        => 'True to size; choose the larger size if you are between sizes.',
+	'_kuka_model_info_en' => 'The model is 178 cm tall and wears size M. Pilot data.',
 	'_kuka_size_guide' => 'beden-rehberi',
 );
 $all_colors = array(
@@ -307,6 +312,25 @@ $product_specs = array(
 	array( 'sku' => 'KI-ONE-001', 'name' => 'Noir Tek Omuz Mayo', 'slug' => 'noir-tek-omuz-mayo', 'price' => 4290, 'category' => 'mayolar', 'cut' => 'tek-parca', 'featured' => 'noir-one-piece.jpg', 'gallery' => array( 'noir-one-piece-detail.jpg', 'hero-aegean-black-mobile.jpg' ), 'colors' => array( 'siyah' => $all_colors['siyah'] ), 'sizes' => array( 's', 'm', 'l' ), 'short' => 'Heykelsi tek omuz çizgisi ve kontrollü bel formu.', 'description' => 'Suda ve kıyıda kullanılmak üzere tasarlanan tek omuz mayo.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Noir Tek Omuz Mayo', '_kuka_meta_description' => 'Heykelsi tek omuz çizgili Noir Mayo. Kontrollü bel formunu ve S–L beden seçeneklerini keşfedin.' ) ) ),
 	array( 'sku' => 'KI-BTM-004', 'name' => 'Azur Klasik Bikini Altı', 'slug' => 'azur-klasik-bikini-alti', 'price' => 2290, 'category' => 'bikini-altlari', 'cut' => 'klasik', 'featured' => 'azur-bikini-bottom.jpg', 'gallery' => array( 'azur-bikini-bottom-detail.jpg', 'cobalt-set.jpg' ), 'colors' => array( 'kobalt' => $all_colors['kobalt'] ), 'sizes' => array( 's', 'm', 'l' ), 'short' => 'Orta kapama ve ayarlanabilir yan detay.', 'description' => 'Gün boyu rahatlık için orta kapamalı klasik bikini altı.', 'meta' => array_merge( $common_meta, array( '_kuka_seo_title' => 'Azur Klasik Bikini Altı', '_kuka_meta_description' => 'Orta kapamalı Azur Klasik Bikini Altı. Ayarlanabilir yan detay ve S–L beden seçeneklerini inceleyin.' ) ) ),
 );
+
+$product_english = array(
+	'KI-TOP-001' => array( 'Asymmetric Bikini Top', 'A sculpted asymmetric bikini top with removable padding, designed to sit close to the body.', 'A one-shoulder silhouette finished with an adjustable metal ring.', 'Asymmetric One-shoulder Bikini Top', 'Discover the Asymmetric Bikini Top with removable padding, independent sizing and Kuka Island colour options.' ),
+	'KI-TOP-002' => array( 'Azur Bralette Bikini Top', 'A bralette bikini top designed to offer balanced support while you move.', 'A supportive bralette shape with a wide underband.', 'Supportive Azur Bralette Bikini Top', 'Explore the supportive Azur Bralette Bikini Top in cobalt, available in sizes S–L.' ),
+	'KI-ONE-001' => array( 'Noir One-shoulder Swimsuit', 'A one-shoulder swimsuit designed to move effortlessly from the water to the shore.', 'A sculptural one-shoulder line with a defined waist.', 'Noir One-shoulder Swimsuit', 'Discover the Noir Swimsuit with its sculptural one-shoulder line, defined waist and S–L sizing.' ),
+	'KI-BTM-004' => array( 'Azur Classic Bikini Bottom', 'A classic mid-coverage bikini bottom designed for comfort throughout the day.', 'Mid coverage with an adjustable side detail.', 'Azur Classic Bikini Bottom', 'Explore the mid-coverage Azur Classic Bikini Bottom with adjustable side detail and sizes S–L.' ),
+);
+
+foreach ( $product_specs as &$spec ) {
+	$english = $product_english[ $spec['sku'] ];
+	$spec['meta'] = array_merge( $spec['meta'], array(
+		'_kuka_name_en' => $english[0],
+		'_kuka_description_en' => $english[1],
+		'_kuka_short_description_en' => $english[2],
+		'_kuka_seo_title_en' => $english[3],
+		'_kuka_meta_description_en' => $english[4],
+	) );
+}
+unset( $spec );
 
 $product_ids = array();
 foreach ( $product_specs as $spec ) {
