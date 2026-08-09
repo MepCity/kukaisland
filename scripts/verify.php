@@ -276,6 +276,7 @@ WP_CLI::line( 'STORY_PDF_BODY_MATCH=' . ( hash_equals( $story_pdf_expected, $sto
 WP_CLI::line( 'STORY_LINE_REVEAL=' . ( ! empty( $story_scenes[3]['reveal_lines'] ) ? 'scene-04' : 'missing' ) );
 WP_CLI::line( 'STORY_PROGRESSIVE_DOM=' . ( str_contains( $story_template, 'foreach ( $story_scenes' ) && str_contains( $story_template, 'data-story-scene=' ) && ! str_contains( $story_script, 'createElement' ) ? 'server' : 'missing' ) );
 WP_CLI::line( 'STORY_OBSERVER=' . ( str_contains( $story_script, 'new IntersectionObserver' ) && str_contains( $story_script, 'observer?.disconnect()' ) && ! str_contains( $story_script, 'addEventListener("scroll"' ) ? 'io+cleanup+no-scroll' : 'missing' ) );
+WP_CLI::line( 'STORY_MOBILE_ENHANCED=' . ( ! str_contains( $story_script, 'desktop.matches' ) && str_contains( $story_script, 'motion.matches || observer' ) ? 'enabled' : 'disabled' ) );
 WP_CLI::line( 'STORY_EMPTY_MEDIA=' . ( str_contains( $story_template, 'kuka-story__placeholder' ) ? 'placeholder' : 'missing' ) );
 global $wpdb;
 $newsletter_table = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . 'kuka_newsletter_subscribers' ) );

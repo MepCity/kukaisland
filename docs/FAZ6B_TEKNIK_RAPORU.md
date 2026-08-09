@@ -1,7 +1,7 @@
 # Faz 6B teknik raporu — marka hikâyesinin sanat yönü
 
 Tarih: **2026-08-09**
-Kapsam: `/hakkimizda/` marka hikâyesinin fotoğraf, geçiş, metin yerleşimi ve tipografik sanat yönü. Faz 6A'nın `IntersectionObserver`, sticky sahne, reduced-motion, mobil ve JavaScript-kapalı fallback mekanikleri kapsam dışı bırakıldı ve korunmuştur.
+Kapsam: `/hakkimizda/` marka hikâyesinin fotoğraf, geçiş, metin yerleşimi, tipografik sanat yönü ve masaüstü/mobil scroll-led anlatısı. `IntersectionObserver`, sticky sahne, reduced-motion ve JavaScript-kapalı fallback sözleşmeleri korunmuştur.
 
 ## Sonuç
 
@@ -51,7 +51,7 @@ Kontrast ölçümü her render edilmiş satır kutusunda glyph/antialias örnekl
 
 ## Fallback ve performans
 
-Faz 6A'nın `IntersectionObserver`, sticky sahne, observer cleanup, no-scroll-listener, reduced-motion ve mobil/JS-off fallback sözleşmesi korunmuştur. Kapanış kontrolünde son sahneye hızlı atlandığında fotoğraf yüklenmeden önce eski medyanın kapanabildiği bir yarış durumu görüldü. Medya geçişi yarış-korumalı hâle getirildi: hedef fotoğraf yüklenene kadar mevcut fotoğraf görünür kalır, yükleme tamamlanınca hedef sahne atomik olarak devralır. Açılışta hâlâ yalnız ilk görsel istenir; ziyaretçi ikinci sahneye geçtikten sonra yalnız sıradaki sahne ısıtılır. Böylece 5. sahnedeyken özgün 6. sahne ufuk fotoğrafı hazırlanır ve finalde kum görseli bekleme yüzeyi olarak kalmaz. İkinci temiz doğrulama `server` progressive DOM ve `io+cleanup+no-scroll` sonucunu verdi. 320–480 px gerçek render'larda enhanced mod kapandı ve içerik statik akışta kaldı. Yeni animasyon kütüphanesi, vendor paketi, canlı anahtar veya deploy değişikliği yoktur.
+Faz 6A'nın `IntersectionObserver`, sticky sahne, observer cleanup, no-scroll-listener, reduced-motion ve JS-off fallback sözleşmesi korunmuştur. Kullanıcı geri bildirimiyle scroll-led enhancement mobilde de etkinleştirildi; 320 px ve üstünde aynı altı sahne, geçiş ve satır animasyonları mobil kadrajlarla çalışır. Mobil tipografi ve sahne iç boşlukları küçük ekrana özel sıkılaştırıldı. Hareket azaltma tercihi veya JavaScript'in kapalı olması hâlinde düz, tam okunur makale akışı korunur. Kapanış kontrolünde son sahneye hızlı atlandığında fotoğraf yüklenmeden önce eski medyanın kapanabildiği bir yarış durumu görüldü. Medya geçişi yarış-korumalı hâle getirildi: hedef fotoğraf yüklenene kadar mevcut fotoğraf görünür kalır, yükleme tamamlanınca hedef sahne atomik olarak devralır. Açılışta hâlâ yalnız ilk görsel istenir; ziyaretçi ikinci sahneye geçtikten sonra yalnız sıradaki sahne ısıtılır. Böylece 5. sahnedeyken özgün 6. sahne ufuk fotoğrafı hazırlanır ve finalde kum görseli bekleme yüzeyi olarak kalmaz. Doğrulama `server` progressive DOM ve `io+cleanup+no-scroll` sonucunu verir. Yeni animasyon kütüphanesi, vendor paketi, canlı anahtar veya deploy değişikliği yoktur.
 
 ## Kanıtlar
 

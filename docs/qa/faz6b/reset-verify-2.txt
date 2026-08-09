@@ -6,8 +6,8 @@
  Container kukaisland_canli-db-1  Stopped
  Container kukaisland_canli-db-1  Removing
  Container kukaisland_canli-db-1  Removed
- Volume kukaisland_canli_db_data  Removing
  Network kukaisland_canli_default  Removing
+ Volume kukaisland_canli_db_data  Removing
  Volume kukaisland_canli_wordpress_data  Removing
  Volume kukaisland_canli_db_data  Removed
  Volume kukaisland_canli_wordpress_data  Removed
@@ -15,10 +15,10 @@
 Faz 6B hikâye medyası: 6 masaüstü ve 6 mobil kadraj hazır.
  Network kukaisland_canli_default  Creating
  Network kukaisland_canli_default  Created
- Volume kukaisland_canli_wordpress_data  Creating
- Volume kukaisland_canli_wordpress_data  Created
  Volume kukaisland_canli_db_data  Creating
  Volume kukaisland_canli_db_data  Created
+ Volume kukaisland_canli_wordpress_data  Creating
+ Volume kukaisland_canli_wordpress_data  Created
  Container kukaisland_canli-db-1  Creating
  Container kukaisland_canli-db-1  Created
  Container kukaisland_canli-wordpress-1  Creating
@@ -29,8 +29,8 @@ Faz 6B hikâye medyası: 6 masaüstü ve 6 mobil kadraj hazır.
  Container kukaisland_canli-db-1  Healthy
  Container kukaisland_canli-wordpress-1  Starting
  Container kukaisland_canli-wordpress-1  Started
- Container kukaisland_canli-db-1  Waiting
  Container kukaisland_canli-wordpress-1  Waiting
+ Container kukaisland_canli-db-1  Waiting
  Container kukaisland_canli-db-1  Healthy
  Container kukaisland_canli-wordpress-1  Healthy
  Container kukaisland_canli-db-1  Running
@@ -264,6 +264,7 @@ STORY_PDF_BODY_MATCH=yes
 STORY_LINE_REVEAL=scene-04
 STORY_PROGRESSIVE_DOM=server
 STORY_OBSERVER=io+cleanup+no-scroll
+STORY_MOBILE_ENHANCED=enabled
 STORY_EMPTY_MEDIA=placeholder
 NEWSLETTER_TABLE=ready
 NEWSLETTER_FORM=native-required
@@ -336,6 +337,7 @@ PASS story body matches manifesto PDF
 PASS scene four line reveal
 PASS server-rendered story DOM
 PASS story observer cleanup and no scroll listener
+PASS mobile story uses the scroll-led enhancement
 PASS empty story media placeholder
 PASS newsletter table
 PASS native required newsletter form

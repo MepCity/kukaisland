@@ -8,7 +8,6 @@
   const scenes = [...story.querySelectorAll("[data-story-scene]")];
   const steps = [...story.querySelectorAll("[data-story-step]")];
   const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const desktop = window.matchMedia("(min-width: 48em)");
   let observer = null;
   let requestedMediaIndex = 0;
 
@@ -60,8 +59,8 @@
   };
 
   const start = () => {
-    if (motion.matches || !desktop.matches || observer || !steps.length) {
-      if (motion.matches || !desktop.matches) stop();
+    if (motion.matches || observer || !steps.length) {
+      if (motion.matches) stop();
       return;
     }
     story.dataset.enhanced = "true";
@@ -78,7 +77,6 @@
 
   scenes.forEach((scene, index) => scene.addEventListener("focusin", () => activate(index)));
   motion.addEventListener("change", start);
-  desktop.addEventListener("change", start);
   window.addEventListener("pagehide", () => observer?.disconnect(), { once: true });
   start();
 })();
