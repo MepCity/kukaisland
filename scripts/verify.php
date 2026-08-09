@@ -239,6 +239,26 @@ if ( $about_page && preg_match( '#<div class="kuka-brand-story__source">(.*)</di
 $pdf_story = 'KUKA ISLAND Hayatta bazen sıfırdan başlamak gerekir. Benim için KUKA ISLAND tam olarak böyle başladı. Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim. Denizi… Yazı… Özgürlüğü… Ve kadınların kendini en güzel hissettiği anları… İşte KUKA ISLAND böyle doğdu. Her koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor. Bu yolculuk daha yeni başlıyor. İyi ki buradasın. Ve bu hikâyenin ilk sayfalarında bize eşlik ediyorsun. Love, KÜBRA';
 WP_CLI::line( 'BRAND_STORY_PDF_MATCH=' . ( hash_equals( $pdf_story, $about_source ) ? 'yes' : 'no' ) );
 WP_CLI::line( 'ABOUT_OPENING_PANEL_BOUND=' . ( $about_page && str_contains( (string) $about_page->post_content, '[kuka_manifesto_line_2]' ) ? 'yes' : 'no' ) );
+$story_scenes = $site_content['story']['scenes'] ?? array();
+$story_pdf_source = trim( preg_replace( '/\s+/u', ' ', implode( ' ', array_column( array_slice( $story_scenes, 1 ), 'text' ) ) ) );
+$story_pdf_expected = 'Hayatta bazen sıfırdan başlamak gerekir. Benim için KUKA ISLAND tam olarak böyle başladı. Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim. Denizi… Yazı… Özgürlüğü… Ve kadınların kendini en güzel hissettiği anları… İşte KUKA ISLAND böyle doğdu. Her koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor. Bu yolculuk daha yeni başlıyor. İyi ki buradasın. Ve bu hikâyenin ilk sayfalarında bize eşlik ediyorsun. Love, KÜBRA';
+$story_bilingual = array_filter( $story_scenes, static fn( array $scene ): bool => '' !== trim( (string) ( $scene['text'] ?? '' ) ) && '' !== trim( (string) ( $scene['text_en'] ?? '' ) ) );
+$story_media = 0;
+foreach ( $story_scenes as $scene ) {
+	foreach ( array( 'desktop_image_id', 'desktop_image_id_en', 'mobile_image_id', 'mobile_image_id_en' ) as $media_key ) {
+		if ( absint( $scene[ $media_key ] ?? 0 ) ) { ++$story_media; }
+	}
+}
+$story_template = (string) file_get_contents( get_stylesheet_directory() . '/page-hakkimizda.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$story_script = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/story.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+WP_CLI::line( 'STORY_SCENES=' . count( $story_scenes ) );
+WP_CLI::line( 'STORY_BILINGUAL=' . count( $story_bilingual ) . '/' . count( $story_scenes ) );
+WP_CLI::line( 'STORY_MEDIA_FIELDS=' . $story_media . '/' . ( count( $story_scenes ) * 4 ) );
+WP_CLI::line( 'STORY_PDF_BODY_MATCH=' . ( hash_equals( $story_pdf_expected, $story_pdf_source ) ? 'yes' : 'no' ) );
+WP_CLI::line( 'STORY_LINE_REVEAL=' . ( ! empty( $story_scenes[3]['reveal_lines'] ) ? 'scene-04' : 'missing' ) );
+WP_CLI::line( 'STORY_PROGRESSIVE_DOM=' . ( str_contains( $story_template, 'foreach ( $story_scenes' ) && str_contains( $story_template, 'data-story-scene=' ) && ! str_contains( $story_script, 'createElement' ) ? 'server' : 'missing' ) );
+WP_CLI::line( 'STORY_OBSERVER=' . ( str_contains( $story_script, 'new IntersectionObserver' ) && str_contains( $story_script, 'observer?.disconnect()' ) && ! str_contains( $story_script, 'addEventListener("scroll"' ) ? 'io+cleanup+no-scroll' : 'missing' ) );
+WP_CLI::line( 'STORY_EMPTY_MEDIA=' . ( str_contains( $story_template, 'kuka-story__placeholder' ) ? 'placeholder' : 'missing' ) );
 global $wpdb;
 $newsletter_table = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . 'kuka_newsletter_subscribers' ) );
 $newsletter_form = class_exists( 'Kuka_Island_Core_Newsletter' ) ? Kuka_Island_Core_Newsletter::form() : '';

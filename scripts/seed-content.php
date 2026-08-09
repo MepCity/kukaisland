@@ -452,6 +452,25 @@ if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 	$current['hero']['desktop_image_id'] = $attachment_id( 'hero-aegean-black.jpg' );
 	$current['hero']['mobile_image_id'] = $attachment_id( 'hero-aegean-black-mobile.jpg' );
 	$current['home']['editorial_image_id'] = $attachment_id( 'cobalt-set.jpg' );
+	$current['story']['scenes'] = $defaults['story']['scenes'];
+	$story_media = array(
+		array( 'hero-aegean-black.jpg', 'hero-aegean-black-mobile.jpg', 'light' ),
+		array( 'cobalt-set.jpg', 'cobalt-set.jpg', 'dark' ),
+		array( 'noir-asymmetric-top-detail.jpg', 'noir-asymmetric-top.jpg', 'dark' ),
+		array( 'cobalt-asymmetric-top-detail.jpg', 'cobalt-asymmetric-top.jpg', 'dark' ),
+		array( 'hero-aegean-black.jpg', 'hero-aegean-black-mobile.jpg', 'light' ),
+		array( 'noir-one-piece-detail.jpg', 'noir-one-piece.jpg', 'dark' ),
+	);
+	foreach ( $story_media as $scene_index => $scene_media ) {
+		$desktop_id = $attachment_id( $scene_media[0] );
+		$mobile_id  = $attachment_id( $scene_media[1] );
+		$current['story']['scenes'][ $scene_index ]['desktop_image_id']    = $desktop_id;
+		$current['story']['scenes'][ $scene_index ]['desktop_image_id_en'] = $desktop_id;
+		$current['story']['scenes'][ $scene_index ]['mobile_image_id']     = $mobile_id;
+		$current['story']['scenes'][ $scene_index ]['mobile_image_id_en']  = $mobile_id;
+		$current['story']['scenes'][ $scene_index ]['text_tone']           = $scene_media[2];
+		$current['story']['scenes'][ $scene_index ]['text_tone_en']        = $scene_media[2];
+	}
 	$current['brand']['social_links'] = $defaults['brand']['social_links'];
 	$current['brand']['email'] = $defaults['brand']['email'];
 	unset( $current['brand']['whatsapp_url'] );

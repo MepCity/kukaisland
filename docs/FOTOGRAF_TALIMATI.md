@@ -32,6 +32,21 @@ Her renk bu sırayı baştan tamamlar. Örneğin siyah rengin `01` dosyası ön 
 
 Ürün kartı oranı 4:5'tir ve değiştirilemez. Ana ürün, 4:5 dikey kırpma içinde baştan sona okunmalı; kritik bağlar, kesim uçları, aksesuarlar ve modelin önemli bölümleri kenarlara dayanmamalıdır. Çekimde dört kenarda kırpma payı bırakın. Yalnız geniş yatay kadraja güvenmeyin; galeri için yatay kare alınsa bile ayrıca 4:5 güvenli ana kare çekin.
 
+## Marka hikâyesi — altı sahne
+
+Her sahne için aynı duyguyu taşıyan iki ayrı teslim gerekir: masaüstünde geniş/yatay, mobilde 4:5'e yakın dikey kadraj. Masaüstü karede metin için alt-sol bölgede; mobil makalede görsel tek başına gösterileceği için merkezde güvenli alan bırakın. Metin bir panel yüzeyi üzerinde okunur, fakat kritik ürün veya yüz bölgesini panelin geleceği alt-sol alana yerleştirmeyin.
+
+| Sahne | Kare ihtiyacı | Duygu / içerik |
+|---|---|---|
+| 01 | Açılış geniş kıyı karesi + dikey karşılığı | Ada hissi, ilk bakışta sakin ve güçlü bir imge |
+| 02 | Yeni başlangıç karesi + dikey karşılığı | Ufuk, yol, kapı veya sabah ışığı; yeniden başlama duygusu |
+| 03 | Kurucu/üretim karesi + dikey karşılığı | Marka kurma, seçki veya stüdyo ayrıntısı; kişisel ama sahnelenmemiş |
+| 04 | Deniz/yaz/özgürlük karesi + dikey karşılığı | Dört kısa satırın nefesine izin veren sade, ritmik kompozisyon |
+| 05 | Koleksiyon/zamansızlık karesi + dikey karşılığı | Kumaş, işçilik veya yıllarca giyilecek ürün vurgusu |
+| 06 | Kapanış/imza karesi + dikey karşılığı | Sıcak, davetkâr son; `Love, KÜBRA` imzasını bastırmayan sakin alan |
+
+Dosya kalıbı: `hikaye-{sahne}-desktop.jpg` ve `hikaye-{sahne}-mobile.jpg` (örnek: `hikaye-04-mobile.jpg`). On iki nihai kare de kaynak dosya standardındaki çözünürlük, sRGB ve sıkıştırma kurallarına uymalıdır.
+
 ## Kurala uyulmazsa
 
 Eksik çözünürlük, yanlış renk profili, mesajlaşma uygulaması sıkıştırması veya güvenli alan dışındaki kadraj yeniden çekim/yeniden dışa aktarma gerektirir. Adlandırma ve sıra kuralı uygulanmazsa yaklaşık 150 parçanın yüzlerce dosyası ürün ve renkle güvenilir biçimde otomatik eşleşmez. Bu dosyaların tek tek aranması ve elle eşleştirilmesi mevcut proje kapsamına dahil değildir; ayrı süre ve bütçe gerektirir.

@@ -97,6 +97,9 @@ function kuka_island_child_enqueue_assets(): void {
 	}
 
 	kuka_island_enqueue_script( 'storefront' );
+	if ( is_page( 'hakkimizda' ) ) {
+		kuka_island_enqueue_script( 'story', array( 'kuka-island-storefront' ) );
+	}
 	if ( is_front_page() || is_shop() || is_product_taxonomy() ) {
 		kuka_island_enqueue_script( 'catalog', array( 'kuka-island-storefront' ) );
 	}

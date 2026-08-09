@@ -1,0 +1,216 @@
+{
+  "tr": [
+    {
+      "width": 320,
+      "overflow": 0,
+      "enhanced": false,
+      "sticky": "static",
+      "copyHeights": [
+        30,
+        183,
+        181,
+        151,
+        244,
+        373
+      ],
+      "sceneHeight": 562
+    },
+    {
+      "width": 390,
+      "overflow": 0,
+      "enhanced": false,
+      "sticky": "static",
+      "copyHeights": [
+        30,
+        153,
+        121,
+        151,
+        213,
+        312
+      ],
+      "sceneHeight": 650
+    },
+    {
+      "width": 768,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        130,
+        172,
+        171,
+        329,
+        233,
+        330
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1024,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        146,
+        178,
+        180,
+        412,
+        245,
+        339
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1280,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        163,
+        236,
+        204,
+        578,
+        278,
+        405
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1440,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        267,
+        299,
+        267,
+        640,
+        299,
+        426
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1920,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        279,
+        319,
+        287,
+        676,
+        371,
+        447
+      ],
+      "sceneHeight": 900
+    }
+  ],
+  "en": [
+    {
+      "width": 320,
+      "overflow": 0,
+      "enhanced": false,
+      "sticky": "static",
+      "copyHeights": [
+        30,
+        183,
+        181,
+        212,
+        274,
+        403
+      ],
+      "sceneHeight": 562
+    },
+    {
+      "width": 390,
+      "overflow": 0,
+      "enhanced": false,
+      "sticky": "static",
+      "copyHeights": [
+        30,
+        153,
+        151,
+        181,
+        244,
+        342
+      ],
+      "sceneHeight": 650
+    },
+    {
+      "width": 768,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        130,
+        172,
+        171,
+        231,
+        233,
+        330
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1024,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        146,
+        178,
+        180,
+        246,
+        245,
+        339
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1280,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        246,
+        236,
+        246,
+        287,
+        319,
+        405
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1440,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        267,
+        299,
+        267,
+        313,
+        392,
+        426
+      ],
+      "sceneHeight": 900
+    },
+    {
+      "width": 1920,
+      "overflow": 0,
+      "enhanced": true,
+      "sticky": "sticky",
+      "copyHeights": [
+        279,
+        319,
+        339,
+        391,
+        423,
+        447
+      ],
+      "sceneHeight": 900
+    }
+  ]
+}

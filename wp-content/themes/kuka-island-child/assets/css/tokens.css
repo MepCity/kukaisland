@@ -80,6 +80,11 @@
   --hero-max-height: 860px;
   --editorial-max-height: 900px;
   --manifesto-min-height: 520px;
+	--story-shift: 24px;
+	--story-copy-width: 680px;
+	--story-article-size: 900px;
+	--story-transition: 420ms;
+	--story-line-delay: 90ms;
   --service-min-height: 148px;
   --category-row-height: 104px;
   --category-row-height-mobile: 88px;
