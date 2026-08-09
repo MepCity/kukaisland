@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-09T00:42:20+00:00\n"
+"POT-Creation-Date: 2026-08-09T09:57:10+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -60,7 +60,7 @@ msgid "Sosyal"
 msgstr ""
 
 #: footer.php:26
-#: header.php:71
+#: header.php:69
 msgid "Kuka Island ana sayfa"
 msgstr ""
 
@@ -113,109 +113,109 @@ msgstr ""
 msgid "Ana sayfa"
 msgstr ""
 
-#: functions.php:238
+#: functions.php:241
 msgid "Yakında"
 msgstr ""
 
-#: header.php:26
+#: header.php:24
 msgid "İçeriğe geç"
 msgstr ""
 
-#: header.php:28
+#: header.php:26
 msgid "Duyurular"
 msgstr ""
 
-#: header.php:64
+#: header.php:62
 msgid "Sepete dön"
 msgstr ""
 
-#: header.php:66
+#: header.php:64
 msgid "Menüyü aç"
 msgstr ""
 
-#: header.php:67
+#: header.php:65
 msgid "Ana menü"
 msgstr ""
 
-#: header.php:78
+#: header.php:76
 msgid "Ürün ara"
 msgstr ""
 
-#: header.php:79
+#: header.php:77
 msgid "Sepeti aç"
 msgstr ""
 
-#: header.php:86
+#: header.php:84
 msgid "Menü"
 msgstr ""
 
-#: header.php:86
+#: header.php:84
 msgid "Menüyü kapat"
 msgstr ""
 
-#: header.php:87
+#: header.php:85
 msgid "Mobil menü"
 msgstr ""
 
-#: header.php:92
-#: header.php:97
+#: header.php:90
+#: header.php:95
 msgid "Ara"
 msgstr ""
 
-#: header.php:92
+#: header.php:90
 msgid "Aramayı kapat"
 msgstr ""
 
-#: header.php:94
+#: header.php:92
 msgid "Ne arıyorsunuz?"
 msgstr ""
 
-#: header.php:95
+#: header.php:93
 msgid "Ürün, renk veya kesim"
 msgstr ""
 
-#: header.php:101
+#: header.php:99
 msgid "Hızlı bağlantılar"
 msgstr ""
 
-#: header.php:102
+#: header.php:100
 msgid "Sık aranan"
 msgstr ""
 
-#: header.php:109
+#: header.php:107
 msgid "Sepeti kapat"
 msgstr ""
 
-#: inc/assets.php:120
+#: inc/assets.php:143
 #: woocommerce/content-product.php:55
 msgid "Tükendi"
 msgstr ""
 
-#: inc/assets.php:121
+#: inc/assets.php:144
 #: woocommerce/single-product/product-image.php:26
 #, php-format
 msgid "%1$s; tam ekran aç (%2$d/%3$d)"
 msgstr ""
 
-#: inc/assets.php:122
+#: inc/assets.php:145
 msgid "Renk seçimi"
 msgstr ""
 
-#: inc/assets.php:123
+#: inc/assets.php:146
 #, php-format
 msgid "%s rengini seç"
 msgstr ""
 
-#: inc/assets.php:124
+#: inc/assets.php:147
 msgid "Beden seçimi"
 msgstr ""
 
-#: inc/assets.php:125
+#: inc/assets.php:148
 #, php-format
 msgid "%s beden tükendi"
 msgstr ""
 
-#: inc/assets.php:126
+#: inc/assets.php:149
 #, php-format
 msgid "%s beden stokta"
 msgstr ""

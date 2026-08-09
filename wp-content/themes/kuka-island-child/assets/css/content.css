@@ -208,6 +208,213 @@
 	font-weight: var(--weight-medium);
 }
 
+/* Marka hikâyesi önce düz ve tam okunur bir makaledir. JavaScript yalnız geniş
+   ekranda, hareket tercihi uygunsa aynı DOM'u sticky sahneye yükseltir. */
+.kuka-story__stage > .kuka-story__media,
+.kuka-story__steps {
+	display: none;
+}
+
+.kuka-story__panel {
+	max-width: none;
+}
+
+.kuka-story__scene {
+	content-visibility: auto;
+	contain-intrinsic-size: auto var(--story-article-size);
+	padding: var(--space-8) var(--space-3);
+}
+
+.kuka-story__scene + .kuka-story__scene {
+	border-top: var(--stroke) solid var(--color-line);
+}
+
+.kuka-story__article-image,
+.kuka-story__noscript-image {
+	display: block;
+	width: 100%;
+	margin-bottom: var(--space-4);
+	background: var(--color-image-placeholder);
+}
+
+.kuka-story__article-image img,
+.kuka-story__noscript-image img {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.kuka-story__placeholder {
+	min-height: var(--story-article-size);
+}
+
+.kuka-story__copy {
+	max-width: var(--story-copy-width);
+	font-size: var(--text-heading-small);
+	line-height: var(--leading-heading);
+	letter-spacing: var(--tracking-tight);
+}
+
+.kuka-story__copy p {
+	margin: 0 0 var(--space-4);
+}
+
+.kuka-story__line {
+	display: inline-block;
+}
+
+.kuka-story__sign {
+	display: grid;
+	gap: var(--space-1);
+	margin-top: var(--space-8);
+	padding-top: var(--space-3);
+	border-top: var(--stroke) solid currentColor;
+	font-family: var(--font-mono);
+	font-size: var(--text-caption);
+	letter-spacing: var(--tracking-label);
+}
+
+.kuka-story__sign strong {
+	font-size: var(--text-body-large);
+	font-weight: var(--weight-medium);
+}
+
+@media (min-width: 48em) {
+	.kuka-story[data-enhanced="true"] {
+		position: relative;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__stage {
+		position: sticky;
+		top: 0;
+		height: 100svh;
+		overflow: hidden;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__media,
+	.kuka-story[data-enhanced="true"] .kuka-story__steps {
+		display: block;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__media {
+		position: absolute;
+		inset: 0;
+		background: var(--color-image-placeholder);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__media-item {
+		position: absolute;
+		inset: 0;
+		display: block;
+		opacity: 0;
+		transition: none;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__media-item.is-active {
+		opacity: 1;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__media-item img {
+		display: block;
+		width: 100%;
+		height: 100svh;
+		object-fit: cover;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__panel {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		align-items: end;
+		padding: var(--space-8);
+		border: 0;
+		color: var(--color-white);
+		content-visibility: visible;
+		opacity: 0;
+		pointer-events: none;
+		transform: translateY(var(--story-shift));
+		transition: none;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene--dark {
+		color: var(--color-hero-ink);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene.is-active {
+		opacity: 1;
+		pointer-events: auto;
+		transform: translateY(0);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__article-image,
+	.kuka-story[data-enhanced="true"] .kuka-story__noscript-image {
+		display: none;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__copy {
+		padding: var(--space-3);
+		background: var(--color-ink);
+		font-size: var(--text-heading-medium);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene--long .kuka-story__copy {
+		font-size: var(--text-heading-small);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene--dark .kuka-story__copy {
+		background: var(--color-paper);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__line {
+		opacity: 0;
+		transform: translateY(var(--story-shift));
+		transition: none;
+	}
+
+	.kuka-story[data-enhanced="true"][data-story-ready="true"] .kuka-story__media-item {
+		transition: opacity var(--story-transition) ease;
+	}
+
+	.kuka-story[data-enhanced="true"][data-story-ready="true"] .kuka-story__scene,
+	.kuka-story[data-enhanced="true"][data-story-ready="true"] .kuka-story__line {
+		transition: opacity var(--story-transition) ease, transform var(--story-transition) ease;
+	}
+
+	.kuka-story[data-enhanced="true"] .is-active .kuka-story__line {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.kuka-story[data-enhanced="true"] .is-active .kuka-story__line:nth-of-type(2) { transition-delay: var(--story-line-delay); }
+	.kuka-story[data-enhanced="true"] .is-active .kuka-story__line:nth-of-type(3) { transition-delay: calc(var(--story-line-delay) * 2); }
+	.kuka-story[data-enhanced="true"] .is-active .kuka-story__line:nth-of-type(4) { transition-delay: calc(var(--story-line-delay) * 3); }
+
+	.kuka-story[data-enhanced="true"] .kuka-story__steps {
+		position: relative;
+		z-index: 2;
+		margin-top: -100svh;
+		pointer-events: none;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__step {
+		height: 100svh;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.kuka-story *,
+	.kuka-story *::before,
+	.kuka-story *::after {
+		transition: none;
+	}
+}
+
 /* Ön bilgilendirme formu §2 — sepetteki gerçek kalemler. */
 .kuka-preinfo-order caption {
   padding-bottom: var(--space-1);

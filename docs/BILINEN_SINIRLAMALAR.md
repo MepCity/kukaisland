@@ -7,10 +7,12 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Gerçek sepet, sipariş ve panel akışları vardır; canlı iyzico anahtarları olmadığı için gerçek tahsilat/3D dönüşü yapılmamıştır.
 - Ürün adları, çeşitler, stoklar ve fiyatlar pilot veridir. Gerçek katalog müşteriden alınacaktır.
 - Fotoğraflar lisanslı veya proje için hazırlanmış yer tutuculardır; gerçek ürün çekimleri değildir.
+- Marka hikâyesinin altı sahnesi de `seed-media/` içindeki yer tutucu karelerle kurulmuştur. Gerçek çekimde masaüstü/mobil on iki kare `docs/FOTOGRAF_TALIMATI.md` brief'ine göre değiştirilip iki dilde kontrast yeniden ölçülmelidir.
 - Hakkımızda metni müşterinin teslim ettiği manifesto PDF'inden birebir aktarılmıştır.
 - **SMTP yayın engelidir.** Üyelik olmadığı için sipariş e-postası müşterinin siparişle temel bağıdır. Canlıya almadan önce gönderici alan adı SPF/DKIM/DMARC kayıtlarıyla doğrulanmalı; sipariş alındı, durum ve kişiselleştirilmiş sipariş takip bağlantısı gerçek posta kutularında teslim testi görmelidir.
 - Bülten formu yalnız onaylı kayıt ve kanıt saklar; toplu veya otomatik pazarlama e-postası göndermez. Bildirim adresi boş bırakılabilir ve bu durumda kayıt yine veritabanında tutulur. Ticari ileti gönderimine geçmeden önce İYS süreci, onay metni, saklama süresi ve silme prosedürü hukuk danışmanıyla kesinleştirilmelidir.
 - Hero metin perdesi müşteri kararıyla tamamen kaldırıldı. Metin okunurluğu seçilen fotoğrafın metin bölgesine, başlık uzunluğuna ve Site Görünümü panelindeki açık/koyu metin tonu seçimine bağlıdır; görsel veya metin değiştirildiğinde Türkçe ve İngilizce birlikte, mobil ve masaüstünde satır bazlı render kontrastıyla yeniden ölçülmelidir.
+- Safari, Firefox, iOS Safari, Android Chrome ve gerçek cihaz Core Web Vitals turu bu projede hâlâ hiç yapılmadı. Faz 6A altı büyük hikâye görseli eklediği için özellikle LCP, INP, bellek ve mobil adres çubuğu davranışı gerçek cihazda yayın öncesi yeniden ölçülmelidir; yerel Chrome sonucu gerçek cihaz kabulü değildir.
 
 ## Müşteri girdisi bekleyen konular
 

@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 5;
+	private const SCHEMA_VERSION = 6;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -113,6 +113,16 @@ final class Kuka_Island_Core_Site_Appearance {
 				'service_2_title' => 'Kolay iade', 'service_2_copy' => '14 gün içinde cayma hakkı', 'service_2_url' => '/iade-degisim/',
 				'service_3_title' => 'Destek', 'service_3_copy' => 'Hafta içi 09.00–18.00 · WhatsApp', 'service_3_url' => '',
 			),
+			'story' => array(
+				'scenes' => array(
+					array( 'text' => "Bir yer değil. Bir his.", 'text_en' => "Not a place. A feeling.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light' ),
+					array( 'text' => "Hayatta bazen sıfırdan başlamak gerekir.\n\nBenim için KUKA ISLAND tam olarak böyle başladı.", 'text_en' => "Sometimes, life asks you to begin again.\n\nThat is exactly how KUKA ISLAND began for me.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light' ),
+					array( 'text' => 'Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim.', 'text_en' => 'As I turned a new page, I did not want to create just another brand. I wanted to bring everything that makes me feel good together under one roof.', 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light' ),
+					array( 'text' => "Denizi…\nYazı…\nÖzgürlüğü…\nVe kadınların kendini en güzel hissettiği anları…", 'text_en' => "The sea…\nSummer…\nFreedom…\nAnd those moments when women feel most beautiful in their own skin…", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'light', 'text_tone_en' => 'light', 'reveal_lines' => true ),
+					array( 'text' => "İşte KUKA ISLAND böyle doğdu.\n\nHer koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor.", 'text_en' => "That is how KUKA ISLAND came to life.\n\nEvery collection is made for more than a single season—to bring back that same feeling, even when you wear it years from now.", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ),
+					array( 'text' => "Bu yolculuk daha yeni başlıyor.\n\nİyi ki buradasın.\n\nVe bu hikâyenin ilk sayfalarında bize eşlik ediyorsun.\n\nLove,\nKÜBRA", 'text_en' => "This journey is only just beginning.\n\nI am so glad you are here.\n\nAnd that you are with us for the first pages of this story.\n\nLove,\nKÜBRA", 'desktop_image_id' => 0, 'desktop_image_id_en' => 0, 'mobile_image_id' => 0, 'mobile_image_id_en' => 0, 'text_tone' => 'dark', 'text_tone_en' => 'dark' ),
+				),
+			),
 			'navigation' => array(
 				'main' => "Yeni Gelenler|/magaza/?orderby=date\nHikâyemiz|/hakkimizda/",
 				'categories' => "Bikini|/kategori/bikini-ustleri/|1|1\nMayo|/kategori/mayolar/|1|1\nPlaj Giyim|/kategori/plaj-giyim/|1|1\nKoleksiyonlar|/magaza/|1|0",
@@ -173,7 +183,13 @@ final class Kuka_Island_Core_Site_Appearance {
 		if ( is_array( $saved ) && $legacy_main === ( $saved['navigation']['main'] ?? '' ) ) {
 			$saved['navigation']['main'] = self::defaults()['navigation']['main'];
 		}
-		$content = self::merge( self::defaults(), self::migrate( is_array( $saved ) ? $saved : array() ) );
+		$saved   = self::migrate( is_array( $saved ) ? $saved : array() );
+		$content = self::merge( self::defaults(), $saved );
+		// Repeater rows are an ordered collection: deleting a scene must not merge
+		// the numeric default rows back into the customer's saved sequence.
+		if ( isset( $saved['story']['scenes'] ) && is_array( $saved['story']['scenes'] ) ) {
+			$content['story']['scenes'] = $saved['story']['scenes'];
+		}
 		return class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::with_translation_defaults( $content ) : $content;
 	}
 
@@ -318,6 +334,13 @@ final class Kuka_Island_Core_Site_Appearance {
 					'service_3_title'    => array( __( 'Servis 3 başlık', 'kuka-island-core' ), 'text' ),
 					'service_3_copy'     => array( __( 'Servis 3 açıklama', 'kuka-island-core' ), 'text' ),
 					'service_3_url'      => array( __( 'Servis 3 bağlantı (boşsa WhatsApp/iletişim)', 'kuka-island-core' ), 'url' ),
+				),
+			),
+			'story'        => array(
+				'label'  => __( '5. Marka Hikâyesi', 'kuka-island-core' ),
+				'note'   => __( 'Sahneleri ekleyip çıkarabilir ve sıralayabilirsiniz. Metni yeniden yazmadan, manifesto kaynağındaki paragraf ve satır sonlarını koruyun.', 'kuka-island-core' ),
+				'fields' => array(
+					'scenes' => array( __( 'Hikâye sahneleri', 'kuka-island-core' ), 'story_scenes' ),
 				),
 			),
 			'navigation'   => array(
@@ -520,7 +543,9 @@ final class Kuka_Island_Core_Site_Appearance {
 			<th scope="row"><label for="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>"><?php echo esc_html( $field[0] ); ?></label></th>
 			<td<?php echo $translation ? ' style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem"' : ''; ?>>
 			<?php if ( $translation ) : ?><div><p><strong>Türkçe</strong></p><?php endif; ?>
-			<?php if ( 'checkbox' === $type ) : ?>
+			<?php if ( 'story_scenes' === $type ) : ?>
+				<?php $this->render_story_scenes( is_array( $value ) ? $value : array() ); ?>
+			<?php elseif ( 'checkbox' === $type ) : ?>
 				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="0">
 				<input id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( (bool) $value ); ?>>
 			<?php elseif ( in_array( $type, array( 'media_image', 'media_video' ), true ) ) : ?>
@@ -557,6 +582,44 @@ final class Kuka_Island_Core_Site_Appearance {
 			<?php if ( $translation ) : ?></div><div><p><strong>English</strong></p><?php $translated_field = self::fields()[ $group_key ]['fields'][ $translation['key'] ]; $this->render_control( $group_key, $translation['key'], $translated_field, $content[ $group_key ][ $translation['key'] ] ?? '' ); ?></div><?php endif; ?>
 			</td>
 		</tr>
+		<?php
+	}
+
+	/** @param array<int, array<string, mixed>> $scenes */
+	private function render_story_scenes( array $scenes ): void {
+		?>
+		<div data-kuka-story-scenes>
+			<div data-kuka-story-list>
+				<?php foreach ( array_values( $scenes ) as $index => $scene ) { $this->render_story_scene( (string) $index, $scene ); } ?>
+			</div>
+			<p><button class="button" type="button" data-kuka-story-add><?php esc_html_e( 'Sahne ekle', 'kuka-island-core' ); ?></button></p>
+			<template data-kuka-story-template><?php $this->render_story_scene( '__INDEX__', array() ); ?></template>
+		</div>
+		<?php
+	}
+
+	/** @param array<string, mixed> $scene */
+	private function render_story_scene( string $index, array $scene ): void {
+		$prefix = 'site_content[story][scenes][' . $index . ']';
+		$number = is_numeric( $index ) ? str_pad( (string) ( (int) $index + 1 ), 2, '0', STR_PAD_LEFT ) : '';
+		/* translators: %s is the two-digit scene number shown in the story repeater. */
+		$scene_label = sprintf( __( 'Sahne %s', 'kuka-island-core' ), $number );
+		?>
+		<fieldset data-kuka-story-scene style="border:1px solid #c3c4c7;margin:0 0 1rem;padding:1rem">
+			<legend data-kuka-story-number style="font-weight:600;padding:0 0.5rem"><?php echo esc_html( $scene_label ); ?></legend>
+			<p><button class="button" type="button" data-kuka-story-up><?php esc_html_e( 'Yukarı', 'kuka-island-core' ); ?></button> <button class="button" type="button" data-kuka-story-down><?php esc_html_e( 'Aşağı', 'kuka-island-core' ); ?></button> <button class="button-link-delete" type="button" data-kuka-story-remove><?php esc_html_e( 'Sahneyi kaldır', 'kuka-island-core' ); ?></button></p>
+			<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem">
+				<div><p><strong>Türkçe</strong></p><label><?php esc_html_e( 'Metin', 'kuka-island-core' ); ?><textarea class="large-text" rows="7" name="<?php echo esc_attr( $prefix . '[text]' ); ?>"><?php echo esc_textarea( (string) ( $scene['text'] ?? '' ) ); ?></textarea></label><?php $this->render_story_media( $prefix, 'desktop_image_id', __( 'Masaüstü görsel', 'kuka-island-core' ), absint( $scene['desktop_image_id'] ?? 0 ) ); ?><?php $this->render_story_media( $prefix, 'mobile_image_id', __( 'Mobil görsel', 'kuka-island-core' ), absint( $scene['mobile_image_id'] ?? 0 ) ); ?><label><?php esc_html_e( 'Metin tonu', 'kuka-island-core' ); ?><select name="<?php echo esc_attr( $prefix . '[text_tone]' ); ?>"><option value="light" <?php selected( 'light', $scene['text_tone'] ?? 'light' ); ?>><?php esc_html_e( 'Açık metin', 'kuka-island-core' ); ?></option><option value="dark" <?php selected( 'dark', $scene['text_tone'] ?? 'light' ); ?>><?php esc_html_e( 'Koyu metin', 'kuka-island-core' ); ?></option></select></label></div>
+				<div><p><strong>English</strong></p><label><?php esc_html_e( 'Text', 'kuka-island-core' ); ?><textarea class="large-text" rows="7" name="<?php echo esc_attr( $prefix . '[text_en]' ); ?>"><?php echo esc_textarea( (string) ( $scene['text_en'] ?? '' ) ); ?></textarea></label><?php $this->render_story_media( $prefix, 'desktop_image_id_en', __( 'Desktop image', 'kuka-island-core' ), absint( $scene['desktop_image_id_en'] ?? 0 ) ); ?><?php $this->render_story_media( $prefix, 'mobile_image_id_en', __( 'Mobile image', 'kuka-island-core' ), absint( $scene['mobile_image_id_en'] ?? 0 ) ); ?><label><?php esc_html_e( 'Text tone', 'kuka-island-core' ); ?><select name="<?php echo esc_attr( $prefix . '[text_tone_en]' ); ?>"><option value="light" <?php selected( 'light', $scene['text_tone_en'] ?? 'light' ); ?>><?php esc_html_e( 'Light text', 'kuka-island-core' ); ?></option><option value="dark" <?php selected( 'dark', $scene['text_tone_en'] ?? 'light' ); ?>><?php esc_html_e( 'Dark text', 'kuka-island-core' ); ?></option></select></label></div>
+			</div>
+			<p><input type="hidden" name="<?php echo esc_attr( $prefix . '[reveal_lines]' ); ?>" value="0"><label><input type="checkbox" name="<?php echo esc_attr( $prefix . '[reveal_lines]' ); ?>" value="1" <?php checked( ! empty( $scene['reveal_lines'] ) ); ?>> <?php esc_html_e( 'Satırları sırayla aç (kısa, bilinçli satır dizileri için)', 'kuka-island-core' ); ?></label></p>
+		</fieldset>
+		<?php
+	}
+
+	private function render_story_media( string $prefix, string $key, string $label, int $value ): void {
+		?>
+		<div data-kuka-media-field data-media-type="image"><p><strong><?php echo esc_html( $label ); ?></strong></p><input class="small-text" type="number" min="0" name="<?php echo esc_attr( $prefix . '[' . $key . ']' ); ?>" value="<?php echo esc_attr( (string) $value ); ?>" readonly> <button class="button" type="button" data-kuka-media-select><?php esc_html_e( 'Medyadan seç', 'kuka-island-core' ); ?></button> <button class="button-link-delete" type="button" data-kuka-media-clear><?php esc_html_e( 'Temizle', 'kuka-island-core' ); ?></button> <span data-kuka-media-preview><?php echo $value ? wp_get_attachment_image( $value, array( 80, 80 ) ) : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span></div>
 		<?php
 	}
 
@@ -597,7 +660,28 @@ final class Kuka_Island_Core_Site_Appearance {
 		foreach ( self::fields() as $group_key => $group ) {
 			foreach ( $group['fields'] as $field_key => $field ) {
 				$value = $raw[ $group_key ][ $field_key ] ?? '';
-				switch ( $field[1] ) {
+				 switch ( $field[1] ) {
+					case 'story_scenes':
+						$scenes = array();
+						foreach ( array_slice( is_array( $value ) ? array_values( $value ) : array(), 0, 20 ) as $scene ) {
+							if ( ! is_array( $scene ) ) { continue; }
+							$text    = sanitize_textarea_field( (string) ( $scene['text'] ?? '' ) );
+							$text_en = sanitize_textarea_field( (string) ( $scene['text_en'] ?? '' ) );
+							if ( '' === trim( $text ) && '' === trim( $text_en ) ) { continue; }
+							$scenes[] = array(
+								'text' => $text,
+								'text_en' => $text_en,
+								'desktop_image_id' => absint( $scene['desktop_image_id'] ?? 0 ),
+								'desktop_image_id_en' => absint( $scene['desktop_image_id_en'] ?? 0 ),
+								'mobile_image_id' => absint( $scene['mobile_image_id'] ?? 0 ),
+								'mobile_image_id_en' => absint( $scene['mobile_image_id_en'] ?? 0 ),
+								'text_tone' => in_array( $scene['text_tone'] ?? '', array( 'light', 'dark' ), true ) ? $scene['text_tone'] : 'light',
+								'text_tone_en' => in_array( $scene['text_tone_en'] ?? '', array( 'light', 'dark' ), true ) ? $scene['text_tone_en'] : 'light',
+								'reveal_lines' => '1' === (string) ( $scene['reveal_lines'] ?? '0' ),
+							);
+						}
+						$value = $scenes;
+						break;
 					case 'checkbox':
 						$value = '1' === (string) $value;
 						break;
