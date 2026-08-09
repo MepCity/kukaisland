@@ -23,6 +23,7 @@ final class Kuka_Island_Core_Product_Fields {
 		add_action( 'save_post_product', array( $this, 'save_english_box' ), 20, 2 );
 		add_filter( 'woocommerce_product_get_name', array( $this, 'english_name' ), 10, 2 );
 		add_filter( 'woocommerce_product_variation_get_name', array( $this, 'english_variation_name' ), 10, 2 );
+		add_filter( 'woocommerce_order_item_name', array( $this, 'english_order_item_name' ), 20, 2 );
 		add_filter( 'woocommerce_product_get_description', array( $this, 'english_description' ), 10, 2 );
 		add_filter( 'woocommerce_product_get_short_description', array( $this, 'english_short_description' ), 10, 2 );
 		add_filter( 'the_title', array( $this, 'english_post_title' ), 25, 2 );
@@ -86,8 +87,19 @@ final class Kuka_Island_Core_Product_Fields {
 	public function english_variation_name( string $name, WC_Product $product ): string {
 		$parent_name = self::translated_meta( $product, '_kuka_name_en', '' );
 		if ( '' === $parent_name ) { return $name; }
-		$original_parent = get_the_title( $product->get_parent_id() );
+		// `get_the_title()` is already localized by our title filter in an
+		// English request. Read the stored parent title directly so the Turkish
+		// prefix in WooCommerce's generated variation name can be replaced.
+		$original_parent = (string) get_post_field( 'post_title', $product->get_parent_id() );
 		return str_replace( $original_parent, $parent_name, $name );
+	}
+
+	/** Localize the immutable line-item snapshot on receipts and emails. */
+	public function english_order_item_name( string $name, WC_Order_Item $item ): string {
+		if ( ! $item instanceof WC_Order_Item_Product || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() ) { return $name; }
+		$product_id = $item->get_product_id();
+		$english    = trim( (string) get_post_meta( $product_id, '_kuka_name_en', true ) );
+		return '' === $english ? $name : str_replace( $item->get_name(), $english, $name );
 	}
 
 	public function english_description( string $description, WC_Product $product ): string {
