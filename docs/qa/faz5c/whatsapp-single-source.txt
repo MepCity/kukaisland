@@ -1,0 +1,7 @@
+Default footer URL: https://wa.me/905309481996
+Empty phone: footer WhatsApp absent; floating button absent; Instagram present
+Temporary phone: 0532 111 22 33
+Temporary footer URL: https://wa.me/905321112233
+Temporary service strip URL: https://wa.me/905321112233
+Temporary floating button URL: https://wa.me/905321112233
+Final value restored by clean seed: 0530 948 19 96

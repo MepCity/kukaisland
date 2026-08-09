@@ -1,0 +1,13 @@
+Desktop email input: 344.24x48
+Desktop button: 59.76x48
+Desktop consent label target: 420x48
+Mobile button: 358x48 (full width)
+Mobile consent label target: 358x48
+Checkbox computed border-radius: 0
+Keyboard Space test: active=true checked=true
+Label/consent contrast: 11.35:1
+Error message contrast: 6.04:1
+Newsletter blue scan: 0
+TR mobile overflow: 0
+EN mobile overflow: 0
+Native JS-free POST: success; required email+consent present; consent/date/IP stored

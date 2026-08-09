@@ -1,0 +1,2 @@
+VENDOR_DIFF_COUNT=0
+Checked roots: wp-content/plugins/woocommerce, wp-content/plugins/iyzico-woocommerce, wp-content/themes/blocksy

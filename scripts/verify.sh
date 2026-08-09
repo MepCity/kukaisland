@@ -62,6 +62,7 @@ grep -hoE -- '--[a-z0-9-]+[[:space:]]*:' wp-content/themes/kuka-island-child/ass
 undefined_tokens=$(comm -23 "$used_tokens" "$defined_tokens" | grep -Ev '^(hero-desktop|hero-mobile|swatch-color|zoom-scale|zoom-x|zoom-y)$' | wc -l | tr -d ' ')
 rm "$used_tokens" "$defined_tokens"
 newsletter_mail_calls=$(search_count 'wp_mail[[:space:]]*\(' wp-content/plugins/kuka-island-core/includes/class-newsletter.php)
+newsletter_blue=$(search_count '\bblue\b|#(00f|0000ff)\b' wp-content/themes/kuka-island-child/assets/css)
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -77,6 +78,7 @@ CSS_SHADOWS=$shadows
 LOCKED_DESIGN_CONTROLS=$locked_controls
 CSS_UNDEFINED_TOKENS=$undefined_tokens
 NEWSLETTER_WP_MAIL_CALLS=$newsletter_mail_calls
+NEWSLETTER_BLUE=$newsletter_blue
 EOF
 
 failures=0
@@ -133,8 +135,11 @@ expect_line "brand story matches source PDF" "BRAND_STORY_PDF_MATCH=yes"
 expect_line "About opening follows panel" "ABOUT_OPENING_PANEL_BOUND=yes"
 expect_line "newsletter table" "NEWSLETTER_TABLE=ready"
 expect_line "native required newsletter form" "NEWSLETTER_FORM=native-required"
+expect_line "newsletter label placeholder and site button" "NEWSLETTER_UI=label+placeholder|site-button"
 expect_line "newsletter notification panel field" "NEWSLETTER_NOTIFICATION_FIELD=panel"
 expect_line "retired panel fields removed" "RETIRED_PANEL_FIELDS="
+expect_line "hero overlay layer removed" "HERO_OVERLAY_LAYER=absent"
+expect_line "header top and scrolled modes" "HEADER_TOP_MODE=photo-white-to-paper-dark"
 expect_line "membership disabled" "MEMBERSHIP_ENABLED=no"
 expect_line "guest-only account options" "ACCOUNT_OPTIONS=guest:yes|checkout_signup:no|checkout_login:no|myaccount_registration:no|users_can_register:0"
 expect_line "social login plugin removed" "SOCIAL_LOGIN_PLUGIN=absent"
@@ -145,6 +150,8 @@ expect_line "membership terms draft" "MEMBERSHIP_TERMS_STATUS=draft"
 expect_line "WooCommerce account page kept" "MYACCOUNT_PAGE=kept"
 expect_line "guest cart lifetime panel value" "GUEST_SESSION_HOURS=48"
 expect_line "Instagram link" "INSTAGRAM_LINK=yes"
+expect_line "footer WhatsApp uses phone helper" "FOOTER_WHATSAPP_SOURCE=phone-helper"
+expect_line "WhatsApp empty and derived URL rule" "WHATSAPP_PHONE_RULE=empty-hidden|number-derived"
 expect_value "theme POT" "$theme_pot" "yes"
 expect_value "plugin POT" "$plugin_pot" "yes"
 expect_value "raw theme colors" "$raw_colors" "0"
@@ -153,6 +160,7 @@ expect_value "theme shadows" "$shadows" "0"
 expect_value "root overflow mask" "$overflow_masks" "0"
 expect_value "undefined CSS tokens" "$undefined_tokens" "0"
 expect_value "single-record notification only" "$newsletter_mail_calls" "1"
+expect_value "newsletter has no blue" "$newsletter_blue" "0"
 
 if [ "$failures" -ne 0 ]; then
   echo "VERIFY=FAIL ($failures)" >&2

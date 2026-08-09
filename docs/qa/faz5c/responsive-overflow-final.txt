@@ -1,0 +1,7 @@
+320: inner/client/scroll width equal; overflow 0
+390: inner/client/scroll width equal; overflow 0
+768: inner/client/scroll width equal; overflow 0
+1024: inner/client/scroll width equal; overflow 0
+1280: inner/client/scroll width equal; overflow 0
+1440: inner/client/scroll width equal; overflow 0
+1920: innerWidth=1920 clientWidth=1920 scrollWidth=1920; overflow 0
