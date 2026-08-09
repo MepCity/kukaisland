@@ -845,7 +845,7 @@ progress {
   background-image: var(--hero-desktop);
   background-position: center;
   background-size: cover;
-  color: var(--color-ink);
+  color: var(--color-hero-ink);
 }
 
 .kuka-hero--light {
@@ -877,6 +877,10 @@ progress {
   font-weight: var(--weight-regular);
   line-height: var(--leading-display);
   letter-spacing: var(--tracking-tight);
+}
+
+.kuka-hero--long-title h1 {
+  font-size: var(--text-heading-hero-long);
 }
 
 .kuka-hero__content > p:not(.kuka-eyebrow) {
@@ -1359,7 +1363,7 @@ progress {
 
   .kuka-hero {
     min-height: calc(100svh - var(--announcement-height));
-    padding-bottom: var(--space-8);
+    padding-bottom: var(--space-4);
     background-image: var(--hero-mobile);
   }
 
@@ -1369,6 +1373,8 @@ progress {
 
   .kuka-hero__content {
     width: min(100%, var(--measure-hero-copy));
+    padding: var(--space-2);
+    padding-bottom: var(--space-1-5);
   }
 
   .kuka-section-heading {
