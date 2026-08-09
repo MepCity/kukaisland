@@ -43,10 +43,10 @@ $story_text = static function ( string $text, bool $reveal_lines ) {
 	foreach ( $paragraphs as $paragraph_index => $paragraph ) {
 		$lines = preg_split( '/\R/u', $paragraph ) ?: array();
 		if ( count( $paragraphs ) - 1 === $paragraph_index && array( 'Love,', 'KÜBRA' ) === $lines ) {
-			?><footer class="kuka-story__sign"><span>Love,</span><strong>KÜBRA</strong></footer><?php
+			?><footer class="kuka-story__sign kuka-story__beat"><span>Love,</span><strong>KÜBRA <span class="kuka-story__heart" aria-hidden="true">♥︎</span></strong></footer><?php
 			continue;
 		}
-		?><p><?php foreach ( $lines as $line_index => $line ) : ?><span<?php echo $reveal_lines ? ' class="kuka-story__line"' : ''; ?>><?php echo esc_html( $line ); ?></span><?php if ( count( $lines ) - 1 !== $line_index ) : ?><br><?php endif; ?><?php endforeach; ?></p><?php
+		?><p class="kuka-story__beat"><?php foreach ( $lines as $line_index => $line ) : ?><span<?php echo $reveal_lines ? ' class="kuka-story__line"' : ''; ?>><?php echo esc_html( $line ); ?></span><?php if ( count( $lines ) - 1 !== $line_index ) : ?><br><?php endif; ?><?php endforeach; ?></p><?php
 	}
 };
 
@@ -59,19 +59,24 @@ while ( have_posts() ) : the_post(); ?>
 				<?php foreach ( $story_scenes as $index => $scene ) :
 					$desktop_id = absint( $story_value( $scene, 'desktop_image_id' ) );
 					$mobile_id  = absint( $story_value( $scene, 'mobile_image_id' ) );
-					$story_picture( $desktop_id, $mobile_id, 0 === $index, 'kuka-story__media-item' );
+					$transition = (string) ( $scene['transition_type'] ?? 'fade-center' );
+					$media_class = sprintf( 'kuka-story__media-item kuka-story__media-item--%02d kuka-story__media-item--%s', $index + 1, in_array( $transition, array( 'zoom-out', 'crossfade-left', 'fade-center', 'line-sequence', 'grow-right', 'gather' ), true ) ? $transition : 'fade-center' );
+					$story_picture( $desktop_id, $mobile_id, 0 === $index, $media_class );
 				endforeach; ?>
 			</div>
 			<div class="kuka-story__panel kuka-brand-story__source">
 				<?php foreach ( $story_scenes as $index => $scene ) :
 					$text       = (string) $story_value( $scene, 'text' );
 					$tone       = (string) $story_value( $scene, 'text_tone' );
+					$transition = (string) ( $scene['transition_type'] ?? 'fade-center' );
+					$position   = (string) ( $scene['text_position'] ?? 'left-bottom' );
+					$gradient   = (string) ( $scene['gradient_intensity'] ?? 'medium' );
 					$desktop_id = absint( $story_value( $scene, 'desktop_image_id' ) );
 					$mobile_id  = absint( $story_value( $scene, 'mobile_image_id' ) );
 					$text_length = function_exists( 'mb_strlen' ) ? mb_strlen( $text ) : strlen( $text );
 					$length_class = $text_length > 80 ? ' kuka-story__scene--long' : '';
 					?>
-					<section class="kuka-story__scene kuka-story__scene--<?php echo esc_attr( in_array( $tone, array( 'light', 'dark' ), true ) ? $tone : 'light' ); ?><?php echo esc_attr( $length_class ); ?>" data-story-scene="<?php echo esc_attr( (string) $index ); ?>">
+					<section class="kuka-story__scene kuka-story__scene--<?php echo esc_attr( str_pad( (string) ( $index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?> kuka-story__scene--<?php echo esc_attr( in_array( $tone, array( 'light', 'dark' ), true ) ? $tone : 'light' ); ?> kuka-story__scene--<?php echo esc_attr( in_array( $transition, array( 'zoom-out', 'crossfade-left', 'fade-center', 'line-sequence', 'grow-right', 'gather' ), true ) ? $transition : 'fade-center' ); ?> kuka-story__scene--<?php echo esc_attr( in_array( $position, array( 'left-bottom', 'left-center', 'center', 'right-center' ), true ) ? $position : 'left-bottom' ); ?> kuka-story__scene--gradient-<?php echo esc_attr( in_array( $gradient, array( 'none', 'soft', 'medium', 'strong' ), true ) ? $gradient : 'medium' ); ?><?php echo esc_attr( $length_class ); ?>" data-story-scene="<?php echo esc_attr( (string) $index ); ?>" data-story-transition="<?php echo esc_attr( $transition ); ?>" data-story-position="<?php echo esc_attr( $position ); ?>">
 						<?php $story_picture( $desktop_id, $mobile_id, false, 'kuka-story__article-image' ); ?>
 						<noscript><?php $story_picture( $desktop_id, $mobile_id, 0 === $index, 'kuka-story__noscript-image' ); ?></noscript>
 						<div class="kuka-story__copy"><?php $story_text( $text, ! empty( $scene['reveal_lines'] ) ); ?></div>

@@ -1,0 +1,560 @@
+{
+  "assets": [
+    {
+      "id": "43a78caacf74e6a3",
+      "kind": "stylesheet",
+      "name": "global.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 313,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/uploads/blocksy/css/global.css?ver=69369"
+    },
+    {
+      "id": "53affb5822435fba",
+      "kind": "stylesheet",
+      "name": "main.min.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 324,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/blocksy/static/bundle/main.min.css?ver=2.1.51"
+    },
+    {
+      "id": "bdf5fe3ef1180461",
+      "kind": "stylesheet",
+      "name": "woocommerce.min.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 326,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/blocksy/static/bundle/woocommerce.min.css?ver=2.1.51"
+    },
+    {
+      "id": "9ff8df0c5e9a6523",
+      "kind": "stylesheet",
+      "name": "page-title.min.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 328,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/blocksy/static/bundle/page-title.min.css?ver=2.1.51"
+    },
+    {
+      "id": "2b0db548da1c7000",
+      "kind": "stylesheet",
+      "name": "tokens.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 330,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/css/tokens.css?ver=1786271274"
+    },
+    {
+      "id": "191e55932dc1e807",
+      "kind": "stylesheet",
+      "name": "cart.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 334,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/css/cart.css?ver=1786181459"
+    },
+    {
+      "id": "7fe9f826fabe6d65",
+      "kind": "stylesheet",
+      "name": "content.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 336,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/css/content.css?ver=1786270976"
+    },
+    {
+      "id": "dbfdf5080004a62f",
+      "kind": "script",
+      "name": "jquery.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 338,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-includes/js/jquery/jquery.min.js?ver=3.7.1"
+    },
+    {
+      "id": "80947fbbd0f359d9",
+      "kind": "script",
+      "name": "jquery-migrate.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 340,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1"
+    },
+    {
+      "id": "771384df5cbd2823",
+      "kind": "script",
+      "name": "jquery.blockUI.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 342,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/jquery-blockui/jquery.blockUI.min.js?ver=2.7.0-wc.11.0.0"
+    },
+    {
+      "id": "554787da339eb0c4",
+      "kind": "script",
+      "name": "js.cookie.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 344,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/js-cookie/js.cookie.min.js?ver=2.1.4-wc.11.0.0"
+    },
+    {
+      "id": "2301195213e901f3",
+      "kind": "script",
+      "name": "woocommerce.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 349,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/frontend/woocommerce.min.js?ver=11.0.0"
+    },
+    {
+      "id": "d2b0cb23a292d4d3",
+      "kind": "stylesheet",
+      "name": "wc-blocks.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 367,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/client/blocks/wc-blocks.css?ver=wc-11.0.0"
+    },
+    {
+      "id": "35109d69548d2c71",
+      "kind": "image",
+      "name": "story-01-desktop-1536x864.jpg",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "img"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 605,
+          "property": "srcset"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/uploads/2026/08/story-01-desktop-1536x864.jpg"
+    },
+    {
+      "id": "412cfc161768c242",
+      "kind": "script",
+      "name": "add-to-cart.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 942,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/frontend/add-to-cart.min.js?ver=11.0.0"
+    },
+    {
+      "id": "55b145e51de2da33",
+      "kind": "script",
+      "name": "iyzico-bpo.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 944,
+          "property": "src"
+        }
+      ],
+      "url": "https://cdn.iyzipay.com/buyer-protection/iyzico-bpo.js?ver=3.5.28"
+    },
+    {
+      "id": "59c57dd88d306f72",
+      "kind": "script",
+      "name": "main.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 949,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/blocksy/static/bundle/main.js?ver=2.1.51"
+    },
+    {
+      "id": "ae976e32482e36bf",
+      "kind": "script",
+      "name": "sourcebuster.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 951,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/sourcebuster/sourcebuster.min.js?ver=11.0.0"
+    },
+    {
+      "id": "6f431153a1e9a035",
+      "kind": "script",
+      "name": "order-attribution.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 956,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/frontend/order-attribution.min.js?ver=11.0.0"
+    },
+    {
+      "id": "82ccd4b09ab09f91",
+      "kind": "script",
+      "name": "storefront.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 958,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/js/storefront.js?ver=1786236278"
+    },
+    {
+      "id": "6477cf0d16e30acd",
+      "kind": "script",
+      "name": "story.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 960,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/js/story.js?ver=1786268372"
+    },
+    {
+      "id": "b754170d7f79398b",
+      "kind": "stylesheet",
+      "name": "global.css",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "link"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 332,
+          "property": "href"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/css/global.css?ver=1786263216"
+    },
+    {
+      "id": "dd025c6b38d4cdb0",
+      "kind": "script",
+      "name": "cart-fragments.min.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 965,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/plugins/woocommerce/assets/js/frontend/cart-fragments.min.js?ver=11.0.0"
+    },
+    {
+      "id": "a3ebe5c380b54e2b",
+      "kind": "script",
+      "name": "cart.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 967,
+          "property": "src"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/js/cart.js?ver=1786019889"
+    },
+    {
+      "id": "6f2183364ee82023",
+      "kind": "font",
+      "name": "geist-sans-latin-ext.woff2",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "css"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/fonts/geist-sans-latin-ext.woff2"
+    },
+    {
+      "id": "d6a6453b25043a6b",
+      "kind": "font",
+      "name": "geist-mono-latin-ext.woff2",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "css"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/kuka-island-child/assets/fonts/geist-mono-latin-ext.woff2"
+    },
+    {
+      "id": "5c230619146f9405",
+      "kind": "script",
+      "name": "js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        },
+        {
+          "kind": "attribute",
+          "nodeId": 369,
+          "property": "src"
+        }
+      ],
+      "url": "https://www.googletagmanager.com/gtag/js?id=G-V8M121QS6X&l=dataLayerBPO"
+    },
+    {
+      "id": "e3d241ff7bb6b614",
+      "kind": "script",
+      "name": "100.e6217f4a8128f990f811.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/blocksy/static/bundle/100.e6217f4a8128f990f811.js"
+    },
+    {
+      "id": "238e0de771d32b95",
+      "kind": "script",
+      "name": "74.95c89b75282af2b088a3.js",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "script"
+        }
+      ],
+      "url": "http://localhost:8080/wp-content/themes/blocksy/static/bundle/74.95c89b75282af2b088a3.js"
+    },
+    {
+      "id": "b3996acc40f3a50d",
+      "kind": "other",
+      "name": "collect",
+      "sources": [
+        {
+          "kind": "resource",
+          "property": "fetch"
+        }
+      ],
+      "url": "https://analytics.google.com/g/collect?v=2&tid=G-V8M121QS6X&gtm=45je6852h1v9126688388za200zd9126688388&_p=1786271400829&gcd=13l3l3l3l1l1&npa=0&dma=0&_eu=AAAAAGQ&are=1&cid=1447240328.1785840552&frm=0&pscdl=noapi&rcb=16&sr=1440x900&uaa=arm&uab=64&uafvl=Not%253DA%253FBrand%3B99.0.0.0%7CGoogle%2520Chrome%3B151.0.7922.76%7CChromium%3B151.0.7922.76&uam=&uamb=0&uap=macOS&uapv=26.6.0&uaw=0&ul=tr&gaf=2&tag_exp=115938465~115938469~118012009~118897920~118897930~119367802~119367810~119527020~119896803&dt=Hakk%C4%B1m%C4%B1zda%20%E2%80%93%20Kuka%20Island&sid=1786270649&sct=9&seg=1&dl=http%3A%2F%2Flocalhost%2Fhakkimizda%2F%3Ffaz6b%3Dnetwork&_s=1&tfd=5154"
+    }
+  ],
+  "id": "65b59ce1-3ff9-4a0c-a041-d4232ba39793",
+  "inlineSvgs": [
+    {
+      "id": "ff86198a99835e23",
+      "markup": "<svg class=\"kuka-icon kuka-icon--menu\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M3 7h18M3 17h18\" stroke=\"currentColor\"></path></svg>",
+      "name": "svg-1"
+    },
+    {
+      "id": "e923f8a420749437",
+      "markup": "<svg class=\"kuka-logo__emblem\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 266 300\" aria-hidden=\"true\" focusable=\"false\">\n<g transform=\"translate(0 300) scale(.1 -.1)\" fill=\"currentColor\">\n<path d=\"M895 2605 c-22 -8 -41 -15 -42 -15 -2 0 -3 -4 -3 -9 0 -5 10 -13 23 -17 12 -3 52 -24 89 -46 57 -34 67 -44 63 -62 -6 -21 43 -96 106 -162 16 -17 27 -37 24 -45 -3 -8 20 -52 50 -98 30 -46 53 -86 51 -89 -3 -2 -24 11 -48 31 -140 113 -327 163 -462 122 -71 -21 -125 -56 -179 -114 -47 -50 -96 -135 -84 -147 3 -3 35 10 72 30 36 21 69 35 74 32 5 -3 22 1 37 9 16 8 45 15 64 15 20 0 62 7 95 15 51 14 60 14 67 1 5 -9 36 -16 100 -21 51 -4 99 -11 108 -16 8 -5 33 -15 54 -22 65 -22 57 -37 -16 -30 -147 13 -339 -62 -447 -175 -59 -62 -105 -161 -97 -207 4 -19 10 -35 14 -35 12 0 99 93 106 114 4 11 12 16 22 12 19 -7 93 35 134 76 17 16 35 26 41 23 6 -4 52 8 102 27 108 41 190 68 206 68 24 0 9 -17 -31 -37 -80 -39 -196 -160 -242 -253 -31 -63 -34 -230 -3 -230 7 0 20 20 30 43 10 24 35 62 56 84 21 23 47 58 57 78 10 20 23 45 29 56 5 10 17 19 25 20 8 0 37 26 65 57 61 70 104 107 113 97 10 -10 4 -682 -8 -880 -11 -188 -35 -433 -49 -510 -5 -27 -7 -53 -4 -58 2 -4 54 -7 115 -7 l110 0 -5 52 c-3 29 -13 121 -21 203 -21 194 -22 204 -35 435 -11 204 -15 770 -6 770 19 0 65 -34 93 -69 18 -23 42 -41 52 -41 13 0 20 -7 20 -19 0 -11 16 -36 35 -57 19 -20 35 -41 35 -45 0 -17 40 -74 56 -79 8 -3 25 -30 37 -60 12 -30 27 -54 32 -53 17 3 36 86 31 133 -11 106 -154 295 -256 339 -27 12 -50 25 -50 30 0 8 74 -4 92 -15 4 -3 11 2 14 10 5 14 10 13 33 -7 15 -12 60 -33 101 -47 41 -13 106 -44 143 -68 46 -29 75 -41 88 -37 13 4 21 1 25 -12 9 -25 105 -123 121 -123 8 0 13 13 13 35 0 95 -115 244 -232 301 -97 48 -135 58 -238 64 l-95 5 40 14 c22 7 45 19 50 26 6 7 24 12 40 12 46 -1 269 36 276 45 3 5 19 2 35 -6 16 -8 58 -20 94 -27 36 -6 93 -25 127 -42 34 -17 65 -28 69 -25 26 27 -93 151 -191 199 -70 34 -70 34 -215 34 -142 0 -147 -1 -222 -33 -42 -18 -96 -47 -118 -63 -63 -46 -61 -26 4 40 46 46 57 63 51 80 -5 16 -1 22 18 26 30 8 149 127 145 145 -2 7 11 17 27 24 46 17 144 80 145 92 0 22 -48 36 -112 32 -118 -8 -239 -91 -346 -236 -52 -71 -102 -158 -102 -179 0 -7 -4 -13 -10 -13 -5 0 -10 7 -10 15 0 23 -50 161 -75 208 -106 199 -268 308 -390 262z\"></path>\n</g>\n</svg>",
+      "name": "svg-2"
+    },
+    {
+      "id": "7ba68881a3531e7f",
+      "markup": "<svg class=\"kuka-logo__emblem\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 266 300\" aria-hidden=\"true\" focusable=\"false\">\n<g transform=\"translate(0 300) scale(.1 -.1)\" fill=\"currentColor\">\n<path d=\"M895 2605 c-22 -8 -41 -15 -42 -15 -2 0 -3 -4 -3 -9 0 -5 10 -13 23 -17 12 -3 52 -24 89 -46 57 -34 67 -44 63 -62 -6 -21 43 -96 106 -162 16 -17 27 -37 24 -45 -3 -8 20 -52 50 -98 30 -46 53 -86 51 -89 -3 -2 -24 11 -48 31 -140 113 -327 163 -462 122 -71 -21 -125 -56 -179 -114 -47 -50 -96 -135 -84 -147 3 -3 35 10 72 30 36 21 69 35 74 32 5 -3 22 1 37 9 16 8 45 15 64 15 20 0 62 7 95 15 51 14 60 14 67 1 5 -9 36 -16 100 -21 51 -4 99 -11 108 -16 8 -5 33 -15 54 -22 65 -22 57 -37 -16 -30 -147 13 -339 -62 -447 -175 -59 -62 -105 -161 -97 -207 4 -19 10 -35 14 -35 12 0 99 93 106 114 4 11 12 16 22 12 19 -7 93 35 134 76 17 16 35 26 41 23 6 -4 52 8 102 27 108 41 190 68 206 68 24 0 9 -17 -31 -37 -80 -39 -196 -160 -242 -253 -31 -63 -34 -230 -3 -230 7 0 20 20 30 43 10 24 35 62 56 84 21 23 47 58 57 78 10 20 23 45 29 56 5 10 17 19 25 20 8 0 37 26 65 57 61 70 104 107 113 97 10 -10 4 -682 -8 -880 -11 -188 -35 -433 -49 -510 -5 -27 -7 -53 -4 -58 2 -4 54 -7 115 -7 l110 0 -5 52 c-3 29 -13 121 -21 203 -21 194 -22 204 -35 435 -11 204 -15 770 -6 770 19 0 65 -34 93 -69 18 -23 42 -41 52 -41 13 0 20 -7 20 -19 0 -11 16 -36 35 -57 19 -20 35 -41 35 -45 0 -17 40 -74 56 -79 8 -3 25 -30 37 -60 12 -30 27 -54 32 -53 17 3 36 86 31 133 -11 106 -154 295 -256 339 -27 12 -50 25 -50 30 0 8 74 -4 92 -15 4 -3 11 2 14 10 5 14 10 13 33 -7 15 -12 60 -33 101 -47 41 -13 106 -44 143 -68 46 -29 75 -41 88 -37 13 4 21 1 25 -12 9 -25 105 -123 121 -123 8 0 13 13 13 35 0 95 -115 244 -232 301 -97 48 -135 58 -238 64 l-95 5 40 14 c22 7 45 19 50 26 6 7 24 12 40 12 46 -1 269 36 276 45 3 5 19 2 35 -6 16 -8 58 -20 94 -27 36 -6 93 -25 127 -42 34 -17 65 -28 69 -25 26 27 -93 151 -191 199 -70 34 -70 34 -215 34 -142 0 -147 -1 -222 -33 -42 -18 -96 -47 -118 -63 -63 -46 -61 -26 4 40 46 46 57 63 51 80 -5 16 -1 22 18 26 30 8 149 127 145 145 -2 7 11 17 27 24 46 17 144 80 145 92 0 22 -48 36 -112 32 -118 -8 -239 -91 -346 -236 -52 -71 -102 -158 -102 -179 0 -7 -4 -13 -10 -13 -5 0 -10 7 -10 15 0 23 -50 161 -75 208 -106 199 -268 308 -390 262z\"></path>\n</g>\n</svg>",
+      "name": "svg-3"
+    },
+    {
+      "id": "5081c6619e86c952",
+      "markup": "<svg class=\"kuka-icon kuka-icon--search\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"11\" cy=\"11\" r=\"6.5\" stroke=\"currentColor\"></circle><path d=\"m16 16 4.5 4.5\" stroke=\"currentColor\"></path></svg>",
+      "name": "svg-4"
+    },
+    {
+      "id": "9073c345a85eb17a",
+      "markup": "<svg class=\"kuka-icon kuka-icon--bag\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M5 8.5h14l-1 12H6l-1-12Z\" stroke=\"currentColor\"></path><path d=\"M9 9V6.5a3 3 0 0 1 6 0V9\" stroke=\"currentColor\"></path></svg>",
+      "name": "svg-5"
+    },
+    {
+      "id": "66b14477d114ac0d",
+      "markup": "<svg class=\"kuka-icon kuka-icon--close\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"m4 4 16 16M20 4 4 20\" stroke=\"currentColor\"></path></svg>",
+      "name": "svg-6"
+    },
+    {
+      "id": "0786a597828a4e37",
+      "markup": "<svg class=\"kuka-icon kuka-icon--close\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"m4 4 16 16M20 4 4 20\" stroke=\"currentColor\"></path></svg>",
+      "name": "svg-7"
+    },
+    {
+      "id": "0f9af63d82b66f7b",
+      "markup": "<svg class=\"kuka-icon kuka-icon--close\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"m4 4 16 16M20 4 4 20\" stroke=\"currentColor\"></path></svg>",
+      "name": "svg-8"
+    },
+    {
+      "id": "f432c68d5c1ddaf4",
+      "markup": "<svg class=\"kuka-logo__emblem\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 266 300\" aria-hidden=\"true\" focusable=\"false\">\n<g transform=\"translate(0 300) scale(.1 -.1)\" fill=\"currentColor\">\n<path d=\"M895 2605 c-22 -8 -41 -15 -42 -15 -2 0 -3 -4 -3 -9 0 -5 10 -13 23 -17 12 -3 52 -24 89 -46 57 -34 67 -44 63 -62 -6 -21 43 -96 106 -162 16 -17 27 -37 24 -45 -3 -8 20 -52 50 -98 30 -46 53 -86 51 -89 -3 -2 -24 11 -48 31 -140 113 -327 163 -462 122 -71 -21 -125 -56 -179 -114 -47 -50 -96 -135 -84 -147 3 -3 35 10 72 30 36 21 69 35 74 32 5 -3 22 1 37 9 16 8 45 15 64 15 20 0 62 7 95 15 51 14 60 14 67 1 5 -9 36 -16 100 -21 51 -4 99 -11 108 -16 8 -5 33 -15 54 -22 65 -22 57 -37 -16 -30 -147 13 -339 -62 -447 -175 -59 -62 -105 -161 -97 -207 4 -19 10 -35 14 -35 12 0 99 93 106 114 4 11 12 16 22 12 19 -7 93 35 134 76 17 16 35 26 41 23 6 -4 52 8 102 27 108 41 190 68 206 68 24 0 9 -17 -31 -37 -80 -39 -196 -160 -242 -253 -31 -63 -34 -230 -3 -230 7 0 20 20 30 43 10 24 35 62 56 84 21 23 47 58 57 78 10 20 23 45 29 56 5 10 17 19 25 20 8 0 37 26 65 57 61 70 104 107 113 97 10 -10 4 -682 -8 -880 -11 -188 -35 -433 -49 -510 -5 -27 -7 -53 -4 -58 2 -4 54 -7 115 -7 l110 0 -5 52 c-3 29 -13 121 -21 203 -21 194 -22 204 -35 435 -11 204 -15 770 -6 770 19 0 65 -34 93 -69 18 -23 42 -41 52 -41 13 0 20 -7 20 -19 0 -11 16 -36 35 -57 19 -20 35 -41 35 -45 0 -17 40 -74 56 -79 8 -3 25 -30 37 -60 12 -30 27 -54 32 -53 17 3 36 86 31 133 -11 106 -154 295 -256 339 -27 12 -50 25 -50 30 0 8 74 -4 92 -15 4 -3 11 2 14 10 5 14 10 13 33 -7 15 -12 60 -33 101 -47 41 -13 106 -44 143 -68 46 -29 75 -41 88 -37 13 4 21 1 25 -12 9 -25 105 -123 121 -123 8 0 13 13 13 35 0 95 -115 244 -232 301 -97 48 -135 58 -238 64 l-95 5 40 14 c22 7 45 19 50 26 6 7 24 12 40 12 46 -1 269 36 276 45 3 5 19 2 35 -6 16 -8 58 -20 94 -27 36 -6 93 -25 127 -42 34 -17 65 -28 69 -25 26 27 -93 151 -191 199 -70 34 -70 34 -215 34 -142 0 -147 -1 -222 -33 -42 -18 -96 -47 -118 -63 -63 -46 -61 -26 4 40 46 46 57 63 51 80 -5 16 -1 22 18 26 30 8 149 127 145 145 -2 7 11 17 27 24 46 17 144 80 145 92 0 22 -48 36 -112 32 -118 -8 -239 -91 -346 -236 -52 -71 -102 -158 -102 -179 0 -7 -4 -13 -10 -13 -5 0 -10 7 -10 15 0 23 -50 161 -75 208 -106 199 -268 308 -390 262z\"></path>\n</g>\n</svg>",
+      "name": "svg-9"
+    },
+    {
+      "id": "12c613d5c8258634",
+      "markup": "<svg class=\"kuka-logo__emblem\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 266 300\" aria-hidden=\"true\" focusable=\"false\">\n<g transform=\"translate(0 300) scale(.1 -.1)\" fill=\"currentColor\">\n<path d=\"M895 2605 c-22 -8 -41 -15 -42 -15 -2 0 -3 -4 -3 -9 0 -5 10 -13 23 -17 12 -3 52 -24 89 -46 57 -34 67 -44 63 -62 -6 -21 43 -96 106 -162 16 -17 27 -37 24 -45 -3 -8 20 -52 50 -98 30 -46 53 -86 51 -89 -3 -2 -24 11 -48 31 -140 113 -327 163 -462 122 -71 -21 -125 -56 -179 -114 -47 -50 -96 -135 -84 -147 3 -3 35 10 72 30 36 21 69 35 74 32 5 -3 22 1 37 9 16 8 45 15 64 15 20 0 62 7 95 15 51 14 60 14 67 1 5 -9 36 -16 100 -21 51 -4 99 -11 108 -16 8 -5 33 -15 54 -22 65 -22 57 -37 -16 -30 -147 13 -339 -62 -447 -175 -59 -62 -105 -161 -97 -207 4 -19 10 -35 14 -35 12 0 99 93 106 114 4 11 12 16 22 12 19 -7 93 35 134 76 17 16 35 26 41 23 6 -4 52 8 102 27 108 41 190 68 206 68 24 0 9 -17 -31 -37 -80 -39 -196 -160 -242 -253 -31 -63 -34 -230 -3 -230 7 0 20 20 30 43 10 24 35 62 56 84 21 23 47 58 57 78 10 20 23 45 29 56 5 10 17 19 25 20 8 0 37 26 65 57 61 70 104 107 113 97 10 -10 4 -682 -8 -880 -11 -188 -35 -433 -49 -510 -5 -27 -7 -53 -4 -58 2 -4 54 -7 115 -7 l110 0 -5 52 c-3 29 -13 121 -21 203 -21 194 -22 204 -35 435 -11 204 -15 770 -6 770 19 0 65 -34 93 -69 18 -23 42 -41 52 -41 13 0 20 -7 20 -19 0 -11 16 -36 35 -57 19 -20 35 -41 35 -45 0 -17 40 -74 56 -79 8 -3 25 -30 37 -60 12 -30 27 -54 32 -53 17 3 36 86 31 133 -11 106 -154 295 -256 339 -27 12 -50 25 -50 30 0 8 74 -4 92 -15 4 -3 11 2 14 10 5 14 10 13 33 -7 15 -12 60 -33 101 -47 41 -13 106 -44 143 -68 46 -29 75 -41 88 -37 13 4 21 1 25 -12 9 -25 105 -123 121 -123 8 0 13 13 13 35 0 95 -115 244 -232 301 -97 48 -135 58 -238 64 l-95 5 40 14 c22 7 45 19 50 26 6 7 24 12 40 12 46 -1 269 36 276 45 3 5 19 2 35 -6 16 -8 58 -20 94 -27 36 -6 93 -25 127 -42 34 -17 65 -28 69 -25 26 27 -93 151 -191 199 -70 34 -70 34 -215 34 -142 0 -147 -1 -222 -33 -42 -18 -96 -47 -118 -63 -63 -46 -61 -26 4 40 46 46 57 63 51 80 -5 16 -1 22 18 26 30 8 149 127 145 145 -2 7 11 17 27 24 46 17 144 80 145 92 0 22 -48 36 -112 32 -118 -8 -239 -91 -346 -236 -52 -71 -102 -158 -102 -179 0 -7 -4 -13 -10 -13 -5 0 -10 7 -10 15 0 23 -50 161 -75 208 -106 199 -268 308 -390 262z\"></path>\n</g>\n</svg>",
+      "name": "svg-10"
+    },
+    {
+      "id": "14034a1ddfc2b2c0",
+      "markup": "<svg class=\"kuka-icon\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M4 19l1.2-3.4a7.6 7.6 0 1 1 3.2 3.1L4 19Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linejoin=\"round\"></path><path d=\"M9 9.2c.2-.5.4-.5.7-.5.2 0 .5 0 .7.4l.5 1c.1.3 0 .5-.1.7-.3.3-.6.5-.3.9.4.5 1 1.1 1.5 1.4.4.2.6 0 .8-.2.2-.2.4-.3.7-.1l.9.6c.3.2.3.4.3.6-.1.6-.7 1.1-1.2 1.1-1.6 0-4.6-2.4-4.6-4.4 0-.4.1-.7.4-.9Z\" fill=\"currentColor\"></path></svg>",
+      "name": "svg-11"
+    }
+  ],
+  "pageUrl": "http://localhost:8080/hakkimizda/?faz6b=network",
+  "summary": {
+    "byKind": {
+      "font": 2,
+      "image": 1,
+      "other": 1,
+      "script": 17,
+      "stylesheet": 9,
+      "video": 0
+    },
+    "inlineSvgCount": 11,
+    "totalCount": 30
+  }
+}

@@ -1775,6 +1775,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-06 | Sepet satırında ürün adı parent adına indirildi; renk/beden `dl.variation` ile ayrı satırda "Renk: x · Beden: y" okunur | Varyasyon takısı üründen adından kopuk kırılıyordu; `woocommerce_cart_item_name` parent adını, `woocommerce_after_cart_item_name` ise meta DL'ini basar (Woo'nun kendi formatlayıcısı bu mağazada boş dönüyor) |
 | 2026-08-06 | Tüm form kontrolleri `accent-color: var(--color-ink)` token'a çekildi; footer/hero koyu zemininde `--color-white`; odak halkası da `--color-ink` | §11.2 aksan yok kuralı ihlal ediliyordu; tarayıcı/Blocksy varsayılan mavi radio/checkbox kazanmıştı |
 | 2026-08-06 | SSS soruları `<details>`/`<summary>` akordiyona çevrildi; grup başlıkları h2 olarak kaldı; varsayılan hepsi kapalı | JS'siz açılır/kapanır, klavyeyle çalışır; `prefers-reduced-motion` altında chevron geçişi global olarak sıfırlanır |
+| 2026-08-09 | Faz 6B değişiklik ölçeği yalnız `/hakkimizda/` sanat katmanı, hikâye panelinin üç sunum alanı, lisanslı hikâye medyası ve bunların seed/QA belgeleriyle sınırlandı | Faz 6A `IntersectionObserver`, sticky sahne, mobil/JS'siz/reduced-motion düz makale, iki dil metni ve genel site bileşenleri değişmeden kalsın; animasyon kütüphanesi, vendor, deploy ve canlı anahtar eklenmesin |
 
 ---
 
@@ -1831,6 +1832,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 5D hero düzeltmesi tamamlandı: iki dilde yedi genişlik, satır bazlı medyan render kontrastı, uzun başlık tokenı ve panel rehberi
 - [x] Faz 5E dil sürekliliği tamamlandı: merkezî `/en/` public URL filtresi, dile bağlı cart fragments/AJAX, iki dilli ticaret E2E'si ve çevrilmeyen alan sözleşmesi
 - [x] Faz 6A marka hikâyesi tamamlandı: panelden eklenip çıkarılan altı iki dilli sahne, ayrı dil/viewport medyası ve tonu, masaüstü sticky IO anlatısı, mobil/reduced-motion/JS'siz düz makale ve iki dilde satır bazlı kontrast kanıtı
+- [x] Faz 6B sanat yönü tamamlandı: altı lisanslı geçici görsel, ayrı masaüstü/mobil kadraj, fotoğraf üstü yönlü gradyan, altı farklı geçiş, sahne ölçekli tipografi ve panelden geçiş/konum/gradyan seçimi
 - [x] Üyelik, hesap paneli ve sosyal giriş geri çekildi; misafir ödeme, 48 saatlik panel kontrollü WooCommerce oturumu ve sipariş numarası + e-posta takip akışı korundu
 - [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
 - [x] Dil seçici URL-kaynaklı Türkçe/İngilizce karşılıklara bağlandı; çerez ve çeviri eklentisi kullanılmıyor

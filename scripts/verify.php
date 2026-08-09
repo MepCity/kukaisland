@@ -89,6 +89,8 @@ foreach ( $swatches as $term ) {
 
 $site_content = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::get() : array();
 WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_content ) ) );
+WP_CLI::line( 'HOME_HERO_TITLES=' . (string) ( $site_content['hero']['title'] ?? '' ) . '|' . (string) ( $site_content['hero']['title_en'] ?? '' ) );
+WP_CLI::line( 'HOME_EDITORIAL_TITLES=' . (string) ( $site_content['home']['editorial_title'] ?? '' ) . '|' . (string) ( $site_content['home']['editorial_title_en'] ?? '' ) );
 WP_CLI::line( 'LANGUAGE_TRANSLATABLE_FIELDS=' . ( class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_field_count() : 0 ) );
 WP_CLI::line( 'PRODUCT_EN_FIELD_SCHEMA=9' );
 WP_CLI::line( 'PAGE_EN_FIELD_SCHEMA=2' );
@@ -200,7 +202,14 @@ $size_html = do_shortcode( '[kuka_size_guide]' );
 WP_CLI::line( 'SIZE_GUIDE_TABLES=' . substr_count( $size_html, '<table>' ) );
 WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['brand']['social_links'] ?? '' ), 'https://www.instagram.com/kukaisland' ) ? 'yes' : 'no' ) );
 $footer_source = (string) file_get_contents( get_stylesheet_directory() . '/footer.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-WP_CLI::line( 'FOOTER_WHATSAPP_SOURCE=' . ( str_contains( $footer_source, 'if ( $whatsapp_url )' ) && str_contains( $footer_source, '>WhatsApp ↗</a>' ) ? 'phone-helper' : 'missing' ) );
+$front_source  = (string) file_get_contents( get_stylesheet_directory() . '/front-page.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$global_source = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$story_source  = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/story.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+WP_CLI::line( 'FOOTER_WHATSAPP_SOURCE=' . ( str_contains( $footer_source, 'if ( $whatsapp_url )' ) && str_contains( $footer_source, '>WhatsApp <span class="kuka-text-arrow"' ) ? 'phone-helper' : 'missing' ) );
+WP_CLI::line( 'MOBILE_SAFARI_ARROWS=' . ( str_contains( $footer_source, '↗︎' ) && str_contains( $footer_source, 'kuka-text-arrow' ) ? 'text' : 'emoji-risk' ) );
+WP_CLI::line( 'HERO_EST_LINE=' . ( str_contains( $front_source, 'class="kuka-hero__est"' ) && str_contains( $global_source, '.kuka-hero__est' ) ? 'separate' : 'inline' ) );
+WP_CLI::line( 'LANGUAGE_HOVER=' . ( str_contains( $global_source, '.kuka-lang-switcher__list a:hover' ) && str_contains( $global_source, 'text-decoration: underline' ) ? 'same-color+underline' : 'missing' ) );
+WP_CLI::line( 'STORY_MEDIA_HANDOFF=' . ( str_contains( $story_source, 'requestedMediaIndex' ) && str_contains( $story_source, 'addEventListener("load", reveal' ) && str_contains( $story_source, 'index > 0 && media[index + 1]' ) ? 'load-guarded+next-warmed' : 'immediate' ) );
 $whatsapp_test_url = Kuka_Island_Core_Content::whatsapp_url( '0532 111 22 33' );
 WP_CLI::line( 'WHATSAPP_PHONE_RULE=' . ( '' === Kuka_Island_Core_Content::whatsapp_url( '' ) && str_ends_with( $whatsapp_test_url, '/905321112233' ) ? 'empty-hidden|number-derived' : 'failed' ) );
 WP_CLI::line( 'COMMERCIAL_CONTENT=' . implode( '|', array( $site_content['commercial']['flat_shipping_fee'] ?? '', $site_content['commercial']['free_shipping_threshold'] ?? '', $site_content['commercial']['cayma_hakki_gun'] ?? '' ) ) );
@@ -244,9 +253,15 @@ $story_pdf_source = trim( preg_replace( '/\s+/u', ' ', implode( ' ', array_colum
 $story_pdf_expected = 'Hayatta bazen sıfırdan başlamak gerekir. Benim için KUKA ISLAND tam olarak böyle başladı. Yeni bir sayfa açarken, sadece bir marka kurmak istemedim. Bana iyi hissettiren her şeyi tek bir çatı altında toplamak istedim. Denizi… Yazı… Özgürlüğü… Ve kadınların kendini en güzel hissettiği anları… İşte KUKA ISLAND böyle doğdu. Her koleksiyon, sadece bir sezon için değil; yıllar sonra bile giydiğinde sana aynı hissi yaşatsın diye hazırlanıyor. Bu yolculuk daha yeni başlıyor. İyi ki buradasın. Ve bu hikâyenin ilk sayfalarında bize eşlik ediyorsun. Love, KÜBRA';
 $story_bilingual = array_filter( $story_scenes, static fn( array $scene ): bool => '' !== trim( (string) ( $scene['text'] ?? '' ) ) && '' !== trim( (string) ( $scene['text_en'] ?? '' ) ) );
 $story_media = 0;
+$story_transitions = array();
+$story_panel_art = 0;
 foreach ( $story_scenes as $scene ) {
 	foreach ( array( 'desktop_image_id', 'desktop_image_id_en', 'mobile_image_id', 'mobile_image_id_en' ) as $media_key ) {
 		if ( absint( $scene[ $media_key ] ?? 0 ) ) { ++$story_media; }
+	}
+	if ( ! empty( $scene['transition_type'] ) ) { $story_transitions[] = (string) $scene['transition_type']; }
+	foreach ( array( 'transition_type', 'text_position', 'gradient_intensity' ) as $art_key ) {
+		if ( '' !== trim( (string) ( $scene[ $art_key ] ?? '' ) ) ) { ++$story_panel_art; }
 	}
 }
 $story_template = (string) file_get_contents( get_stylesheet_directory() . '/page-hakkimizda.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
@@ -254,6 +269,9 @@ $story_script = (string) file_get_contents( get_stylesheet_directory() . '/asset
 WP_CLI::line( 'STORY_SCENES=' . count( $story_scenes ) );
 WP_CLI::line( 'STORY_BILINGUAL=' . count( $story_bilingual ) . '/' . count( $story_scenes ) );
 WP_CLI::line( 'STORY_MEDIA_FIELDS=' . $story_media . '/' . ( count( $story_scenes ) * 4 ) );
+WP_CLI::line( 'STORY_ART_FIELDS=' . $story_panel_art . '/' . ( count( $story_scenes ) * 3 ) );
+WP_CLI::line( 'STORY_TRANSITIONS=' . implode( '|', $story_transitions ) );
+WP_CLI::line( 'STORY_TRANSITION_UNIQUE=' . count( array_unique( $story_transitions ) ) . '/' . count( $story_scenes ) );
 WP_CLI::line( 'STORY_PDF_BODY_MATCH=' . ( hash_equals( $story_pdf_expected, $story_pdf_source ) ? 'yes' : 'no' ) );
 WP_CLI::line( 'STORY_LINE_REVEAL=' . ( ! empty( $story_scenes[3]['reveal_lines'] ) ? 'scene-04' : 'missing' ) );
 WP_CLI::line( 'STORY_PROGRESSIVE_DOM=' . ( str_contains( $story_template, 'foreach ( $story_scenes' ) && str_contains( $story_template, 'data-story-scene=' ) && ! str_contains( $story_script, 'createElement' ) ? 'server' : 'missing' ) );

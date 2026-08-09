@@ -1,0 +1,14 @@
+{
+  "url": "http://localhost:8080/hakkimizda/?faz6b=network",
+  "viewport": "1440x900",
+  "method": "Browser pageAssets açılış envanteri; her gözlenen URL curl --compressed ile bir kez ölçüldü, HTML ayrıca eklendi",
+  "asset_count": 30,
+  "image_count": 1,
+  "story_image_count": 1,
+  "story_image": "story-01-desktop-1536x864.jpg",
+  "story_image_bytes": 88734,
+  "compressed_asset_bytes": 463501,
+  "compressed_html_bytes": 15056,
+  "compressed_opening_bytes": 478557,
+  "first_eager_only": true
+}

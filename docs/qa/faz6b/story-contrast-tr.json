@@ -1,0 +1,327 @@
+{
+  "language": "tr",
+  "method": "median foreground/background contrast across each rendered line box; pixels within RGB distance 60 of foreground excluded as glyph/antialias samples",
+  "scenes": [
+    {
+      "scene": 1,
+      "lines": [
+        {
+          "text": "Biryerdeğil.",
+          "contrast_median": 17.33,
+          "pass_4_5": true,
+          "rect": {
+            "height": 157,
+            "width": 569,
+            "x": 64,
+            "y": 622
+          }
+        },
+        {
+          "text": "Birhis.",
+          "contrast_median": 16.94,
+          "pass_4_5": true,
+          "rect": {
+            "height": 157,
+            "width": 309,
+            "x": 64,
+            "y": 749
+          }
+        }
+      ]
+    },
+    {
+      "scene": 2,
+      "lines": [
+        {
+          "text": "Hayattabazensıfırdanbaşlamakgerekir.",
+          "contrast_median": 16.78,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 678,
+            "x": 64,
+            "y": 343
+          }
+        },
+        {
+          "text": "BenimiçinKUKAISLANDtamolarak",
+          "contrast_median": 17.02,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 620,
+            "x": 64,
+            "y": 421
+          }
+        },
+        {
+          "text": "böylebaşladı.",
+          "contrast_median": 16.85,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 231,
+            "x": 64,
+            "y": 468
+          }
+        }
+      ]
+    },
+    {
+      "scene": 3,
+      "lines": [
+        {
+          "text": "Yenibirsayfaaçarken,sadece",
+          "contrast_median": 14.46,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 505,
+            "x": 467,
+            "y": 312
+          }
+        },
+        {
+          "text": "birmarkakurmakistemedim.",
+          "contrast_median": 14.46,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 481,
+            "x": 479,
+            "y": 359
+          }
+        },
+        {
+          "text": "Banaiyihissettirenherşeyitek",
+          "contrast_median": 14.46,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 505,
+            "x": 467,
+            "y": 405
+          }
+        },
+        {
+          "text": "birçatıaltındatoplamak",
+          "contrast_median": 14.48,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 391,
+            "x": 524,
+            "y": 452
+          }
+        },
+        {
+          "text": "istedim.",
+          "contrast_median": 14.48,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 129,
+            "x": 655,
+            "y": 498
+          }
+        }
+      ]
+    },
+    {
+      "scene": 4,
+      "lines": [
+        {
+          "text": "Denizi…",
+          "contrast_median": 13.35,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 291,
+            "x": 64,
+            "y": 144
+          }
+        },
+        {
+          "text": "Yazı…",
+          "contrast_median": 13.48,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 227,
+            "x": 64,
+            "y": 237
+          }
+        },
+        {
+          "text": "Özgürlüğü…",
+          "contrast_median": 13.74,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 437,
+            "x": 64,
+            "y": 330
+          }
+        },
+        {
+          "text": "Vekadınların",
+          "contrast_median": 13.74,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 435,
+            "x": 64,
+            "y": 424
+          }
+        },
+        {
+          "text": "kendiniengüzel",
+          "contrast_median": 13.88,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 537,
+            "x": 64,
+            "y": 517
+          }
+        },
+        {
+          "text": "hissettiğianları…",
+          "contrast_median": 14.07,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 571,
+            "x": 64,
+            "y": 610
+          }
+        }
+      ]
+    },
+    {
+      "scene": 5,
+      "lines": [
+        {
+          "text": "İşteKUKAISLANDböyledoğdu.",
+          "contrast_median": 15.97,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 549,
+            "x": 696,
+            "y": 319
+          }
+        },
+        {
+          "text": "Herkoleksiyon,sadecebirsezoniçin",
+          "contrast_median": 15.97,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 609,
+            "x": 696,
+            "y": 398
+          }
+        },
+        {
+          "text": "değil;yıllarsonrabilegiydiğindesana",
+          "contrast_median": 15.52,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 612,
+            "x": 696,
+            "y": 445
+          }
+        },
+        {
+          "text": "aynıhissiyaşatsındiyehazırlanıyor.",
+          "contrast_median": 15.01,
+          "pass_4_5": true,
+          "rect": {
+            "height": 56,
+            "width": 590,
+            "x": 696,
+            "y": 491
+          }
+        }
+      ]
+    },
+    {
+      "scene": 6,
+      "lines": [
+        {
+          "text": "Buyolculukdaha",
+          "contrast_median": 16.03,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 612,
+            "x": 414,
+            "y": 210
+          }
+        },
+        {
+          "text": "yenibaşlıyor.",
+          "contrast_median": 16.58,
+          "pass_4_5": true,
+          "rect": {
+            "height": 113,
+            "width": 468,
+            "x": 486,
+            "y": 301
+          }
+        },
+        {
+          "text": "İyikiburadasın.",
+          "contrast_median": 16.31,
+          "pass_4_5": true,
+          "rect": {
+            "height": 37,
+            "width": 195,
+            "x": 622,
+            "y": 437
+          }
+        },
+        {
+          "text": "Vebuhikâyeninilksayfalarındabizeeşlikediyorsun.",
+          "contrast_median": 16.9,
+          "pass_4_5": true,
+          "rect": {
+            "height": 37,
+            "width": 648,
+            "x": 396,
+            "y": 511
+          }
+        },
+        {
+          "text": "Love,",
+          "contrast_median": 16.78,
+          "pass_4_5": true,
+          "rect": {
+            "height": 16,
+            "width": 40,
+            "x": 700,
+            "y": 638
+          }
+        },
+        {
+          "text": "KÜBRA",
+          "contrast_median": 16.57,
+          "pass_4_5": true,
+          "rect": {
+            "height": 21,
+            "width": 52,
+            "x": 680,
+            "y": 659
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "rendered_lines": 26,
+    "minimum_median": 13.35,
+    "below_4_5": 0
+  }
+}

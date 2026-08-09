@@ -34,16 +34,16 @@ Her renk bu sırayı baştan tamamlar. Örneğin siyah rengin `01` dosyası ön 
 
 ## Marka hikâyesi — altı sahne
 
-Her sahne için aynı duyguyu taşıyan iki ayrı teslim gerekir: masaüstünde geniş/yatay, mobilde 4:5'e yakın dikey kadraj. Masaüstü karede metin için alt-sol bölgede; mobil makalede görsel tek başına gösterileceği için merkezde güvenli alan bırakın. Metin bir panel yüzeyi üzerinde okunur, fakat kritik ürün veya yüz bölgesini panelin geleceği alt-sol alana yerleştirmeyin.
+Her sahne için aynı duyguyu taşıyan iki ayrı teslim gerekir: masaüstünde geniş/yatay, mobilde 4:5'e yakın dikey kadraj. Metin fotoğrafın doğrudan üstünde durur; katı panel, gölge ve radius kullanılmaz. Aşağıdaki metin yönünde nefes alan, düşük ayrıntılı ve doğal kontrastlı alan bırakın. Mobil makalede görsel tek başına gösterileceği için merkezde de güvenli alan korunmalıdır. Logo, üçüncü taraf marka, tanınabilir tescilli mekân ve izinsiz tanınabilir yüz kadraja girmemelidir.
 
 | Sahne | Kare ihtiyacı | Duygu / içerik |
 |---|---|---|
-| 01 | Açılış geniş kıyı karesi + dikey karşılığı | Ada hissi, ilk bakışta sakin ve güçlü bir imge |
-| 02 | Yeni başlangıç karesi + dikey karşılığı | Ufuk, yol, kapı veya sabah ışığı; yeniden başlama duygusu |
-| 03 | Kurucu/üretim karesi + dikey karşılığı | Marka kurma, seçki veya stüdyo ayrıntısı; kişisel ama sahnelenmemiş |
-| 04 | Deniz/yaz/özgürlük karesi + dikey karşılığı | Dört kısa satırın nefesine izin veren sade, ritmik kompozisyon |
-| 05 | Koleksiyon/zamansızlık karesi + dikey karşılığı | Kumaş, işçilik veya yıllarca giyilecek ürün vurgusu |
-| 06 | Kapanış/imza karesi + dikey karşılığı | Sıcak, davetkâr son; `Love, KÜBRA` imzasını bastırmayan sakin alan |
+| 01 | Açılış geniş kıyı karesi + dikey karşılığı | Sakin açık deniz/ufuk; sol altta büyük açılış metnine nefes |
+| 02 | Yeni başlangıç karesi + dikey karşılığı | İnsan olmayan kumsal ve sabah ışığı; sol ortada temiz alan |
+| 03 | Soyut doku + dikey karşılığı | Kum, keten, beton veya gölge; merkezde küçük ve sakin metin alanı |
+| 04 | Su yüzeyi + dikey karşılığı | Işık oyunu; solda dört kısa satırın sıralı ritmine izin veren alan |
+| 05 | Yaz hissi + dikey karşılığı | Güneş, gölge ve sıcak ten tonları; ürün varsa ana kahraman olmak zorunda değil; sağ ortada alan |
+| 06 | Açılan ufuk + dikey karşılığı | Yolculuk hissi ve geniş gökyüzü; merkezde kapanış ve imza için sakin alan |
 
 Dosya kalıbı: `hikaye-{sahne}-desktop.jpg` ve `hikaye-{sahne}-mobile.jpg` (örnek: `hikaye-04-mobile.jpg`). On iki nihai kare de kaynak dosya standardındaki çözünürlük, sRGB ve sıkıştırma kurallarına uymalıdır.
 

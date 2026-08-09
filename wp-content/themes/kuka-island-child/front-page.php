@@ -16,11 +16,18 @@ if ( 'manual' === ( $home['new_arrivals_source'] ?? 'latest' ) && ! empty( $home
 if ( ! empty( $home['source_category'] ) ) { $products_shortcode .= ' category="' . esc_attr( $home['source_category'] ) . '"'; }
 if ( ! empty( $home['source_collection'] ) ) { $products_shortcode .= ' tag="' . esc_attr( $home['source_collection'] ) . '"'; }
 $products_shortcode .= ']';
-$hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( (string) ( $hero['title'] ?? '' ) ) : strlen( (string) ( $hero['title'] ?? '' ) );
+$hero_title        = trim( (string) ( $hero['title'] ?? '' ) );
+$hero_title_main   = $hero_title;
+$hero_title_est    = '';
+if ( preg_match( '/^(.*)\s+(Est\.\s*2026)$/u', $hero_title, $hero_title_parts ) ) {
+	$hero_title_main = trim( $hero_title_parts[1] );
+	$hero_title_est  = $hero_title_parts[2];
+}
+$hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( $hero_title ) : strlen( $hero_title );
 ?>
 <?php if ( ! empty( $hero['enabled'] ) ) : ?>
 <section class="kuka-hero kuka-hero--<?php echo esc_attr( $hero['text_tone'] ?? 'light' ); ?> kuka-hero--<?php echo esc_attr( $hero['alignment'] ?? 'left' ); ?><?php echo $hero_title_length > 32 ? ' kuka-hero--long-title' : ''; ?>" style="--hero-desktop:url('<?php echo esc_url( $desktop ); ?>');--hero-mobile:url('<?php echo esc_url( $mobile ); ?>')">
-	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><?php echo esc_html( $hero['title'] ?? '' ); ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
+	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><?php echo esc_html( $hero_title_main ); ?><?php if ( $hero_title_est ) : ?><span class="kuka-hero__est"><?php echo esc_html( $hero_title_est ); ?></span><?php endif; ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
 </section>
 <?php endif; ?>
 <?php if ( ! empty( $home['category_index_enabled'] ) && $category_items ) : ?>
@@ -39,13 +46,13 @@ $hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( (string) ( $her
 				<span class="kuka-category-index__number"><?php echo esc_html( str_pad( (string) ( $index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span>
 				<span class="kuka-category-index__name"><?php echo esc_html( $category_item['label'] ); ?></span>
 				<span class="kuka-category-index__meta"><?php echo esc_html( $cut_names ? implode( ' · ', $cut_names ) : '—' ); ?></span>
-				<span class="kuka-category-index__arrow" aria-hidden="true">↗</span>
+				<span class="kuka-category-index__arrow kuka-text-arrow" aria-hidden="true">↗︎</span>
 			</a>
 		<?php endforeach; ?>
 	</div>
 </section>
 <?php endif; ?>
-<?php if ( ! empty( $home['new_arrivals_enabled'] ) ) : ?><section class="kuka-home-products kuka-home-products--<?php echo esc_attr( $home['presentation'] ?? 'grid' ); ?> kuka-section"><div class="kuka-section-heading"><div><p class="kuka-eyebrow"><?php esc_html_e( 'Koleksiyon', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['new_arrivals_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['new_arrivals_copy'] ?? '' ); ?></p></div><a class="kuka-text-link" href="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>"><?php esc_html_e( 'Tümünü gör', 'kuka-island' ); ?><span aria-hidden="true">↗</span></a></div><?php echo do_shortcode( $products_shortcode ); ?></section><?php endif; ?>
+<?php if ( ! empty( $home['new_arrivals_enabled'] ) ) : ?><section class="kuka-home-products kuka-home-products--<?php echo esc_attr( $home['presentation'] ?? 'grid' ); ?> kuka-section"><div class="kuka-section-heading"><div><p class="kuka-eyebrow"><?php esc_html_e( 'Koleksiyon', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['new_arrivals_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['new_arrivals_copy'] ?? '' ); ?></p></div><a class="kuka-text-link" href="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>"><?php esc_html_e( 'Tümünü gör', 'kuka-island' ); ?><span class="kuka-text-arrow" aria-hidden="true">↗︎</span></a></div><?php echo do_shortcode( $products_shortcode ); ?></section><?php endif; ?>
 <?php if ( ! empty( $home['editorial_enabled'] ) ) : ?><section class="kuka-editorial kuka-section"><div class="kuka-editorial__image"><?php if ( ! empty( $home['editorial_video_id'] ) ) : ?><?php echo wp_video_shortcode( array( 'src' => wp_get_attachment_url( absint( $home['editorial_video_id'] ) ) ) ); ?><?php else : ?><?php echo wp_get_attachment_image( absint( $home['editorial_image_id'] ?? 0 ), 'full' ); ?><?php endif; ?></div><div><p class="kuka-eyebrow"><?php esc_html_e( 'Editoryal', 'kuka-island' ); ?></p><h2><?php echo esc_html( $home['editorial_title'] ?? '' ); ?></h2><p><?php echo esc_html( $home['editorial_copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $home['editorial_url'] ?? '/hakkimizda/' ) ); ?>"><?php echo esc_html( $home['editorial_link_label'] ?? __( 'Hikâyeyi oku', 'kuka-island' ) ); ?></a></div></section><?php endif; ?>
 <?php /* Manifesto iki dilli kalıcıdır: Türkçe satır ana metin, İngilizce satır
          hemen altında ikincil. Dört satırın dördü de panelden gelir; tam
@@ -79,7 +86,7 @@ $hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( (string) ( $her
 	<span class="kuka-services__number"><?php echo esc_html( str_pad( (string) ( $service_index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span>
 	<span class="kuka-services__title"><?php echo esc_html( $service_title ); ?></span>
 	<span class="kuka-services__copy"><?php echo esc_html( $service_copy ); ?></span>
-	<span class="kuka-services__arrow" aria-hidden="true">↗</span>
+	<span class="kuka-services__arrow kuka-text-arrow" aria-hidden="true">↗︎</span>
 </a>
 <?php endforeach; ?>
 </section>
