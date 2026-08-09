@@ -22,22 +22,36 @@ function kuka_island_enqueue_script( string $name, array $dependencies = array()
 }
 
 /**
- * Invalidate cached cart fragments when the panel markup changes.
+ * Keep WooCommerce AJAX in the language of the page that fired it, and retire
+ * stale cart panels.
  *
- * WooCommerce keeps the rendered cart panel in sessionStorage under
- * `fragment_name` and only refreshes it when the cart hash changes. A theme
- * update therefore kept showing the previous markup to returning visitors;
- * binding the key to the panel and script mtimes retires the stale copy.
+ * Every `wc-ajax` endpoint is served from the unprefixed root, so the request
+ * carries no `/en/` segment and the language is otherwise only recoverable
+ * from the Referer header — which browsers may withhold. Stamping the language
+ * on every localized `wc_ajax_url` makes it explicit: add-to-cart, cart
+ * fragments and `update_order_review` all answer in the caller's language.
+ *
+ * WooCommerce also keeps the rendered cart panel in sessionStorage under
+ * `fragment_name` and only refreshes it when the cart hash changes, so both
+ * keys are bound to the language as well as to the panel and script mtimes.
  *
  * @param mixed  $params Localized script data.
  * @param string $handle Script handle.
  * @return mixed
  */
 function kuka_island_cart_fragment_name( $params, string $handle ) {
-	if ( 'wc-cart-fragments' !== $handle || ! is_array( $params ) ) {
+	if ( ! is_array( $params ) ) {
 		return $params;
 	}
-	$language                = function_exists( 'kuka_island_locale' ) ? kuka_island_locale() : 'tr';
+	$language = function_exists( 'kuka_island_locale' ) ? kuka_island_locale() : 'tr';
+
+	if ( 'en' === $language && ! empty( $params['wc_ajax_url'] ) && ! str_contains( (string) $params['wc_ajax_url'], 'kuka_lang=' ) ) {
+		$params['wc_ajax_url'] = (string) $params['wc_ajax_url'] . '&kuka_lang=en';
+	}
+
+	if ( 'wc-cart-fragments' !== $handle ) {
+		return $params;
+	}
 	$signature               = kuka_island_child_asset_version( 'inc/storefront-panels.php' ) . '-' . kuka_island_child_asset_version( 'assets/js/cart.js' ) . '-' . $language;
 	$params['fragment_name'] = 'wc_fragments_kuka_' . substr( md5( $signature ), 0, 12 );
 	// Fragment HTML'i dile göre ayrıyken ortak hash anahtarı kullanmak, diğer
@@ -45,9 +59,6 @@ function kuka_island_cart_fragment_name( $params, string $handle ) {
 	// açar. Hash'i de aynı dil sınırına al; cookie hash'i ortak kaldığı için dil
 	// değişiminde eski cache uyuşmaz ve WooCommerce sunucudan doğru sepeti çeker.
 	$params['cart_hash_key'] = (string) ( $params['cart_hash_key'] ?? 'wc_cart_hash' ) . '_' . $language;
-	if ( 'en' === $language ) {
-		$params['wc_ajax_url'] = (string) ( $params['wc_ajax_url'] ?? '' ) . '&kuka_lang=en';
-	}
 	return $params;
 }
 add_filter( 'woocommerce_get_script_data', 'kuka_island_cart_fragment_name', 10, 2 );
