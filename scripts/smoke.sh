@@ -137,9 +137,19 @@ curl -sS "${WP_URL%/}/sepet/" > "$temporary_dir/fragments-source-tr.html"
 tr_fragment=$(grep -o 'fragment_name":"[^"]*' "$temporary_dir/fragments-source-tr.html" | head -1 | cut -d'"' -f3)
 en_fragment=$(grep -o 'fragment_name":"[^"]*' "$temporary_dir/cart.html" | head -1 | cut -d'"' -f3)
 [ -n "$tr_fragment" ] && [ -n "$en_fragment" ] && [ "$tr_fragment" = "$en_fragment" ] && fail "cart fragment language cache collision"
+tr_hash_key=$(grep -o 'cart_hash_key":"[^"]*' "$temporary_dir/fragments-source-tr.html" | head -1 | cut -d'"' -f3)
+en_hash_key=$(grep -o 'cart_hash_key":"[^"]*' "$temporary_dir/cart.html" | head -1 | cut -d'"' -f3)
+[ -n "$tr_hash_key" ] && [ -n "$en_hash_key" ] && [ "$tr_hash_key" != "$en_hash_key" ] || fail "cart hash language cache collision"
 curl -sS "${WP_URL%/}/?wc-ajax=get_refreshed_fragments&kuka_lang=en" > "$temporary_dir/fragments-en.json"
 grep -q 'Return to shop' "$temporary_dir/fragments-en.json" && grep -q '\\/en\\/magaza\\/' "$temporary_dir/fragments-en.json" || fail "English AJAX fallback"
-pass "language-specific cart fragments + no-Referer AJAX fallback"
+pass "language-specific cart fragments/hash + no-Referer AJAX fallback"
+
+# The exact reported regression: add in English, then visit Turkish with the
+# same WooCommerce cookie. The server cart must remain populated after the
+# language switch; browser cache behavior is covered by the separate hash key.
+curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/cart-switched-tr.html" "${WP_URL%/}/sepet/"
+grep -q 'woocommerce-cart-form__cart-item cart_item' "$temporary_dir/cart-switched-tr.html" || fail "English cart survives Turkish switch"
+pass "English add-to-cart survives Turkish language switch"
 
 # Repeat the commerce path with an independent Turkish guest session.
 tr_cookie_jar="$temporary_dir/cookies-tr"
