@@ -902,6 +902,13 @@ progress {
   white-space: nowrap;
 }
 
+@media (min-width: 47.5001em) {
+  .kuka-hero__title-main {
+    display: block;
+    white-space: nowrap;
+  }
+}
+
 .kuka-hero__content > p:not(.kuka-eyebrow) {
   max-width: var(--measure-copy);
   font-size: var(--text-body-large);

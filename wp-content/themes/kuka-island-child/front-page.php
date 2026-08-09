@@ -27,7 +27,7 @@ $hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( $hero_title ) :
 ?>
 <?php if ( ! empty( $hero['enabled'] ) ) : ?>
 <section class="kuka-hero kuka-hero--<?php echo esc_attr( $hero['text_tone'] ?? 'light' ); ?> kuka-hero--<?php echo esc_attr( $hero['alignment'] ?? 'left' ); ?><?php echo $hero_title_length > 32 ? ' kuka-hero--long-title' : ''; ?>" style="--hero-desktop:url('<?php echo esc_url( $desktop ); ?>');--hero-mobile:url('<?php echo esc_url( $mobile ); ?>')">
-	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><?php echo esc_html( $hero_title_main ); ?><?php if ( $hero_title_est ) : ?><span class="kuka-hero__est"><?php echo esc_html( $hero_title_est ); ?></span><?php endif; ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
+	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><span class="kuka-hero__title-main"><?php echo esc_html( $hero_title_main ); ?></span><?php if ( $hero_title_est ) : ?><span class="kuka-hero__est"><?php echo esc_html( $hero_title_est ); ?></span><?php endif; ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
 </section>
 <?php endif; ?>
 <?php if ( ! empty( $home['category_index_enabled'] ) && $category_items ) : ?>

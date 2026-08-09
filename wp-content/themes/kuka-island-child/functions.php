@@ -154,6 +154,15 @@ function kuka_island_brand_metadata(): void {
 	if ( ! empty( $brand['favicon_id'] ) ) {
 		$url = wp_get_attachment_image_url( absint( $brand['favicon_id'] ), 'full' );
 		if ( $url ) { echo '<link rel="icon" href="' . esc_url( $url ) . '">'; }
+	} else {
+		$icon_path = get_stylesheet_directory() . '/assets/img/palmiye.svg';
+		if ( is_readable( $icon_path ) ) {
+			$icon = (string) file_get_contents( $icon_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$light_icon = 'data:image/svg+xml,' . rawurlencode( str_replace( 'currentColor', '#3c2a12', $icon ) );
+			$dark_icon  = 'data:image/svg+xml,' . rawurlencode( str_replace( 'currentColor', '#fffdf8', $icon ) );
+			echo '<link rel="icon" media="(prefers-color-scheme: light)" href="' . esc_attr( $light_icon ) . '">';
+			echo '<link rel="icon" media="(prefers-color-scheme: dark)" href="' . esc_attr( $dark_icon ) . '">';
+		}
 	}
 }
 add_action( 'wp_head', 'kuka_island_brand_metadata', 3 );

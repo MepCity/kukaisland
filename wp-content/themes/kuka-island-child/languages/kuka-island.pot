@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-09T09:57:10+00:00\n"
+"POT-Creation-Date: 2026-08-09T19:39:13+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -72,35 +72,35 @@ msgstr ""
 msgid "WhatsApp destek"
 msgstr ""
 
-#: front-page.php:28
+#: front-page.php:35
 msgid "Formunu bul"
 msgstr ""
 
-#: front-page.php:29
+#: front-page.php:36
 msgid "Ürün kategorileri"
 msgstr ""
 
-#: front-page.php:48
+#: front-page.php:55
 msgid "Koleksiyon"
 msgstr ""
 
-#: front-page.php:48
+#: front-page.php:55
 msgid "Tümünü gör"
 msgstr ""
 
-#: front-page.php:49
+#: front-page.php:56
 msgid "Editoryal"
 msgstr ""
 
-#: front-page.php:49
+#: front-page.php:56
 msgid "Hikâyeyi oku"
 msgstr ""
 
-#: front-page.php:53
+#: front-page.php:60
 msgid "Manifesto"
 msgstr ""
 
-#: front-page.php:66
+#: front-page.php:73
 msgid "Servis güvenceleri"
 msgstr ""
 

@@ -30,6 +30,9 @@ WP_CLI::line( 'ACTIVE_THEME=' . wp_get_theme()->get_stylesheet() );
 WP_CLI::line( 'HPOS=' . get_option( 'woocommerce_custom_orders_table_enabled' ) );
 WP_CLI::line( 'GUEST_CHECKOUT=' . get_option( 'woocommerce_enable_guest_checkout' ) );
 WP_CLI::line( 'STORE_VISIBILITY=' . ( 'yes' === get_option( 'woocommerce_coming_soon' ) ? 'coming-soon' : 'live' ) );
+WP_CLI::line( 'COMING_SOON_SCOPE=' . ( 'yes' === get_option( 'woocommerce_store_pages_only' ) ? 'store-only' : 'whole-site' ) );
+WP_CLI::line( 'SEARCH_ENGINE_VISIBILITY=' . ( get_option( 'blog_public' ) ? 'index' : 'noindex' ) );
+WP_CLI::line( 'PRIVATE_PREVIEW=' . ( 'yes' === get_option( 'woocommerce_private_link' ) && get_option( 'woocommerce_share_key' ) ? 'ready' : 'missing' ) );
 WP_CLI::line( 'MYACCOUNT_REGISTRATION=' . get_option( 'woocommerce_enable_myaccount_registration' ) );
 WP_CLI::line( 'IMAGE_CROP=' . get_option( 'woocommerce_thumbnail_cropping_custom_width' ) . ':' . get_option( 'woocommerce_thumbnail_cropping_custom_height' ) );
 WP_CLI::line( 'BIG_IMAGE_THRESHOLD=' . apply_filters( 'big_image_size_threshold', 2560, array(), '', 0 ) );
@@ -88,7 +91,16 @@ foreach ( $swatches as $term ) {
 }
 
 $site_content = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::get() : array();
+$appearance_groups = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::field_inventory() : array();
+$appearance_controls = array_sum( array_map( static fn( array $group ): int => count( $group['fields'] ?? array() ), $appearance_groups ) );
+$appearance_rows = 0;
+foreach ( $appearance_groups as $group ) {
+	foreach ( array_keys( $group['fields'] ?? array() ) as $field_key ) {
+		if ( ! str_ends_with( $field_key, '_en' ) && ! str_ends_with( $field_key, '_labels_en' ) ) { ++$appearance_rows; }
+	}
+}
 WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_content ) ) );
+WP_CLI::line( sprintf( 'SITE_APPEARANCE_INVENTORY=%d_groups|%d_rows|%d_controls', count( $appearance_groups ), $appearance_rows, $appearance_controls ) );
 WP_CLI::line( 'HOME_HERO_TITLES=' . (string) ( $site_content['hero']['title'] ?? '' ) . '|' . (string) ( $site_content['hero']['title_en'] ?? '' ) );
 WP_CLI::line( 'HOME_EDITORIAL_TITLES=' . (string) ( $site_content['home']['editorial_title'] ?? '' ) . '|' . (string) ( $site_content['home']['editorial_title_en'] ?? '' ) );
 WP_CLI::line( 'LANGUAGE_TRANSLATABLE_FIELDS=' . ( class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_field_count() : 0 ) );

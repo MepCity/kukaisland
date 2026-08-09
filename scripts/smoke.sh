@@ -12,6 +12,13 @@ temporary_dir=$(mktemp -d)
 trap 'rm -r "$temporary_dir"' EXIT HUP INT TERM
 cookie_jar="$temporary_dir/cookies"
 
+# Storefront acceptance runs through WooCommerce's private preview link while
+# the public site remains in Coming Soon mode. The key is read locally and is
+# never printed or committed.
+share_key=$(docker compose run --rm -T wp-cli wp option get woocommerce_share_key 2>/dev/null)
+[ -n "$share_key" ] || { echo "FAIL missing WooCommerce private preview key" >&2; exit 1; }
+curl() { command curl -b "woo-share=$share_key" "$@"; }
+
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1" >&2; exit 1; }
 fetch() {

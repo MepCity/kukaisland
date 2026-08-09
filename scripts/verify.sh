@@ -63,6 +63,14 @@ undefined_tokens=$(comm -23 "$used_tokens" "$defined_tokens" | grep -Ev '^(hero-
 rm "$used_tokens" "$defined_tokens"
 newsletter_mail_calls=$(search_count 'wp_mail[[:space:]]*\(' wp-content/plugins/kuka-island-core/includes/class-newsletter.php)
 newsletter_blue=$(search_count '\bblue\b|#(00f|0000ff)\b' wp-content/themes/kuka-island-child/assets/css)
+svg_upload_filters=$(search_count 'upload_mimes' wp-content/plugins/kuka-island-core wp-content/themes/kuka-island-child)
+vendor_changes=$(git diff --name-only -- wp-content/plugins/woocommerce wp-content/themes/blocksy 2>/dev/null | wc -l | tr -d ' ')
+legacy_english_boxes=$(search_count 'English product content|English page content|Leave an English field empty' wp-content/plugins/kuka-island-core/includes)
+panel_tabs=$(search_count 'nav-tab-wrapper' wp-content/plugins/kuka-island-core/includes/class-site-appearance.php)
+panel_search=$(search_count 'data-kuka-field-search' wp-content/plugins/kuka-island-core)
+management_map=$(search_count 'kuka-island-management-map' wp-content/plugins/kuka-island-core/includes)
+product_checklist=$(search_count 'kuka-product-checklist' wp-content/plugins/kuka-island-core/includes/class-product-fields.php)
+hero_main_line=$(search_count 'kuka-hero__title-main' wp-content/themes/kuka-island-child)
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -79,6 +87,14 @@ LOCKED_DESIGN_CONTROLS=$locked_controls
 CSS_UNDEFINED_TOKENS=$undefined_tokens
 NEWSLETTER_WP_MAIL_CALLS=$newsletter_mail_calls
 NEWSLETTER_BLUE=$newsletter_blue
+SVG_UPLOAD_FILTERS=$svg_upload_filters
+VENDOR_CHANGES=$vendor_changes
+LEGACY_ENGLISH_BOXES=$legacy_english_boxes
+PANEL_TABS=$panel_tabs
+PANEL_SEARCH=$panel_search
+MANAGEMENT_MAP=$management_map
+PRODUCT_CHECKLIST=$product_checklist
+HERO_MAIN_LINE=$hero_main_line
 EOF
 
 failures=0
@@ -107,6 +123,11 @@ expect_value() {
 expect_line "child theme active" "ACTIVE_THEME=kuka-island-child"
 expect_line "six-item header menu" "PRIMARY_MENU_COUNT=6"
 expect_line "daily manager" "DAILY_MANAGER=yes"
+expect_line "Coming Soon remains enabled" "STORE_VISIBILITY=coming-soon"
+expect_line "Coming Soon covers the whole site" "COMING_SOON_SCOPE=whole-site"
+expect_line "search engines remain blocked" "SEARCH_ENGINE_VISIBILITY=noindex"
+expect_line "private acceptance preview" "PRIVATE_PREVIEW=ready"
+expect_line "measured Site Appearance inventory" "SITE_APPEARANCE_INVENTORY=13_groups|105_rows|146_controls"
 expect_line "classic checkout" "CHECKOUT_CLASSIC=yes"
 expect_line "no legal draft warnings left" "LEGAL_DRAFT_WARNINGS=0"
 expect_line "central legal company data" "LEGAL_CENTRAL_COMPANY=8/8"
@@ -182,6 +203,14 @@ expect_value "root overflow mask" "$overflow_masks" "0"
 expect_value "undefined CSS tokens" "$undefined_tokens" "0"
 expect_value "single-record notification only" "$newsletter_mail_calls" "1"
 expect_value "newsletter has no blue" "$newsletter_blue" "0"
+expect_value "SVG uploads remain disabled" "$svg_upload_filters" "0"
+expect_value "vendor files untouched" "$vendor_changes" "0"
+expect_value "legacy English metaboxes removed" "$legacy_english_boxes" "0"
+expect_value "Site Appearance tabs" "$panel_tabs" "1"
+expect_value "Site Appearance field search" "$panel_search" "2"
+expect_value "management map routes" "$management_map" "2"
+expect_value "product publication checklist" "$product_checklist" "2"
+expect_value "hero sentence and Est lines" "$hero_main_line" "2"
 
 if [ "$failures" -ne 0 ]; then
   echo "VERIFY=FAIL ($failures)" >&2
