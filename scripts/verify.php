@@ -90,7 +90,7 @@ foreach ( $swatches as $term ) {
 $site_content = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::get() : array();
 WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_content ) ) );
 WP_CLI::line( 'LANGUAGE_TRANSLATABLE_FIELDS=' . ( class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_field_count() : 0 ) );
-WP_CLI::line( 'PRODUCT_EN_FIELD_SCHEMA=5' );
+WP_CLI::line( 'PRODUCT_EN_FIELD_SCHEMA=9' );
 WP_CLI::line( 'PAGE_EN_FIELD_SCHEMA=2' );
 WP_CLI::line( 'TAXONOMY_EN_FIELD=' . ( function_exists( 'kuka_island_term_name' ) ? '_kuka_name_en' : 'missing' ) );
 $translation_plugins = array_filter( (array) get_option( 'active_plugins', array() ), static fn( string $plugin ): bool => (bool) preg_match( '/polylang|sitepress|wpml|translatepress|weglot|gtranslate/i', $plugin ) );
@@ -125,6 +125,34 @@ foreach ( $legal_pages as $slug ) {
 	}
 }
 WP_CLI::line( 'LEGAL_EN_VALUES=' . $legal_english_values . '/16' );
+$nonlegal_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo-teslimat', 'ticari-elektronik-ileti-onayi', 'beden-rehberi', 'siparis-takibi', 'tipografi-testi' );
+$nonlegal_english_values = 0;
+foreach ( $nonlegal_pages as $slug ) {
+	$page = get_page_by_path( $slug );
+	if ( $page ) {
+		$nonlegal_english_values += '' !== trim( (string) get_post_meta( $page->ID, '_kuka_title_en', true ) ) ? 1 : 0;
+		$nonlegal_english_values += '' !== trim( (string) get_post_meta( $page->ID, '_kuka_content_en', true ) ) ? 1 : 0;
+	}
+}
+WP_CLI::line( 'NONLEGAL_EN_VALUES=' . $nonlegal_english_values . '/16' );
+$appearance_english_values = 0;
+foreach ( Kuka_Island_Core_Language::translation_fields() as $group => $fields ) {
+	foreach ( $fields as $config ) {
+		$value = $site_content[ $group ][ $config['key'] ] ?? '';
+		$appearance_english_values += is_array( $value ) ? ( array_filter( $value, 'strlen' ) ? 1 : 0 ) : ( '' !== trim( (string) $value ) ? 1 : 0 );
+	}
+}
+WP_CLI::line( 'SITE_APPEARANCE_EN_VALUES=' . $appearance_english_values . '/42' );
+$product_english_values = 0;
+foreach ( wc_get_products( array( 'type' => 'variable', 'limit' => -1, 'return' => 'ids' ) ) as $product_id ) {
+	foreach ( array( '_kuka_name_en', '_kuka_description_en', '_kuka_short_description_en', '_kuka_material_en', '_kuka_care_en', '_kuka_fit_en', '_kuka_model_info_en', '_kuka_seo_title_en', '_kuka_meta_description_en' ) as $key ) {
+		$product_english_values += '' !== trim( (string) get_post_meta( $product_id, $key, true ) ) ? 1 : 0;
+	}
+}
+WP_CLI::line( 'PRODUCT_EN_VALUES=' . $product_english_values . '/36' );
+$about_english_page = get_page_by_path( 'hakkimizda' );
+$about_english = $about_english_page ? (string) get_post_meta( $about_english_page->ID, '_kuka_content_en', true ) : '';
+WP_CLI::line( 'ABOUT_EN_RHYTHM=' . ( str_contains( $about_english, 'The sea…<br>Summer…<br>Freedom…' ) && str_contains( $about_english, '<span>Love,</span><strong>KÜBRA</strong>' ) ? 'yes' : 'no' ) );
 $hygiene_copy = (string) ( $site_content['commercial']['hygiene_copy'] ?? '' );
 $return_page = get_page_by_path( 'iade-degisim' );
 $return_html = $return_page ? do_shortcode( (string) $return_page->post_content ) : '';

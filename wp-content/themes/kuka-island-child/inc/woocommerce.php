@@ -68,6 +68,9 @@ add_action(
 		if ( ! $product instanceof WC_Product ) { return; }
 		foreach ( array( '_kuka_material' => __( 'Malzeme', 'kuka-island' ), '_kuka_care' => __( 'Bakım', 'kuka-island' ), '_kuka_fit' => __( 'Kalıp', 'kuka-island' ), '_kuka_model_info' => __( 'Model', 'kuka-island' ) ) as $key => $label ) {
 			$value = $product->get_meta( $key );
+			if ( function_exists( 'kuka_island_is_english' ) && kuka_island_is_english() ) {
+				$value = $product->get_meta( $key . '_en' ) ?: $value;
+			}
 			if ( $value ) { echo '<details class="kuka-product-detail"><summary>' . esc_html( $label ) . '</summary><p>' . esc_html( $value ) . '</p></details>'; }
 		}
 		$guide = $product->get_meta( '_kuka_size_guide' );

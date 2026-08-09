@@ -9,6 +9,8 @@ Bu form, tasarımı ve mağaza altyapısını yanlış varsayımlarla kalıcıla
 
 Faz 5B, yanıt gelene kadar **(a)** varsayımıyla kurulmuştur. Yasal İngilizce alanlar bilerek boş bırakılmıştır.
 
+Marka hikâyesinin İngilizcesi ilk geçiş olarak yazıldı; Kübra'nın gözden geçirmesi bekleniyor.
+
 ## Faz 4A — hukuk danışmanına iletilecek öncelikli sorular
 
 1. Sitede değişim sunulmayacak. Cayma Hakkı ve İade Sözleşmesi §5 (Beden Değişimi) maddesinin metinden çıkarılması için hukuk danışmanınıza iletir misiniz?

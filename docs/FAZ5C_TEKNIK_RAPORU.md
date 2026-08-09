@@ -41,6 +41,14 @@ Menü, arama, sepet ikonu, sayaç, mobil menü ikonu, marka yazısı ve palmiye 
 
 Alan iki açıklamalı seçenek sunar: varsayılan **indirimden sonraki tutar** (`no`) ve **indirimden önceki tutar** (`yes`). Panelde `yes` seçilip kaydedildiğinde hem Site Görünümü hem WooCommerce free-shipping instance değeri `yes` ölçüldü (`ignore-discounts-panel-yes.txt`). Temiz seed varsayılanı `no` olarak ayrıca verify kapısındadır. Sepet ilerleme metni WooCommerce'in aynı indirim/vergi çıkarma sırasını kullanır; fiyat motoru yeniden yazılmamıştır.
 
+## Bölüm F — İngilizce ilk geçiş
+
+Yasal olmayan içeriklerde Türkçe fallback sunum akışından çıkarıldı. Temiz seed; 42 Site Görünümü EN alanının tamamını, sekiz yasal olmayan içerik sayfasının başlık/gövde çiftlerini ve dört ürünün görünür ürün metinlerini doldurur. Otomatik çeviri API'si veya çeviri eklentisi kullanılmadı; metinler editoryal ilk geçiş olarak elle yazıldı.
+
+Marka hikâyesi Kübra'nın birinci ağız sıcaklığını korur. `The sea… / Summer… / Freedom…` kısa satır dizisi ile `Love, KÜBRA` imza bloğu kaynak HTML'de ve render'da korunmuştur. Müşteri gözden geçirmesi `MUSTERI_SORULARI.md` içinde kayıtlıdır.
+
+Sekiz hukuk sayfasının EN başlık/gövde alanları `0/16` olarak boş kalır ve yalnız bu slug'larda “bağlayıcı sürüm Türkçedir” uyarısı gösterilir. Yasal olmayan sayfalarda uyarı sayısı sıfırdır: [tarama](qa/faz5c/en-fallback-scan.txt), [İngilizce Hakkımızda](qa/faz5c/en-about-first-pass.png), [yasal fallback örneği](qa/faz5c/en-legal-binding-fallback.png).
+
 ## Kabul kriterleri
 
 | # | Sonuç | Kanıt |
@@ -53,3 +61,5 @@ Alan iki açıklamalı seçenek sunar: varsayılan **indirimden sonraki tutar** 
 | 6 | Karşılandı | Açıklamalı panel seçimi; `yes` senkron testi ve verify'da varsayılan `no` |
 | 7 | Karşılandı | Token disiplin kapısı 0; yedi viewport `scrollWidth = innerWidth` |
 | 8 | Yerel kapı karşılandı, CI push sonrası | İki temiz `make reset && make verify` turu `VERIFY=PASS`; ikisinde smoke `5/5` |
+| 19 | Karşılandı | Yasal örnekte fallback uyarısı 1; taranan tüm yasal olmayan sayfalarda 0; marka hikâyesi dahil. Tarama + iki render görüntüsü |
+| 20 | Karşılandı | `/en/hakkimizda/` İngilizce başlık/gövdeyle yayında; kısa satır ritmi ve `Love, KÜBRA` imzası tam sayfa görüntüsünde görünür |

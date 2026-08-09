@@ -43,7 +43,9 @@ final class Kuka_Island_Core_Content {
 
 	/** The About-page opening follows the same panel value as the home manifesto. */
 	public function manifesto_line_2(): string {
-		$copy = trim( (string) ( Kuka_Island_Core_Site_Appearance::get()['home']['manifesto_line_2'] ?? '' ) );
+		$content = Kuka_Island_Core_Site_Appearance::get();
+		if ( class_exists( 'Kuka_Island_Core_Language' ) ) { $content = Kuka_Island_Core_Language::localized_content( $content ); }
+		$copy = trim( (string) ( $content['home']['manifesto_line_2'] ?? '' ) );
 		return '' === $copy ? '' : '<span data-kuka-manifesto-opening>' . esc_html( $copy ) . '</span>';
 	}
 
@@ -175,10 +177,15 @@ final class Kuka_Island_Core_Content {
 	public function value( array $attributes ): string {
 		$attributes = shortcode_atts( array( 'name' => '' ), $attributes, 'kuka_value' );
 		$content    = Kuka_Island_Core_Site_Appearance::get();
+		if ( class_exists( 'Kuka_Island_Core_Language' ) ) { $content = Kuka_Island_Core_Language::localized_content( $content ); }
+		$shipping_carrier = (string) $content['commercial']['shipping_carrier'];
+		if ( function_exists( 'kuka_island_is_english' ) && kuka_island_is_english() && '[KARGO FİRMASI]' === $shipping_carrier ) {
+			$shipping_carrier = '[SHIPPING CARRIER]';
+		}
 		$values     = array(
 			'free_shipping_threshold' => wc_price( (float) $content['commercial']['free_shipping_threshold'] ),
 			'flat_shipping_fee' => wc_price( (float) $content['commercial']['flat_shipping_fee'] ),
-			'shipping_carrier' => esc_html( (string) $content['commercial']['shipping_carrier'] ),
+			'shipping_carrier' => esc_html( $shipping_carrier ),
 			'delivery_time' => esc_html( (string) $content['commercial']['delivery_time'] ),
 			'cayma_hakki_gun' => esc_html( (string) absint( $content['commercial']['cayma_hakki_gun'] ) ),
 			'return_shipping_responsibility' => esc_html( (string) $content['commercial']['return_shipping_responsibility'] ),

@@ -332,6 +332,75 @@ $order_tracking_page = kuka_content_html(
 	)
 );
 
+// First-pass English editorial copy. It is written by hand, keeps Kübra's
+// first-person warmth and remains editable on the same WordPress page record.
+$brand_story_en = kuka_content_html(
+	array(
+		'<div class="kuka-brand-story">',
+		'<p class="kuka-brand-story__opening">[kuka_manifesto_line_2]</p>',
+		'<div class="kuka-brand-story__source">',
+		'<p class="kuka-brand-story__lede">KUKA ISLAND<br>Sometimes, life asks you to begin again.</p>',
+		'<p>That is exactly how KUKA ISLAND began for me.</p>',
+		'<p>As I turned a new page, I did not want to create just another brand. I wanted to bring everything that makes me feel good together under one roof.</p>',
+		'<p class="kuka-brand-story__list">The sea…<br>Summer…<br>Freedom…<br>And those moments when women feel most beautiful in their own skin…</p>',
+		'<p>That is how KUKA ISLAND came to life.</p>',
+		'<p>Every collection is made for more than a single season—to bring back that same feeling, even when you wear it years from now.</p>',
+		'<p>This journey is only just beginning.</p>',
+		'<p>I am so glad you are here.</p>',
+		'<p>And that you are with us for the first pages of this story.</p>',
+		'<footer class="kuka-brand-story__sign"><span>Love,</span><strong>KÜBRA</strong></footer>',
+		'</div>',
+		'</div>',
+	)
+);
+
+$english_pages = array(
+	'hakkimizda' => array( 'About Us', $brand_story_en ),
+	'iletisim' => array( 'Contact', kuka_content_html( array(
+		'<p>For questions about orders, products or sizing, please use one of the current contact channels below.</p>',
+		'[kuka_contact_details]',
+		'<h2>Contact form</h2>',
+		'<p class="kuka-service-disabled"><strong>The form is currently unavailable.</strong> Until the messaging service is connected, please contact us by email, phone, WhatsApp or Instagram.</p>',
+	) ) ),
+	'sik-sorulan-sorular' => array( 'Frequently Asked Questions', kuka_content_html( array(
+		'<h2>Size and fit</h2>',
+		'<details class="kuka-faq"><summary>How do I choose my size?</summary><div class="kuka-faq__panel"><p>Measure your bust, underbust, waist and hips in centimetres, then consider both the Size Guide and the fit note on the product page.</p></div></details>',
+		'<details class="kuka-faq"><summary>What if I am between two sizes?</summary><div class="kuka-faq__panel"><p>Follow the fit note for the product first. For standard pilot fits, consider the larger size if you prefer a more relaxed feel.</p></div></details>',
+		'<details class="kuka-faq"><summary>Can I order the top and bottom in different sizes?</summary><div class="kuka-faq__panel"><p>Yes. Bikini tops and bottoms are sold separately, so you can choose each size and colour independently.</p></div></details>',
+		'<details class="kuka-faq"><summary>Where can I find the size guide?</summary><div class="kuka-faq__panel"><p>Open it from the size link on any product page or visit the <a href="/en/beden-rehberi/">Size Guide</a>.</p></div></details>',
+		'<h2>Product and fabric</h2>',
+		'<details class="kuka-faq"><summary>Where can I find the fabric composition?</summary><div class="kuka-faq__panel"><p>Each product page lists its specific composition under Material.</p></div></details>',
+		'<details class="kuka-faq"><summary>How should I care for my swimwear?</summary><div class="kuka-faq__panel"><p>Follow the product care note. As a general rule, hand wash in cold water, do not wring and dry flat in the shade.</p></div></details>',
+		'<details class="kuka-faq"><summary>Will chlorine or sunscreen affect the fabric?</summary><div class="kuka-faq__panel"><p>Rinse after swimming in chlorinated or salt water. Prolonged contact with sunscreen or oil may affect colour and elasticity.</p></div></details>',
+		'<details class="kuka-faq"><summary>Is the product lined or padded?</summary><div class="kuka-faq__panel"><p>Lining and removable or fixed padding are described on each product page and may vary by style.</p></div></details>',
+		'<h2>Shipping</h2><p>Standard shipping is [kuka_value name="flat_shipping_fee"] and the free-shipping threshold is [kuka_value name="free_shipping_threshold"]. The carrier is [kuka_value name="shipping_carrier"] and the estimated delivery time is [kuka_value name="delivery_time"]. Tracking details are shared when your order ships.</p>',
+		'<h2>Right of withdrawal and returns</h2><p>Send your withdrawal notice within [kuka_value name="cayma_hakki_gun"] days of delivery, quoting your order number, to [kuka_value name="email"] or through the return channel on the site. For easier proof of notice, withdrawal requests are not accepted by phone. Current return-shipping responsibility: [kuka_value name="return_shipping_responsibility"].</p>',
+		'<p>If you need a different size, use your right of withdrawal and place a new order.</p><p>[kuka_hygiene_policy]</p><p>[kuka_hygiene_try_on]</p>',
+		'<h2>Payment</h2><p>You can use the card methods shown at checkout. Instalment options depend on your bank and iyzico and appear during payment. Kuka Island does not store card data; it is processed by the payment provider’s secure infrastructure.</p>',
+		'<h2>Orders</h2><p>Track your order with your order number and email address on the <a href="/en/siparis-takibi/">Order Tracking</a> page. You may contact support to request cancellation before preparation begins.</p>',
+	) ) ),
+	'kargo-teslimat' => array( 'Shipping & Delivery', kuka_content_html( array(
+		'<h2>Preparation and delivery</h2><p>Orders are prepared after payment is confirmed. The estimated delivery time is [kuka_value name="delivery_time"] and the carrier is [kuka_value name="shipping_carrier"]. Weekends, public holidays, busy periods and the delivery region may affect timing.</p>',
+		'<h2>Shipping fee and free shipping</h2><p>Standard shipping is [kuka_value name="flat_shipping_fee"] and the free-shipping threshold is [kuka_value name="free_shipping_threshold"]. The order summary at checkout shows the final amount that applies.</p>',
+		'<h2>Tracking</h2><p>Once the administrator adds a tracking number to your order, it is sent by email and becomes available through Order Tracking.</p>',
+		'<h2>Incorrect address</h2><p>Contact support before the parcel ships. Once it is in transit, address changes depend on the carrier, and reshipping costs may apply to an undeliverable parcel.</p>',
+		'<h2>Damaged delivery</h2><p>If the parcel is visibly damaged, ask the courier to record it where possible. Send support your order number and photos of the parcel and product without delay.</p>',
+	) ) ),
+	'ticari-elektronik-ileti-onayi' => array( 'Commercial Electronic Communication Consent', '<h2>Communication preference</h2><p>The newsletter stores only consented registrations. No bulk-email tool is provided; any future campaign or product communication must follow the applicable consent, opt-out and İYS processes.</p>' ),
+	'beden-rehberi' => array( 'Size Guide', kuka_content_html( array(
+		'<p>All body measurements are in centimetres (cm). Keep the tape level with the floor without pulling it tight.</p>',
+		'<h2>How to measure</h2>',
+		'<ul><li><strong>Bust:</strong> Measure horizontally around the fullest part of your bust.</li>',
+		'<li><strong>Underbust:</strong> Measure directly below your bust, keeping the tape level.</li>',
+		'<li><strong>Waist:</strong> Measure the narrowest part of your natural waist.</li>',
+		'<li><strong>Hips:</strong> Measure horizontally around the fullest part of your hips.</li></ul>',
+		'<p>If you are between sizes, check the fit note on the product page. Bikini tops and bottoms are sold separately, so you may choose different sizes.</p>',
+		'[kuka_size_guide]',
+	) ) ),
+	'siparis-takibi' => array( 'Order Tracking', '<p>Enter your order number and the email address used for the order. Once a tracking number is added, shipment details appear with your order.</p>[woocommerce_order_tracking]' ),
+	'tipografi-testi' => array( 'Typography Test', '<section class="kuka-type-test" aria-label="English heading test"><h2>Bikini Top</h2><h2>High-waisted Bikini Bottom</h2><h2>Strapless Swimsuit</h2><h2>Tie-side</h2></section>' ),
+);
+
 $pages = array(
 	'hakkimizda' => array( 'Hakkımızda', $brand_story ),
 	'iletisim' => array( 'İletişim', $contact_page ),
@@ -355,7 +424,16 @@ $pages = array(
 // danışmanının kararı gelene kadar taslakta bırakılır (docs/MUSTERI_SORULARI.md).
 $draft_pages = array( 'kullanim-kosullari' );
 foreach ( $pages as $slug => $page ) {
-	kuka_content_page( $slug, $page[0], $page[1], in_array( $slug, $draft_pages, true ) ? 'draft' : 'publish' );
+	$page_id = kuka_content_page( $slug, $page[0], $page[1], in_array( $slug, $draft_pages, true ) ? 'draft' : 'publish' );
+	if ( isset( $english_pages[ $slug ] ) ) {
+		update_post_meta( $page_id, '_kuka_title_en', $english_pages[ $slug ][0] );
+		update_post_meta( $page_id, '_kuka_content_en', $english_pages[ $slug ][1] );
+	} else {
+		// The only untranslated public records are the eight customer-supplied
+		// legal contracts; publishing a draft translation would create legal risk.
+		delete_post_meta( $page_id, '_kuka_title_en' );
+		delete_post_meta( $page_id, '_kuka_content_en' );
+	}
 }
 $home_id = kuka_content_page( 'ana-sayfa', 'Ana Sayfa', '' );
 update_option( 'show_on_front', 'page' );
@@ -368,6 +446,9 @@ $attachment_id = static function ( string $source ): int {
 if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 	$current = Kuka_Island_Core_Site_Appearance::get();
 	$defaults = Kuka_Island_Core_Site_Appearance::defaults();
+	foreach ( Kuka_Island_Core_Language::translation_defaults() as $group => $values ) {
+		$current[ $group ] = array_merge( $current[ $group ] ?? array(), $values );
+	}
 	$current['hero']['desktop_image_id'] = $attachment_id( 'hero-aegean-black.jpg' );
 	$current['hero']['mobile_image_id'] = $attachment_id( 'hero-aegean-black-mobile.jpg' );
 	$current['home']['editorial_image_id'] = $attachment_id( 'cobalt-set.jpg' );

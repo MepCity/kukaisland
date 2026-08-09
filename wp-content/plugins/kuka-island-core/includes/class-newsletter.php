@@ -48,6 +48,7 @@ final class Kuka_Island_Core_Newsletter {
 
 	public static function form(): string {
 		$content = Kuka_Island_Core_Site_Appearance::get();
+		if ( class_exists( 'Kuka_Island_Core_Language' ) ) { $content = Kuka_Island_Core_Language::localized_content( $content ); }
 		$consent = trim( (string) ( $content['footer']['newsletter_consent'] ?? '' ) );
 		$status = sanitize_key( (string) ( $_GET['newsletter'] ?? '' ) );
 		$messages = array(

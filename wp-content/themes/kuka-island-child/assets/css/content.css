@@ -200,7 +200,7 @@
 	font-family: var(--font-mono);
 	font-size: var(--text-caption);
 	letter-spacing: var(--tracking-label);
-	text-transform: uppercase;
+	text-transform: none;
 }
 
 .kuka-brand-story__sign strong {

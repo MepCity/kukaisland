@@ -59,12 +59,73 @@ final class Kuka_Island_Core_Language {
 		return self::translation_fields()[ $group ][ $key ] ?? null;
 	}
 
-	/** Add empty English storage keys without inventing translated content. */
+	/** First-pass English copy supplied for every non-legal Site Appearance field. */
+	public static function translation_defaults(): array {
+		return array(
+			'brand' => array( 'social_links_labels_en' => 'Instagram' ),
+			'announcement' => array(
+				'items_en' => array( 'Free shipping on orders over ₺4,000' ),
+				'link_labels_en' => array( 'Learn more' ),
+			),
+			'hero' => array(
+				'eyebrow_en' => 'KUKA ISLAND / NEW SEASON',
+				'title_en' => 'Carry the rhythm of the island with you.',
+				'copy_en' => 'Clean, confident pieces made to move with you all day.',
+				'button_label_en' => 'Discover new arrivals',
+			),
+			'home' => array(
+				'category_index_label_en' => 'Find your shape',
+				'category_index_title_en' => 'Product categories',
+				'new_arrivals_title_en' => 'New Arrivals',
+				'new_arrivals_copy_en' => 'A first look at the new-season edit.',
+				'editorial_title_en' => 'Island Journal',
+				'editorial_copy_en' => 'An everyday uniform, from the city to the shore.',
+				'editorial_link_label_en' => 'Read the story',
+				'manifesto_line_1_en' => 'Sun. Skin. Freedom.',
+				'manifesto_line_2_en' => 'Not a place. A feeling.',
+				'service_1_title_en' => 'Secure payment',
+				'service_1_copy_en' => 'iyzico infrastructure · 3D Secure',
+				'service_2_title_en' => 'Easy returns',
+				'service_2_copy_en' => '14-day right of withdrawal',
+				'service_3_title_en' => 'Support',
+				'service_3_copy_en' => 'Weekdays 09:00–18:00 · WhatsApp',
+			),
+			'navigation' => array(
+				'main_labels_en' => "New Arrivals\nOur Story",
+				'categories_labels_en' => "Bikinis\nSwimsuits\nBeachwear\nCollections",
+				'help_labels_en' => "Size Guide\nShipping & Delivery\nReturns\nFrequently Asked Questions\nContact\nOrder Tracking",
+			),
+			'footer' => array(
+				'newsletter_eyebrow_en' => 'Island letters',
+				'newsletter_title_en' => 'Join our island letters',
+				'newsletter_copy_en' => 'Join our email list for new collections and notes from the studio.',
+				'newsletter_consent_en' => 'I have read the Privacy Policy and consent to receiving communications.',
+				'help_links_labels_en' => "Size Guide\nShipping & Delivery\nReturns\nFrequently Asked Questions\nContact\nOrder Tracking",
+				'legal_links_labels_en' => "Distance Sales Agreement\nPre-information Form\nRight of Withdrawal and Returns\nKVKK Privacy Notice\nPrivacy Policy\nCookie Policy\nExplicit Consent Text",
+			),
+			'commercial' => array(
+				'delivery_time_en' => '[DELIVERY TIME]',
+				'return_shipping_responsibility_en' => '[PARTY RESPONSIBLE FOR RETURN SHIPPING COSTS]',
+				'shipping_copy_en' => 'Free shipping on orders over ₺4,000.',
+				'free_shipping_remaining_copy_en' => 'Add %s more to qualify for free shipping.',
+				'free_shipping_ready_copy_en' => 'Your order qualifies for free shipping.',
+				'flat_rate_copy_en' => 'Standard shipping is calculated at checkout.',
+				'hygiene_copy_en' => 'Returns or exchanges are not accepted for bikinis and swimsuits if the hygiene seal has been removed, or if the item has been used, washed, stained, carries traces of perfume, cream or deodorant, or is no longer fit for resale.',
+				'hygiene_defect_copy_en' => 'Your statutory rights are reserved for faulty products.',
+				'hygiene_try_on_copy_en' => 'You may try the item on over your underwear without removing the hygiene seal.',
+				'secure_payment_copy_en' => 'Your payment details are processed over a secure connection.',
+				'support_hours_en' => 'Weekdays 09:00–18:00',
+			),
+		);
+	}
+
+	/** Add the reviewed first-pass English defaults to the field contract. */
 	public static function with_translation_defaults( array $content ): array {
+		$defaults = self::translation_defaults();
 		foreach ( self::translation_fields() as $group => $fields ) {
 			foreach ( $fields as $config ) {
 				if ( ! array_key_exists( $config['key'], $content[ $group ] ?? array() ) ) {
-					$content[ $group ][ $config['key'] ] = '';
+					$content[ $group ][ $config['key'] ] = $defaults[ $group ][ $config['key'] ] ?? '';
 				}
 			}
 		}
@@ -132,6 +193,17 @@ final class Kuka_Island_Core_Language {
 	public function english_interface( string $translation, string $text, string $domain ): string {
 		if ( ! self::is_english_context() || ! in_array( $domain, array( 'kuka-island', 'kuka-island-core' ), true ) ) { return $translation; }
 		$map = array(
+			'E-posta adresi' => 'Email address', 'Katıl' => 'Join', 'Şirket' => 'Company',
+			'E-posta' => 'Email', 'E-posta:' => 'Email:', 'Telefon' => 'Phone', 'Telefon:' => 'Phone:',
+			'Destek saatleri:' => 'Support hours:', 'Adres' => 'Address',
+			'Bikini üstü' => 'Bikini top', 'Bikini altı' => 'Bikini bottom', 'Mayo' => 'Swimsuit',
+			'Göğüs (cm)' => 'Bust (cm)', 'Göğüs altı (cm)' => 'Underbust (cm)', 'Bel (cm)' => 'Waist (cm)',
+			'Kalça (cm)' => 'Hips (cm)', 'Kupa' => 'Cup',
+			'Kaydınız alındı. Teşekkür ederiz.' => 'Thank you. Your registration has been received.',
+			'Devam etmek için onay kutusunu işaretleyin.' => 'Please select the consent checkbox to continue.',
+			'Geçerli bir e-posta adresi girin.' => 'Enter a valid email address.',
+			'Lütfen yeniden göndermeden önce kısa bir süre bekleyin.' => 'Please wait a moment before submitting again.',
+			'Kayıt şu anda tamamlanamadı. Lütfen tekrar deneyin.' => 'Your registration could not be completed. Please try again.',
 			'Ada mektupları' => 'Island letters', 'Yardım' => 'Help', 'Yasal' => 'Legal', 'Sosyal' => 'Social',
 			'WhatsApp destek' => 'WhatsApp support', 'Formunu bul' => 'Find your shape', 'Ürün kategorileri' => 'Product categories',
 			'Koleksiyon' => 'Collection', 'Tümünü gör' => 'View all', 'Editoryal' => 'Editorial', 'Hikâyeyi oku' => 'Read the story',

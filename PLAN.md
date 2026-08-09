@@ -1584,6 +1584,8 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-09 | Faz 5C İngilizce içerikleri ilk editoryal geçiş olarak yazıldı; marka hikâyesi Kübra'nın birinci ağız sesini, kısa satır ritmini ve `Love, KÜBRA` imzasını koruyarak `/en/hakkimizda/` altında yayımlandı | Sunumda İngilizce yüzeylerde Türkçe fallback bırakmamak; ilk geçişi müşterinin doğal gözden geçirme akışına açmak |
+| 2026-08-09 | İngilizce fallback uyarısı yalnız müşterinin sekiz yasal sözleşmesinde kalır; bu sözleşmelerin Türkçe sürümü bağlayıcıdır ve EN alanları boş tutulur | Hukuk danışmanından gelmeyen taslak sözleşmeyi yayımlayarak bağlayıcılık tartışması yaratmamak |
 | 2026-08-09 | Faz 5C'de hero üzerindeki header, kendi alanında %82 kâğıt yüzeyi ve koyu marka rengi kullanır; hero metin perdesi masaüstünde sağa, mobilde yukarı doğru saydamlaşır | Müşteri hero görselini değiştirdiğinde açık/koyu piksel dağılımına bağlı kalmadan header'ın tüm metin, ikon, sayaç ve marka kilidinde AA marjı korunur; yalnız ince header alanı örtülür, fotoğrafın geri kalanı solmaz |
 | 2026-08-09 | Ücretsiz kargo `ignore_discounts` tercihi Site Görünümü'nde “indirimden sonra/önce” olarak yönetilir; varsayılan `no` kalır ve WooCommerce yöntem ayarına yazılır | Operatörün eşik davranışını tek kaynaktan seçmesi ve sepet ilerleme metniyle WooCommerce uygunluk hesabının aynı kupon tabanını kullanması gerekir |
 | 2026-08-09 | Faz 5B Türkçe/İngilizce arayüzü eklentisiz, URL-kaynaklı özel katmandır: Türkçe ön eksiz, İngilizce `/en/`; ürün/sayfa için ikinci kayıt yoktur, EN değerler aynı kayıt metasındadır | TranslatePress ürün düzenleme akışında çeviri istemez; WPML/Polylang ikinci kayıt ve yıllık bağımlılık getirir. Tek stok/fiyat kaynağı ve bakım anlaşmasız mimari korunur |
@@ -1814,7 +1816,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 4A müşteri onay turu tamamlandı: açık renk yüzeyler, footer/manifesto, müşteri hukuk metinleri, yalnız 14 gün cayma hakkı, S–M–L bedenler, 4.000 TL ücretsiz kargo, checkout alanları, görünür dil seçici ve okunur bildirimler
 - [x] Faz 4B onay düzeltmeleri tamamlandı: editoryal başlık yedi genişlikte kelime bölünmeden sığıyor, menü etiketi “Hikâyemiz”, beden sırası `order` term metasıyla S–M–L
 - [x] Faz 4C arayüz ve bülten kapsamı tamamlandı: yerel hero perdesi, AA kontrast, dengeli footer, kısa manifesto, PDF'le eş Hakkımızda ve onay kanıtlı/JS'siz bülten kayıtları
-- [x] Faz 5B iki dil desteği tamamlandı: `/en/` route/SEO, 42 panel alan çifti, aynı kayıtta ürün/taksonomi/sayfa EN metaları, Türkçe fallback ve sipariş locale'i; çeviri eklentisi/otomatik çeviri yok
+- [x] Faz 5B iki dil desteği tamamlandı: `/en/` route/SEO, 42 panel alan çifti, aynı kayıtta ürün/taksonomi/sayfa EN metaları ve sipariş locale'i; Faz 5C'de tüm yasal olmayan İngilizce içerikler ilk geçiş olarak dolduruldu, Türkçe fallback yalnız sekiz yasal sözleşmede bağlayıcılık notuyla kaldı
 - [x] Faz 5C header kontrastı ve hero perde geçişi tamamlandı: fotoğraftan bağımsız header yüzeyi, render tabanlı AA ölçümü, yumuşak yatay/dikey perde ve panel kontrollü ücretsiz-kargo kupon tabanı
 - [x] Üyelik, hesap paneli ve sosyal giriş geri çekildi; misafir ödeme, 48 saatlik panel kontrollü WooCommerce oturumu ve sipariş numarası + e-posta takip akışı korundu
 - [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
