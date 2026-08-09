@@ -156,6 +156,17 @@ $size_html = do_shortcode( '[kuka_size_guide]' );
 WP_CLI::line( 'SIZE_GUIDE_TABLES=' . substr_count( $size_html, '<table>' ) );
 WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['brand']['social_links'] ?? '' ), 'https://www.instagram.com/kukaisland' ) ? 'yes' : 'no' ) );
 WP_CLI::line( 'COMMERCIAL_CONTENT=' . implode( '|', array( $site_content['commercial']['flat_shipping_fee'] ?? '', $site_content['commercial']['free_shipping_threshold'] ?? '', $site_content['commercial']['cayma_hakki_gun'] ?? '' ) ) );
+WP_CLI::line( 'FREE_SHIPPING_IGNORE_DISCOUNTS=' . ( $site_content['commercial']['ignore_discounts'] ?? 'missing' ) );
+global $wpdb;
+$free_shipping_options = $wpdb->get_col(
+	$wpdb->prepare(
+		'SELECT option_name FROM %i WHERE option_name LIKE %s',
+		$wpdb->options,
+		$wpdb->esc_like( 'woocommerce_free_shipping_' ) . '%_settings'
+	)
+);
+$free_shipping_values = array_map( static fn( string $option_name ): string => (string) ( get_option( $option_name, array() )['ignore_discounts'] ?? 'missing' ), $free_shipping_options );
+WP_CLI::line( 'FREE_SHIPPING_IGNORE_DISCOUNTS_SYNC=' . ( $free_shipping_values && 1 === count( array_unique( $free_shipping_values ) ) ? reset( $free_shipping_values ) : 'mismatch' ) );
 WP_CLI::line( 'GUEST_SESSION_HOURS=' . absint( $site_content['membership']['guest_session_hours'] ?? 0 ) );
 WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', array_values( array_filter( array( 'return_period_days', 'exchange_copy' ), static fn( string $key ): bool => isset( $site_content['commercial'][ $key ] ) ) ) ) );
 $size_terms = get_terms( array( 'taxonomy' => 'pa_beden', 'hide_empty' => false, 'orderby' => 'menu_order' ) );

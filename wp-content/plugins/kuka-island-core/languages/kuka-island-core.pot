@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-08T23:28:36+00:00\n"
+"POT-Creation-Date: 2026-08-09T00:03:06+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island-core\n"
@@ -30,8 +30,8 @@ msgid "MepCity"
 msgstr ""
 
 #: includes/class-admin-experience.php:16
-#: includes/class-site-appearance.php:420
 #: includes/class-site-appearance.php:421
+#: includes/class-site-appearance.php:422
 msgid "Kuka Island"
 msgstr ""
 
@@ -111,7 +111,7 @@ msgid "MERSİS No"
 msgstr ""
 
 #: includes/class-content.php:67
-#: includes/class-site-appearance.php:369
+#: includes/class-site-appearance.php:370
 msgid "ETBİS numarası"
 msgstr ""
 
@@ -234,7 +234,7 @@ msgid "Kurumsal"
 msgstr ""
 
 #: includes/class-corporate-billing.php:18
-#: includes/class-site-appearance.php:364
+#: includes/class-site-appearance.php:365
 msgid "Vergi dairesi"
 msgstr ""
 
@@ -353,7 +353,7 @@ msgid "Henüz kayıt yok."
 msgstr ""
 
 #: includes/class-newsletter.php:144
-#: includes/class-site-appearance.php:556
+#: includes/class-site-appearance.php:563
 msgid "Bu işlem için yetkiniz yok."
 msgstr ""
 
@@ -722,253 +722,269 @@ msgid "Ücretsiz kargo eşiği (TL)"
 msgstr ""
 
 #: includes/class-site-appearance.php:342
-msgid "Standart kargo ücreti (TL)"
+msgid "Ücretsiz kargo eşiği kupon indiriminden önce mi hesaplansın?"
 msgstr ""
 
 #: includes/class-site-appearance.php:343
-msgid "Kargo firması"
+msgid "Standart kargo ücreti (TL)"
 msgstr ""
 
 #: includes/class-site-appearance.php:344
-msgid "Tahmini teslimat süresi"
+msgid "Kargo firması"
 msgstr ""
 
 #: includes/class-site-appearance.php:345
-msgid "Cayma hakkı süresi (gün) — 6502 sayılı Kanun on dört gün öngörür, düşürülmemelidir"
+msgid "Tahmini teslimat süresi"
 msgstr ""
 
 #: includes/class-site-appearance.php:346
-msgid "İade kargo ücreti sorumluluğu"
+msgid "Cayma hakkı süresi (gün) — 6502 sayılı Kanun on dört gün öngörür, düşürülmemelidir"
 msgstr ""
 
 #: includes/class-site-appearance.php:347
-msgid "Kargo metni"
+msgid "İade kargo ücreti sorumluluğu"
 msgstr ""
 
 #: includes/class-site-appearance.php:348
+msgid "Kargo metni"
+msgstr ""
+
+#: includes/class-site-appearance.php:349
 #, php-format
 msgid "Eşiğe kalan kargo metni (%s fiyat)"
 msgstr ""
 
-#: includes/class-site-appearance.php:349
+#: includes/class-site-appearance.php:350
 msgid "Eşik tamamlandı metni"
 msgstr ""
 
-#: includes/class-site-appearance.php:350
+#: includes/class-site-appearance.php:351
 msgid "Sabit kargo metni"
 msgstr ""
 
-#: includes/class-site-appearance.php:351
+#: includes/class-site-appearance.php:352
 msgid "Hijyen ibaresi"
 msgstr ""
 
-#: includes/class-site-appearance.php:352
+#: includes/class-site-appearance.php:353
 msgid "Ayıplı ürün cümlesi"
 msgstr ""
 
-#: includes/class-site-appearance.php:353
+#: includes/class-site-appearance.php:354
 msgid "Bandı sökmeden deneme bilgisi"
 msgstr ""
 
-#: includes/class-site-appearance.php:354
+#: includes/class-site-appearance.php:355
 msgid "Güvenli ödeme metni"
 msgstr ""
 
-#: includes/class-site-appearance.php:355
+#: includes/class-site-appearance.php:356
 msgid "Destek saatleri"
 msgstr ""
 
-#: includes/class-site-appearance.php:359
+#: includes/class-site-appearance.php:360
 msgid "8. Şirket ve Yasal Bilgiler"
 msgstr ""
 
-#: includes/class-site-appearance.php:361
+#: includes/class-site-appearance.php:362
 msgid "Satıcı / unvan"
 msgstr ""
 
-#: includes/class-site-appearance.php:362
+#: includes/class-site-appearance.php:363
 msgid "İşletme adı"
 msgstr ""
 
-#: includes/class-site-appearance.php:363
+#: includes/class-site-appearance.php:364
 msgid "VKN"
 msgstr ""
 
-#: includes/class-site-appearance.php:365
+#: includes/class-site-appearance.php:366
 msgid "Açık adres (yasal sayfalarda zorunlu; sözleşmelerdekiyle aynı kalmalı)"
 msgstr ""
 
-#: includes/class-site-appearance.php:366
+#: includes/class-site-appearance.php:367
 msgid "Kısa adres (pazarlama yüzeyleri)"
 msgstr ""
 
-#: includes/class-site-appearance.php:367
+#: includes/class-site-appearance.php:368
 msgid "Yasal iletişim telefonu"
 msgstr ""
 
-#: includes/class-site-appearance.php:368
+#: includes/class-site-appearance.php:369
 msgid "MERSİS numarası"
 msgstr ""
 
-#: includes/class-site-appearance.php:373
+#: includes/class-site-appearance.php:374
 msgid "9. Ödeme Formu Alanları"
 msgstr ""
 
-#: includes/class-site-appearance.php:374
+#: includes/class-site-appearance.php:375
 msgid "Ad, soyad, e-posta, adres, il ve posta kodu mesafeli satış mevzuatı gereği zorunludur; bu yüzden panelde açılıp kapatılamaz."
 msgstr ""
 
-#: includes/class-site-appearance.php:376
+#: includes/class-site-appearance.php:377
 msgid "Telefon zorunlu"
 msgstr ""
 
-#: includes/class-site-appearance.php:377
+#: includes/class-site-appearance.php:378
 msgid "Şirket adı zorunlu"
 msgstr ""
 
-#: includes/class-site-appearance.php:378
+#: includes/class-site-appearance.php:379
 msgid "Adres satırı 2 zorunlu"
 msgstr ""
 
-#: includes/class-site-appearance.php:379
+#: includes/class-site-appearance.php:380
 msgid "İlçe zorunlu"
 msgstr ""
 
-#: includes/class-site-appearance.php:383
+#: includes/class-site-appearance.php:384
 msgid "10. Beden Rehberi Verileri"
 msgstr ""
 
-#: includes/class-site-appearance.php:385
+#: includes/class-site-appearance.php:386
 msgid "Bikini üstü satırları (Beden|Göğüs|Göğüs altı|Kupa)"
 msgstr ""
 
-#: includes/class-site-appearance.php:386
+#: includes/class-site-appearance.php:387
 msgid "Bikini altı satırları (Beden|Bel|Kalça)"
 msgstr ""
 
-#: includes/class-site-appearance.php:387
+#: includes/class-site-appearance.php:388
 msgid "Mayo satırları (Beden|Göğüs|Bel|Kalça)"
 msgstr ""
 
-#: includes/class-site-appearance.php:391
+#: includes/class-site-appearance.php:392
 msgid "11. Üyelik"
 msgstr ""
 
-#: includes/class-site-appearance.php:392
+#: includes/class-site-appearance.php:393
 msgid "Üyelik kapalıyken site hiçbir yerde hesap sormaz: misafir ödeme açık, kayıt ve giriş kapalıdır. Anahtar ileride açılırsa WooCommerce kayıt/giriş ayarları tek yerden yeniden etkinleşir; storefront hesap arayüzü ayrı bir yayın çalışması olarak eklenmelidir. Sipariş takibi sipariş numarası ve e-posta ile çalışmayı sürdürür."
 msgstr ""
 
-#: includes/class-site-appearance.php:394
+#: includes/class-site-appearance.php:395
 msgid "Üyelik sistemini aç"
 msgstr ""
 
-#: includes/class-site-appearance.php:395
+#: includes/class-site-appearance.php:396
 msgid "Misafir sepeti ömrü (saat)"
 msgstr ""
 
-#: includes/class-site-appearance.php:428
+#: includes/class-site-appearance.php:429
 msgid "Başlangıç"
 msgstr ""
 
-#: includes/class-site-appearance.php:429
+#: includes/class-site-appearance.php:430
 msgid "Site Görünümü"
 msgstr ""
 
-#: includes/class-site-appearance.php:448
-#: includes/class-site-appearance.php:467
+#: includes/class-site-appearance.php:449
+#: includes/class-site-appearance.php:468
 msgid "Bu sayfaya erişim yetkiniz yok."
 msgstr ""
 
-#: includes/class-site-appearance.php:451
+#: includes/class-site-appearance.php:452
 msgid "Ürün / stok / fotoğraf"
 msgstr ""
 
-#: includes/class-site-appearance.php:452
+#: includes/class-site-appearance.php:453
 msgid "Renk swatch rengi"
 msgstr ""
 
-#: includes/class-site-appearance.php:453
+#: includes/class-site-appearance.php:454
 msgid "Hero, duyuru, bölüm başlıkları"
 msgstr ""
 
-#: includes/class-site-appearance.php:454
+#: includes/class-site-appearance.php:455
 msgid "Kargo ücreti / eşik"
 msgstr ""
 
-#: includes/class-site-appearance.php:455
+#: includes/class-site-appearance.php:456
 msgid "Siparişler"
 msgstr ""
 
-#: includes/class-site-appearance.php:456
+#: includes/class-site-appearance.php:457
 msgid "Sayfa metinleri"
 msgstr ""
 
-#: includes/class-site-appearance.php:459
+#: includes/class-site-appearance.php:460
 msgid "Kuka Island / Başlangıç"
 msgstr ""
 
-#: includes/class-site-appearance.php:459
+#: includes/class-site-appearance.php:460
 msgid "Değiştirmek istediğiniz içeriğin yönetim ekranına buradan gidin."
 msgstr ""
 
-#: includes/class-site-appearance.php:460
+#: includes/class-site-appearance.php:461
 msgid "Aç"
 msgstr ""
 
-#: includes/class-site-appearance.php:473
+#: includes/class-site-appearance.php:474
 msgid "Kuka Island / Site Görünümü"
 msgstr ""
 
-#: includes/class-site-appearance.php:474
+#: includes/class-site-appearance.php:475
 msgid "Yalnızca içerik ve ticari metinler burada yönetilir. Renk, tipografi ve ölçüler temanın tasarım sözleşmesindedir."
 msgstr ""
 
-#: includes/class-site-appearance.php:475
+#: includes/class-site-appearance.php:476
 msgid "Çevrilebilir alanlar aynı satırda iki sütundur. English alanı boş bırakılırsa vitrinde Türkçe metin gösterilir; URL, sayı, medya ve şirket verisi tek kaynaktır."
 msgstr ""
 
-#: includes/class-site-appearance.php:477
+#: includes/class-site-appearance.php:478
 msgid "Site görünümü kaydedildi."
 msgstr ""
 
-#: includes/class-site-appearance.php:480
+#: includes/class-site-appearance.php:481
 msgid "Bazı bağlantı satırları kaydedilmedi:"
 msgstr ""
 
-#: includes/class-site-appearance.php:498
+#: includes/class-site-appearance.php:499
 msgid "Site görünümünü kaydet"
 msgstr ""
 
-#: includes/class-site-appearance.php:522
+#: includes/class-site-appearance.php:523
 msgid "Medyadan seç"
 msgstr ""
 
-#: includes/class-site-appearance.php:523
+#: includes/class-site-appearance.php:524
 msgid "Temizle"
 msgstr ""
 
-#: includes/class-site-appearance.php:527
+#: includes/class-site-appearance.php:529
+msgid "İndirimden sonraki tutar (varsayılan)"
+msgstr ""
+
+#: includes/class-site-appearance.php:530
+msgid "İndirimden önceki tutar"
+msgstr ""
+
+#: includes/class-site-appearance.php:532
+msgid "Varsayılanda kupon indirimi eşiğe uygulanır. “İndirimden önce” seçilirse ücretsiz kargo uygunluğu kupon uygulanmadan önceki ara toplamla değerlendirilir."
+msgstr ""
+
+#: includes/class-site-appearance.php:534
 msgid "Kategori"
 msgstr ""
 
-#: includes/class-site-appearance.php:527
+#: includes/class-site-appearance.php:534
 msgid "URL"
 msgstr ""
 
-#: includes/class-site-appearance.php:527
+#: includes/class-site-appearance.php:534
 msgid "Üst menü"
 msgstr ""
 
-#: includes/class-site-appearance.php:527
+#: includes/class-site-appearance.php:534
 msgid "Ana sayfa indeksi"
 msgstr ""
 
-#: includes/class-site-appearance.php:626
+#: includes/class-site-appearance.php:636
 #, php-format
 msgid "%1$s / %2$s: %3$d. satır (%4$s)"
 msgstr ""
 
-#: includes/class-site-appearance.php:637
+#: includes/class-site-appearance.php:647
 #, php-format
 msgid "Kategori görünürlüğü: %d. satır kaydedilmedi."
 msgstr ""

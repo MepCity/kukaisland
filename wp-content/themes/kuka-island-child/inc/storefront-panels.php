@@ -27,6 +27,12 @@ function kuka_island_shipping_progress(): string {
 	$content   = kuka_island_content();
 	$threshold = max( 0.0, (float) ( $content['commercial']['free_shipping_threshold'] ?? 0 ) );
 	$subtotal  = WC()->cart ? (float) WC()->cart->get_displayed_subtotal() : 0.0;
+	if ( WC()->cart && 'no' === ( $content['commercial']['ignore_discounts'] ?? 'no' ) ) {
+		$subtotal -= (float) WC()->cart->get_discount_total();
+		if ( WC()->cart->display_prices_including_tax() ) {
+			$subtotal -= (float) WC()->cart->get_discount_tax();
+		}
+	}
 	$remaining = max( 0.0, $threshold - $subtotal );
 	$price     = html_entity_decode( wp_strip_all_tags( wc_price( $remaining ) ), ENT_QUOTES, get_bloginfo( 'charset' ) );
 
