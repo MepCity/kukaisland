@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-08T23:28:34+00:00\n"
+"POT-Creation-Date: 2026-08-09T00:03:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -348,67 +348,67 @@ msgstr ""
 msgid "Sepet / %d"
 msgstr ""
 
-#: inc/storefront-panels.php:38
+#: inc/storefront-panels.php:44
 #, php-format
 msgid "Ücretsiz kargo için %s daha ekleyin."
 msgstr ""
 
-#: inc/storefront-panels.php:39
+#: inc/storefront-panels.php:45
 msgid "Ücretsiz kargo hakkınız hazır."
 msgstr ""
 
-#: inc/storefront-panels.php:70
-#: inc/storefront-panels.php:72
+#: inc/storefront-panels.php:76
+#: inc/storefront-panels.php:78
 #, php-format
 msgid "%s adedi"
 msgstr ""
 
-#: inc/storefront-panels.php:71
+#: inc/storefront-panels.php:77
 msgid "Adedi azalt"
 msgstr ""
 
-#: inc/storefront-panels.php:73
+#: inc/storefront-panels.php:79
 msgid "Adedi artır"
 msgstr ""
 
-#: inc/storefront-panels.php:75
+#: inc/storefront-panels.php:81
 msgid "Kaldır"
 msgstr ""
 
-#: inc/storefront-panels.php:91
+#: inc/storefront-panels.php:97
 msgid "Sepetiniz boş"
 msgstr ""
 
-#: inc/storefront-panels.php:92
+#: inc/storefront-panels.php:98
 msgid "Ada seçkisini keşfedin."
 msgstr ""
 
-#: inc/storefront-panels.php:93
+#: inc/storefront-panels.php:99
 msgid "Alışverişe başla"
 msgstr ""
 
-#: inc/storefront-panels.php:101
+#: inc/storefront-panels.php:107
 #: woocommerce/checkout/review-order.php:105
 msgid "Ara toplam"
 msgstr ""
 
-#: inc/storefront-panels.php:102
+#: inc/storefront-panels.php:108
 msgid "Ödemeye geç"
 msgstr ""
 
-#: inc/storefront-panels.php:102
+#: inc/storefront-panels.php:108
 msgid "Sepete git"
 msgstr ""
 
-#: inc/storefront-panels.php:103
+#: inc/storefront-panels.php:109
 msgid "Ön Bilgilendirme Formu"
 msgstr ""
 
-#: inc/storefront-panels.php:103
+#: inc/storefront-panels.php:109
 msgid "Mesafeli Satış Sözleşmesi"
 msgstr ""
 
-#: inc/storefront-panels.php:104
+#: inc/storefront-panels.php:110
 msgid "Ödeme bilgileriniz güvenli ödeme altyapısında korunur"
 msgstr ""
 

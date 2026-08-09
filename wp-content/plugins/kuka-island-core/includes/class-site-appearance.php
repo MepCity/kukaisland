@@ -52,7 +52,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			$settings['title']            = $settings['title'] ?? __( 'Ücretsiz kargo', 'kuka-island-core' );
 			$settings['requires']         = $threshold > 0 ? 'min_amount' : '';
 			$settings['min_amount']        = (string) $threshold;
-			$settings['ignore_discounts'] = $settings['ignore_discounts'] ?? 'no';
+			$settings['ignore_discounts'] = 'yes' === ( $commercial['ignore_discounts'] ?? 'no' ) ? 'yes' : 'no';
 			update_option( $option_key, $settings, false );
 		}
 
@@ -130,7 +130,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'legal_links' => "Mesafeli Satış Sözleşmesi|/mesafeli-satis-sozlesmesi/\nÖn Bilgilendirme Formu|/on-bilgilendirme-formu/\nCayma Hakkı ve İade|/iade-degisim/\nKVKK Aydınlatma Metni|/kvkk-aydinlatma-metni/\nGizlilik Politikası|/gizlilik-politikasi/\nÇerez Politikası|/cerez-politikasi/\nAçık Rıza Metni|/acik-riza-metni/",
 			),
 			'commercial' => array(
-				'free_shipping_threshold' => 4000, 'shipping_copy' => '4.000 TL üzeri siparişlerde ücretsiz kargo.',
+				'free_shipping_threshold' => 4000, 'ignore_discounts' => 'no', 'shipping_copy' => '4.000 TL üzeri siparişlerde ücretsiz kargo.',
 				'free_shipping_remaining_copy' => 'Ücretsiz kargo için %s daha ekleyin.', 'free_shipping_ready_copy' => 'Ücretsiz kargo hakkınız hazır.',
 				'flat_shipping_fee' => 149, 'flat_rate_copy' => 'Standart gönderim bedeli ödeme adımında hesaplanır.',
 				'shipping_carrier' => '[KARGO FİRMASI]', 'delivery_time' => '[TESLİMAT SÜRESİ]', 'cayma_hakki_gun' => 14,
@@ -339,6 +339,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'label'  => __( '7. Ticari Bilgiler', 'kuka-island-core' ),
 				'fields' => array(
 					'free_shipping_threshold' => array( __( 'Ücretsiz kargo eşiği (TL)', 'kuka-island-core' ), 'number' ),
+					'ignore_discounts'        => array( __( 'Ücretsiz kargo eşiği kupon indiriminden önce mi hesaplansın?', 'kuka-island-core' ), 'shipping_discount_basis' ),
 					'flat_shipping_fee'       => array( __( 'Standart kargo ücreti (TL)', 'kuka-island-core' ), 'number' ),
 					'shipping_carrier'        => array( __( 'Kargo firması', 'kuka-island-core' ), 'text' ),
 					'delivery_time'           => array( __( 'Tahmini teslimat süresi', 'kuka-island-core' ), 'text' ),
@@ -523,6 +524,12 @@ final class Kuka_Island_Core_Site_Appearance {
 					<button class="button-link-delete" type="button" data-kuka-media-clear><?php esc_html_e( 'Temizle', 'kuka-island-core' ); ?></button>
 					<span data-kuka-media-preview><?php echo $value ? wp_get_attachment_image( absint( $value ), array( 80, 80 ) ) : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
 				</div>
+			<?php elseif ( 'shipping_discount_basis' === $type ) : ?>
+				<select id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>">
+					<option value="no" <?php selected( 'no', $value ); ?>><?php esc_html_e( 'İndirimden sonraki tutar (varsayılan)', 'kuka-island-core' ); ?></option>
+					<option value="yes" <?php selected( 'yes', $value ); ?>><?php esc_html_e( 'İndirimden önceki tutar', 'kuka-island-core' ); ?></option>
+				</select>
+				<p class="description"><?php esc_html_e( 'Varsayılanda kupon indirimi eşiğe uygulanır. “İndirimden önce” seçilirse ücretsiz kargo uygunluğu kupon uygulanmadan önceki ara toplamla değerlendirilir.', 'kuka-island-core' ); ?></p>
 			<?php elseif ( 'category_navigation' === $type ) : ?>
 				<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Kategori', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'URL', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Üst menü', 'kuka-island-core' ); ?></th><th><?php esc_html_e( 'Ana sayfa indeksi', 'kuka-island-core' ); ?></th></tr></thead><tbody>
 				<?php foreach ( self::parse_category_navigation( (string) $value ) as $index => $item ) : ?>
@@ -586,6 +593,9 @@ final class Kuka_Island_Core_Site_Appearance {
 						break;
 					case 'percentage':
 						$value = min( 100, max( 0, absint( $value ) ) );
+						break;
+					case 'shipping_discount_basis':
+						$value = 'yes' === (string) $value ? 'yes' : 'no';
 						break;
 					case 'media_image':
 					case 'media_video':
