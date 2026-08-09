@@ -1,0 +1,408 @@
+[
+  {
+    "w": 320,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 820,
+      "height": 282.3125,
+      "left": 16,
+      "right": 304,
+      "top": 537.6875,
+      "width": 288,
+      "x": 16,
+      "y": 537.6875
+    },
+    "font": "42px",
+    "heading": {
+      "bottom": 664,
+      "height": 82.3125,
+      "left": 32,
+      "right": 288,
+      "top": 581.6875,
+      "width": 256,
+      "x": 32,
+      "y": 581.6875
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 320,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 820,
+      "height": 262.71875,
+      "left": 16,
+      "right": 304,
+      "top": 557.28125,
+      "width": 288,
+      "x": 16,
+      "y": 557.28125
+    },
+    "font": "32px",
+    "heading": {
+      "bottom": 664,
+      "height": 62.71875,
+      "left": 32,
+      "right": 288,
+      "top": 601.28125,
+      "width": 256,
+      "x": 32,
+      "y": 601.28125
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  },
+  {
+    "w": 390,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 820,
+      "height": 291.71875,
+      "left": 16,
+      "right": 374,
+      "top": 528.28125,
+      "width": 358,
+      "x": 16,
+      "y": 528.28125
+    },
+    "font": "46.8px",
+    "heading": {
+      "bottom": 664,
+      "height": 91.71875,
+      "left": 32,
+      "right": 358,
+      "top": 572.28125,
+      "width": 326,
+      "x": 32,
+      "y": 572.28125
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 390,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 820,
+      "height": 268.796875,
+      "left": 16,
+      "right": 374,
+      "top": 551.203125,
+      "width": 358,
+      "x": 16,
+      "y": 551.203125
+    },
+    "font": "35.1px",
+    "heading": {
+      "bottom": 664,
+      "height": 68.796875,
+      "left": 32,
+      "right": 358,
+      "top": 595.203125,
+      "width": 326,
+      "x": 32,
+      "y": 595.203125
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  },
+  {
+    "w": 768,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 313.90625,
+      "left": 16.890625,
+      "right": 536.890625,
+      "top": 474.09375,
+      "width": 520,
+      "x": 16.890625,
+      "y": 474.09375
+    },
+    "font": "52px",
+    "heading": {
+      "bottom": 636,
+      "height": 101.90625,
+      "left": 48.890625,
+      "right": 504.890625,
+      "top": 534.09375,
+      "width": 456,
+      "x": 48.890625,
+      "y": 534.09375
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 768,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 294.3125,
+      "left": 16.890625,
+      "right": 536.890625,
+      "top": 493.6875,
+      "width": 520,
+      "x": 16.890625,
+      "y": 493.6875
+    },
+    "font": "42px",
+    "heading": {
+      "bottom": 636,
+      "height": 82.3125,
+      "left": 48.890625,
+      "right": 504.890625,
+      "top": 553.6875,
+      "width": 456,
+      "x": 48.890625,
+      "y": 553.6875
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  },
+  {
+    "w": 1024,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 328.390625,
+      "left": 22.5234375,
+      "right": 542.5234375,
+      "top": 459.609375,
+      "width": 520,
+      "x": 22.5234375,
+      "y": 459.609375
+    },
+    "font": "59.392px",
+    "heading": {
+      "bottom": 636,
+      "height": 116.390625,
+      "left": 54.5234375,
+      "right": 510.5234375,
+      "top": 519.609375,
+      "width": 456,
+      "x": 54.5234375,
+      "y": 519.609375
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 1024,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 294.3125,
+      "left": 22.5234375,
+      "right": 542.5234375,
+      "top": 493.6875,
+      "width": 520,
+      "x": 22.5234375,
+      "y": 493.6875
+    },
+    "font": "42px",
+    "heading": {
+      "bottom": 636,
+      "height": 82.3125,
+      "left": 54.5234375,
+      "right": 510.5234375,
+      "top": 553.6875,
+      "width": 456,
+      "x": 54.5234375,
+      "y": 553.6875
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  },
+  {
+    "w": 1280,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 357.5,
+      "left": 28.15625,
+      "right": 548.15625,
+      "top": 430.5,
+      "width": 520,
+      "x": 28.15625,
+      "y": 430.5
+    },
+    "font": "74.24px",
+    "heading": {
+      "bottom": 636,
+      "height": 145.5,
+      "left": 60.15625,
+      "right": 516.15625,
+      "top": 490.5,
+      "width": 456,
+      "x": 60.15625,
+      "y": 490.5
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 1280,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 312.34375,
+      "left": 28.15625,
+      "right": 548.15625,
+      "top": 475.65625,
+      "width": 520,
+      "x": 28.15625,
+      "y": 475.65625
+    },
+    "font": "51.2px",
+    "heading": {
+      "bottom": 636,
+      "height": 100.34375,
+      "left": 60.15625,
+      "right": 516.15625,
+      "top": 535.65625,
+      "width": 456,
+      "x": 60.15625,
+      "y": 535.65625
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  },
+  {
+    "w": 1440,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 375.703125,
+      "left": 31.6796875,
+      "right": 551.6796875,
+      "top": 412.296875,
+      "width": 520,
+      "x": 31.6796875,
+      "y": 412.296875
+    },
+    "font": "83.52px",
+    "heading": {
+      "bottom": 636,
+      "height": 163.703125,
+      "left": 63.6796875,
+      "right": 519.6796875,
+      "top": 472.296875,
+      "width": 456,
+      "x": 63.6796875,
+      "y": 472.296875
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 1440,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 324.890625,
+      "left": 31.6796875,
+      "right": 551.6796875,
+      "top": 463.109375,
+      "width": 520,
+      "x": 31.6796875,
+      "y": 463.109375
+    },
+    "font": "57.6px",
+    "heading": {
+      "bottom": 636,
+      "height": 112.890625,
+      "left": 63.6796875,
+      "right": 519.6796875,
+      "top": 523.109375,
+      "width": 456,
+      "x": 63.6796875,
+      "y": 523.109375
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  },
+  {
+    "w": 1920,
+    "lang": "tr",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 376.625,
+      "left": 42.234375,
+      "right": 562.234375,
+      "top": 411.375,
+      "width": 520,
+      "x": 42.234375,
+      "y": 411.375
+    },
+    "font": "84px",
+    "heading": {
+      "bottom": 636,
+      "height": 164.625,
+      "left": 74.234375,
+      "right": 530.234375,
+      "top": 471.375,
+      "width": 456,
+      "x": 74.234375,
+      "y": 471.375
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/"
+  },
+  {
+    "w": 1920,
+    "lang": "en",
+    "color": "rgb(60, 42, 18)",
+    "content": {
+      "bottom": 788,
+      "height": 325.671875,
+      "left": 42.234375,
+      "right": 562.234375,
+      "top": 462.328125,
+      "width": 520,
+      "x": 42.234375,
+      "y": 462.328125
+    },
+    "font": "58px",
+    "heading": {
+      "bottom": 636,
+      "height": 113.671875,
+      "left": 74.234375,
+      "right": 530.234375,
+      "top": 522.328125,
+      "width": 456,
+      "x": 74.234375,
+      "y": 522.328125
+    },
+    "lines": 2,
+    "overflow": 0,
+    "url": "http://localhost:8080/en/"
+  }
+]

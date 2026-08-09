@@ -10,7 +10,7 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Hakkımızda metni müşterinin teslim ettiği manifesto PDF'inden birebir aktarılmıştır.
 - **SMTP yayın engelidir.** Üyelik olmadığı için sipariş e-postası müşterinin siparişle temel bağıdır. Canlıya almadan önce gönderici alan adı SPF/DKIM/DMARC kayıtlarıyla doğrulanmalı; sipariş alındı, durum ve kişiselleştirilmiş sipariş takip bağlantısı gerçek posta kutularında teslim testi görmelidir.
 - Bülten formu yalnız onaylı kayıt ve kanıt saklar; toplu veya otomatik pazarlama e-postası göndermez. Bildirim adresi boş bırakılabilir ve bu durumda kayıt yine veritabanında tutulur. Ticari ileti gönderimine geçmeden önce İYS süreci, onay metni, saklama süresi ve silme prosedürü hukuk danışmanıyla kesinleştirilmelidir.
-- Hero metin perdesi müşteri kararıyla tamamen kaldırıldı. Metin okunurluğu seçilen fotoğrafın metin bölgesine ve Site Görünümü panelindeki açık/koyu metin tonu seçimine bağlıdır; görsel değiştirildiğinde iki viewport'ta kontrast yeniden ölçülmelidir.
+- Hero metin perdesi müşteri kararıyla tamamen kaldırıldı. Metin okunurluğu seçilen fotoğrafın metin bölgesine, başlık uzunluğuna ve Site Görünümü panelindeki açık/koyu metin tonu seçimine bağlıdır; görsel veya metin değiştirildiğinde Türkçe ve İngilizce birlikte, mobil ve masaüstünde satır bazlı render kontrastıyla yeniden ölçülmelidir.
 
 ## Müşteri girdisi bekleyen konular
 
@@ -36,6 +36,8 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Yasal olmayan İngilizce metinler ilk editoryal geçiş olarak yazılmıştır; marka hikâyesi dahil müşteri gözden geçirmesine açıktır. Türkçe fallback uyarısı yalnız sekiz hukuk sayfasında kalır.
 - Sekiz yasal metnin İngilizce çevirisi yapılmamıştır; EN alanları boştur. `/en/` yasal sayfası bağlayıcı sürümün Türkçe olduğunu bildirip Türkçe metni gösterir.
 - Mevcut geçmiş siparişlerde dil metası yoktur; Faz 5B sonrasında checkout'ta oluşan siparişler `tr_TR` veya `en_US` locale'iyle kaydedilir.
+- Dil adları, marka adları, URL/sayı/medya/renk/telefon ve şirket alanları çevrilmez; iki dil aynı tek kaynağı kullanır. Seçici her iki vitrinde `Türkçe / English` gösterir.
+- İngilizce public URL sürekliliği tema/çekirdek permalink ve WooCommerce dönüş filtreleriyle korunur; teknik admin, REST ve AJAX uçları bilinçli olarak `/en/` almaz.
 - E-posta HTML'i doğru locale'de üretilebilir; gerçek posta kutusuna teslim/SPF/DKIM/DMARC doğrulaması SMTP kurulumu beklediği için kapsam dışı kalır.
 
 ## Onaylanan tasarım gereksinimleri

@@ -1584,6 +1584,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-09 | Faz 5E'de tüm public İngilizce permalink, WooCommerce URL ve yönlendirmeleri tek `/en/` dönüştürücüsünden geçer; teknik admin/REST/AJAX uçları ön eksiz kalır. Cart fragments anahtarı ve AJAX dil parametresi dile bağlıdır | İngilizce ürün → sepet → ödeme → sipariş alındı zincirinin Türkçe URL veya fragment içeriğine düşmesini önlemek |
+| 2026-08-09 | Dil adları, marka adları, URL/sayı/medya/renk/telefon/şirket alanları çevrilmeyen tek-kaynak sınıfıdır; seçici her iki vitrinde `Türkçe / English` gösterir | Teknik ve marka değerlerinde gereksiz `_en` ikizlerinin ayrışmasını önlemek; her dilin adını kendi dilinde korumak |
+| 2026-08-09 | Faz 5D hero içeriği alt tabana bağlıdır; uzun başlık ayrı tokenla küçülür ve iki dil her görsel kabulde birlikte ölçülür | İngilizce metnin Türkçeden uzun olması nedeniyle tek dildeki kontrast ve yerleşim sonucunu diğer dile genellememek |
 | 2026-08-09 | Faz 5C İngilizce içerikleri ilk editoryal geçiş olarak yazıldı; marka hikâyesi Kübra'nın birinci ağız sesini, kısa satır ritmini ve `Love, KÜBRA` imzasını koruyarak `/en/hakkimizda/` altında yayımlandı | Sunumda İngilizce yüzeylerde Türkçe fallback bırakmamak; ilk geçişi müşterinin doğal gözden geçirme akışına açmak |
 | 2026-08-09 | İngilizce fallback uyarısı yalnız müşterinin sekiz yasal sözleşmesinde kalır; bu sözleşmelerin Türkçe sürümü bağlayıcıdır ve EN alanları boş tutulur | Hukuk danışmanından gelmeyen taslak sözleşmeyi yayımlayarak bağlayıcılık tartışması yaratmamak |
 | 2026-08-09 | Faz 5C ek kararında hero metin perdesi ve panel yoğunluk alanı kaldırıldı; fotoğraf tam görünür, metin okunurluğu paneldeki açık/koyu tona bağlıdır | Müşteri fotoğrafın ürün üstünü kesen perdeyi istemedi; görsel değişiminde metin bölgesi kontrastı yeniden ölçülür |
@@ -1821,8 +1824,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Faz 4A müşteri onay turu tamamlandı: açık renk yüzeyler, footer/manifesto, müşteri hukuk metinleri, yalnız 14 gün cayma hakkı, S–M–L bedenler, 4.000 TL ücretsiz kargo, checkout alanları, görünür dil seçici ve okunur bildirimler
 - [x] Faz 4B onay düzeltmeleri tamamlandı: editoryal başlık yedi genişlikte kelime bölünmeden sığıyor, menü etiketi “Hikâyemiz”, beden sırası `order` term metasıyla S–M–L
 - [x] Faz 4C arayüz ve bülten kapsamı tamamlandı: yerel hero perdesi, AA kontrast, dengeli footer, kısa manifesto, PDF'le eş Hakkımızda ve onay kanıtlı/JS'siz bülten kayıtları
-- [x] Faz 5B iki dil desteği tamamlandı: `/en/` route/SEO, 42 panel alan çifti, aynı kayıtta ürün/taksonomi/sayfa EN metaları ve sipariş locale'i; Faz 5C'de tüm yasal olmayan İngilizce içerikler ilk geçiş olarak dolduruldu, Türkçe fallback yalnız sekiz yasal sözleşmede bağlayıcılık notuyla kaldı
+- [x] Faz 5B iki dil desteği tamamlandı: `/en/` route/SEO, 41 geçerli panel alan çifti, aynı kayıtta ürün/taksonomi/sayfa EN metaları ve sipariş locale'i; Faz 5C'de tüm yasal olmayan İngilizce içerikler ilk geçiş olarak dolduruldu, Türkçe fallback yalnız sekiz yasal sözleşmede bağlayıcılık notuyla kaldı
 - [x] Faz 5C müşteri düzeltmeleri uygulandı: perdesiz ve token ölçülü hero, tepede beyaz/kaydırmada koyu header, ilk geçiş İngilizce içerik, aynı ölçekli footer kilidi, erişilebilir bülten formu ve tek kaynaklı footer WhatsApp bağlantısı
+- [x] Faz 5D hero düzeltmesi tamamlandı: iki dilde yedi genişlik, satır bazlı medyan render kontrastı, uzun başlık tokenı ve panel rehberi
+- [x] Faz 5E dil sürekliliği tamamlandı: merkezî `/en/` public URL filtresi, dile bağlı cart fragments/AJAX, iki dilli ticaret E2E'si ve çevrilmeyen alan sözleşmesi
 - [x] Üyelik, hesap paneli ve sosyal giriş geri çekildi; misafir ödeme, 48 saatlik panel kontrollü WooCommerce oturumu ve sipariş numarası + e-posta takip akışı korundu
 - [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
 - [x] Dil seçici URL-kaynaklı Türkçe/İngilizce karşılıklara bağlandı; çerez ve çeviri eklentisi kullanılmıyor
