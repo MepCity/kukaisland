@@ -1,0 +1,2 @@
+PANEL=yes
+WOO=yes
