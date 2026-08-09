@@ -208,8 +208,8 @@
 	font-weight: var(--weight-medium);
 }
 
-/* Marka hikâyesi önce düz ve tam okunur bir makaledir. JavaScript yalnız geniş
-   ekranda, hareket tercihi uygunsa aynı DOM'u sticky sahneye yükseltir. */
+/* Marka hikâyesi önce düz ve tam okunur bir makaledir. JavaScript, hareket
+   tercihi uygunsa aynı DOM'u masaüstü ve mobilde sticky sahneye yükseltir. */
 .kuka-story__stage > .kuka-story__media,
 .kuka-story__steps {
 	display: none;
@@ -284,7 +284,7 @@
 	font-family: inherit;
 }
 
-@media (min-width: 48em) {
+@media (min-width: 0em) {
 	.kuka-story[data-enhanced="true"] {
 		position: relative;
 	}
@@ -292,6 +292,7 @@
 	.kuka-story[data-enhanced="true"] .kuka-story__stage {
 		position: sticky;
 		top: 0;
+		height: 100vh;
 		height: 100svh;
 		overflow: hidden;
 	}
@@ -322,6 +323,7 @@
 	.kuka-story[data-enhanced="true"] .kuka-story__media-item img {
 		display: block;
 		width: 100%;
+		height: 100vh;
 		height: 100svh;
 		object-fit: cover;
 		transform: scale(1);
@@ -513,12 +515,38 @@
 	.kuka-story[data-enhanced="true"] .kuka-story__steps {
 		position: relative;
 		z-index: 2;
+		margin-top: -100vh;
 		margin-top: -100svh;
 		pointer-events: none;
 	}
 
 	.kuka-story[data-enhanced="true"] .kuka-story__step {
+		height: 100vh;
 		height: 100svh;
+	}
+}
+
+@media (max-width: 47.99em) {
+	.kuka-story[data-enhanced="true"] .kuka-story__scene {
+		padding: var(--space-4) var(--space-3) var(--space-6);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__copy {
+		width: 100%;
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene--04 .kuka-story__copy,
+	.kuka-story[data-enhanced="true"] .kuka-story__scene--06 .kuka-story__copy > p:first-child {
+		font-size: var(--text-heading-small);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__scene--06 .kuka-story__copy p {
+		margin-bottom: var(--space-3);
+	}
+
+	.kuka-story[data-enhanced="true"] .kuka-story__sign {
+		margin-top: var(--space-4);
+		padding-top: var(--space-2);
 	}
 }
 
