@@ -5,11 +5,7 @@ $site_content = kuka_island_content();
 $help_menu = kuka_island_menu_lines( $site_content['footer']['help_links'] ?? ( $site_content['navigation']['help'] ?? '' ) );
 $legal_links = kuka_island_menu_lines( $site_content['footer']['legal_links'] ?? '' );
 $social_links = kuka_island_menu_lines( $site_content['brand']['social_links'] ?? '' );
-$site_email = sanitize_email( (string) ( $site_content['brand']['email'] ?? '' ) );
 $whatsapp_url = kuka_island_whatsapp_url();
-$payment_logos_enabled = ! empty( $site_content['footer']['payment_logos_enabled'] );
-$payment_is_english = function_exists( 'kuka_island_is_english' ) && kuka_island_is_english();
-$payment_asset_uri = get_stylesheet_directory_uri() . '/assets/img/payment/';
 // Marka kilidinin iki yanındaki palmiye, header'daki amblemin aynısıdır;
 // sağdaki CSS ile aynalanır. Boşsa marka adı tek başına durur.
 $emblem_html = kuka_island_emblem_markup();
@@ -24,16 +20,10 @@ $emblem_html = kuka_island_emblem_markup();
 	<section class="kuka-footer-links">
 		<div><p class="kuka-footer-title"><?php esc_html_e( 'Yardım', 'kuka-island' ); ?></p><ul><?php foreach ( $help_menu as $item ) : ?><li><a href="<?php echo esc_url( kuka_island_content_url( $item['url'] ) ); ?>"><?php echo esc_html( $item['label'] ); ?></a></li><?php endforeach; ?></ul></div>
 		<div><p class="kuka-footer-title"><?php esc_html_e( 'Yasal', 'kuka-island' ); ?></p><ul><?php foreach ( $legal_links as $item ) : ?><li><a href="<?php echo esc_url( kuka_island_content_url( $item['url'] ) ); ?>"><?php echo esc_html( $item['label'] ); ?></a></li><?php endforeach; ?></ul></div>
-		<div><p class="kuka-footer-title"><?php esc_html_e( 'Sosyal', 'kuka-island' ); ?></p><ul><?php foreach ( $social_links as $item ) : ?><li><a href="<?php echo esc_url( kuka_island_content_url( $item['url'] ) ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $item['label'] ); ?> <span class="kuka-text-arrow" aria-hidden="true">↗︎</span></a></li><?php endforeach; ?><?php if ( $site_email ) : ?><li><a href="mailto:<?php echo esc_attr( $site_email ); ?>"><?php echo esc_html( $site_email ); ?></a></li><?php endif; ?><?php if ( $whatsapp_url ) : ?><li><a href="<?php echo esc_url( $whatsapp_url ); ?>" target="_blank" rel="noopener">WhatsApp <span class="kuka-text-arrow" aria-hidden="true">↗︎</span></a></li><?php endif; ?></ul></div>
+		<div><p class="kuka-footer-title"><?php esc_html_e( 'Sosyal', 'kuka-island' ); ?></p><ul><?php foreach ( $social_links as $item ) : ?><li><a href="<?php echo esc_url( kuka_island_content_url( $item['url'] ) ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $item['label'] ); ?> <span class="kuka-text-arrow" aria-hidden="true">↗︎</span></a></li><?php endforeach; ?><?php if ( $whatsapp_url ) : ?><li><a href="<?php echo esc_url( $whatsapp_url ); ?>" target="_blank" rel="noopener">WhatsApp <span class="kuka-text-arrow" aria-hidden="true">↗︎</span></a></li><?php endif; ?></ul></div>
 	</section>
 	<div class="kuka-footer-bottom">
 		<a class="kuka-logo kuka-footer-brand" href="<?php echo esc_url( home_url( '/' ) ); ?>" aria-label="<?php esc_attr_e( 'Kuka Island ana sayfa', 'kuka-island' ); ?>"><span class="kuka-logo__emblem-wrap"><?php echo $emblem_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span><span class="kuka-logo__text">KUKA ISLAND</span><span class="kuka-logo__emblem-wrap kuka-logo__emblem-wrap--mirror" aria-hidden="true"><?php echo $emblem_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span></a>
-		<?php if ( $payment_logos_enabled ) : ?><div class="kuka-payment-trust" data-kuka-payment-trust>
-			<div class="kuka-payment-trust__logos">
-				<img class="kuka-payment-trust__cards" src="<?php echo esc_url( $payment_asset_uri . 'cards_v2.png' ); ?>" width="200" height="21" alt="<?php echo esc_attr( $payment_is_english ? 'Supported card networks: Mastercard, Visa, Troy and American Express' : 'Desteklenen kart ağları: Mastercard, Visa, Troy ve American Express' ); ?>">
-				<img class="kuka-payment-trust__provider" src="<?php echo esc_url( $payment_asset_uri . ( $payment_is_english ? 'pay_with_iyzico_horizontal_colored.svg' : 'iyzico_ile_ode_colored_horizontal.svg' ) ); ?>" width="210" height="<?php echo $payment_is_english ? '29' : '31'; ?>" alt="<?php echo esc_attr( $payment_is_english ? 'Pay with iyzico' : 'iyzico ile Öde' ); ?>">
-			</div>
-		</div><?php endif; ?>
 		<?php /* Yıl koda gömülmez; site saat dilimine göre wp_date ile üretilir. */ ?>
 		<p class="kuka-footer-copyright">&copy; <?php echo esc_html( wp_date( 'Y' ) ); ?> Kuka Island</p>
 	</div>

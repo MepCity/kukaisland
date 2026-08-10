@@ -62,8 +62,6 @@
   --control: 40px;
   --control-large: 48px;
   --icon-size: 20px;
-  --payment-card-strip-height: 27px;
-  --payment-provider-logo-height: 18px;
   --focus-outline-width: 2px;
   --stroke: 1px;
   --header-height: 64px;
@@ -101,7 +99,7 @@
 	--story-gradient-hold: 52%;
 	--story-gradient-center-hold: 58%;
 	--story-gradient-extent: 88%;
-  --service-min-height: 148px;
+  --service-min-height: 136px;
   --category-row-height: 104px;
   --category-row-height-mobile: 88px;
   --category-index-label-width: 80px;

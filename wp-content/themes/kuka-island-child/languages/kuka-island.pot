@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-10T13:59:26+00:00\n"
+"POT-Creation-Date: 2026-08-10T20:41:10+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -43,32 +43,32 @@ msgstr ""
 msgid "Oturum aç"
 msgstr ""
 
-#: footer.php:19
+#: footer.php:16
 msgid "Ada mektupları"
 msgstr ""
 
-#: footer.php:24
+#: footer.php:21
 msgid "Yardım"
 msgstr ""
 
-#: footer.php:25
+#: footer.php:22
 msgid "Yasal"
 msgstr ""
 
-#: footer.php:26
+#: footer.php:23
 msgid "Sosyal"
 msgstr ""
 
-#: footer.php:29
+#: footer.php:26
 #: header.php:69
 msgid "Kuka Island ana sayfa"
 msgstr ""
 
-#: footer.php:42
+#: footer.php:32
 msgid "WhatsApp destek hattı"
 msgstr ""
 
-#: footer.php:42
+#: footer.php:32
 msgid "WhatsApp destek"
 msgstr ""
 
@@ -186,36 +186,36 @@ msgstr ""
 msgid "Sepeti kapat"
 msgstr ""
 
-#: inc/assets.php:143
+#: inc/assets.php:144
 #: woocommerce/content-product.php:55
 msgid "Tükendi"
 msgstr ""
 
-#: inc/assets.php:144
+#: inc/assets.php:145
 #: woocommerce/single-product/product-image.php:26
 #, php-format
 msgid "%1$s; tam ekran aç (%2$d/%3$d)"
 msgstr ""
 
-#: inc/assets.php:145
+#: inc/assets.php:146
 msgid "Renk seçimi"
 msgstr ""
 
-#: inc/assets.php:146
+#: inc/assets.php:147
 #, php-format
 msgid "%s rengini seç"
 msgstr ""
 
-#: inc/assets.php:147
+#: inc/assets.php:148
 msgid "Beden seçimi"
 msgstr ""
 
-#: inc/assets.php:148
+#: inc/assets.php:149
 #, php-format
 msgid "%s beden tükendi"
 msgstr ""
 
-#: inc/assets.php:149
+#: inc/assets.php:150
 #, php-format
 msgid "%s beden stokta"
 msgstr ""
@@ -287,59 +287,59 @@ msgstr ""
 msgid "Filtreleri temizle"
 msgstr ""
 
-#: inc/checkout.php:196
+#: inc/checkout.php:234
 msgid "Teslimat adresi"
 msgstr ""
 
-#: inc/checkout.php:197
+#: inc/checkout.php:235
 msgid "Fatura bilgileri"
 msgstr ""
 
-#: inc/checkout.php:223
+#: inc/checkout.php:261
 msgid "Kişisel bilgiler"
 msgstr ""
 
-#: inc/checkout.php:301
+#: inc/checkout.php:339
 msgid "Sepet"
 msgstr ""
 
-#: inc/checkout.php:302
+#: inc/checkout.php:340
 msgid "Bilgiler ve ödeme"
 msgstr ""
 
-#: inc/checkout.php:303
+#: inc/checkout.php:341
 msgid "Onay"
 msgstr ""
 
-#: inc/checkout.php:306
+#: inc/checkout.php:344
 msgid "Ödeme adımları"
 msgstr ""
 
 #. translators: 1: current step number, 2: total step count.
-#: inc/checkout.php:309
+#: inc/checkout.php:347
 #, php-format
 msgid "%1$d / %2$d"
 msgstr ""
 
 #. translators: %d is the statutory withdrawal window in days.
-#: inc/checkout.php:352
+#: inc/checkout.php:390
 #, php-format
 msgid "%d gün içinde cayma hakkı"
 msgstr ""
 
-#: inc/checkout.php:356
+#: inc/checkout.php:394
 msgid "Yardım gerekiyor mu?"
 msgstr ""
 
-#: inc/checkout.php:357
+#: inc/checkout.php:395
 msgid "Güvenli ödeme"
 msgstr ""
 
-#: inc/checkout.php:357
+#: inc/checkout.php:395
 msgid "Ödeme iyzico altyapısında alınır ve 3D Secure doğrulamasıyla tamamlanır. Kart bilgileriniz Kuka Island sunucusunda saklanmaz."
 msgstr ""
 
-#: inc/checkout.php:358
+#: inc/checkout.php:396
 msgid "Kargo ve iade"
 msgstr ""
 
@@ -454,16 +454,16 @@ msgstr ""
 msgid "Kuka Island"
 msgstr ""
 
-#: woocommerce/checkout/form-checkout.php:19
+#: woocommerce/checkout/form-checkout.php:23
 msgid "Ödeme şu anda kullanılamıyor."
 msgstr ""
 
-#: woocommerce/checkout/form-checkout.php:28
-#: woocommerce/checkout/form-checkout.php:77
+#: woocommerce/checkout/form-checkout.php:32
+#: woocommerce/checkout/form-checkout.php:86
 msgid "Ödeme"
 msgstr ""
 
-#: woocommerce/checkout/form-checkout.php:36
+#: woocommerce/checkout/form-checkout.php:45
 #: woocommerce/checkout/review-order.php:25
 msgid "Sipariş özeti"
 msgstr ""
