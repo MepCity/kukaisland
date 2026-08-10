@@ -1600,6 +1600,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-10 | Faz 10 checkout uyarıları form içindeki sabit tam-genişlik grid satırında birleştirilir; doğrulama metni görünen alan etiketinden `woocommerce_checkout_required_field_notice` filtresiyle üretilir, alan şeması değiştirilmez | Sunucu ve AJAX uyarılarını JS'siz aynı yerde tutmak, sağ kolonu otomatik grid yerleşiminden korumak ve `Fatura Ad` / `Billing First name` tekrarını ödeme alanlarına dokunmadan gidermek |
 | 2026-08-10 | Faz 9 sipariş e-postası Core içinde `Throwable` korumalıdır; yapılandırma yalnız `wp-config.php` sabitlerinden okunur, PHPMailer SMTP kancası kullanılır ve eklenti kurulmaz | Veridyen'de kapalı PHP `mail()` işlevinin ödeme sonrası isteği fatal ile kesmesi; e-posta teslimini sipariş kaydından ayırmak ve gizli bilgileri veritabanı/repo dışında tutmak |
 | 2026-08-10 | Faz 8 ödeme logoları tam renkli ve değiştirilmeden tema varlığı olarak tutulur; kart/iyzico varlıkları §11.2 ham renk kuralının belgeli tek istisnasıdır, panel yalnız görünürlüğü yönetir | Mastercard/Visa/iyzico marka kuralları yeniden renklendirmeyi yasaklar; eklenti yoluna doğrudan bağlanmadan güncelleme dayanıklılığı ve operatör güvenliği korunur |
 | 2026-08-09 | Faz 7 paneli görev odaklı Başlangıç/Yönetim Haritası, 13 sekmeli ve aranabilir Site Görünümü, yan yana TR/EN düzenleyiciler ve engellemeyen ürün kontrol listesi kullanır; yakında + noindex korunur | Bakım anlaşması olmayan, teknik seviyesi düşük mağaza sahibinin ekran aramadan doğru yazma kaynağına ulaşması ve kabul sırasında mağazanın/indeksin açılmaması |
@@ -1800,6 +1801,8 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 39. Mevcut durum
 
+- [x] Faz 10 checkout doğrulama uyarısı tamamlandı: AJAX + sunucu çıktısı tek tam-genişlik grid satırında, 180 ms token geçişi/reduced-motion kapısı, assertive duyuru, alan bağlantıları ve ilk hata odağı
+- [x] Faz 10 ölçümü: TR/EN ayrı `14/14` viewport-dil taşma `0`; hata bağlantıları iki dilde `7/7`; `Fatura Ad` ve `Billing First name` `0`; JS'siz sunucu yuvası iki dilde PASS; iki temiz reset+verify PASS, smoke `5/5`
 - [x] Faz 9 e-posta katmanı `Throwable` koruması, `wp-config.php` tabanlı PHPMailer SMTP, alan adı göndereni, ayrı Reply-To, sipariş notu/logu, Başlangıç uyarısı ve test düğmesiyle tamamlandı
 - [x] Faz 9 yerel ölçümü: kapalı `mail()` güvenli; `Exception` + `Error` 2/2 yakalandı; SMTP taşıyıcısı `smtp`; yerleşik müşteri/yönetici yeniden gönderme eylemleri mevcut
 - [ ] Canlı sipariş #87 durumu, gerçek SMTP teslimatı/SPF/DKIM ve canlı cron anlık ölçümü üretim erişimiyle doğrulanacak
