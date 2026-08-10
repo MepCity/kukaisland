@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 9;
+	private const SCHEMA_VERSION = 10;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -81,7 +81,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		return array(
 			'brand' => array(
 				'logo_id' => 0, 'mobile_logo_id' => 0, 'emblem_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
-				'email' => 'Gultekinkubraa@gmail.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
+				'email' => 'info@kukaisland.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
 				'social_links' => 'Instagram|https://www.instagram.com/kukaisland',
 			),
 			'announcement' => array(
@@ -135,7 +135,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'newsletter_copy' => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
 				'newsletter_consent' => 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
 				'newsletter_notification_email' => '',
-				'payment_logos_enabled' => true, 'payment_label' => 'Güvenli ödeme',
+				'payment_logos_enabled' => true,
 				'help_links' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
 				// Üyelik sözleşmesi (/kullanim-kosullari/) üyelik sunulmadığı için
 				// listede yoktur; hukuk danışmanı kararı gelince eklenecek.
@@ -264,6 +264,8 @@ final class Kuka_Island_Core_Site_Appearance {
 			$saved['commercial']['return_period_days'],
 			$saved['commercial']['exchange_copy'],
 			$saved['hero']['overlay_strength'],
+			$saved['footer']['payment_label'],
+			$saved['footer']['payment_label_en'],
 			$saved['footer']['brand_copy'],
 			$saved['home']['manifesto_title'],
 			$saved['home']['manifesto_copy'],
@@ -408,7 +410,6 @@ final class Kuka_Island_Core_Site_Appearance {
 					'newsletter_consent' => array( __( 'Bülten onay metni', 'kuka-island-core' ), 'textarea' ),
 					'newsletter_notification_email' => array( __( 'Yeni kayıt bildirim e-postası (boş bırakılabilir)', 'kuka-island-core' ), 'email' ),
 					'payment_logos_enabled' => array( __( 'Footer ödeme logolarını göster', 'kuka-island-core' ), 'checkbox' ),
-					'payment_label' => array( __( 'Ödeme logoları etiketi (boş bırakılabilir)', 'kuka-island-core' ), 'text' ),
 					'help_links'         => array( __( 'Yardım bağlantıları (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 					'legal_links'        => array( __( 'Yasal bağlantılar (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),

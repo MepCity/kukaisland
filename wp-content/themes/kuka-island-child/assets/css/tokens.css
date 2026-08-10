@@ -34,6 +34,7 @@
   --text-body: 14px;
   --text-body-large: 16px;
   --text-heading-newsletter: clamp(20px, 2vw, 28px);
+  --text-heading-document: clamp(22px, 2vw, 30px);
   --text-heading-small: clamp(28px, 3vw, 48px);
   --text-heading-medium: clamp(42px, 6vw, 92px);
   --text-heading-section: clamp(44px, 5.5vw, 80px);
@@ -61,8 +62,8 @@
   --control: 40px;
   --control-large: 48px;
   --icon-size: 20px;
-  --payment-card-strip-height: 28px;
-  --payment-provider-logo-height: 20px;
+  --payment-card-strip-height: 27px;
+  --payment-provider-logo-height: 18px;
   --focus-outline-width: 2px;
   --stroke: 1px;
   --header-height: 64px;
