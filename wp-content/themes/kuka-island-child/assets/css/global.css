@@ -286,6 +286,10 @@ progress {
     position: static;
     justify-content: flex-end;
   }
+
+  .kuka-announcement:has(.kuka-lang-switcher) + .kuka-header--overlay {
+    top: calc(var(--announcement-height) + var(--space-1));
+  }
 }
 
 .kuka-lang-switcher {
