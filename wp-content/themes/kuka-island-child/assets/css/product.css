@@ -209,6 +209,33 @@
   margin-top: 0;
 }
 
+/* iyzico ürün güven şeridi eklentinin resmî CDN SVG'lerini korur. Dış yuva
+   bilgi kolonunu doldurur; iç kart ortalanır ve detay akordiyonuna yapışmaz. */
+.single-product #iyzico-bpo2 {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-block-end: var(--space-3);
+}
+
+.single-product #iyzico-bpo2 > div {
+  margin-inline: auto;
+}
+
+.single-product #iyzico-bpo2 img[src*="/buyer-protection/svg/"] {
+  display: block;
+  max-width: none;
+  image-rendering: auto;
+}
+
+.single-product #iyzico-bpo2 img[class*="ProductDetail__CardIcon"] {
+  flex: 0 0 var(--space-4);
+  width: var(--space-4) !important;
+  max-width: var(--space-4) !important;
+  height: var(--space-3) !important;
+  object-fit: contain;
+}
+
 .kuka-product-detail {
   padding-block: var(--space-2);
   border-top: var(--stroke) solid var(--color-line);
