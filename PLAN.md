@@ -1796,11 +1796,17 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-06 | Tüm form kontrolleri `accent-color: var(--color-ink)` token'a çekildi; footer/hero koyu zemininde `--color-white`; odak halkası da `--color-ink` | §11.2 aksan yok kuralı ihlal ediliyordu; tarayıcı/Blocksy varsayılan mavi radio/checkbox kazanmıştı |
 | 2026-08-06 | SSS soruları `<details>`/`<summary>` akordiyona çevrildi; grup başlıkları h2 olarak kaldı; varsayılan hepsi kapalı | JS'siz açılır/kapanır, klavyeyle çalışır; `prefers-reduced-motion` altında chevron geçişi global olarak sıfırlanır |
 | 2026-08-09 | Faz 6B değişiklik ölçeği yalnız `/hakkimizda/` sanat katmanı, hikâye panelinin üç sunum alanı, lisanslı hikâye medyası ve bunların seed/QA belgeleriyle sınırlandı | Faz 6A `IntersectionObserver`, sticky sahne, mobil/JS'siz/reduced-motion düz makale, iki dil metni ve genel site bileşenleri değişmeden kalsın; animasyon kütüphanesi, vendor, deploy ve canlı anahtar eklenmesin |
+| 2026-08-10 | Faz 11 footer ödeme etiketi ve panel alanı emekli edildi; kart şeridi 27 px, iyzico logosu 18 px oldu | Logolar tek başına yeterli; 27 px şeritte hesaplanan Visa yüksekliği 19,29 CSS px / 5,10 mm, 26 px şeritte 4,91 mm olacağı için marka sınırı 27 px'te durdurur |
+| 2026-08-10 | İçerik belgesi `h2` başlıkları yeni `--text-heading-document` token'ına ayrıldı | Global `--text-heading-medium` tema genelinde katalog, sepet, checkout ve hikâyede kullanılıyor; onu değiştirmek yerine yalnız `.kuka-prose h2` 1440'ta 43,2 px'ten 28,8 px'e indirilir |
+| 2026-08-10 | Site ve işlemsel gönderici e-postasının tek kaynağı `brand.email=info@kukaisland.com` oldu | `wp_mail_from`, WooCommerce gönderici filtresi, SMTP From ve footer aynı panel/seed değerini okur; hukuk belgelerindeki eski adres hukuk danışmanı kararı olmadan değiştirilmez |
 
 ---
 
 ## 39. Mevcut durum
 
+- [x] Faz 11 footer sadeleştirmesi tamamlandı: ödeme etiketi/panel alanı yok, logo anahtarı çalışıyor, alt blok 183→127 CSS px; kart 27 px, iyzico 18 px, Visa 19,29 CSS px / 5,10 mm
+- [x] Faz 11 belge başlıkları `--text-heading-document` ile 1440'ta iki dilde 43,2→28,8 CSS px; 15 sayfa × 2 dil × 7 viewport = 210/210 yatay taşma 0
+- [x] Faz 11 e-posta tek kaynağı `info@kukaisland.com`: reset seed, footer 210/210, `wp_mail_from=woocommerce_email_from_address`; sekiz hukuk sayfası hash'i 8/8 değişmedi; iki temiz reset+verify PASS, smoke iki kez 5/5
 - [x] Faz 10 checkout doğrulama uyarısı tamamlandı: AJAX + sunucu çıktısı tek tam-genişlik grid satırında, 180 ms token geçişi/reduced-motion kapısı, assertive duyuru, alan bağlantıları ve ilk hata odağı
 - [x] Faz 10 ölçümü: TR/EN ayrı `14/14` viewport-dil taşma `0`; hata bağlantıları iki dilde `7/7`; `Fatura Ad` ve `Billing First name` `0`; JS'siz sunucu yuvası iki dilde PASS; iki temiz reset+verify PASS, smoke `5/5`
 - [x] Faz 9 e-posta katmanı `Throwable` koruması, `wp-config.php` tabanlı PHPMailer SMTP, alan adı göndereni, ayrı Reply-To, sipariş notu/logu, Başlangıç uyarısı ve test düğmesiyle tamamlandı

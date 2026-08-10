@@ -1,0 +1,3474 @@
+[
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 320,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 390,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 768,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "22px",
+      "22px",
+      "22px",
+      "22px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 1024,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "25.6px",
+      "25.6px",
+      "25.6px",
+      "25.6px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 1280,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "28.8px",
+      "28.8px",
+      "28.8px",
+      "28.8px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 1440,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Hakkımızda – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "İletişim – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Sık Sorulan Sorular – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Kargo ve Teslimat – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sayfa bulunamadı – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Ticari Elektronik İleti Onayı – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Beden Rehberi – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "tr",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Sipariş Takibi – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "hakkimizda",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "About Us – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "iletisim",
+    "email": true,
+    "h2Count": 3,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Contact – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "sik-sorulan-sorular",
+    "email": true,
+    "h2Count": 6,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Frequently Asked Questions – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "kargo-teslimat",
+    "email": true,
+    "h2Count": 5,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Shipping & Delivery – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "iade-degisim",
+    "email": true,
+    "h2Count": 11,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Cayma Hakkı ve İade – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "gizlilik-politikasi",
+    "email": true,
+    "h2Count": 8,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Gizlilik Politikası – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "cerez-politikasi",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Çerez Politikası – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "kvkk-aydinlatma-metni",
+    "email": true,
+    "h2Count": 9,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "KVKK Aydınlatma Metni – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "kullanim-kosullari",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Page not found – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "on-bilgilendirme-formu",
+    "email": true,
+    "h2Count": 10,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Ön Bilgilendirme Formu – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "mesafeli-satis-sozlesmesi",
+    "email": true,
+    "h2Count": 15,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Mesafeli Satış Sözleşmesi – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "acik-riza-metni",
+    "email": true,
+    "h2Count": 7,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Açık Rıza Metni – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "ticari-elektronik-ileti-onayi",
+    "email": true,
+    "h2Count": 1,
+    "h2Fonts": [
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Commercial Electronic Communication Consent – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "beden-rehberi",
+    "email": true,
+    "h2Count": 4,
+    "h2Fonts": [
+      "30px",
+      "30px",
+      "30px",
+      "30px"
+    ],
+    "overflow": 0,
+    "title": "Size Guide – Kuka Island"
+  },
+  {
+    "width": 1920,
+    "lang": "en",
+    "slug": "siparis-takibi",
+    "email": true,
+    "h2Count": 0,
+    "h2Fonts": [],
+    "overflow": 0,
+    "title": "Order Tracking – Kuka Island"
+  }
+]

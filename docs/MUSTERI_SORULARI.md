@@ -47,7 +47,9 @@ Marka hikâyesinin İngilizcesi ilk geçiş olarak yazıldı; Kübra'nın gözde
 18. Şirket türü nedir: şahıs, limited veya anonim?
 19. Vergi levhası ve iyzico başvurusu için şirket bilgileri hazır mı?
 20. e-Fatura durumu mali müşavirle görüşüldü mü?
-21. İşlemsel e-posta için hangi SMTP servisi kullanılacak ve `siparis@kukaisland.com` posta kutusu açılıp SPF/DKIM ile doğrulandı mı? Müşteri yanıtlarının geleceği ayrı Reply-To adresi hangisi olacak?
+21. İşlemsel e-posta için hangi SMTP servisi kullanılacak ve `info@kukaisland.com` posta kutusu açılıp SPF/DKIM ile doğrulandı mı? Müşteri yanıtlarının geleceği ayrı Reply-To adresi hangisi olacak?
+
+*"Sözleşmelerdeki `Gultekinkubraa@gmail.com` adresi `info@kukaisland.com` olarak güncellensin mi? Güncellenmezse iki adres arasında yönlendirme kurulmalı."*
 
 ## Şimdilik kullanılan, değiştirilebilir varsayımlar
 
