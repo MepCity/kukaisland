@@ -598,6 +598,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		</section>
 		<h2><?php esc_html_e( 'Tutarlılık uyarıları', 'kuka-island-core' ); ?></h2>
 		<?php if ( $warnings ) : ?><div class="notice notice-warning inline"><ul class="ul-disc"><?php foreach ( $warnings as $warning ) : ?><li><?php echo esc_html( $warning[0] ); ?> <a href="<?php echo esc_url( $warning[1] ); ?>"><?php esc_html_e( 'Düzelt', 'kuka-island-core' ); ?></a></li><?php endforeach; ?></ul></div><?php else : ?><div class="notice notice-success inline"><p><?php esc_html_e( 'Etkin bir tutarsızlık uyarısı yok.', 'kuka-island-core' ); ?></p></div><?php endif; ?>
+		<?php do_action( 'kuka_island_start_page_email_tools' ); ?>
 		</div>
 		<?php
 	}
@@ -620,7 +621,8 @@ final class Kuka_Island_Core_Site_Appearance {
 			array( ! empty( $content['membership']['enabled'] ), __( 'Bakım sözleşmesindeki misafir alışveriş kararına rağmen üyelik açık.', 'kuka-island-core' ), add_query_arg( 'tab', 'membership', $appearance ) ),
 			array( empty( $content['legal']['mersis_number'] ) || ! is_email( $content['legal']['kep_address'] ?? '' ) || empty( $content['legal']['professional_chamber'] ) || empty( $content['legal']['professional_rules_url'] ), __( 'iyzico başvurusu için MERSİS / KEP / meslek odası bilgisi bekleniyor.', 'kuka-island-core' ), add_query_arg( 'tab', 'legal', $appearance ) ),
 		);
-		return array_values( array_map( static fn( array $check ): array => array( $check[1], $check[2] ), array_filter( $checks, static fn( array $check ): bool => (bool) $check[0] ) ) );
+		$warnings = array_values( array_map( static fn( array $check ): array => array( $check[1], $check[2] ), array_filter( $checks, static fn( array $check ): bool => (bool) $check[0] ) ) );
+		return apply_filters( 'kuka_island_operator_warnings', $warnings );
 	}
 
 	/** @return array<string, string> */

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-10T13:59:28+00:00\n"
+"POT-Creation-Date: 2026-08-10T16:52:55+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island-core\n"
@@ -38,7 +38,7 @@ msgstr ""
 
 #: includes/class-admin-experience.php:30
 #: includes/class-site-appearance.php:551
-#: includes/class-site-appearance.php:686
+#: includes/class-site-appearance.php:688
 msgid "Bu sayfaya erişim yetkiniz yok."
 msgstr ""
 
@@ -404,6 +404,71 @@ msgstr ""
 msgid "VKN 10 rakamdan oluşmalıdır."
 msgstr ""
 
+#: includes/class-email-delivery.php:53
+msgid "Sunucuda PHP mail() kapalı ve SMTP yapılandırılmamış."
+msgstr ""
+
+#. translators: %s is a sanitized mail transport error.
+#: includes/class-email-delivery.php:71
+#: includes/class-email-delivery.php:187
+msgid "E-posta altyapısı gönderimi reddetti."
+msgstr ""
+
+#: includes/class-email-delivery.php:131
+msgid "Sunucuda PHP mail() kapalı. SMTP kurulmadan sipariş e-postaları gönderilemez."
+msgstr ""
+
+#. translators: %d is the number of failed order e-mails.
+#: includes/class-email-delivery.php:140
+#, php-format
+msgid "%d gönderilemeyen sipariş e-postası var."
+msgid_plural "%d gönderilemeyen sipariş e-postası var."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-email-delivery.php:153
+msgid "Sipariş e-postası"
+msgstr ""
+
+#: includes/class-email-delivery.php:154
+msgid "SMTP bağlantısını yöneticinin e-posta adresine zararsız bir test iletisi göndererek doğrulayın."
+msgstr ""
+
+#: includes/class-email-delivery.php:161
+msgid "Test e-postası gönder"
+msgstr ""
+
+#: includes/class-email-delivery.php:169
+#: includes/class-newsletter.php:145
+#: includes/class-site-appearance.php:868
+#: includes/class-site-appearance.php:890
+msgid "Bu işlem için yetkiniz yok."
+msgstr ""
+
+#: includes/class-email-delivery.php:178
+msgid "Kuka Island SMTP testi"
+msgstr ""
+
+#: includes/class-email-delivery.php:179
+msgid "Bu ileti Kuka Island sipariş e-postası bağlantı testi için gönderildi."
+msgstr ""
+
+#: includes/class-email-delivery.php:184
+msgid "Test e-postası gönderildi."
+msgstr ""
+
+#. translators: %s is a sanitized mail transport error.
+#: includes/class-email-delivery.php:187
+#, php-format
+msgid "Test e-postası gönderilemedi: %s"
+msgstr ""
+
+#. translators: %s is a sanitized mail transport error.
+#: includes/class-email-delivery.php:239
+#, php-format
+msgid "Sipariş e-postası gönderilemedi: %s"
+msgstr ""
+
 #. translators: %s is the URL of the pre-information form.
 #: includes/class-legal-displays.php:18
 #, php-format
@@ -502,12 +567,6 @@ msgstr ""
 msgid "Henüz kayıt yok."
 msgstr ""
 
-#: includes/class-newsletter.php:145
-#: includes/class-site-appearance.php:866
-#: includes/class-site-appearance.php:888
-msgid "Bu işlem için yetkiniz yok."
-msgstr ""
-
 #: includes/class-page-translations.php:25
 msgid "Sayfa başlığı (Türkçe)"
 msgstr ""
@@ -535,7 +594,7 @@ msgstr ""
 #: includes/class-page-translations.php:49
 #: includes/class-product-fields.php:62
 #: includes/class-product-fields.php:81
-#: includes/class-site-appearance.php:716
+#: includes/class-site-appearance.php:718
 msgid "Türkçe"
 msgstr ""
 
@@ -623,7 +682,7 @@ msgid "Ürün görseli"
 msgstr ""
 
 #: includes/class-product-fields.php:109
-#: includes/class-site-appearance.php:770
+#: includes/class-site-appearance.php:772
 msgid "Kategori"
 msgstr ""
 
@@ -753,12 +812,12 @@ msgid "Hero göster"
 msgstr ""
 
 #: includes/class-site-appearance.php:332
-#: includes/class-site-appearance.php:836
+#: includes/class-site-appearance.php:838
 msgid "Masaüstü görsel"
 msgstr ""
 
 #: includes/class-site-appearance.php:333
-#: includes/class-site-appearance.php:836
+#: includes/class-site-appearance.php:838
 msgid "Mobil görsel"
 msgstr ""
 
@@ -771,7 +830,7 @@ msgid "Başlık"
 msgstr ""
 
 #: includes/class-site-appearance.php:336
-#: includes/class-site-appearance.php:836
+#: includes/class-site-appearance.php:838
 msgid "Metin"
 msgstr ""
 
@@ -788,7 +847,7 @@ msgid "Hizalama (left/center/right)"
 msgstr ""
 
 #: includes/class-site-appearance.php:340
-#: includes/class-site-appearance.php:836
+#: includes/class-site-appearance.php:838
 msgid "Metin tonu"
 msgstr ""
 
@@ -1340,364 +1399,364 @@ msgstr ""
 msgid "Etkin bir tutarsızlık uyarısı yok."
 msgstr ""
 
-#: includes/class-site-appearance.php:609
+#: includes/class-site-appearance.php:610
 msgid "Mağaza “Çok yakında” modunda değil."
 msgstr ""
 
-#: includes/class-site-appearance.php:610
+#: includes/class-site-appearance.php:611
 msgid "Arama motoru indeksleme engeli kapalı."
 msgstr ""
 
-#: includes/class-site-appearance.php:611
+#: includes/class-site-appearance.php:612
 msgid "Favicon seçilmemiş."
 msgstr ""
 
-#: includes/class-site-appearance.php:612
+#: includes/class-site-appearance.php:613
 msgid "Sosyal paylaşım görseli seçilmemiş."
 msgstr ""
 
-#: includes/class-site-appearance.php:613
+#: includes/class-site-appearance.php:614
 msgid "Ana hero masaüstü görseli seçilmemiş."
 msgstr ""
 
-#: includes/class-site-appearance.php:614
+#: includes/class-site-appearance.php:615
 msgid "Ana hero mobil görseli seçilmemiş."
 msgstr ""
 
-#: includes/class-site-appearance.php:615
+#: includes/class-site-appearance.php:616
 msgid "Şirket veya yasal bilgilerde yer tutucu kalmış."
 msgstr ""
 
-#: includes/class-site-appearance.php:616
+#: includes/class-site-appearance.php:617
 msgid "Geçerli iletişim e-postası eksik."
 msgstr ""
 
-#: includes/class-site-appearance.php:617
+#: includes/class-site-appearance.php:618
 msgid "WhatsApp numarası eksik."
 msgstr ""
 
-#: includes/class-site-appearance.php:618
+#: includes/class-site-appearance.php:619
 msgid "Cayma hakkı süresi 14 günden kısa."
 msgstr ""
 
-#: includes/class-site-appearance.php:619
+#: includes/class-site-appearance.php:620
 msgid "Bülten açık ancak onay metni boş."
 msgstr ""
 
-#: includes/class-site-appearance.php:620
+#: includes/class-site-appearance.php:621
 msgid "Bakım sözleşmesindeki misafir alışveriş kararına rağmen üyelik açık."
 msgstr ""
 
-#: includes/class-site-appearance.php:621
+#: includes/class-site-appearance.php:622
 msgid "iyzico başvurusu için MERSİS / KEP / meslek odası bilgisi bekleniyor."
 msgstr ""
 
-#: includes/class-site-appearance.php:629
+#: includes/class-site-appearance.php:631
 msgid "Vergi levhası hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:630
+#: includes/class-site-appearance.php:632
 msgid "İmza sirküleri hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:631
+#: includes/class-site-appearance.php:633
 msgid "Kimlik fotokopisi hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:632
+#: includes/class-site-appearance.php:634
 msgid "Banka IBAN doğrulama belgesi hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:633
+#: includes/class-site-appearance.php:635
 msgid "Findeks Risk Raporu hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:669
+#: includes/class-site-appearance.php:671
 msgid "Hakkımızda sayfası yayında"
 msgstr ""
 
-#: includes/class-site-appearance.php:670
+#: includes/class-site-appearance.php:672
 msgid "Gizlilik Politikası yayında"
 msgstr ""
 
-#: includes/class-site-appearance.php:671
+#: includes/class-site-appearance.php:673
 msgid "Mesafeli Satış Sözleşmesi yayında"
 msgstr ""
 
-#: includes/class-site-appearance.php:672
+#: includes/class-site-appearance.php:674
 msgid "Kargo ve İade sayfaları yayında"
 msgstr ""
 
-#: includes/class-site-appearance.php:673
+#: includes/class-site-appearance.php:675
 msgid "İletişim sayfası yayında"
 msgstr ""
 
-#: includes/class-site-appearance.php:674
+#: includes/class-site-appearance.php:676
 msgid "Site HTTPS kullanıyor"
 msgstr ""
 
-#: includes/class-site-appearance.php:675
+#: includes/class-site-appearance.php:677
 msgid "iyzico eklentisi ve kart logoları hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:676
+#: includes/class-site-appearance.php:678
 msgid "Footer ödeme logoları açık ve tema varlıkları hazır"
 msgstr ""
 
-#: includes/class-site-appearance.php:677
+#: includes/class-site-appearance.php:679
 msgid "MERSİS, KEP, meslek odası ve davranış kuralları girildi"
 msgstr ""
 
-#: includes/class-site-appearance.php:678
+#: includes/class-site-appearance.php:680
 msgid "ETBİS numarası girildi"
 msgstr ""
 
-#: includes/class-site-appearance.php:679
+#: includes/class-site-appearance.php:681
 msgid "Pilot olmayan, fiyatlı en az bir ürün yayında"
 msgstr ""
 
-#: includes/class-site-appearance.php:680
+#: includes/class-site-appearance.php:682
 msgid "Mağaza “Çok yakında” modundan çıkarıldı"
 msgstr ""
 
-#: includes/class-site-appearance.php:695
+#: includes/class-site-appearance.php:697
 msgid "Kuka Island / Site Görünümü"
 msgstr ""
 
-#: includes/class-site-appearance.php:696
+#: includes/class-site-appearance.php:698
 msgid "Yalnızca içerik ve ticari metinler burada yönetilir. Renk, tipografi ve ölçüler temanın tasarım sözleşmesindedir."
 msgstr ""
 
-#: includes/class-site-appearance.php:697
+#: includes/class-site-appearance.php:699
 msgid "Türkçe + İngilizce:"
 msgstr ""
 
-#: includes/class-site-appearance.php:697
+#: includes/class-site-appearance.php:699
 msgid "Çevrilebilir alanlar aynı satırda iki sütundur. İngilizce alanı boş bırakılırsa vitrinde Türkçe metin gösterilir; URL, sayı, medya ve şirket verisi tek kaynaktır."
 msgstr ""
 
-#: includes/class-site-appearance.php:699
+#: includes/class-site-appearance.php:701
 msgid "Site görünümü kaydedildi."
 msgstr ""
 
-#: includes/class-site-appearance.php:702
+#: includes/class-site-appearance.php:704
 msgid "Bazı bağlantı satırları kaydedilmedi:"
 msgstr ""
 
-#: includes/class-site-appearance.php:703
+#: includes/class-site-appearance.php:705
 msgid "Alanlarda ara"
 msgstr ""
 
-#: includes/class-site-appearance.php:704
+#: includes/class-site-appearance.php:706
 msgid "Alanlarda ara…"
 msgstr ""
 
-#: includes/class-site-appearance.php:705
+#: includes/class-site-appearance.php:707
 msgid "Site Görünümü grupları"
 msgstr ""
 
-#: includes/class-site-appearance.php:716
+#: includes/class-site-appearance.php:718
 msgid "kaynak"
 msgstr ""
 
-#: includes/class-site-appearance.php:716
+#: includes/class-site-appearance.php:718
 msgid "çeviri"
 msgstr ""
 
-#: includes/class-site-appearance.php:716
+#: includes/class-site-appearance.php:718
 msgid "boş İngilizce alanı Türkçe kaynağı kullanır."
 msgstr ""
 
-#: includes/class-site-appearance.php:727
+#: includes/class-site-appearance.php:729
 msgid "Site görünümünü kaydet"
 msgstr ""
 
-#: includes/class-site-appearance.php:727
+#: includes/class-site-appearance.php:729
 msgid "Kayıttan sonra aynı sekmede kalırsınız."
 msgstr ""
 
-#: includes/class-site-appearance.php:753
-#: includes/class-site-appearance.php:849
+#: includes/class-site-appearance.php:755
+#: includes/class-site-appearance.php:851
 msgid "Medyadan seç"
 msgstr ""
 
-#: includes/class-site-appearance.php:754
-#: includes/class-site-appearance.php:849
+#: includes/class-site-appearance.php:756
+#: includes/class-site-appearance.php:851
 msgid "Temizle"
 msgstr ""
 
-#: includes/class-site-appearance.php:759
+#: includes/class-site-appearance.php:761
 msgid "İndirimden sonraki tutar (varsayılan)"
 msgstr ""
 
-#: includes/class-site-appearance.php:760
+#: includes/class-site-appearance.php:762
 msgid "İndirimden önceki tutar"
 msgstr ""
 
-#: includes/class-site-appearance.php:762
+#: includes/class-site-appearance.php:764
 msgid "Varsayılanda kupon indirimi eşiğe uygulanır. “İndirimden önce” seçilirse ücretsiz kargo uygunluğu kupon uygulanmadan önceki ara toplamla değerlendirilir."
 msgstr ""
 
-#: includes/class-site-appearance.php:765
-#: includes/class-site-appearance.php:836
-#: includes/class-site-appearance.php:837
+#: includes/class-site-appearance.php:767
+#: includes/class-site-appearance.php:838
+#: includes/class-site-appearance.php:839
 msgid "Açık metin"
 msgstr ""
 
-#: includes/class-site-appearance.php:766
-#: includes/class-site-appearance.php:836
-#: includes/class-site-appearance.php:837
+#: includes/class-site-appearance.php:768
+#: includes/class-site-appearance.php:838
+#: includes/class-site-appearance.php:839
 msgid "Koyu metin"
 msgstr ""
 
-#: includes/class-site-appearance.php:768
+#: includes/class-site-appearance.php:770
 msgid "Metnin yerleştiği fotoğraf bölgesi koyuysa “Açık metin”, açıksa “Koyu metin” seçin; görsel veya başlık değiştiğinde iki dilde de önizleyip kontrastı yeniden kontrol edin."
 msgstr ""
 
-#: includes/class-site-appearance.php:770
+#: includes/class-site-appearance.php:772
 msgid "URL"
 msgstr ""
 
-#: includes/class-site-appearance.php:770
+#: includes/class-site-appearance.php:772
 msgid "Üst menü"
 msgstr ""
 
-#: includes/class-site-appearance.php:770
+#: includes/class-site-appearance.php:772
 msgid "Ana sayfa indeksi"
 msgstr ""
 
-#: includes/class-site-appearance.php:780
+#: includes/class-site-appearance.php:782
 msgid "Uzun başlıklar fotoğrafın koyu bölgesine taşabilir; yükledikten sonra kontrol edin."
 msgstr ""
 
-#: includes/class-site-appearance.php:781
+#: includes/class-site-appearance.php:783
 msgid "karakter"
 msgstr ""
 
-#: includes/class-site-appearance.php:784
+#: includes/class-site-appearance.php:786
 msgid "Uyarı: Bu görselin alternatif metni boş."
 msgstr ""
 
-#: includes/class-site-appearance.php:784
+#: includes/class-site-appearance.php:786
 msgid "Görsel seçtiğinizde Medya Kütüphanesi’ndeki alternatif metni kontrol edin."
 msgstr ""
 
-#: includes/class-site-appearance.php:799
+#: includes/class-site-appearance.php:801
 msgid "Sahne ekle"
 msgstr ""
 
 #. translators: %s is the two-digit scene number shown in the story repeater.
-#: includes/class-site-appearance.php:810
+#: includes/class-site-appearance.php:812
 #, php-format
 msgid "Sahne %s"
 msgstr ""
 
-#: includes/class-site-appearance.php:812
+#: includes/class-site-appearance.php:814
 msgid "Fotoğraf uzaklaşır / metin alttan"
 msgstr ""
 
-#: includes/class-site-appearance.php:813
+#: includes/class-site-appearance.php:815
 msgid "Çapraz erime / metin soldan"
 msgstr ""
 
-#: includes/class-site-appearance.php:814
+#: includes/class-site-appearance.php:816
 msgid "Çapraz erime / merkezde belirme"
 msgstr ""
 
-#: includes/class-site-appearance.php:815
+#: includes/class-site-appearance.php:817
 msgid "Sabit fotoğraf / satır sırası"
 msgstr ""
 
-#: includes/class-site-appearance.php:816
+#: includes/class-site-appearance.php:818
 msgid "Fotoğraf büyür / metin sağdan"
 msgstr ""
 
-#: includes/class-site-appearance.php:817
+#: includes/class-site-appearance.php:819
 msgid "Çapraz erime / merkezde toplanma"
 msgstr ""
 
-#: includes/class-site-appearance.php:820
+#: includes/class-site-appearance.php:822
 msgid "Sol alt"
 msgstr ""
 
-#: includes/class-site-appearance.php:821
+#: includes/class-site-appearance.php:823
 msgid "Sol orta"
 msgstr ""
 
-#: includes/class-site-appearance.php:822
+#: includes/class-site-appearance.php:824
 msgid "Merkez"
 msgstr ""
 
-#: includes/class-site-appearance.php:823
+#: includes/class-site-appearance.php:825
 msgid "Sağ orta"
 msgstr ""
 
-#: includes/class-site-appearance.php:826
+#: includes/class-site-appearance.php:828
 msgid "Yok"
 msgstr ""
 
-#: includes/class-site-appearance.php:827
+#: includes/class-site-appearance.php:829
 msgid "Yumuşak"
 msgstr ""
 
-#: includes/class-site-appearance.php:828
+#: includes/class-site-appearance.php:830
 msgid "Orta"
 msgstr ""
 
-#: includes/class-site-appearance.php:829
+#: includes/class-site-appearance.php:831
 msgid "Güçlü"
 msgstr ""
 
-#: includes/class-site-appearance.php:834
+#: includes/class-site-appearance.php:836
 msgid "Yukarı"
 msgstr ""
 
-#: includes/class-site-appearance.php:834
+#: includes/class-site-appearance.php:836
 msgid "Aşağı"
 msgstr ""
 
-#: includes/class-site-appearance.php:834
+#: includes/class-site-appearance.php:836
 msgid "Sahneyi kaldır"
 msgstr ""
 
-#: includes/class-site-appearance.php:837
+#: includes/class-site-appearance.php:839
 msgid "Metin (EN)"
 msgstr ""
 
-#: includes/class-site-appearance.php:837
+#: includes/class-site-appearance.php:839
 msgid "Masaüstü görsel (EN)"
 msgstr ""
 
-#: includes/class-site-appearance.php:837
+#: includes/class-site-appearance.php:839
 msgid "Mobil görsel (EN)"
 msgstr ""
 
-#: includes/class-site-appearance.php:837
+#: includes/class-site-appearance.php:839
 msgid "Metin tonu (EN)"
 msgstr ""
 
-#: includes/class-site-appearance.php:839
+#: includes/class-site-appearance.php:841
 msgid "Geçiş tipi"
 msgstr ""
 
-#: includes/class-site-appearance.php:840
+#: includes/class-site-appearance.php:842
 msgid "Metin konumu"
 msgstr ""
 
-#: includes/class-site-appearance.php:841
+#: includes/class-site-appearance.php:843
 msgid "Okuma gradyanı"
 msgstr ""
 
-#: includes/class-site-appearance.php:842
+#: includes/class-site-appearance.php:844
 msgid "Satırları sırayla aç (kısa, bilinçli satır dizileri için)"
 msgstr ""
 
-#: includes/class-site-appearance.php:985
+#: includes/class-site-appearance.php:987
 #, php-format
 msgid "%1$s / %2$s: %3$d. satır (%4$s)"
 msgstr ""
 
-#: includes/class-site-appearance.php:996
+#: includes/class-site-appearance.php:998
 #, php-format
 msgid "Kategori görünürlüğü: %d. satır kaydedilmedi."
 msgstr ""

@@ -8,6 +8,11 @@ cd "$project_dir"
 snapshot=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify.php)
 printf '%s\n' "$snapshot"
 
+email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
+email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
+email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
+printf '%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp"
+
 search_count() {
   pattern=$1
   shift
@@ -71,6 +76,7 @@ panel_search=$(search_count 'data-kuka-field-search' wp-content/plugins/kuka-isl
 management_map=$(search_count 'kuka-island-management-map' wp-content/plugins/kuka-island-core/includes)
 product_checklist=$(search_count 'kuka-product-checklist' wp-content/plugins/kuka-island-core/includes/class-product-fields.php)
 hero_main_line=$(search_count 'kuka-hero__title-main' wp-content/themes/kuka-island-child)
+smtp_secret_output_sinks=$(search_count '(echo|print|error_log|add_order_note|wc_get_logger).*(KUKA_SMTP_PASSWORD|\$config\[['"'"']password['"'"']\])' wp-content/plugins/kuka-island-core)
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -95,6 +101,7 @@ PANEL_SEARCH=$panel_search
 MANAGEMENT_MAP=$management_map
 PRODUCT_CHECKLIST=$product_checklist
 HERO_MAIN_LINE=$hero_main_line
+SMTP_SECRET_OUTPUT_SINKS=$smtp_secret_output_sinks
 EOF
 
 failures=0
@@ -102,6 +109,16 @@ expect_line() {
   label=$1
   line=$2
   if printf '%s\n' "$snapshot" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_email_line() {
+  label=$1
+  line=$2
+  if printf '%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp" | grep -Fqx "$line"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected $line)" >&2
@@ -202,6 +219,19 @@ expect_line "mobile Safari arrows use text presentation" "MOBILE_SAFARI_ARROWS=t
 expect_line "hero Est. 2026 is on its own line" "HERO_EST_LINE=separate"
 expect_line "language hover keeps color and adds underline" "LANGUAGE_HOVER=same-color+underline"
 expect_line "story media waits for target image and warms the next" "STORY_MEDIA_HANDOFF=load-guarded+next-warmed"
+expect_line "SMTP constant names are absent from the database" "SMTP_CONFIG_DATABASE_ROWS=0"
+expect_email_line "Exception cannot abort checkout mail" "THROWABLE_EXCEPTION_CAUGHT=yes"
+expect_email_line "Error cannot abort checkout mail" "THROWABLE_ERROR_CAUGHT=yes"
+expect_email_line "failed order mail creates two notes" "THROWABLE_ORDER_NOTES=2/2"
+expect_email_line "PHP mail is actually disabled in acceptance process" "PHP_MAIL_FUNCTION=disabled"
+expect_email_line "disabled PHP mail fails safely" "DISABLED_MAIL_SAFE=yes"
+expect_email_line "disabled PHP mail creates an order note" "DISABLED_MAIL_ORDER_NOTE=yes"
+expect_email_line "disabled PHP mail appears on Start" "DISABLED_MAIL_START_WARNING=yes"
+expect_email_line "failed order mail appears on Start" "FAILED_EMAIL_START_WARNING=yes"
+expect_email_line "configured PHPMailer uses SMTP" "SMTP_TRANSPORT=smtp"
+expect_email_line "sender address and name are fixed" "SMTP_IDENTITY=fixed"
+expect_email_line "reply-to remains separate" "SMTP_REPLY_TO=separate"
+expect_email_line "WooCommerce resend actions remain native" "ORDER_RESEND_ACTIONS=customer+admin"
 expect_value "theme POT" "$theme_pot" "yes"
 expect_value "plugin POT" "$plugin_pot" "yes"
 expect_value "raw theme colors" "$raw_colors" "0"
@@ -219,6 +249,7 @@ expect_value "Site Appearance field search" "$panel_search" "2"
 expect_value "management map routes" "$management_map" "2"
 expect_value "product publication checklist" "$product_checklist" "2"
 expect_value "hero sentence and Est lines" "$hero_main_line" "2"
+expect_value "SMTP secret has no output sink" "$smtp_secret_output_sinks" "0"
 
 if [ "$failures" -ne 0 ]; then
   echo "VERIFY=FAIL ($failures)" >&2
