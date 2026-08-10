@@ -242,20 +242,16 @@ $footer_source = (string) file_get_contents( get_stylesheet_directory() . '/foot
 $front_source  = (string) file_get_contents( get_stylesheet_directory() . '/front-page.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $global_source = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $story_source  = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/story.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$appearance_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-site-appearance.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 WP_CLI::line( 'FOOTER_WHATSAPP_SOURCE=' . ( str_contains( $footer_source, 'if ( $whatsapp_url )' ) && str_contains( $footer_source, '>WhatsApp <span class="kuka-text-arrow"' ) ? 'phone-helper' : 'missing' ) );
-WP_CLI::line( 'FOOTER_PAYMENT_LOGOS=' . ( str_contains( $footer_source, 'assets/img/payment/' ) && str_contains( $footer_source, 'pay_with_iyzico_horizontal_colored.svg' ) && str_contains( $footer_source, 'iyzico_ile_ode_colored_horizontal.svg' ) && str_contains( $footer_source, 'Supported card networks:' ) && ! str_contains( $footer_source, 'plugins/iyzico' ) ? 'theme-owned|bilingual|alts' : 'missing' ) );
-WP_CLI::line( 'FOOTER_PAYMENT_LABEL=' . ( ! str_contains( $footer_source, 'payment_label' ) && ! str_contains( $global_source, '.kuka-payment-trust > p' ) ? 'absent' : 'present' ) );
-WP_CLI::line( 'FOOTER_PAYMENT_TOGGLE=' . ( str_contains( $footer_source, 'if ( $payment_logos_enabled )' ) ? 'preserved' : 'missing' ) );
-WP_CLI::line( 'FOOTER_SITE_EMAIL=' . ( str_contains( $footer_source, 'mailto:' ) && str_contains( $footer_source, '$site_email' ) ? 'brand-source' : 'missing' ) );
+WP_CLI::line( 'FOOTER_PAYMENT_LOGOS=' . ( ! str_contains( $footer_source, 'assets/img/payment/' ) && ! str_contains( $footer_source, 'kuka-payment-trust' ) && ! str_contains( $global_source, '.kuka-payment-trust' ) ? 'absent' : 'present' ) );
+WP_CLI::line( 'FOOTER_PAYMENT_PANEL_FIELD=' . ( ! str_contains( $appearance_source, "'payment_logos_enabled' => true" ) && ! str_contains( $appearance_source, "'payment_logos_enabled' => array" ) && ! isset( $site_content['footer']['payment_logos_enabled'] ) ? 'absent' : 'present' ) );
+WP_CLI::line( 'FOOTER_SITE_EMAIL=' . ( ! str_contains( $footer_source, 'mailto:' ) && ! str_contains( $footer_source, '$site_email' ) ? 'absent' : 'present' ) );
 $payment_dir = get_stylesheet_directory() . '/assets/img/payment/';
 $plugin_cards_path = WP_PLUGIN_DIR . '/iyzico-woocommerce/assets/images/cards_v2.png';
-$payment_hashes = array(
-	'cards' => file_exists( $payment_dir . 'cards_v2.png' ) && file_exists( $plugin_cards_path ) && hash_equals( hash_file( 'sha256', $plugin_cards_path ), hash_file( 'sha256', $payment_dir . 'cards_v2.png' ) ) ? 'match' : 'missing',
-	'tr' => file_exists( $payment_dir . 'iyzico_ile_ode_colored_horizontal.svg' ) && hash_equals( '4a3fabf8992903a8fae84b5b01f5288bcedb635694d082fb0f8fde6e9d7149a6', hash_file( 'sha256', $payment_dir . 'iyzico_ile_ode_colored_horizontal.svg' ) ) ? 'match' : 'missing',
-	'en' => file_exists( $payment_dir . 'pay_with_iyzico_horizontal_colored.svg' ) && hash_equals( '7d584fda356b7cd25ccc093f83e9265d75bd2da568c39415e40980dea7d6d023', hash_file( 'sha256', $payment_dir . 'pay_with_iyzico_horizontal_colored.svg' ) ) ? 'match' : 'missing',
-);
-WP_CLI::line( 'PAYMENT_ASSETS=cards:' . $payment_hashes['cards'] . '|tr:' . $payment_hashes['tr'] . '|en:' . $payment_hashes['en'] );
-WP_CLI::line( 'PAYMENT_COLOR_ASSET_EXCEPTIONS=3' );
+WP_CLI::line( 'THEME_PAYMENT_ASSETS=' . ( ! is_dir( $payment_dir ) ? 'absent' : 'present' ) );
+WP_CLI::line( 'CHECKOUT_CARD_STRIP_ASSET=' . ( file_exists( $plugin_cards_path ) ? 'plugin-owned' : 'missing' ) );
+WP_CLI::line( 'PAYMENT_COLOR_ASSET_EXCEPTIONS=0' );
 WP_CLI::line( 'MOBILE_SAFARI_ARROWS=' . ( str_contains( $footer_source, '↗︎' ) && str_contains( $footer_source, 'kuka-text-arrow' ) ? 'text' : 'emoji-risk' ) );
 WP_CLI::line( 'HERO_EST_LINE=' . ( str_contains( $front_source, 'class="kuka-hero__est"' ) && str_contains( $global_source, '.kuka-hero__est' ) ? 'separate' : 'inline' ) );
 WP_CLI::line( 'LANGUAGE_HOVER=' . ( str_contains( $global_source, '.kuka-lang-switcher__list a:hover' ) && str_contains( $global_source, 'text-decoration: underline' ) ? 'same-color+underline' : 'missing' ) );
@@ -279,6 +275,7 @@ $retired_panel_fields = array_values( array_filter( array( 'return_period_days',
 if ( isset( $site_content['hero']['overlay_strength'] ) ) { $retired_panel_fields[] = 'overlay_strength'; }
 if ( isset( $site_content['footer']['payment_label'] ) ) { $retired_panel_fields[] = 'payment_label'; }
 if ( isset( $site_content['footer']['payment_label_en'] ) ) { $retired_panel_fields[] = 'payment_label_en'; }
+if ( isset( $site_content['footer']['payment_logos_enabled'] ) ) { $retired_panel_fields[] = 'payment_logos_enabled'; }
 WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', $retired_panel_fields ) );
 $theme_css = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $theme_tokens = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/tokens.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents

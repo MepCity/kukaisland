@@ -1339,11 +1339,11 @@ progress {
   text-transform: uppercase;
 }
 
-/* Alt şerit tek kolondur: marka kilidi, ödeme logoları ve telif satırı. */
+/* Alt şerit tek kolondur: marka kilidi ve telif satırı. */
 .kuka-footer-bottom {
   display: grid;
   justify-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   padding-top: var(--space-6);
   border-top: var(--stroke) solid var(--color-line);
   color: var(--color-muted);
@@ -1353,32 +1353,6 @@ progress {
 
 .kuka-footer-brand {
   color: var(--color-ink);
-}
-
-.kuka-payment-trust {
-  display: block;
-}
-
-.kuka-payment-trust__logos {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-}
-
-.kuka-payment-trust__logos img {
-  display: block;
-  width: auto;
-  max-width: 100%;
-}
-
-.kuka-payment-trust__cards {
-  height: var(--payment-card-strip-height);
-}
-
-.kuka-payment-trust__provider {
-  height: var(--payment-provider-logo-height);
 }
 
 @media (max-width: 47.5em) {

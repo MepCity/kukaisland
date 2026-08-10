@@ -479,7 +479,7 @@ if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 	}
 	$current['brand']['social_links'] = $defaults['brand']['social_links'];
 	$current['brand']['email'] = $defaults['brand']['email'];
-	unset( $current['footer']['payment_label'], $current['footer']['payment_label_en'] );
+	unset( $current['footer']['payment_label'], $current['footer']['payment_label_en'], $current['footer']['payment_logos_enabled'] );
 	unset( $current['brand']['whatsapp_url'] );
 	$current['brand']['whatsapp_phone'] = $defaults['brand']['whatsapp_phone'];
 	$current['announcement']['items'] = $defaults['announcement']['items'];
