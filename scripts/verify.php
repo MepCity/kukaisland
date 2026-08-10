@@ -5,6 +5,17 @@
 
 defined( 'WP_CLI' ) || exit( 1 );
 
+global $wpdb;
+$smtp_database_rows = (int) $wpdb->get_var(
+	$wpdb->prepare(
+		'SELECT COUNT(*) FROM %i WHERE option_name LIKE %s OR option_value LIKE %s',
+		$wpdb->options,
+		'%' . $wpdb->esc_like( 'KUKA_SMTP_' ) . '%',
+		'%' . $wpdb->esc_like( 'KUKA_SMTP_' ) . '%'
+	)
+);
+WP_CLI::line( 'SMTP_CONFIG_DATABASE_ROWS=' . $smtp_database_rows );
+
 $attribute_rows = array();
 foreach ( wc_get_attribute_taxonomies() as $attribute ) {
 	if ( in_array( $attribute->attribute_name, array( 'renk', 'beden', 'kesim' ), true ) ) {

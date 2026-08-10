@@ -4,6 +4,14 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 
 ## Yayın öncesi dış bağımlılıklar
 
+### Sipariş e-postası ve cron ölçümü — 10 Ağustos 2026
+
+- Veridyen `public_html/error_log` kaydında PHP `mail()` işlevinin `disable_functions` nedeniyle kapalı olduğu ve sipariş #87 için `PHPMailer\\PHPMailer\\mail()` çağrısının fatal verdiği ölçüldü. Core artık bütün `wp_mail()` çalışmasını `Throwable` sınırında yürütür; başarısızlığı WooCommerce loguna ve sipariş notuna kaydeder. Teslimat için SMTP hâlâ zorunludur.
+- Yerelde gerçekten `php -d disable_functions=mail` ile çalışan kabul sürecinde `function_exists('mail')=false`, güvenli dönüş ve sipariş notu doğrulandı. Bu ölçüm canlı SMTP teslimatı değildir.
+- Canlı sipariş #87'nin mevcut durumu ve geçmişte müşteriye ulaşıp ulaşmadığı yalnız hata logundan belirlenemez; canlı WooCommerce sipariş ekranı/veritabanı erişimi verilmediği için durum raporu açık kalır. SMTP kurulduktan sonra yerleşik yeniden gönderme eylemiyle kontrollü doğrulama gerekir.
+- Canlı logda `action_scheduler_run_queue` ve `wp_1_wc_regenerate_images_cron` için `invalid_schedule` görülmüştür. Yerel temiz kurulumda iki olay da kayıtlıdır: Action Scheduler `every_minute=60`, görsel yenileme `wp_1_wc_regenerate_images_cron_interval=300`; olayların cron dizisindeki recurrence anahtarları aynı anda `wp_get_schedules()` içinde mevcuttur. Yerelde bozuk zamanlama yeniden üretilemedi.
+- `invalid_schedule`, olay yeniden zamanlanırken recurrence anahtarının o istekte kayıtlı olmadığını kanıtlar; fakat yalnız iki log satırı bunun eklenti yükleme sırası, yarım kalmış görsel kuyruğu veya hosting cron çağrısından hangisi olduğunu ayırmaz. Tahmine dayalı silme/yeniden zamanlama yapılmadı. Canlıda zaman damgalı `wp cron event list`, `wp cron test`, `wp_get_schedules()` ve Action Scheduler durum ölçümü alınmadan müdahale edilmemelidir.
+
 - Gerçek sepet, sipariş ve panel akışları vardır; canlı iyzico anahtarları olmadığı için gerçek tahsilat/3D dönüşü yapılmamıştır.
 - Ürün adları, çeşitler, stoklar ve fiyatlar pilot veridir. Gerçek katalog müşteriden alınacaktır.
 - Fotoğraflar lisanslı veya proje için hazırlanmış yer tutuculardır; gerçek ürün çekimleri değildir.

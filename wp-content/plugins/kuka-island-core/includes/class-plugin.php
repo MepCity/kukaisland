@@ -36,6 +36,7 @@ final class Kuka_Island_Core_Plugin {
 			'class-legal-displays.php',
 			'class-corporate-billing.php',
 			'class-swatch-meta.php',
+			'class-email-delivery.php',
 			'class-admin-experience.php',
 		);
 
@@ -59,6 +60,7 @@ final class Kuka_Island_Core_Plugin {
 			new Kuka_Island_Core_Legal_Displays(),
 			new Kuka_Island_Core_Corporate_Billing(),
 			new Kuka_Island_Core_Swatch_Meta(),
+			new Kuka_Island_Core_Email_Delivery(),
 			new Kuka_Island_Core_Admin_Experience(),
 		);
 

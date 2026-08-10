@@ -47,6 +47,7 @@ Marka hikâyesinin İngilizcesi ilk geçiş olarak yazıldı; Kübra'nın gözde
 18. Şirket türü nedir: şahıs, limited veya anonim?
 19. Vergi levhası ve iyzico başvurusu için şirket bilgileri hazır mı?
 20. e-Fatura durumu mali müşavirle görüşüldü mü?
+21. İşlemsel e-posta için hangi SMTP servisi kullanılacak ve `siparis@kukaisland.com` posta kutusu açılıp SPF/DKIM ile doğrulandı mı? Müşteri yanıtlarının geleceği ayrı Reply-To adresi hangisi olacak?
 
 ## Şimdilik kullanılan, değiştirilebilir varsayımlar
 
@@ -73,7 +74,7 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 | Yasal metinler | Sekiz metin müşteriden teslim alındı; `03` üyelik sözleşmesi için yukarıdaki hukuk kararı bekleniyor | Sayfalar + Site Görünümü yer tutucuları |
 | Gerçek marka kuruluş hikâyesi | Teslim alındı; PDF metni `/hakkimizda/` sayfasına aktarıldı | Sayfalar → Hakkımızda |
 | Gerçek ürün kataloğu, fiyat, stok ve fotoğraflar | Bekleniyor; dört ürün pilot şablon | Ürünler veya CSV şablonu |
-| SMTP hesabı ve DNS kayıtları | Veridyen test yayını öncesi müşteri açacak | Hosting/DNS + seçilen SMTP eklentisi |
+| SMTP hesabı ve DNS kayıtları | Veridyen test yayını öncesi müşteri açacak; servis ve Reply-To adresi kararı bekleniyor | Hosting/DNS + `wp-config.php` sabitleri; eklenti kurulmaz |
 | Coming soon altında test erişim yöntemi | Müşteri seçimi bekleniyor | `DEPLOY_RUNBOOK.md` §6 |
 | iyzico sandbox/canlı aktivasyonu | Bekleniyor; canlı anahtar repoya girilmeyecek | WooCommerce ödeme ayarları / secret alanı |
 

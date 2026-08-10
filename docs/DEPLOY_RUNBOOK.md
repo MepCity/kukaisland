@@ -87,10 +87,14 @@ Müşteri seçimi deploy kaydına yazılır. Önerilen varsayılan, ana coming s
 
 ## 7. SMTP ve ödeme
 
-1. Alan adına ait SMTP hesabı müşteri tarafından açılır; sunucu, port, şifreleme, kullanıcı ve parola bir SMTP eklentisine hosting panelinden girilir.
-2. SPF, DKIM ve DMARC kayıtları doğrulanır.
-3. Parola sıfırlama, yeni sipariş, yönetici bildirimi ve iletişim adresine teslim gerçek posta kutularında doğrulanır.
-4. iyzico önce sandbox/test anahtarlarıyla sınanır. Canlı anahtarlar yalnız mağaza sahibi ve iyzico aktivasyonundan sonra secret alana girilir. Ödeme/checkout özel kodla değiştirilmez.
+1. Alan adına ait SMTP hesabı müşteri tarafından açılır. Gönderen `siparis@kukaisland.com` veya aynı alan adındaki doğrulanmış başka bir posta kutusu olmalıdır; Gmail göndereni kullanılmaz.
+2. Hosting secret alanında veya üretim `wp-config.php` dosyasında, `/* That's all, stop editing! */` satırından önce şu sabitler tanımlanır: `KUKA_SMTP_HOST`, `KUKA_SMTP_PORT`, `KUKA_SMTP_USERNAME`, `KUKA_SMTP_PASSWORD`, `KUKA_SMTP_ENCRYPTION`, `KUKA_SMTP_FROM_EMAIL`, `KUKA_SMTP_FROM_NAME`. Şifreleme değeri yalnız `tls`, `ssl` veya `none` olabilir.
+3. Yanıt adresi gönderen posta kutusundan ayrılacaksa aynı yerde isteğe bağlı `KUKA_SMTP_REPLY_TO_EMAIL` ve `KUKA_SMTP_REPLY_TO_NAME` tanımlanır. Bu değerler veritabanına, Git'e, destek kaydına veya ekran görüntüsüne yazılmaz.
+4. Sabitlerin tamamı yoksa Core SMTP'yi etkinleştirmez. Sunucuda `mail()` de kapalıysa Başlangıç ekranı bunu `function_exists('mail')` ölçümüyle bildirir; gönderim hatası checkout'u durdurmaz ve ilgili siparişe not düşer.
+5. **Kuka Island → Başlangıç → Test e-postası gönder** ile yönetici adresine test atılır. Başarı/hata ekranda görülür; SMTP parolası hiçbir çıktıda gösterilmez.
+6. SPF, DKIM ve DMARC kayıtları doğrulanır. Parola sıfırlama, yeni sipariş, yönetici bildirimi ve müşteri sipariş iletisi gerçek posta kutularında sınanır.
+7. Başarısız bir sipariş iletisi düzeltildikten sonra sipariş ekranındaki yerleşik **Sipariş ayrıntılarını müşteriye gönder** veya **Yeni sipariş bildirimini yeniden gönder** eylemi kullanılır.
+8. iyzico önce sandbox/test anahtarlarıyla sınanır. Canlı anahtarlar yalnız mağaza sahibi ve iyzico aktivasyonundan sonra secret alana girilir. Ödeme/checkout özel kodla değiştirilmez.
 
 ## 8. Test yayını doğrulama listesi
 

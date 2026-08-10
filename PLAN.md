@@ -1071,6 +1071,8 @@ Müşteriye gösterilen Türkçe karşılıklar tutarlı olmalıdır.
 ### 18.4 E-posta ve bildirimler
 
 - **SMTP zorunludur.** WordPress varsayılan PHP mail gönderimi spam'e düşer.
+- SMTP eklentisi kurulmaz; `kuka-island-core`, yalnız `wp-config.php` sabitleri tam olduğunda PHPMailer'ı SMTP'ye geçirir. Gönderen `@kukaisland.com` alanında sabitlenir, Reply-To ayrı olabilir ve gizli değerler veritabanına/loga/panele girmez.
+- `wp_mail()` başarısızlığı `Throwable` düzeyinde yakalanır. Sipariş tamamlanması e-posta teslimine bağlı değildir; hata sipariş notuna, WooCommerce loguna ve Başlangıç uyarısına düşer. Başlangıç ekranı ayrıca gerçek `function_exists('mail')` sonucunu ve yöneticiye test gönderimini gösterir.
 - Sipariş e-postaları marka kimliğine göre şablonlanır (child theme içinde override).
 - Sepet hatırlatma ve yorum hatırlatma Faz 8 kapsamındadır; ilk sürümde eklenti sayısını artırmaz.
 
@@ -1598,6 +1600,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-10 | Faz 9 sipariş e-postası Core içinde `Throwable` korumalıdır; yapılandırma yalnız `wp-config.php` sabitlerinden okunur, PHPMailer SMTP kancası kullanılır ve eklenti kurulmaz | Veridyen'de kapalı PHP `mail()` işlevinin ödeme sonrası isteği fatal ile kesmesi; e-posta teslimini sipariş kaydından ayırmak ve gizli bilgileri veritabanı/repo dışında tutmak |
 | 2026-08-10 | Faz 8 ödeme logoları tam renkli ve değiştirilmeden tema varlığı olarak tutulur; kart/iyzico varlıkları §11.2 ham renk kuralının belgeli tek istisnasıdır, panel yalnız görünürlüğü yönetir | Mastercard/Visa/iyzico marka kuralları yeniden renklendirmeyi yasaklar; eklenti yoluna doğrudan bağlanmadan güncelleme dayanıklılığı ve operatör güvenliği korunur |
 | 2026-08-09 | Faz 7 paneli görev odaklı Başlangıç/Yönetim Haritası, 13 sekmeli ve aranabilir Site Görünümü, yan yana TR/EN düzenleyiciler ve engellemeyen ürün kontrol listesi kullanır; yakında + noindex korunur | Bakım anlaşması olmayan, teknik seviyesi düşük mağaza sahibinin ekran aramadan doğru yazma kaynağına ulaşması ve kabul sırasında mağazanın/indeksin açılmaması |
 | 2026-08-09 | Faz 6A marka hikâyesi altı sahneli, panel kontrollü ve `IntersectionObserver` tabanlı kaydırma anlatısına dönüştü; `48em` altı, JS kapalı ve `prefers-reduced-motion: reduce` durumları aynı sunucu DOM'undan düz makale gösterir | Kaydırmayı ele geçirmeden editoryal anlatı sağlamak; mobil adres çubuğu/`100svh` kırılganlığını, hareket hassasiyetini ve JS bağımlılığını içerikten ayırmak |
@@ -1797,6 +1800,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 39. Mevcut durum
 
+- [x] Faz 9 e-posta katmanı `Throwable` koruması, `wp-config.php` tabanlı PHPMailer SMTP, alan adı göndereni, ayrı Reply-To, sipariş notu/logu, Başlangıç uyarısı ve test düğmesiyle tamamlandı
+- [x] Faz 9 yerel ölçümü: kapalı `mail()` güvenli; `Exception` + `Error` 2/2 yakalandı; SMTP taşıyıcısı `smtp`; yerleşik müşteri/yönetici yeniden gönderme eylemleri mevcut
+- [ ] Canlı sipariş #87 durumu, gerçek SMTP teslimatı/SPF/DKIM ve canlı cron anlık ölçümü üretim erişimiyle doğrulanacak
 - [x] Faz 8 footer ödeme şeridi, iki dil logosu, şirket/iletişim alanları ve 12 otomatik + 5 manuel iyzico hazırlık kontrolü tamamlandı
 - [x] Faz 8 ölçümü: otomatik hazırlık 7/12; 14/14 TR/EN viewport yatay taşma 0; Visa 20 CSS px / 5,29 mm
 - [ ] MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS müşteri/iyzico cevabıyla doldurulacak
