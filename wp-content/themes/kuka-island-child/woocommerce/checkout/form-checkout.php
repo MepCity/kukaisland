@@ -12,6 +12,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
+// The checkout shortcode registers this callback while rendering, after the
+// theme's wp_loaded cleanup. Remove only the notice printer here; every other
+// before-checkout extension hook keeps its original position above the form.
+remove_action( 'woocommerce_before_checkout_form', 'woocommerce_output_all_notices', 10 );
 do_action( 'woocommerce_before_checkout_form', $checkout );
 
 // If checkout registration is disabled and not logged in, the user cannot checkout.
@@ -26,6 +30,11 @@ $kuka_summary_total = html_entity_decode( wp_strip_all_tags( wc_price( (float) W
 	<?php kuka_island_checkout_steps(); ?>
 
 	<form name="checkout" method="post" class="checkout woocommerce-checkout kuka-checkout__grid" action="<?php echo esc_url( wc_get_checkout_url() ); ?>" enctype="multipart/form-data" aria-label="<?php esc_attr_e( 'Ödeme', 'kuka-island' ); ?>">
+		<div class="kuka-checkout__notices" data-checkout-notices>
+			<div class="kuka-checkout__notices-inner" data-checkout-notices-inner>
+				<?php wc_print_notices(); ?>
+			</div>
+		</div>
 
 		<aside class="kuka-checkout__summary">
 			<?php /* Masaüstünde <summary> gizlenir ve blok hep açık kalır; mobilde

@@ -91,6 +91,7 @@ function kuka_island_child_enqueue_assets(): void {
 	kuka_island_enqueue_style( 'cart', array( 'kuka-island-global' ) );
 	if ( is_checkout() ) {
 		kuka_island_enqueue_style( 'checkout', array( 'kuka-island-cart' ) );
+		kuka_island_enqueue_script( 'checkout', array( 'kuka-island-storefront', 'jquery', 'wc-checkout' ) );
 	}
 	if ( is_page() ) {
 		kuka_island_enqueue_style( 'content', array( 'kuka-island-global' ) );
