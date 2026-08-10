@@ -2,30 +2,32 @@
 
 ## Sonuç
 
-- Footer ödeme etiketi ve iki dilli panel alanı kaldırıldı. Görünürlük anahtarı açıkken kart + iyzico `1+1`, kapalıyken ödeme kabı `0`; tekrar açıldığında `1+1` döndü.
-- Footer alt bloğu 1440 px viewport'ta `183` CSS px'ten `127` CSS px'e indi. Grid aralığı `16→8` CSS px, üst dolgu `64→48` CSS px oldu.
-- Kart şeridi `28→27` CSS px, iyzico logosu `20→18` CSS px oldu. Resmî kart görseli ve iki iyzico SVG'sinin SHA-256 doğrulaması `3/3 match`; renk/oran değişmedi.
+- Müşteri takibinde footer ödeme logoları bütünüyle kaldırıldı. `.kuka-payment-trust` HTML/CSS'i, `payment_logos_enabled` panel alanı/varsayılanı, iki ödeme token'ı ve tema `assets/img/payment/` klasörü yoktur; yorumda tutulmadı.
+- Footer alt bloğu yalnız marka kilidi ve telif satırından oluşur. 1440 px'te blok `100` CSS px, marka–telif aralığı `16` CSS px ölçüldü; blok kalkınca arada artık boşluk oluşmadı.
+- TR `7/7`, EN `7/7` viewportta footer ödeme kabı `0/14`, footer ödeme görseli `0/14`, marka kilidi `14/14`, telif `14/14` ölçüldü.
+- Ödeme sayfasındaki eklenti şeridi korunmuştur: TR ve EN ayrı ayrı `iyzico-woocommerce/assets/images/cards_v2.png`, görünür `200×21` CSS px. Tema varlığı değildir.
+- Site Görünümü çalışma zamanı envanteri ölçülerek `13 grup / 113 satır / 154 kontrol / 41 EN` olarak güncellendi.
 - Yeni `--text-heading-document: clamp(22px, 2vw, 30px)` yalnız `.kuka-prose h2` için kullanılıyor. 1440 px'te TR ve EN başlık `43,2→28,8` CSS px, üst boşluk `64→48` CSS px, alt boşluk `22,96→16` CSS px ölçüldü.
 - `--text-heading-medium` değiştirilmedi: içerik sayfası `h1`, sepet, katalog, checkout, tipografi testi ve marka hikâyesi kullanımları aynı kaldı.
-- Site e-postası ve WordPress/WooCommerce göndericisi `info@kukaisland.com` tek kaynağında birleşti. `make reset` sonrasında `RESET_SITE_EMAIL=info@kukaisland.com`, `MAIL_FROM_IDENTITIES=wp=woo:info@kukaisland.com`.
-
-## Visa 5 mm hesabı
-
-Faz 8 ölçümünde 28 CSS px kart şeridindeki Visa işareti 20 CSS px idi. Aynı oranda yeni değer:
-
-`20 / 28 × 27 = 19,2857 CSS px`
-
-96 CSS px/inç kabulüyle:
-
-`19,2857 × 25,4 / 96 = 5,1027 mm`
-
-Sonuç **19,29 CSS px / 5,10 mm**. Bir alt tam sayı şerit değeri 26 CSS px olsaydı Visa `18,57 CSS px / 4,91 mm` olurdu. Bu nedenle küçültme 27 CSS px'te durduruldu.
+- Site e-postası ve WordPress/WooCommerce göndericisi `info@kukaisland.com` tek kaynağında birleşti. `make reset` sonrasında `RESET_SITE_EMAIL=info@kukaisland.com`, `MAIL_FROM_IDENTITIES=wp=woo:info@kukaisland.com`. Son görsel takipte e-posta footer Sosyal sütunundan kaldırıldı; burada yalnız Instagram ve WhatsApp kalır.
 
 ## İki dil ve responsive ölçüm
 
+Footer kaldırma matrisi:
+
+| Dil | Viewport | Yatay taşma 0 | Footer ödeme kabı/görseli | Marka/telif |
+|---|---:|---:|---:|---:|
+| TR | 7 | 7/7 | 0/7 · 0/7 | 7/7 · 7/7 |
+| EN | 7 | 7/7 | 0/7 · 0/7 | 7/7 · 7/7 |
+| Toplam | 14 | 14/14 | 0/14 · 0/14 | 14/14 · 14/14 |
+
+Ham kayıt: [footer-payment-removal-matrix.json](qa/faz11/footer-payment-removal-matrix.json).
+
+Faz 11 içerik sayfaları matrisi:
+
 Kontrol edilen 15 rota: Hakkımızda, İletişim, SSS, Kargo, İade, Gizlilik, Çerez, KVKK, Kullanım Koşulları, Ön Bilgilendirme, Mesafeli Satış, Açık Rıza, Ticari Elektronik İleti, Beden Rehberi ve Sipariş Takibi.
 
-| Dil | Rota × viewport | Yatay taşma 0 | Footer e-postası |
+| Dil | Rota × viewport | Yatay taşma 0 | İlk teslim footer e-postası (sonradan kaldırıldı) |
 |---|---:|---:|---:|
 | TR | 15 × 7 = 105 | 105/105 | 105/105 |
 | EN | 15 × 7 = 105 | 105/105 | 105/105 |
@@ -52,8 +54,11 @@ Değişiklik öncesi ve ikinci temiz reset sonrası sekiz WordPress hukuk sayfas
 
 ## Görsel kanıt
 
-- TR footer: [önce](qa/faz11/before-tr-footer-1440.png) · [sonra](qa/faz11/after-tr-footer-1440.png)
-- EN footer: [önce](qa/faz11/before-en-footer-1440.png) · [sonra](qa/faz11/after-en-footer-1440.png)
+- TR footer: [önce — ödeme logolu](qa/faz11/after-tr-footer-1440.png) · [sonra — yalnız marka ve telif](qa/faz11/after-tr-footer-no-payment-1440.png)
+- EN footer: [önce — ödeme logolu](qa/faz11/after-en-footer-1440.png) · [sonra — yalnız marka ve telif](qa/faz11/after-en-footer-no-payment-1440.png)
+- Ödeme sayfası eklenti kart şeridi: [TR](qa/faz11/checkout-iyzico-cards-v2.png) · [EN](qa/faz11/checkout-iyzico-cards-v2-en.png)
+- Footer Sosyal sütunu (Instagram + WhatsApp): [görüntü](qa/faz11/footer-social-instagram-whatsapp.png)
+- `136` CSS px servis şeridi ve sabit sağ kolon sırası: [görüntü](qa/faz11/service-strip-136.png)
 - TR belge: [önce](qa/faz11/before-tr-legal-1440.png) · [sonra](qa/faz11/after-tr-legal-1440.png)
 - EN içerik: [önce](qa/faz11/before-en-content-1440.png) · [sonra](qa/faz11/after-en-content-1440.png)
 
