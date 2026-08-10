@@ -61,6 +61,8 @@
   --control: 40px;
   --control-large: 48px;
   --icon-size: 20px;
+  --payment-card-strip-height: 28px;
+  --payment-provider-logo-height: 20px;
   --focus-outline-width: 2px;
   --stroke: 1px;
   --header-height: 64px;
