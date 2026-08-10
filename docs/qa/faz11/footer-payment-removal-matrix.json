@@ -1,0 +1,182 @@
+{
+  "generatedAt": "2026-08-10T20:39:32.888Z",
+  "viewports": [
+    320,
+    390,
+    768,
+    1024,
+    1280,
+    1440,
+    1920
+  ],
+  "results": [
+    {
+      "width": 320,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 320,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 320,
+      "overflow": 0
+    },
+    {
+      "width": 320,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 320,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 320,
+      "overflow": 0
+    },
+    {
+      "width": 390,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 390,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "width": 390,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 390,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "width": 768,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 768,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 768,
+      "overflow": 0
+    },
+    {
+      "width": 768,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 768,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 768,
+      "overflow": 0
+    },
+    {
+      "width": 1024,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 1024,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 1024,
+      "overflow": 0
+    },
+    {
+      "width": 1024,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 1024,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 1024,
+      "overflow": 0
+    },
+    {
+      "width": 1280,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 1280,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 1280,
+      "overflow": 0
+    },
+    {
+      "width": 1280,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 1280,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 1280,
+      "overflow": 0
+    },
+    {
+      "width": 1440,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 1440,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "width": 1440,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 1440,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "width": 1920,
+      "language": "TR",
+      "brand": 1,
+      "clientWidth": 1920,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "tr",
+      "paymentTrust": 0,
+      "scrollWidth": 1920,
+      "overflow": 0
+    },
+    {
+      "width": 1920,
+      "language": "EN",
+      "brand": 1,
+      "clientWidth": 1920,
+      "copyright": 1,
+      "footerPaymentImages": 0,
+      "lang": "en-US",
+      "paymentTrust": 0,
+      "scrollWidth": 1920,
+      "overflow": 0
+    }
+  ]
+}
