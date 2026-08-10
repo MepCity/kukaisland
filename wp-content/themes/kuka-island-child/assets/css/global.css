@@ -1353,6 +1353,43 @@ progress {
   color: var(--color-ink);
 }
 
+.kuka-payment-trust {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+}
+
+.kuka-payment-trust > p {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.kuka-payment-trust__logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.kuka-payment-trust__logos img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+}
+
+.kuka-payment-trust__cards {
+  height: var(--payment-card-strip-height);
+}
+
+.kuka-payment-trust__provider {
+  height: var(--payment-provider-logo-height);
+}
+
 @media (max-width: 47.5em) {
   .kuka-manifesto__line {
     grid-template-columns: 1fr;
