@@ -3,7 +3,7 @@
 ## Sonuç
 
 - Müşteri takibinde footer ödeme logoları bütünüyle kaldırıldı. `.kuka-payment-trust` HTML/CSS'i, `payment_logos_enabled` panel alanı/varsayılanı, iki ödeme token'ı ve tema `assets/img/payment/` klasörü yoktur; yorumda tutulmadı.
-- Footer alt bloğu yalnız marka kilidi ve telif satırından oluşur. 1440 px'te blok `100` CSS px, marka–telif aralığı `16` CSS px ölçüldü; blok kalkınca arada artık boşluk oluşmadı.
+- Footer alt bloğu yalnız marka kilidi ve telif satırından oluşur. Çizgiden footer tabanına yükseklik `124→92` CSS px, çizgi–logo mesafesi `49→25` CSS px ve marka–telif aralığı `16→8` CSS px oldu. Alttaki `24` CSS px boşlukla grubun merkez sapması yalnız `0,5` CSS px ölçüldü.
 - TR `7/7`, EN `7/7` viewportta footer ödeme kabı `0/14`, footer ödeme görseli `0/14`, marka kilidi `14/14`, telif `14/14` ölçüldü.
 - Ödeme sayfasındaki eklenti şeridi korunmuştur: TR ve EN ayrı ayrı `iyzico-woocommerce/assets/images/cards_v2.png`, görünür `200×21` CSS px. Tema varlığı değildir.
 - Site Görünümü çalışma zamanı envanteri ölçülerek `13 grup / 113 satır / 154 kontrol / 41 EN` olarak güncellendi.
@@ -59,6 +59,7 @@ Değişiklik öncesi ve ikinci temiz reset sonrası sekiz WordPress hukuk sayfas
 - Ödeme sayfası eklenti kart şeridi: [TR](qa/faz11/checkout-iyzico-cards-v2.png) · [EN](qa/faz11/checkout-iyzico-cards-v2-en.png)
 - Footer Sosyal sütunu (Instagram + WhatsApp): [görüntü](qa/faz11/footer-social-instagram-whatsapp.png)
 - `136` CSS px servis şeridi ve sabit sağ kolon sırası: [görüntü](qa/faz11/service-strip-136.png)
+- Kısaltılmış ve yeniden ortalanmış marka/telif bloğu: [görüntü](qa/faz11/footer-bottom-compact-1440.png)
 - TR belge: [önce](qa/faz11/before-tr-legal-1440.png) · [sonra](qa/faz11/after-tr-legal-1440.png)
 - EN içerik: [önce](qa/faz11/before-en-content-1440.png) · [sonra](qa/faz11/after-en-content-1440.png)
 
