@@ -64,8 +64,8 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 | Girdi | Durum | Panelde doldurulacağı yer |
 |---|---|---|
 | Satıcı/unvan, VKN, vergi dairesi, adres, telefon | **Girildi** (Kübra Gültekin / 4220658128 / Beşiktaş VD / Akat Mah. adresi / +90 530 948 19 96) | Site Görünümü → Şirket ve Yasal Bilgiler |
-| ETBİS numarası | Hâlâ bekleniyor; yer tutucu kalır (`[ETBİS NO]`) | Site Görünümü → Şirket ve Yasal Bilgiler |
-| MERSİS numarası | Müşteri sözleşmelerindeki gibi `Bulunmamaktadır` | Site Görünümü → Şirket ve Yasal Bilgiler |
+| ETBİS numarası | Hâlâ bekleniyor; alan boş ve vitrinde gizli | Site Görünümü → Şirket ve Yasal Bilgiler |
+| MERSİS, KEP, meslek odası ve davranış kuralları | Bekleniyor; alanlar boş ve vitrinde gizli | Site Görünümü → Şirket ve Yasal Bilgiler |
 | Kargo firması ve tahmini teslimat süresi | Bekleniyor | Site Görünümü → Ticari Bilgiler |
 | Standart kargo ücreti ve ücretsiz kargo eşiği onayı | Pilot değerler 149 TL / 4.000 TL | Site Görünümü → Ticari Bilgiler |
 | İade kargo ücretinin kime ait olduğu | Bekleniyor | Site Görünümü → Ticari Bilgiler |
@@ -76,6 +76,12 @@ Bu varsayımlar yalnızca prototipin ilerleyebilmesi içindir; gerçek cevap gel
 | SMTP hesabı ve DNS kayıtları | Veridyen test yayını öncesi müşteri açacak | Hosting/DNS + seçilen SMTP eklentisi |
 | Coming soon altında test erişim yöntemi | Müşteri seçimi bekleniyor | `DEPLOY_RUNBOOK.md` §6 |
 | iyzico sandbox/canlı aktivasyonu | Bekleniyor; canlı anahtar repoya girilmeyecek | WooCommerce ödeme ayarları / secret alanı |
+
+## Faz 8 — iyzico başvuru soruları
+
+1. iyzico iletişim sayfasında MERSİS, KEP ve meslek odası bilgisi istiyor. Şahıs işletmesinde bunlar zorunlu değil. iyzico'ya sorulacak: bu alanlar olmadan başvuru kabul ediliyor mu?
+2. Resmî kart şeridi yalnız 200×21 px raster dosya. 2× retina değerlendirmesinde keskin değil; iyzico Mastercard/Visa/Troy/American Express şeridinin onaylı SVG veya en az 2× raster sürümünü sağlayabilir mi?
+3. MERSİS, KEP, kayıtlı meslek odası, davranış kuralları bağlantısı ve ETBİS numarası mevcutsa doğrulanmış değerleri iletir misiniz? Yoksa alanlar boş ve vitrinde gizli kalacak.
 
 ## Faz 4A sonunda kalan girdiler
 

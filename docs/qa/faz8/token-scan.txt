@@ -1,0 +1,3 @@
+Patterns: woocommerce_share_key=, share_key=<8+ token chars>, private_link=<8+ token chars>
+Scope: repository excluding docs/qa and vendor
+RESULT=0 matches

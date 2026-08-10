@@ -1,0 +1,10 @@
+./composer.json is valid
+PHP_LINT=PASS
+............................................. 45 / 45 (100%)
+
+
+Time: 1.47 secs; Memory: 36MB
+
+PHPCS=PASS
+SMOKE=PASS (5/5)
+VERIFY=PASS

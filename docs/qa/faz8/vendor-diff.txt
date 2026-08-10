@@ -1,0 +1,2 @@
+git diff --name-only -- wp-content/plugins/woocommerce wp-content/plugins/iyzico-woocommerce wp-content/themes/blocksy
+RESULT=0 files

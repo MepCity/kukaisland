@@ -1,0 +1,446 @@
+ Container kukaisland_canli-wp-cli-1  Stopping
+ Container kukaisland_canli-wp-cli-1  Stopped
+ Container kukaisland_canli-wp-cli-1  Removing
+ Container kukaisland_canli-wp-cli-1  Removed
+ Container kukaisland_canli-wordpress-1  Stopping
+ Container kukaisland_canli-wordpress-1  Stopped
+ Container kukaisland_canli-wordpress-1  Removing
+ Container kukaisland_canli-wordpress-1  Removed
+ Container kukaisland_canli-db-1  Stopping
+ Container kukaisland_canli-db-1  Stopped
+ Container kukaisland_canli-db-1  Removing
+ Container kukaisland_canli-db-1  Removed
+ Network kukaisland_canli_default  Removing
+ Volume kukaisland_canli_db_data  Removing
+ Volume kukaisland_canli_wordpress_data  Removing
+ Volume kukaisland_canli_wordpress_data  Removed
+ Volume kukaisland_canli_db_data  Removed
+ Network kukaisland_canli_default  Removed
+Faz 6B hikâye medyası: 6 masaüstü ve 6 mobil kadraj hazır.
+ Network kukaisland_canli_default  Creating
+ Network kukaisland_canli_default  Created
+ Volume kukaisland_canli_wordpress_data  Creating
+ Volume kukaisland_canli_wordpress_data  Created
+ Volume kukaisland_canli_db_data  Creating
+ Volume kukaisland_canli_db_data  Created
+ Container kukaisland_canli-db-1  Creating
+ Container kukaisland_canli-db-1  Created
+ Container kukaisland_canli-wordpress-1  Creating
+ Container kukaisland_canli-wordpress-1  Created
+ Container kukaisland_canli-db-1  Starting
+ Container kukaisland_canli-db-1  Started
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+ Container kukaisland_canli-wordpress-1  Starting
+ Container kukaisland_canli-wordpress-1  Started
+ Container kukaisland_canli-wordpress-1  Waiting
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+ Container kukaisland_canli-wordpress-1  Healthy
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+2/2 [--admin_password=<password>]: [REDACTED]
+wp core install --title='Kuka Island' --admin_user='kuka_admin' --admin_email='admin@kukaisland.test' --locale='tr_TR' --skip-email --admin_password='[REDACTED]'
+Success: WordPress installed successfully.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Downloading translation from https://downloads.wordpress.org/translation/core/7.0.2/tr_TR.zip...
+Unpacking the update...
+Installing the latest version...
+Removing the old version of the translation...
+Translation updated successfully.
+Language 'tr_TR' installed.
+Success: Language activated.
+Success: Installed 1 of 1 languages.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Installing WooCommerce (11.0.0)
+Kurulum paketi https://downloads.wordpress.org/plugin/woocommerce.11.0.0.zip üzerinden indiriliyor...
+Paket açılıyor...
+Eklenti kuruluyor...
+Eklenti kuruldu.
+Activating 'woocommerce'...
+Plugin 'woocommerce' activated.
+Success: Installed 1 of 1 plugins.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Installing Blocksy Companion (2.1.51)
+Kurulum paketi https://downloads.wordpress.org/plugin/blocksy-companion.2.1.51.zip üzerinden indiriliyor...
+Paket açılıyor...
+Eklenti kuruluyor...
+Eklenti kuruldu.
+Activating 'blocksy-companion'...
+Plugin 'blocksy-companion' activated.
+Success: Installed 1 of 1 plugins.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Installing iyzico for WooCommerce (3.5.28)
+Kurulum paketi https://downloads.wordpress.org/plugin/iyzico-woocommerce.3.5.28.zip üzerinden indiriliyor...
+Paket açılıyor...
+Eklenti kuruluyor...
+Eklenti kuruldu.
+Activating 'iyzico-woocommerce'...
+Plugin 'iyzico-woocommerce' activated.
+Success: Installed 1 of 1 plugins.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Installing Loginizer (2.0.8)
+Kurulum paketi https://downloads.wordpress.org/plugin/loginizer.2.0.8.zip üzerinden indiriliyor...
+Paket açılıyor...
+Eklenti kuruluyor...
+Eklenti kuruldu.
+Activating 'loginizer'...
+Plugin 'loginizer' activated.
+Success: Installed 1 of 1 plugins.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Downloading translation from https://downloads.wordpress.org/translation/plugin/woocommerce/11.0.0/tr_TR.zip...
+Unpacking the update...
+Installing the latest version...
+Removing the old version of the translation...
+Translation updated successfully.
+Language 'tr_TR' installed.
+Success: Installed 1 of 1 languages.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Installing Blocksy (2.1.51)
+Kurulum paketi https://downloads.wordpress.org/theme/blocksy.2.1.51.zip üzerinden indiriliyor...
+Paket açılıyor...
+Tema kuruluyor...
+Tema kuruldu.
+Success: Installed 1 of 1 themes.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Success: Switched to 'Kuka Island Child' theme.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Plugin 'kuka-island-core' activated.
+Success: Activated 1 of 1 plugins.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Success: Global nitelik şeması hazır.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Success: Pilot seed tamamlandı: 4 ürün, 24 varyasyon.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Success: Beden geçişi: 0 varyasyon taşındı, 0 tekrar silindi, 0 terim kaldırıldı.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+Success: 17 içerik sayfası ve Site Appearance görselleri hazır.
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+1/12 [--user_pass=<password>]: [REDACTED]
+wp user create 'kuka_manager' 'manager@kukaisland.test' --role='shop_manager' --user_pass='[REDACTED]'
+Success: Created user 2.
+Kurulum hazır: http://localhost:8080/
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+WP_LOCALE=tr_TR
+WP_VERSION=7.0.2
+WOOCOMMERCE_VERSION=11.0.0
+BLOCKSY_VERSION=2.1.51
+IYZICO_VERSION=3.5.28
+TIMEZONE=Europe/Istanbul
+CURRENCY=TRY
+PRICE_FORMAT=₺2.890
+PRICE_SETTINGS=left|.|,|0
+ACTIVE_THEME=kuka-island-child
+HPOS=yes
+GUEST_CHECKOUT=yes
+STORE_VISIBILITY=coming-soon
+COMING_SOON_SCOPE=whole-site
+SEARCH_ENGINE_VISIBILITY=noindex
+PRIVATE_PREVIEW=ready
+MYACCOUNT_REGISTRATION=no
+IMAGE_CROP=4:5
+BIG_IMAGE_THRESHOLD=2000
+IMAGE_SIZES=card:600x750|single:1080x0|gallery:180x240
+IYZICO_ACTIVE=yes
+LOGINIZER_ACTIVE=yes
+WC_GALLERY_SUPPORT=slider:no|zoom:no|lightbox:no
+ATTRIBUTE=Beden|pa_beden|S,M,L
+ATTRIBUTE=Kesim|pa_kesim|Asimetrik,Bralet,Klasik,Tek Parça
+ATTRIBUTE=Renk|pa_renk|Beyaz,Kobalt,Kum,Siyah,Terracotta,Zeytin
+VARIABLE_PRODUCTS=4
+PRODUCT=KI-TOP-001|variations:15|stock_fields:yes|color_galleries:yes|required_fields:yes
+PRODUCT=KI-TOP-002|variations:3|stock_fields:yes|color_galleries:yes|required_fields:yes
+PRODUCT=KI-ONE-001|variations:3|stock_fields:yes|color_galleries:yes|required_fields:yes
+PRODUCT=KI-BTM-004|variations:3|stock_fields:yes|color_galleries:yes|required_fields:yes
+MAIN_CATEGORIES=Bikini Altları,Bikini Üstleri,Mayolar,Plaj Giyim,Takımlar
+TURKEY_SHIPPING_METHODS=flat_rate,free_shipping
+SWATCH=Beyaz|#eef0ec
+SWATCH=Kobalt|#1746c8
+SWATCH=Kum|#c8b89a
+SWATCH=Siyah|#111315
+SWATCH=Terracotta|#b65a3a
+SWATCH=Zeytin|#5a5d3a
+SITE_APPEARANCE_GROUPS=brand,announcement,languages,hero,home,story,navigation,footer,commercial,legal,checkout,content,membership,schema_version
+SITE_APPEARANCE_INVENTORY=13_groups|115_rows|157_controls
+HOME_HERO_TITLES=Kaçışınız için tasarlandı. Est. 2026|Designed for your escape. Est. 2026
+HOME_EDITORIAL_TITLES=Sonsuz yazlar için tasarlandı|Designed for endless summers
+LANGUAGE_TRANSLATABLE_FIELDS=42
+PRODUCT_EN_FIELD_SCHEMA=9
+PAGE_EN_FIELD_SCHEMA=2
+TAXONOMY_EN_FIELD=_kuka_name_en
+TRANSLATION_PLUGIN=none
+LANGUAGE_PENDING_URLS=
+LOCKED_PATTERNS=1/1|1/1
+DAILY_MANAGER=yes
+CONTENT_PAGES=15/15
+LEGAL_DRAFT_WARNINGS=0
+LEGAL_CENTRAL_COMPANY=8/8
+LEGAL_EN_VALUES=0/16
+NONLEGAL_EN_VALUES=16/16
+SITE_APPEARANCE_EN_VALUES=42/42
+LANGUAGE_ITEMS=Türkçe|/|English|/en/
+LANGUAGE_ITEMS_EN=absent
+NONTRANSLATABLE_TWINS=0
+PRODUCT_EN_VALUES=36/36
+ABOUT_EN_RHYTHM=yes
+HYGIENE_SINGLE_SOURCE=yes
+LEGAL_PAGE_STATUS=mesafeli-satis-sozlesmesi:publish|on-bilgilendirme-formu:publish|kullanim-kosullari:draft|iade-degisim:publish|kvkk-aydinlatma-metni:publish|gizlilik-politikasi:publish|cerez-politikasi:publish|acik-riza-metni:publish
+MEMBERSHIP_ENABLED=no
+ACCOUNT_OPTIONS=guest:yes|checkout_signup:no|checkout_login:no|myaccount_registration:no|users_can_register:0
+SOCIAL_LOGIN_PLUGIN=absent
+EMAIL_TRACKING_LINK=personalized
+ORDER_TRACKING_PAGE=ready
+MEMBERSHIP_TERMS_STATUS=draft
+MYACCOUNT_PAGE=kept
+SIZE_GUIDE_TABLES=3
+INSTAGRAM_LINK=yes
+IYZICO_APPLICATION_READINESS=7/12|missing:5
+IYZICO_APPLICATION_LINKS=12/12
+IYZICO_MANUAL_DOCUMENTS=0/5
+CONTACT_SHORTCODES=company:1|support:1
+APPLICATION_LEGAL_ROWS=mersis:0|kep:0|chamber:0|rules:0|etbis:0
+FOOTER_WHATSAPP_SOURCE=phone-helper
+FOOTER_PAYMENT_LOGOS=theme-owned|bilingual|alts
+PAYMENT_ASSETS=cards:match|tr:match|en:match
+PAYMENT_COLOR_ASSET_EXCEPTIONS=3
+MOBILE_SAFARI_ARROWS=text
+HERO_EST_LINE=separate
+LANGUAGE_HOVER=same-color+underline
+STORY_MEDIA_HANDOFF=load-guarded+next-warmed
+WHATSAPP_PHONE_RULE=empty-hidden|number-derived
+COMMERCIAL_CONTENT=149|4000|14
+FREE_SHIPPING_IGNORE_DISCOUNTS=no
+FREE_SHIPPING_IGNORE_DISCOUNTS_SYNC=no
+GUEST_SESSION_HOURS=48
+RETIRED_PANEL_FIELDS=
+HERO_OVERLAY_LAYER=absent
+HEADER_TOP_MODE=photo-white-to-paper-dark
+SIZE_TERMS=S,M,L
+SIZE_TERM_ORDER=S:0|M:1|L:2
+TYPOGRAPHY_TEST_PAGE=yes
+PRIMARY_MENU=Yeni Gelenler|Bikini|Mayo|Plaj Giyim|Koleksiyonlar|Hikâyemiz
+PRIMARY_MENU_COUNT=6
+STORY_MENU_LABEL=Hikâyemiz
+BRAND_STORY_PDF_MATCH=yes
+ABOUT_OPENING_PANEL_BOUND=yes
+STORY_SCENES=6
+STORY_BILINGUAL=6/6
+STORY_MEDIA_FIELDS=24/24
+STORY_ART_FIELDS=18/18
+STORY_TRANSITIONS=zoom-out|crossfade-left|fade-center|line-sequence|grow-right|gather
+STORY_TRANSITION_UNIQUE=6/6
+STORY_PDF_BODY_MATCH=yes
+STORY_LINE_REVEAL=scene-04
+STORY_PROGRESSIVE_DOM=server
+STORY_OBSERVER=io+cleanup+no-scroll
+STORY_MOBILE_ENHANCED=enabled
+STORY_EMPTY_MEDIA=placeholder
+NEWSLETTER_TABLE=ready
+NEWSLETTER_FORM=native-required
+NEWSLETTER_UI=label+placeholder|site-button
+NEWSLETTER_NOTIFICATION_FIELD=panel
+LOW_STOCK_VARIATIONS=5
+OUT_OF_STOCK_VARIATIONS=5
+SHOP_PER_PAGE=12
+PERMALINK_STRUCTURE=/%postname%/
+CHECKOUT_CLASSIC=yes
+ORDER_LOCALE_META=en_US
+ENGLISH_PUBLIC_URLS=prefixed
+ORDER_RECEIVED_LANGUAGE=preserved
+IYZICO_RETURN_LANGUAGE=preserved
+EMAIL_LOCALE_SWITCH=tr_TR>en_US>tr_TR
+ENGLISH_EMAIL_HTML=heading:yes|body:yes|product:yes|tracking:yes|additional:yes
+WOOCOMMERCE_OVERRIDES=5
+THEME_POT=yes
+PLUGIN_POT=yes
+PANEL_HANDLER_FILES=1
+PRODUCT_LIGHTBOX_DUPLICATE_HANDLER=0
+CART_FRAGMENT_FILTER=1
+ROOT_OVERFLOW_MASK=0
+CSS_RAW_COLORS_OUTSIDE_TOKENS=0
+CSS_RAW_PX_OUTSIDE_TOKENS=0
+CSS_SHADOWS=0
+LOCKED_DESIGN_CONTROLS=0
+CSS_UNDEFINED_TOKENS=0
+NEWSLETTER_WP_MAIL_CALLS=1
+NEWSLETTER_BLUE=0
+SVG_UPLOAD_FILTERS=0
+VENDOR_CHANGES=0
+LEGACY_ENGLISH_BOXES=0
+PANEL_TABS=1
+PANEL_SEARCH=2
+MANAGEMENT_MAP=2
+PRODUCT_CHECKLIST=2
+HERO_MAIN_LINE=2
+PASS child theme active
+PASS six-item header menu
+PASS daily manager
+PASS Coming Soon remains enabled
+PASS Coming Soon covers the whole site
+PASS search engines remain blocked
+PASS private acceptance preview
+PASS measured Site Appearance inventory
+PASS classic checkout
+PASS no legal draft warnings left
+PASS central legal company data
+PASS 42 bilingual appearance fields
+PASS nine English product fields
+PASS two English page fields
+PASS English taxonomy field
+PASS no translation plugin
+PASS English language no longer pending
+PASS legal English seed remains empty
+PASS all non-legal page English fields seeded
+PASS all Site Appearance English fields seeded
+PASS native language labels
+PASS language list has no English twin
+PASS non-translatable fields have no twins
+PASS all product English fields seeded
+PASS English brand story rhythm and signature
+PASS English order locale persistence
+PASS English public URLs stay prefixed
+PASS order received URL stays English
+PASS iyzico return URL stays English
+PASS email locale switch and restore
+PASS English order email surfaces
+PASS single-source hygiene policy
+PASS free shipping discount basis default
+PASS free shipping discount basis sync
+PASS three size guide tables
+PASS size set narrowed to S M L
+PASS size term menu order
+PASS story menu label
+PASS brand story matches source PDF
+PASS About opening follows panel
+PASS six story scenes
+PASS bilingual story scenes
+PASS separate bilingual desktop and mobile story media
+PASS story body matches manifesto PDF
+PASS scene four line reveal
+PASS server-rendered story DOM
+PASS story observer cleanup and no scroll listener
+PASS mobile story uses the scroll-led enhancement
+PASS empty story media placeholder
+PASS newsletter table
+PASS native required newsletter form
+PASS newsletter label placeholder and site button
+PASS newsletter notification panel field
+PASS retired panel fields removed
+PASS hero overlay layer removed
+PASS header top and scrolled modes
+PASS membership disabled
+PASS guest-only account options
+PASS social login plugin removed
+PASS Loginizer protects admin login
+PASS customer email has personalized tracking link
+PASS order tracking page ready
+PASS membership terms draft
+PASS WooCommerce account page kept
+PASS guest cart lifetime panel value
+PASS Instagram link
+PASS iyzico automatic readiness
+PASS all readiness rows link to their screen
+PASS manual iyzico documents start unchecked
+PASS contact has one company and one support block
+PASS unknown legal values stay hidden
+PASS footer payment logos are theme-owned and bilingual
+PASS official payment assets preserve exact bytes
+PASS three documented payment color exceptions
+PASS footer WhatsApp uses phone helper
+PASS WhatsApp empty and derived URL rule
+PASS updated bilingual hero title
+PASS updated bilingual editorial title
+PASS mobile Safari arrows use text presentation
+PASS hero Est. 2026 is on its own line
+PASS language hover keeps color and adds underline
+PASS story media waits for target image and warms the next
+PASS theme POT
+PASS plugin POT
+PASS raw theme colors
+PASS raw theme pixel values
+PASS theme shadows
+PASS root overflow mask
+PASS undefined CSS tokens
+PASS single-record notification only
+PASS newsletter has no blue
+PASS SVG uploads remain disabled
+PASS vendor files untouched
+PASS legacy English metaboxes removed
+PASS Site Appearance tabs
+PASS Site Appearance field search
+PASS management map routes
+PASS product publication checklist
+PASS hero sentence and Est lines
+PASS home 200 + hero
+ENGLISH_LINK_SCAN=home:0
+PASS catalog cards + filter changes result (4 -> 3)
+ENGLISH_LINK_SCAN=catalog:0
+ Container kukaisland_canli-db-1  Running
+ Container kukaisland_canli-wordpress-1  Running
+ Container kukaisland_canli-db-1  Waiting
+ Container kukaisland_canli-db-1  Healthy
+PASS product variation + out-of-stock size (s)
+ENGLISH_LINK_SCAN=product:0
+ENGLISH_LINK_SCAN=cart:0
+PASS correct variation added to cart (37: siyah/m)
+ENGLISH_LINK_SCAN=checkout:0
+PASS checkout rendered + two-consent payment gate
+PASS language-specific cart fragments/hash + no-Referer AJAX fallback
+PASS English add-to-cart survives Turkish language switch
+PASS Turkish product → cart → checkout flow
+ENGLISH_LINK_SCAN=tracking:0
+ENGLISH_LINK_SCAN=hakkimizda:0
+ENGLISH_LINK_SCAN=beden-rehberi:0
+ENGLISH_LINK_SCAN=kargo-teslimat:0
+ENGLISH_LINK_SCAN=iade-degisim:0
+ENGLISH_LINK_SCAN=sik-sorulan-sorular:0
+ENGLISH_LINK_SCAN=iletisim:0
+SMOKE=PASS (5/5)
+VERIFY=PASS
