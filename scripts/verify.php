@@ -213,11 +213,34 @@ WP_CLI::line( 'MYACCOUNT_PAGE=' . ( $account_page_id > 0 && get_post( $account_p
 $size_html = do_shortcode( '[kuka_size_guide]' );
 WP_CLI::line( 'SIZE_GUIDE_TABLES=' . substr_count( $size_html, '<table>' ) );
 WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['brand']['social_links'] ?? '' ), 'https://www.instagram.com/kukaisland' ) ? 'yes' : 'no' ) );
+$iyzico_checks = Kuka_Island_Core_Site_Appearance::iyzico_application_checks( $site_content );
+$iyzico_complete = count( array_filter( $iyzico_checks, static fn( array $check ): bool => $check['complete'] ) );
+$iyzico_missing = count( $iyzico_checks ) - $iyzico_complete;
+WP_CLI::line( sprintf( 'IYZICO_APPLICATION_READINESS=%d/%d|missing:%d', $iyzico_complete, count( $iyzico_checks ), $iyzico_missing ) );
+WP_CLI::line( 'IYZICO_APPLICATION_LINKS=' . count( array_filter( $iyzico_checks, static fn( array $check ): bool => '' !== $check['url'] ) ) . '/' . count( $iyzico_checks ) );
+$document_keys = array( 'iyzico_tax_certificate', 'iyzico_signature_circular', 'iyzico_identity_copy', 'iyzico_iban_document', 'iyzico_findeks_report' );
+$document_complete = count( array_filter( $document_keys, static fn( string $key ): bool => ! empty( $site_content['legal'][ $key ] ) ) );
+WP_CLI::line( 'IYZICO_MANUAL_DOCUMENTS=' . $document_complete . '/5' );
+$contact_page = get_page_by_path( 'iletisim' );
+$contact_source = $contact_page ? (string) $contact_page->post_content : '';
+WP_CLI::line( 'CONTACT_SHORTCODES=company:' . substr_count( $contact_source, '[kuka_company_details]' ) . '|support:' . substr_count( $contact_source, '[kuka_contact_details]' ) );
+$company_html = do_shortcode( '[kuka_company_details]' );
+WP_CLI::line( 'APPLICATION_LEGAL_ROWS=mersis:' . ( str_contains( $company_html, 'MERSİS' ) ? '1' : '0' ) . '|kep:' . ( str_contains( $company_html, 'KEP' ) ? '1' : '0' ) . '|chamber:' . ( str_contains( $company_html, 'meslek odası' ) ? '1' : '0' ) . '|rules:' . ( str_contains( $company_html, 'davranış kuralları' ) ? '1' : '0' ) . '|etbis:' . ( str_contains( $company_html, 'ETBİS' ) ? '1' : '0' ) );
 $footer_source = (string) file_get_contents( get_stylesheet_directory() . '/footer.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $front_source  = (string) file_get_contents( get_stylesheet_directory() . '/front-page.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $global_source = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $story_source  = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/story.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 WP_CLI::line( 'FOOTER_WHATSAPP_SOURCE=' . ( str_contains( $footer_source, 'if ( $whatsapp_url )' ) && str_contains( $footer_source, '>WhatsApp <span class="kuka-text-arrow"' ) ? 'phone-helper' : 'missing' ) );
+WP_CLI::line( 'FOOTER_PAYMENT_LOGOS=' . ( str_contains( $footer_source, 'assets/img/payment/' ) && str_contains( $footer_source, 'pay_with_iyzico_horizontal_colored.svg' ) && str_contains( $footer_source, 'iyzico_ile_ode_colored_horizontal.svg' ) && str_contains( $footer_source, 'Supported card networks:' ) && ! str_contains( $footer_source, 'plugins/iyzico' ) ? 'theme-owned|bilingual|alts' : 'missing' ) );
+$payment_dir = get_stylesheet_directory() . '/assets/img/payment/';
+$plugin_cards_path = WP_PLUGIN_DIR . '/iyzico-woocommerce/assets/images/cards_v2.png';
+$payment_hashes = array(
+	'cards' => file_exists( $payment_dir . 'cards_v2.png' ) && file_exists( $plugin_cards_path ) && hash_equals( hash_file( 'sha256', $plugin_cards_path ), hash_file( 'sha256', $payment_dir . 'cards_v2.png' ) ) ? 'match' : 'missing',
+	'tr' => file_exists( $payment_dir . 'iyzico_ile_ode_colored_horizontal.svg' ) && hash_equals( '4a3fabf8992903a8fae84b5b01f5288bcedb635694d082fb0f8fde6e9d7149a6', hash_file( 'sha256', $payment_dir . 'iyzico_ile_ode_colored_horizontal.svg' ) ) ? 'match' : 'missing',
+	'en' => file_exists( $payment_dir . 'pay_with_iyzico_horizontal_colored.svg' ) && hash_equals( '7d584fda356b7cd25ccc093f83e9265d75bd2da568c39415e40980dea7d6d023', hash_file( 'sha256', $payment_dir . 'pay_with_iyzico_horizontal_colored.svg' ) ) ? 'match' : 'missing',
+);
+WP_CLI::line( 'PAYMENT_ASSETS=cards:' . $payment_hashes['cards'] . '|tr:' . $payment_hashes['tr'] . '|en:' . $payment_hashes['en'] );
+WP_CLI::line( 'PAYMENT_COLOR_ASSET_EXCEPTIONS=3' );
 WP_CLI::line( 'MOBILE_SAFARI_ARROWS=' . ( str_contains( $footer_source, '↗︎' ) && str_contains( $footer_source, 'kuka-text-arrow' ) ? 'text' : 'emoji-risk' ) );
 WP_CLI::line( 'HERO_EST_LINE=' . ( str_contains( $front_source, 'class="kuka-hero__est"' ) && str_contains( $global_source, '.kuka-hero__est' ) ? 'separate' : 'inline' ) );
 WP_CLI::line( 'LANGUAGE_HOVER=' . ( str_contains( $global_source, '.kuka-lang-switcher__list a:hover' ) && str_contains( $global_source, 'text-decoration: underline' ) ? 'same-color+underline' : 'missing' ) );

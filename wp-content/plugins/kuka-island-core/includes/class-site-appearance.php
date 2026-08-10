@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 8;
+	private const SCHEMA_VERSION = 9;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -20,6 +20,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'admin_post_kuka_island_save_site_appearance', array( $this, 'save' ) );
+		add_action( 'admin_post_kuka_island_save_iyzico_documents', array( $this, 'save_iyzico_documents' ) );
 	}
 
 	/**
@@ -134,6 +135,7 @@ final class Kuka_Island_Core_Site_Appearance {
 				'newsletter_copy' => 'Yeni koleksiyonlar ve stüdyo notları için e-posta listemize katıl.',
 				'newsletter_consent' => 'Gizlilik politikasını okudum ve iletişim izni veriyorum.',
 				'newsletter_notification_email' => '',
+				'payment_logos_enabled' => true, 'payment_label' => 'Güvenli ödeme',
 				'help_links' => "Beden Rehberi|/beden-rehberi/\nKargo ve Teslimat|/kargo-teslimat/\nİade|/iade-degisim/\nSık Sorulan Sorular|/sik-sorulan-sorular/\nİletişim|/iletisim/\nSipariş Takibi|/siparis-takibi/",
 				// Üyelik sözleşmesi (/kullanim-kosullari/) üyelik sunulmadığı için
 				// listede yoktur; hukuk danışmanı kararı gelince eklenecek.
@@ -155,7 +157,10 @@ final class Kuka_Island_Core_Site_Appearance {
 				'tax_number' => '4220658128', 'tax_office' => 'Beşiktaş',
 				'address_full' => 'Akat Mah. Ata Sk. Eti Sitesi A3 Blok No: 2 C İç Kapı No: 3, Beşiktaş / İstanbul',
 				'address_short' => 'Akat Mh. Etiler',
-				'telephone' => '0530 948 19 96', 'mersis_number' => 'Bulunmamaktadır', 'etbis_number' => '[ETBİS NO]',
+				'telephone' => '0530 948 19 96', 'mersis_number' => '', 'kep_address' => '',
+				'professional_chamber' => '', 'professional_rules_url' => '', 'etbis_number' => '',
+				'iyzico_tax_certificate' => false, 'iyzico_signature_circular' => false,
+				'iyzico_identity_copy' => false, 'iyzico_iban_document' => false, 'iyzico_findeks_report' => false,
 			),
 			'checkout' => array(
 				'require_phone' => true, 'require_company' => false,
@@ -245,6 +250,12 @@ final class Kuka_Island_Core_Site_Appearance {
 				}
 			}
 			unset( $scene );
+		}
+		if ( 'Bulunmamaktadır' === ( $saved['legal']['mersis_number'] ?? '' ) ) {
+			$saved['legal']['mersis_number'] = '';
+		}
+		if ( str_contains( (string) ( $saved['legal']['etbis_number'] ?? '' ), '[' ) ) {
+			$saved['legal']['etbis_number'] = '';
 		}
 		unset(
 			$saved['languages']['items_en'],
@@ -396,6 +407,8 @@ final class Kuka_Island_Core_Site_Appearance {
 					'newsletter_copy'    => array( __( 'Bülten metni', 'kuka-island-core' ), 'textarea' ),
 					'newsletter_consent' => array( __( 'Bülten onay metni', 'kuka-island-core' ), 'textarea' ),
 					'newsletter_notification_email' => array( __( 'Yeni kayıt bildirim e-postası (boş bırakılabilir)', 'kuka-island-core' ), 'email' ),
+					'payment_logos_enabled' => array( __( 'Footer ödeme logolarını göster', 'kuka-island-core' ), 'checkbox' ),
+					'payment_label' => array( __( 'Ödeme logoları etiketi (boş bırakılabilir)', 'kuka-island-core' ), 'text' ),
 					'help_links'         => array( __( 'Yardım bağlantıları (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 					'legal_links'        => array( __( 'Yasal bağlantılar (Etiket|URL)', 'kuka-island-core' ), 'link_lines' ),
 				),
@@ -433,8 +446,16 @@ final class Kuka_Island_Core_Site_Appearance {
 					'address_full'  => array( __( 'Açık adres (yasal sayfalarda zorunlu; sözleşmelerdekiyle aynı kalmalı)', 'kuka-island-core' ), 'textarea' ),
 					'address_short' => array( __( 'Kısa adres (pazarlama yüzeyleri)', 'kuka-island-core' ), 'text' ),
 					'telephone'     => array( __( 'Yasal iletişim telefonu', 'kuka-island-core' ), 'text' ),
-					'mersis_number' => array( __( 'MERSİS numarası', 'kuka-island-core' ), 'text' ),
+					'mersis_number' => array( __( 'MERSİS numarası (yoksa boş bırakın)', 'kuka-island-core' ), 'text' ),
+					'kep_address'   => array( __( 'KEP adresi (yoksa boş bırakın)', 'kuka-island-core' ), 'email' ),
+					'professional_chamber' => array( __( 'Meslek odası (yoksa boş bırakın)', 'kuka-island-core' ), 'text' ),
+					'professional_rules_url' => array( __( 'Davranış kuralları bağlantısı (yoksa boş bırakın)', 'kuka-island-core' ), 'url' ),
 					'etbis_number'  => array( __( 'ETBİS numarası', 'kuka-island-core' ), 'text' ),
+					'iyzico_tax_certificate' => array( __( 'iyzico belgesi: Vergi levhası hazır', 'kuka-island-core' ), 'checkbox' ),
+					'iyzico_signature_circular' => array( __( 'iyzico belgesi: İmza sirküleri hazır', 'kuka-island-core' ), 'checkbox' ),
+					'iyzico_identity_copy' => array( __( 'iyzico belgesi: Kimlik fotokopisi hazır', 'kuka-island-core' ), 'checkbox' ),
+					'iyzico_iban_document' => array( __( 'iyzico belgesi: Banka IBAN doğrulama belgesi hazır', 'kuka-island-core' ), 'checkbox' ),
+					'iyzico_findeks_report' => array( __( 'iyzico belgesi: Findeks Risk Raporu hazır', 'kuka-island-core' ), 'checkbox' ),
 				),
 			),
 			'checkout'     => array(
@@ -538,6 +559,8 @@ final class Kuka_Island_Core_Site_Appearance {
 			array( __( 'Yönetim Haritası', 'kuka-island-core' ), __( 'Her işin hangi ekrandan yapıldığını bulun.', 'kuka-island-core' ), admin_url( 'admin.php?page=kuka-island-management-map' ) ),
 		);
 		$warnings = self::operator_warnings( $content );
+		$iyzico_checks = self::iyzico_application_checks( $content );
+		$iyzico_complete = count( array_filter( $iyzico_checks, static fn( array $check ): bool => $check['complete'] ) );
 		?>
 		<div class="wrap kuka-admin-home"><h1><?php esc_html_e( 'Kuka Island / Başlangıç', 'kuka-island-core' ); ?></h1>
 		<p><?php esc_html_e( 'Günlük işinize aşağıdaki kartlardan başlayın.', 'kuka-island-core' ); ?></p>
@@ -548,6 +571,31 @@ final class Kuka_Island_Core_Site_Appearance {
 			<div class="card"><h2><?php esc_html_e( 'Dikkat gerekenler', 'kuka-island-core' ); ?></h2><p><strong><?php echo esc_html( (string) count( $warnings ) ); ?></strong></p></div>
 		</div>
 		<div class="kuka-task-grid"><?php foreach ( $routes as $route ) : ?><div class="card"><h2><?php echo esc_html( $route[0] ); ?></h2><p><?php echo esc_html( $route[1] ); ?></p><a class="button button-primary" href="<?php echo esc_url( $route[2] ); ?>"><?php esc_html_e( 'Ekrana git', 'kuka-island-core' ); ?></a></div><?php endforeach; ?></div>
+		<section class="kuka-iyzico-readiness" aria-labelledby="kuka-iyzico-readiness-title">
+			<h2 id="kuka-iyzico-readiness-title"><?php esc_html_e( 'iyzico başvurusuna hazır mıyız?', 'kuka-island-core' ); ?></h2>
+			<p><strong><?php echo esc_html( sprintf( __( '%1$d / %2$d otomatik kriter tamam', 'kuka-island-core' ), $iyzico_complete, count( $iyzico_checks ) ) ); ?></strong></p>
+			<ul class="kuka-readiness-list">
+			<?php foreach ( $iyzico_checks as $check ) : ?>
+				<li class="<?php echo $check['complete'] ? 'is-complete' : 'is-missing'; ?>">
+					<span aria-hidden="true"><?php echo $check['complete'] ? '&#10003;' : '&#8212;'; ?></span>
+					<span><?php echo esc_html( $check['label'] ); ?></span>
+					<a href="<?php echo esc_url( $check['url'] ); ?>"><?php esc_html_e( 'İlgili ekrana git', 'kuka-island-core' ); ?></a>
+				</li>
+			<?php endforeach; ?>
+			</ul>
+			<form class="kuka-iyzico-documents" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+				<h3><?php esc_html_e( 'Başvuru belgeleri (manuel kontrol)', 'kuka-island-core' ); ?></h3>
+				<input type="hidden" name="action" value="kuka_island_save_iyzico_documents">
+				<?php wp_nonce_field( 'kuka_island_save_iyzico_documents' ); ?>
+				<div class="kuka-iyzico-document-grid">
+				<?php foreach ( self::iyzico_document_fields() as $key => $label ) : ?>
+					<label><input type="checkbox" name="iyzico_documents[<?php echo esc_attr( $key ); ?>]" value="1" <?php checked( ! empty( $content['legal'][ $key ] ) ); ?>> <?php echo esc_html( $label ); ?></label>
+				<?php endforeach; ?>
+				</div>
+				<p class="description"><strong><?php esc_html_e( 'Uyarı:', 'kuka-island-core' ); ?></strong> <?php esc_html_e( 'Şirket unvanı, vergi levhası ve banka hesabı ismi aynı olmalıdır.', 'kuka-island-core' ); ?></p>
+				<?php submit_button( __( 'Belge durumunu kaydet', 'kuka-island-core' ), 'secondary', 'submit', false ); ?>
+			</form>
+		</section>
 		<h2><?php esc_html_e( 'Tutarlılık uyarıları', 'kuka-island-core' ); ?></h2>
 		<?php if ( $warnings ) : ?><div class="notice notice-warning inline"><ul class="ul-disc"><?php foreach ( $warnings as $warning ) : ?><li><?php echo esc_html( $warning[0] ); ?> <a href="<?php echo esc_url( $warning[1] ); ?>"><?php esc_html_e( 'Düzelt', 'kuka-island-core' ); ?></a></li><?php endforeach; ?></ul></div><?php else : ?><div class="notice notice-success inline"><p><?php esc_html_e( 'Etkin bir tutarsızlık uyarısı yok.', 'kuka-island-core' ); ?></p></div><?php endif; ?>
 		</div>
@@ -570,8 +618,67 @@ final class Kuka_Island_Core_Site_Appearance {
 			array( (int) ( $content['commercial']['cayma_hakki_gun'] ?? 0 ) < 14, __( 'Cayma hakkı süresi 14 günden kısa.', 'kuka-island-core' ), add_query_arg( 'tab', 'commercial', $appearance ) ),
 			array( ! empty( $content['footer']['newsletter_enabled'] ) && empty( $content['footer']['newsletter_consent'] ), __( 'Bülten açık ancak onay metni boş.', 'kuka-island-core' ), add_query_arg( 'tab', 'footer', $appearance ) ),
 			array( ! empty( $content['membership']['enabled'] ), __( 'Bakım sözleşmesindeki misafir alışveriş kararına rağmen üyelik açık.', 'kuka-island-core' ), add_query_arg( 'tab', 'membership', $appearance ) ),
+			array( empty( $content['legal']['mersis_number'] ) || ! is_email( $content['legal']['kep_address'] ?? '' ) || empty( $content['legal']['professional_chamber'] ) || empty( $content['legal']['professional_rules_url'] ), __( 'iyzico başvurusu için MERSİS / KEP / meslek odası bilgisi bekleniyor.', 'kuka-island-core' ), add_query_arg( 'tab', 'legal', $appearance ) ),
 		);
 		return array_values( array_map( static fn( array $check ): array => array( $check[1], $check[2] ), array_filter( $checks, static fn( array $check ): bool => (bool) $check[0] ) ) );
+	}
+
+	/** @return array<string, string> */
+	private static function iyzico_document_fields(): array {
+		return array(
+			'iyzico_tax_certificate' => __( 'Vergi levhası hazır', 'kuka-island-core' ),
+			'iyzico_signature_circular' => __( 'İmza sirküleri hazır', 'kuka-island-core' ),
+			'iyzico_identity_copy' => __( 'Kimlik fotokopisi hazır', 'kuka-island-core' ),
+			'iyzico_iban_document' => __( 'Banka IBAN doğrulama belgesi hazır', 'kuka-island-core' ),
+			'iyzico_findeks_report' => __( 'Findeks Risk Raporu hazır', 'kuka-island-core' ),
+		);
+	}
+
+	/** @return array<int, array{label:string,complete:bool,url:string}> */
+	public static function iyzico_application_checks( ?array $content = null ): array {
+		$content ??= self::get();
+		$appearance = admin_url( 'admin.php?page=kuka-island-appearance' );
+		$page_check = static function ( string $path, string $label ): array {
+			$page = get_page_by_path( $path, OBJECT, 'page' );
+			return array(
+				'label' => $label,
+				'complete' => $page instanceof WP_Post && 'publish' === $page->post_status,
+				'url' => $page instanceof WP_Post ? admin_url( 'post.php?post=' . $page->ID . '&action=edit' ) : admin_url( 'edit.php?post_type=page' ),
+			);
+		};
+
+		$shipping = get_page_by_path( 'kargo-teslimat', OBJECT, 'page' );
+		$returns = get_page_by_path( 'iade-degisim', OBJECT, 'page' );
+		$products = get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'numberposts' => -1, 'fields' => 'ids' ) );
+		$real_product = false;
+		foreach ( $products as $product_id ) {
+			if ( get_post_meta( $product_id, '_kuka_pilot_expected_variations', true ) ) { continue; }
+			$product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : null;
+			if ( $product && '' !== $product->get_price() && (float) $product->get_price() > 0 ) { $real_product = true; break; }
+		}
+		$active_plugins = (array) get_option( 'active_plugins', array() );
+		$iyzico_active = (bool) array_filter( $active_plugins, static fn( string $plugin ): bool => str_contains( $plugin, 'iyzico' ) );
+		$plugin_cards = glob( WP_PLUGIN_DIR . '/*iyzico*/assets/images/cards_v2.png' ) ?: array();
+		$theme_payment_dir = get_stylesheet_directory() . '/assets/img/payment/';
+		$company_ready = ! empty( $content['legal']['mersis_number'] )
+			&& is_email( $content['legal']['kep_address'] ?? '' )
+			&& ! empty( $content['legal']['professional_chamber'] )
+			&& ! empty( $content['legal']['professional_rules_url'] );
+
+		return array(
+			$page_check( 'hakkimizda', __( 'Hakkımızda sayfası yayında', 'kuka-island-core' ) ),
+			$page_check( 'gizlilik-politikasi', __( 'Gizlilik Politikası yayında', 'kuka-island-core' ) ),
+			$page_check( 'mesafeli-satis-sozlesmesi', __( 'Mesafeli Satış Sözleşmesi yayında', 'kuka-island-core' ) ),
+			array( 'label' => __( 'Kargo ve İade sayfaları yayında', 'kuka-island-core' ), 'complete' => $shipping instanceof WP_Post && 'publish' === $shipping->post_status && $returns instanceof WP_Post && 'publish' === $returns->post_status, 'url' => $shipping instanceof WP_Post ? admin_url( 'post.php?post=' . $shipping->ID . '&action=edit' ) : admin_url( 'edit.php?post_type=page' ) ),
+			$page_check( 'iletisim', __( 'İletişim sayfası yayında', 'kuka-island-core' ) ),
+			array( 'label' => __( 'Site HTTPS kullanıyor', 'kuka-island-core' ), 'complete' => 'https' === wp_parse_url( home_url( '/' ), PHP_URL_SCHEME ), 'url' => admin_url( 'site-health.php' ) ),
+			array( 'label' => __( 'iyzico eklentisi ve kart logoları hazır', 'kuka-island-core' ), 'complete' => $iyzico_active && ! empty( $plugin_cards ), 'url' => admin_url( 'admin.php?page=wc-settings&tab=checkout' ) ),
+			array( 'label' => __( 'Footer ödeme logoları açık ve tema varlıkları hazır', 'kuka-island-core' ), 'complete' => ! empty( $content['footer']['payment_logos_enabled'] ) && file_exists( $theme_payment_dir . 'cards_v2.png' ) && file_exists( $theme_payment_dir . 'iyzico_ile_ode_colored_horizontal.svg' ) && file_exists( $theme_payment_dir . 'pay_with_iyzico_horizontal_colored.svg' ), 'url' => add_query_arg( 'tab', 'footer', $appearance ) ),
+			array( 'label' => __( 'MERSİS, KEP, meslek odası ve davranış kuralları girildi', 'kuka-island-core' ), 'complete' => $company_ready, 'url' => add_query_arg( 'tab', 'legal', $appearance ) ),
+			array( 'label' => __( 'ETBİS numarası girildi', 'kuka-island-core' ), 'complete' => ! empty( $content['legal']['etbis_number'] ), 'url' => add_query_arg( 'tab', 'legal', $appearance ) ),
+			array( 'label' => __( 'Pilot olmayan, fiyatlı en az bir ürün yayında', 'kuka-island-core' ), 'complete' => $real_product, 'url' => admin_url( 'edit.php?post_type=product' ) ),
+			array( 'label' => __( 'Mağaza “Çok yakında” modundan çıkarıldı', 'kuka-island-core' ), 'complete' => 'yes' !== get_option( 'woocommerce_coming_soon' ), 'url' => admin_url( 'admin.php?page=wc-settings&tab=site-visibility' ) ),
+		);
 	}
 
 	public function render_page(): void {
@@ -772,6 +879,26 @@ final class Kuka_Island_Core_Site_Appearance {
 		$active_tab = sanitize_key( wp_unslash( $_POST['active_tab'] ?? '' ) );
 		if ( ! isset( self::fields()[ $active_tab ] ) ) { $active_tab = 'brand'; }
 		wp_safe_redirect( add_query_arg( array( 'updated' => '1', 'tab' => $active_tab ), admin_url( 'admin.php?page=kuka-island-appearance' ) ) );
+		exit;
+	}
+
+	/** Save only the manual iyzico document checklist shown on the start page. */
+	public function save_iyzico_documents(): void {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'kuka-island-core' ), 403 );
+		}
+		check_admin_referer( 'kuka_island_save_iyzico_documents' );
+		$saved = get_option( self::OPTION_NAME, array() );
+		if ( ! is_array( $saved ) ) { $saved = array(); }
+		if ( ! isset( $saved['legal'] ) || ! is_array( $saved['legal'] ) ) { $saved['legal'] = array(); }
+		$submitted = isset( $_POST['iyzico_documents'] ) && is_array( $_POST['iyzico_documents'] ) ? wp_unslash( $_POST['iyzico_documents'] ) : array();
+		foreach ( self::iyzico_document_fields() as $key => $label ) {
+			$saved['legal'][ $key ] = '1' === (string) ( $submitted[ $key ] ?? '0' );
+			unset( $label );
+		}
+		$saved['schema_version'] = self::SCHEMA_VERSION;
+		update_option( self::OPTION_NAME, $saved, false );
+		wp_safe_redirect( add_query_arg( 'documents-updated', '1', admin_url( 'admin.php?page=kuka-island#kuka-iyzico-readiness-title' ) ) );
 		exit;
 	}
 
