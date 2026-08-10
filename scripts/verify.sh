@@ -8,6 +8,9 @@ cd "$project_dir"
 snapshot=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify.php)
 printf '%s\n' "$snapshot"
 
+free_shipping_coupon=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-free-shipping-coupon.php)
+printf '%s\n' "$free_shipping_coupon"
+
 email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
 email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
@@ -125,6 +128,16 @@ expect_email_line() {
     failures=$((failures + 1))
   fi
 }
+expect_coupon_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$free_shipping_coupon" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
 expect_value() {
   label=$1
   actual=$2
@@ -171,6 +184,11 @@ expect_line "English order email surfaces" "ENGLISH_EMAIL_HTML=heading:yes|body:
 expect_line "single-source hygiene policy" "HYGIENE_SINGLE_SOURCE=yes"
 expect_line "free shipping discount basis default" "FREE_SHIPPING_IGNORE_DISCOUNTS=no"
 expect_line "free shipping discount basis sync" "FREE_SHIPPING_IGNORE_DISCOUNTS_SYNC=no"
+expect_line "free shipping threshold or coupon requirement" "FREE_SHIPPING_REQUIREMENT_SYNC=either"
+expect_line "English shipping method labels" "SHIPPING_RATE_LABELS_EN=Free shipping|Flat rate"
+expect_coupon_line "free shipping coupon test stays below threshold" "FREE_SHIPPING_COUPON_BELOW_THRESHOLD=yes"
+expect_coupon_line "free shipping coupon exposes only free method" "FREE_SHIPPING_COUPON_METHODS=free_shipping"
+expect_coupon_line "free shipping coupon removes shipping cost" "FREE_SHIPPING_COUPON_COST=0.00"
 expect_line "three size guide tables" "SIZE_GUIDE_TABLES=3"
 expect_line "size set narrowed to S M L" "SIZE_TERMS=S,M,L"
 expect_line "size term menu order" "SIZE_TERM_ORDER=S:0|M:1|L:2"

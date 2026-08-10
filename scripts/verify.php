@@ -270,6 +270,18 @@ $free_shipping_options = $wpdb->get_col(
 );
 $free_shipping_values = array_map( static fn( string $option_name ): string => (string) ( get_option( $option_name, array() )['ignore_discounts'] ?? 'missing' ), $free_shipping_options );
 WP_CLI::line( 'FREE_SHIPPING_IGNORE_DISCOUNTS_SYNC=' . ( $free_shipping_values && 1 === count( array_unique( $free_shipping_values ) ) ? reset( $free_shipping_values ) : 'mismatch' ) );
+$free_shipping_requirements = array_map( static fn( string $option_name ): string => (string) ( get_option( $option_name, array() )['requires'] ?? 'missing' ), $free_shipping_options );
+WP_CLI::line( 'FREE_SHIPPING_REQUIREMENT_SYNC=' . ( $free_shipping_requirements && 1 === count( array_unique( $free_shipping_requirements ) ) ? reset( $free_shipping_requirements ) : 'mismatch' ) );
+$request_uri_before = $_SERVER['REQUEST_URI'] ?? null;
+$_SERVER['REQUEST_URI'] = '/en/odeme/';
+$free_rate = new WC_Shipping_Rate( 'free_shipping:2', 'Ücretsiz kargo', 0, array(), 'free_shipping', 2 );
+$flat_rate = new WC_Shipping_Rate( 'flat_rate:1', 'Sabit ücret', 149, array(), 'flat_rate', 1 );
+WP_CLI::line( 'SHIPPING_RATE_LABELS_EN=' . $free_rate->get_label() . '|' . $flat_rate->get_label() );
+if ( null === $request_uri_before ) {
+	unset( $_SERVER['REQUEST_URI'] );
+} else {
+	$_SERVER['REQUEST_URI'] = $request_uri_before;
+}
 WP_CLI::line( 'GUEST_SESSION_HOURS=' . absint( $site_content['membership']['guest_session_hours'] ?? 0 ) );
 $retired_panel_fields = array_values( array_filter( array( 'return_period_days', 'exchange_copy' ), static fn( string $key ): bool => isset( $site_content['commercial'][ $key ] ) ) );
 if ( isset( $site_content['hero']['overlay_strength'] ) ) { $retired_panel_fields[] = 'overlay_strength'; }

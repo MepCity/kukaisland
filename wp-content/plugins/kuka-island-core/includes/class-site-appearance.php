@@ -51,7 +51,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			$settings                     = get_option( $option_key, array() );
 			$settings                     = is_array( $settings ) ? $settings : array();
 			$settings['title']            = $settings['title'] ?? __( 'Ücretsiz kargo', 'kuka-island-core' );
-			$settings['requires']         = $threshold > 0 ? 'min_amount' : '';
+			$settings['requires']         = $threshold > 0 ? 'either' : '';
 			$settings['min_amount']        = (string) $threshold;
 			$settings['ignore_discounts'] = 'yes' === ( $commercial['ignore_discounts'] ?? 'no' ) ? 'yes' : 'no';
 			update_option( $option_key, $settings, false );
