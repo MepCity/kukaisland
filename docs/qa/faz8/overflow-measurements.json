@@ -1,0 +1,114 @@
+[
+  {
+    "width": 320,
+    "language": "tr",
+    "clientWidth": 320,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 320
+  },
+  {
+    "width": 320,
+    "language": "en",
+    "clientWidth": 320,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 320
+  },
+  {
+    "width": 390,
+    "language": "tr",
+    "clientWidth": 390,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 390
+  },
+  {
+    "width": 390,
+    "language": "en",
+    "clientWidth": 390,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 390
+  },
+  {
+    "width": 768,
+    "language": "tr",
+    "clientWidth": 768,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 768
+  },
+  {
+    "width": 768,
+    "language": "en",
+    "clientWidth": 768,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 768
+  },
+  {
+    "width": 1024,
+    "language": "tr",
+    "clientWidth": 1024,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1024
+  },
+  {
+    "width": 1024,
+    "language": "en",
+    "clientWidth": 1024,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1024
+  },
+  {
+    "width": 1280,
+    "language": "tr",
+    "clientWidth": 1280,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1280
+  },
+  {
+    "width": 1280,
+    "language": "en",
+    "clientWidth": 1280,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1280
+  },
+  {
+    "width": 1440,
+    "language": "tr",
+    "clientWidth": 1440,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1440
+  },
+  {
+    "width": 1440,
+    "language": "en",
+    "clientWidth": 1440,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1440
+  },
+  {
+    "width": 1920,
+    "language": "tr",
+    "clientWidth": 1920,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1920
+  },
+  {
+    "width": 1920,
+    "language": "en",
+    "clientWidth": 1920,
+    "overflow": 0,
+    "payment": true,
+    "scrollWidth": 1920
+  }
+]

@@ -910,7 +910,7 @@ Bu yüzden özel form alanları yalnızca müşterinin gerçekten sık dokunaca�
 
 ### 15.5 Faz 7 operatör sözleşmesi
 
-Site Görünümü ölçümü **13 sekme, 105 görünen satır ve 146 saklanan kontrol**dür; 41 kontrol aynı satırdaki `(EN)` karşılığıdır. Sekmeler WordPress `nav-tab-wrapper` desenini kullanır, aktif sekme URL'de kalır, alan araması bütün sekmeleri filtreler ve yapışkan kaydet çubuğu kayıttan sonra aynı sekmeye döner.
+Site Görünümü ölçümü **13 sekme, 115 görünen satır ve 157 saklanan kontrol**dür; 42 kontrol aynı satırdaki `(EN)` karşılığıdır. Sekmeler WordPress `nav-tab-wrapper` desenini kullanır, aktif sekme URL'de kalır, alan araması bütün sekmeleri filtreler ve yapışkan kaydet çubuğu kayıttan sonra aynı sekmeye döner.
 
 Ürün, sayfa ve kategori/nitelik terimlerinde Türkçe kaynak ile `(EN)` karşılığı aynı ekrandadır. Eski ayrı “English product/page content” kutuları yoktur. Ürün yayın kontrol listesi bilgilendiricidir ve yayınlamayı engellemez.
 
@@ -1047,6 +1047,8 @@ Bu kalemlerin bedeli teklife dahil edilse bile kayıtlar müşteri adına açıl
 
 Önce sandbox hesabı kullanılır. Test ve canlı anahtarlar ayrı tutulur.
 
+Footer'da tema sahipliğinde, iyzico eklentisinden bayt değiştirilmeden kopyalanmış kart şeridi ile dile göre iyzico logosu gösterilir. Ödeme sağlayıcısı değişirse tek panel anahtarıyla iki logo birlikte kapatılır; dosyalar Medya Kütüphanesi'nden değiştirilemez. Başlangıç ekranı 12 otomatik başvuru kriterini ve beş manuel belge kutusunu ilgili yönetim ekranlarına bağlar.
+
 **Başvuru sırası:** İncelemeyi yapacak iyzico ekibinin erişebileceği staging/geçici mağaza gerçek ürün/fiyatlar ve gerekli şirket-yasal bilgilerle kullanıma hazır hale getirilir; ardından iyzico başvurusu yapılır. Başvuru sürerken sandbox entegrasyonu test edilir, canlı anahtar onaydan sonra bağlanır. “Erken başvuru kesin reddedilir” varsayılmaz; iyzico'nun güncel başvuru koşulları takip edilir.
 
 ### 18.2 Kargo ilk sürümü
@@ -1113,6 +1115,8 @@ Teklif içine kaç ürünün elle girileceği ve CSV içe aktarma kapsamı tekli
 Mesafeli Satış Sözleşmesi · Ön Bilgilendirme Formu · İade ve Teslimat Koşulları · KVKK Aydınlatma Metni · Çerez Politikası · İletişim.
 
 Bunların tamamı iyzico başvurusundan **önce** canlı olmalıdır.
+
+İletişim sayfası merkezî şirket kısa kodundan ticari unvan, marka, merkez adresi, e-posta, telefon ve yalnız mevcutsa MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS satırlarını gösterir. Eksik değer için yer tutucu veya uydurma bilgi yayımlanmaz; MERSİS/KEP/oda/ETBİS müşteri girdisi bekler.
 
 ### 20.2 Kategoriye özgü — mayo ve iç giyim
 
@@ -1594,6 +1598,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-10 | Faz 8 ödeme logoları tam renkli ve değiştirilmeden tema varlığı olarak tutulur; kart/iyzico varlıkları §11.2 ham renk kuralının belgeli tek istisnasıdır, panel yalnız görünürlüğü yönetir | Mastercard/Visa/iyzico marka kuralları yeniden renklendirmeyi yasaklar; eklenti yoluna doğrudan bağlanmadan güncelleme dayanıklılığı ve operatör güvenliği korunur |
 | 2026-08-09 | Faz 7 paneli görev odaklı Başlangıç/Yönetim Haritası, 13 sekmeli ve aranabilir Site Görünümü, yan yana TR/EN düzenleyiciler ve engellemeyen ürün kontrol listesi kullanır; yakında + noindex korunur | Bakım anlaşması olmayan, teknik seviyesi düşük mağaza sahibinin ekran aramadan doğru yazma kaynağına ulaşması ve kabul sırasında mağazanın/indeksin açılmaması |
 | 2026-08-09 | Faz 6A marka hikâyesi altı sahneli, panel kontrollü ve `IntersectionObserver` tabanlı kaydırma anlatısına dönüştü; `48em` altı, JS kapalı ve `prefers-reduced-motion: reduce` durumları aynı sunucu DOM'undan düz makale gösterir | Kaydırmayı ele geçirmeden editoryal anlatı sağlamak; mobil adres çubuğu/`100svh` kırılganlığını, hareket hassasiyetini ve JS bağımlılığını içerikten ayırmak |
 | 2026-08-09 | Dile göre ayrılan WooCommerce fragment HTML'iyle birlikte `cart_hash_key` de dile göre ayrılır; WooCommerce session cookie ve gerçek sepet ortak kalır | İngilizce sepete ekleme sonrası Türkçe taraftaki eski boş fragment'in ortak yeni hash ile yanlışlıkla geçerli sayılmasını önlemek |
@@ -1791,6 +1796,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 ---
 
 ## 39. Mevcut durum
+
+- [x] Faz 8 footer ödeme şeridi, iki dil logosu, şirket/iletişim alanları ve 12 otomatik + 5 manuel iyzico hazırlık kontrolü tamamlandı
+- [x] Faz 8 ölçümü: otomatik hazırlık 7/12; 14/14 TR/EN viewport yatay taşma 0; Visa 20 CSS px / 5,29 mm
+- [ ] MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS müşteri/iyzico cevabıyla doldurulacak
 
 - [x] Ana yaklaşım belirlendi
 - [x] Ana plan oluşturuldu

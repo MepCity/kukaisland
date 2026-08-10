@@ -71,6 +71,12 @@ wp cache flush
 
 ## 6. Coming soon ile birlikte test erişimi — müşteri kararı
 
+### WooCommerce özel paylaşım bağlantısı — iyzico incelemesi
+
+Yönetici `WooCommerce → Ayarlar → Site görünürlüğü` ekranını açar, **Özel bağlantıyla paylaş / Share store** alanından WooCommerce'in ürettiği bağlantıyı kopyalar ve yalnız iyzico başvuru kanalından iletir. Bağlantı hesap gerektirmez; URL'deki erişim tokenı parola gibi ele alınır. Gerçek URL/token bu depoya, ekran görüntüsüne, issue'a veya e-postanın konu satırına yazılmaz. İnceleme bittiğinde aynı ekrandan bağlantı yenilenir ya da erişim kapatılır.
+
+Alternatif olarak inceleme süresince `Çok yakında` kapatılabilir. Artısı iyzico'nun normal ziyaretçi yolunu görmesidir; eksisi URL bilen herkesin pilot ürünleri ve eksik içerikleri görebilmesidir. `noindex` erişim kontrolü değildir. Bu alternatif ancak müşteri kararı, kısa zaman penceresi ve inceleme sonrası yeniden kapatma kaydıyla kullanılır.
+
 | Seçenek | Nasıl çalışır | Bedel/risk |
 |---|---|---|
 | Şifre korumalı test alt alan adı — önerilen | `test.[ALAN_ADI]` ayrı document root ve HTTP Basic Auth ile yalnız davetlilere açılır; ana alan adındaki coming soon kalır | En temiz ayrım; alt alan adı, SSL ve ikinci kurulum gerekir |
@@ -103,3 +109,17 @@ Müşteri seçimi deploy kaydına yazılır. Önerilen varsayılan, ana coming s
 Test yayını kabul edilmeden önce hedefin yedeği ayrı bir test veritabanı/dizine geri yüklenir. `siteurl`/`home`, yönetici girişi, ana sayfa ve bir ürün görseli açılarak yedeğin gerçekten kullanılabilir olduğu kanıtlanır. Yalnız “yedek alındı” mesajı yeterli değildir.
 
 Kritik hata halinde trafik coming soon/bakım sayfasına alınır; yeni sipariş kabulü durdurulur. Child tema ve Core eklenti önceki paketle değiştirilir; gerekirse yayın öncesi SQL ile `uploads` yedeği geri yüklenir. URL'ler ve cache tekrar doğrulanır, beş smoke akışı çalıştırılır. Geri alınan commit, zaman, sebep ve veri kaybı ihtimali kayıt altına alınır.
+
+## 10. HSTS — üretimde kontrollü etkinleştirme
+
+Faz 8'de HSTS eklenmedi: yerel ortam HTTP çalışıyor, üretim alan adı/TLS zinciri bu turda yetki ve test kapsamında değil. Hatalı başlık ziyaretçiyi HTTPS'e kilitleyebileceği için üretim doğrulaması olmadan tema/PHP katmanına konmaz.
+
+Üretimde bütün sayfalar ve alt kaynaklar HTTPS/200, karma içerik 0 ve sertifika zinciri geçerli olduktan sonra Apache document root `.htaccess` dosyasına `mod_headers` altında yalnız HTTPS yanıtlarında şu düşük başlangıç değeri eklenir:
+
+```apache
+<IfModule mod_headers.c>
+Header always set Strict-Transport-Security "max-age=300" env=HTTPS
+</IfModule>
+```
+
+Bu turda `includeSubDomains` ve `preload` eklenmez. Uygulama sonrası `curl -sSI https://[ALAN_ADI] | grep -i '^strict-transport-security:'` çıktısı `max-age=300` göstermelidir. Sorunda satır kaldırılır, web sunucusu yapılandırması yeniden yüklenir ve 300 saniyelik tarayıcı önbelleğinin dolması beklenir. En az bir hafta hatasız gözlemden sonra süre kademeli artırılır.

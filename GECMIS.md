@@ -1,6 +1,6 @@
 # Kuka Island — geliştirme serüveni
 
-Bu belge **neyi neden yaptığımızı** anlatır. `PLAN.md` sözleşmedir, §38 karar defteridir (177 karar), bu dosya ise hikâyedir: hangi yollara girdik, nerede geri döndük, hangi kuralları neden koyduk.
+Bu belge **neyi neden yaptığımızı** anlatır. `PLAN.md` sözleşmedir, §38 karar defteridir (178 karar), bu dosya ise hikâyedir: hangi yollara girdik, nerede geri döndük, hangi kuralları neden koyduk.
 
 Projeye yeni katılan bir yapay zekâ ya da geliştirici önce bunu okumalı. Sonra `PLAN.md` §38 ve §39'a bakmalı.
 
@@ -369,7 +369,7 @@ Beş smoke akışı: ana sayfa + hero · katalog kartları ve filtre · ürün v
 ### Her turda güncellenen belgeler
 
 ```
-PLAN.md §38   karar günlüğü (177 karar)
+PLAN.md §38   karar günlüğü (178 karar)
 PLAN.md §39   mevcut durum
 docs/BILINEN_SINIRLAMALAR.md
 docs/MUSTERI_SORULARI.md
@@ -402,6 +402,7 @@ docs/qa/                       ekran görüntüleri
 | 5E | Merkezî `/en/` public URL sürekliliği, dile bağlı cart fragments/AJAX, çevrilmeyen alan sınıfı ve Türkçe/İngilizce yedi adımlı ticaret E2E'si |
 | 6A | Altı sahneli, panel kontrollü, JS kapalı/mobil/reduced-motion güvenli marka hikâyesi |
 | 7 | Görev odaklı yönetim haritası, durum/uyarı başlangıcı, 13 sekmeli arama, TR/EN yan yana düzenleme, ürün kontrol listesi ve korunan yakında/noindex |
+| 8 | Tema sahipliğinde iki dilli iyzico/footer ödeme şeridi, iletişimde tek kaynak şirket bilgileri, 12 otomatik + 5 manuel başvuru kontrolü ve ölçümlü QA |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
 
 ---

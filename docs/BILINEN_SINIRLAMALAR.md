@@ -13,18 +13,20 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Bülten formu yalnız onaylı kayıt ve kanıt saklar; toplu veya otomatik pazarlama e-postası göndermez. Bildirim adresi boş bırakılabilir ve bu durumda kayıt yine veritabanında tutulur. Ticari ileti gönderimine geçmeden önce İYS süreci, onay metni, saklama süresi ve silme prosedürü hukuk danışmanıyla kesinleştirilmelidir.
 - Hero metin perdesi müşteri kararıyla tamamen kaldırıldı. Metin okunurluğu seçilen fotoğrafın metin bölgesine, başlık uzunluğuna ve Site Görünümü panelindeki açık/koyu metin tonu seçimine bağlıdır; görsel veya metin değiştirildiğinde Türkçe ve İngilizce birlikte, mobil ve masaüstünde satır bazlı render kontrastıyla yeniden ölçülmelidir.
 - Safari, Firefox, iOS Safari, Android Chrome ve gerçek cihaz Core Web Vitals turu bu projede hâlâ hiç yapılmadı. Faz 6A altı büyük hikâye görseli eklediği için özellikle LCP, INP, bellek ve mobil adres çubuğu davranışı gerçek cihazda yayın öncesi yeniden ölçülmelidir; yerel Chrome sonucu gerçek cihaz kabulü değildir.
+- Faz 8 kart şeridi resmî fakat yalnız 200×21 px raster kaynaktır. 28 CSS px gösterimde Visa 20 CSS px/5,29 mm koşulunu karşılar; 2× retina için kaynak çözünürlüğü yetersizdir ve onaylı vektör/2× kaynak iyzico'dan beklenir.
+- HSTS yerel HTTP ortamında ve üretim TLS doğrulaması olmadan eklenmedi. Düşük `max-age=300` ile kontrollü üretim prosedürü ve geri alma yolu `docs/DEPLOY_RUNBOOK.md` §10'dadır.
 
 ## Müşteri girdisi bekleyen konular
 
 - Kesim listesi, ürün başına renk sayıları ve gerçek fiyatlar henüz teslim edilmedi (soru 4, 5 ve 22).
 - Kargo firması, teslimat süresi ve iade kargo sorumluluğu onaylanmadı. Pilot 149 TL ücret ve müşteri tarafından seçilen 4.000 TL ücretsiz kargo eşiği panel/sayfa/WooCommerce kaynaklarında senkron tutulur.
 - İade için tek süre 14 günlük cayma hakkıdır; değişim hizmeti sunulmaz. Müşteri hijyen metni üç yüzeyde panelden yönetilir ve ayıplı ürün hakları ayrıca saklı tutulur.
-- e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24). Şirket bilgileri (satıcı, VKN, vergi dairesi, adres, telefon) Faz 3G'de girildi; ETBİS numarası panelde yer tutucu olarak `[ETBİS NO]` görünmeye devam eder.
+- e-Fatura durumu ve ETBİS kaydı bilgisi bekleniyor (soru 17 ve 24). ETBİS alanı boş bırakıldı ve bilgi gelene kadar vitrinde satır basmıyor.
 - TC Kimlik No bilinçli olarak hiçbir yere girilmedi ve yayınlanmayacak: mesafeli satış için gerekmiyor, işletme sahibinin kimlik verisini açığa çıkarmak KVKW maruziyeti yaratır.
-- MERSİS numarası müşterinin sözleşmelerindeki gibi `Bulunmamaktadır.` değerindedir.
+- MERSİS, KEP, meslek odası ve davranış kuralları bilgisi bekleniyor. Uydurma veya “bulunmamaktadır” satırı yayımlanmıyor; iyzico'nun şahıs işletmesi için bu alanları isteyip istemediği müşterinin soracağı açık konudur.
 - Üst-alt takım alımında indirim uygulanıp uygulanmayacağı bekleniyor (soru 19).
 - Logo, kurumsal renk/font dosyaları ve varsa marka kullanım kuralları bekleniyor (soru 11). Sunumdaki yazı karakterli logo geçicidir.
-- Sekiz yasal metin müşterinin PDF'lerinden aktarıldı ve görünür taslak uyarısı kaldırıldı. `03 Üyelik ve E-Ticaret Sitesi Kullanım Sözleşmesi`, üyelik sunulmayan siteyle çeliştiği için hukuk danışmanı kararı gelene kadar `/kullanim-kosullari/` altında taslak durumunda ve menülerden gizlidir. `04` §5 beden değişimine izin veren metni de müşteri talebiyle çelişir; hukuk danışmanından çıkarılması istendi, belge bizim tarafımızdan değiştirilmedi. `[ETBİS NO]` yer tutucusu merkezî panelde kalır.
+- Sekiz yasal metin müşterinin PDF'lerinden aktarıldı ve görünür taslak uyarısı kaldırıldı. `03 Üyelik ve E-Ticaret Sitesi Kullanım Sözleşmesi`, üyelik sunulmayan siteyle çeliştiği için hukuk danışmanı kararı gelene kadar `/kullanim-kosullari/` altında taslak durumunda ve menülerden gizlidir. `04` §5 beden değişimine izin veren metni de müşteri talebiyle çelişir; hukuk danışmanından çıkarılması istendi, belge bizim tarafımızdan değiştirilmedi. ETBİS alanı bilgi gelene kadar boş ve vitrinde gizlidir.
 
 ## İlk sürümden sonraki fazlar
 
