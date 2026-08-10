@@ -55,6 +55,9 @@ $brand_story = kuka_content_html(
 $contact_page = kuka_content_html(
 	array(
 		'<p>Sipariş, ürün ve beden soruları için aşağıdaki güncel kanalları kullanabilirsiniz.</p>',
+		'<h2>Şirket ve iletişim bilgileri</h2>',
+		'[kuka_company_details]',
+		'<h2>Destek kanalları</h2>',
 		'[kuka_contact_details]',
 		'<h2>İletişim formu</h2>',
 		'<p class="kuka-service-disabled"><strong>Form şu anda devre dışıdır.</strong> Mesaj gönderim altyapısı bağlanana kadar e-posta, telefon, WhatsApp veya Instagram kanalını kullanın.</p>',
@@ -358,6 +361,9 @@ $english_pages = array(
 	'hakkimizda' => array( 'About Us', $brand_story_en ),
 	'iletisim' => array( 'Contact', kuka_content_html( array(
 		'<p>For questions about orders, products or sizing, please use one of the current contact channels below.</p>',
+		'<h2>Company and contact details</h2>',
+		'[kuka_company_details]',
+		'<h2>Support channels</h2>',
 		'[kuka_contact_details]',
 		'<h2>Contact form</h2>',
 		'<p class="kuka-service-disabled"><strong>The form is currently unavailable.</strong> Until the messaging service is connected, please contact us by email, phone, WhatsApp or Instagram.</p>',
