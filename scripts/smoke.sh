@@ -125,7 +125,7 @@ assert_english_links "$temporary_dir/checkout.html" checkout
 checkout_nonce=$(grep -o 'name="woocommerce-process-checkout-nonce" value="[^"]*"' "$temporary_dir/checkout.html" | head -1 | sed 's/.*value="//;s/"$//')
 [ -n "$checkout_nonce" ] || fail "checkout nonce"
 curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-consent.html" -X POST "${WP_URL%/}/en/odeme/" \
-  --data-urlencode 'billing_first_name=Duman' --data-urlencode 'billing_last_name=Testi' \
+	--data-urlencode 'billing_first_name=' --data-urlencode 'billing_last_name=Testi' \
   --data-urlencode 'billing_email=duman@example.com' --data-urlencode 'billing_phone=05309481996' \
   --data-urlencode 'billing_customer_type=personal' --data-urlencode 'billing_country=TR' \
   --data-urlencode 'billing_address_1=Ata Sk 2' --data-urlencode 'billing_postcode=34335' \
@@ -136,6 +136,9 @@ curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-con
   --data-urlencode 'woocommerce_checkout_place_order=Siparis ver' >/dev/null
 grep -q 'Acceptance of the Pre-information Form is required' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (preinfo)"
 grep -q 'Acceptance of the Distance Sales Agreement is required' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (distance sales)"
+grep -q '<strong>First name</strong> is a required field' "$temporary_dir/checkout-no-consent.html" || fail "English natural checkout field notice"
+! grep -q '<strong>Billing First name</strong>' "$temporary_dir/checkout-no-consent.html" || fail "English prefixed checkout field notice"
+perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-no-consent.html" || fail "server checkout notices inside grid region"
 pass "checkout rendered + two-consent payment gate"
 
 # WooCommerce fragments have separate language cache keys. The explicit AJAX
@@ -167,6 +170,21 @@ curl -sS -L -c "$tr_cookie_jar" -b "$tr_cookie_jar" -o "$temporary_dir/added-tr.
 curl -sS -L -c "$tr_cookie_jar" -b "$tr_cookie_jar" -o "$temporary_dir/cart-tr.html" "${WP_URL%/}/sepet/"
 curl -sS -L -c "$tr_cookie_jar" -b "$tr_cookie_jar" -o "$temporary_dir/checkout-tr.html" "${WP_URL%/}/odeme/"
 grep -q '<html lang="tr"' "$temporary_dir/cart-tr.html" && grep -q 'Ön Bilgilendirme Formu' "$temporary_dir/checkout-tr.html" || fail "Turkish commerce flow"
+tr_checkout_nonce=$(grep -o 'name="woocommerce-process-checkout-nonce" value="[^"]*"' "$temporary_dir/checkout-tr.html" | head -1 | sed 's/.*value="//;s/"$//')
+[ -n "$tr_checkout_nonce" ] || fail "Turkish checkout nonce"
+curl -sS -L -c "$tr_cookie_jar" -b "$tr_cookie_jar" -o "$temporary_dir/checkout-tr-required.html" -X POST "${WP_URL%/}/odeme/" \
+  --data-urlencode 'billing_first_name=' --data-urlencode 'billing_last_name=Testi' \
+  --data-urlencode 'billing_email=duman@example.com' --data-urlencode 'billing_phone=05309481996' \
+  --data-urlencode 'billing_customer_type=personal' --data-urlencode 'billing_country=TR' \
+  --data-urlencode 'billing_address_1=Ata Sk 2' --data-urlencode 'billing_postcode=34335' \
+  --data-urlencode 'billing_city=Besiktas' --data-urlencode 'billing_state=TR34' \
+  --data-urlencode 'payment_method=iyzico' \
+  --data-urlencode "woocommerce-process-checkout-nonce=$tr_checkout_nonce" \
+  --data-urlencode '_wp_http_referer=/odeme/' \
+  --data-urlencode 'woocommerce_checkout_place_order=Siparis ver' >/dev/null
+grep -q '<strong>Ad</strong> gerekli bir alandır' "$temporary_dir/checkout-tr-required.html" || fail "Turkish natural checkout field notice"
+! grep -q '<strong>Fatura Ad</strong>' "$temporary_dir/checkout-tr-required.html" || fail "Turkish prefixed checkout field notice"
+perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-tr-required.html" || fail "Turkish server notices inside grid region"
 pass "Turkish product → cart → checkout flow"
 
 account_code=$(curl -sS -o /dev/null -w '%{http_code}|%{redirect_url}' "${WP_URL%/}/hesabim/")

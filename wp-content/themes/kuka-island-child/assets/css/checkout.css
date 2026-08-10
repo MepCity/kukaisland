@@ -71,13 +71,73 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-product-info));
   align-items: start;
-  gap: var(--space-8);
+  column-gap: var(--space-8);
+  row-gap: 0;
   margin-top: var(--space-6);
+}
+
+/* Sunucu ve AJAX bildirimleri aynı açık grid satırını paylaşır. Boş yuva sıfır
+   yüksekliktedir; böylece normal checkout başlangıcı değişmez. JS, kapanışta
+   içeriği kısa süre koruyarak grid satırı ve alt boşluğu birlikte küçültür. */
+.kuka-checkout__notices {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: grid;
+  grid-template-rows: 0fr;
+  min-width: 0;
+  margin-block-end: 0;
+  opacity: 0;
+  translate: 0 calc(var(--space-1) * -1);
+  visibility: hidden;
+  scroll-margin-block-start: calc(var(--header-height) + var(--space-2));
+  transition:
+    grid-template-rows var(--duration-fast) var(--ease-out),
+    margin-block-end var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out),
+    visibility 0s linear var(--duration-fast);
+}
+
+.kuka-checkout__notices-inner {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* :has() sunucu çıktısını JS kapalıyken görünür tutar. JS açıkken sınıf,
+   WooCommerce düğümü kaldırmadan önce gerçek bir kapanış geçişi sağlar. */
+.woocommerce-checkout form.checkout:not(.kuka-checkout-enhanced) .kuka-checkout__notices:has(
+  .woocommerce-NoticeGroup,
+  .woocommerce-NoticeGroup-checkout,
+  .woocommerce-error,
+  .woocommerce-message,
+  .woocommerce-info
+),
+.kuka-checkout__notices.is-visible {
+  grid-template-rows: 1fr;
+  margin-block-end: var(--space-6);
+  opacity: 1;
+  translate: 0 0;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.kuka-checkout__notices .woocommerce-NoticeGroup,
+.kuka-checkout__notices .woocommerce-error,
+.kuka-checkout__notices .woocommerce-message,
+.kuka-checkout__notices .woocommerce-info {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+.kuka-checkout__notices .woocommerce-error a {
+  display: inline;
 }
 
 .kuka-checkout__fields {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
   min-width: 0;
 }
 
@@ -86,7 +146,7 @@
    Üst boşluk, sayfa kaydırılınca sabitlenen header'ı kadar. */
 .kuka-checkout__summary {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   align-self: start;
   position: sticky;
   top: calc(var(--header-height) + var(--space-2));
@@ -828,7 +888,7 @@
 
   .kuka-checkout__summary {
     grid-column: 1;
-    grid-row: 1;
+    grid-row: 2;
     position: static;
     padding-inline-start: 0;
     padding-bottom: var(--space-3);
@@ -838,7 +898,8 @@
 
   .kuka-checkout__fields {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 3;
+    margin-top: var(--space-6);
   }
 
   .woocommerce-billing-fields__field-wrapper,
@@ -850,5 +911,11 @@
   .woocommerce-checkout .kuka-checkout__fields .form-row-first,
   .woocommerce-checkout .kuka-checkout__fields .form-row-last {
     grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kuka-checkout__notices {
+    transition: none;
   }
 }

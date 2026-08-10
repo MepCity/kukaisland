@@ -22,9 +22,47 @@ add_action(
 	'wp_loaded',
 	static function (): void {
 		remove_action( 'woocommerce_before_checkout_form', 'woocommerce_checkout_coupon_form', 10 );
+		remove_action( 'woocommerce_before_checkout_form_cart_notices', 'woocommerce_output_all_notices', 10 );
 		remove_action( 'woocommerce_checkout_order_review', 'woocommerce_checkout_payment', 20 );
 	}
 );
+
+/**
+ * Use the visible field label in required-field notices.
+ *
+ * WooCommerce prefixes checkout validation labels with their fieldset context
+ * ("Billing" / "Shipping"). The form itself already supplies that context in
+ * its section headings, so repeating it makes Turkish notices read unnaturally.
+ * Looking the original label up by field key changes only the supported notice
+ * filter; field names, posted keys and validation remain untouched.
+ *
+ * @param string $notice      WooCommerce's formatted notice.
+ * @param string $field_label Context-prefixed validation label.
+ * @param string $key         Checkout field key.
+ * @return string
+ */
+function kuka_island_checkout_required_field_notice( string $notice, string $field_label, string $key ): string {
+	unset( $field_label );
+	$checkout = WC()->checkout();
+	if ( ! $checkout instanceof WC_Checkout ) {
+		return $notice;
+	}
+
+	foreach ( $checkout->get_checkout_fields() as $fields ) {
+		if ( ! isset( $fields[ $key ]['label'] ) ) {
+			continue;
+		}
+		$label = trim( wp_strip_all_tags( (string) $fields[ $key ]['label'] ) );
+		if ( '' === $label ) {
+			return $notice;
+		}
+		/* translators: %s: checkout field name */
+		return sprintf( __( '%s is a required field.', 'woocommerce' ), '<strong>' . esc_html( $label ) . '</strong>' );
+	}
+
+	return $notice;
+}
+add_filter( 'woocommerce_checkout_required_field_notice', 'kuka_island_checkout_required_field_notice', 20, 3 );
 
 /**
  * Which optional fields the operator has made mandatory.
