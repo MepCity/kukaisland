@@ -15,7 +15,31 @@
   ].join(',');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const requiredMessage = window.kukaIslandCheckout?.required || 'This field is required.';
+  const phone = form.querySelector('#billing_phone');
   let scheduled = false;
+
+  const phoneDigits = (value) => {
+    let digits = value.replace(/\D/g, '');
+    if (digits.length >= 12 && digits.startsWith('90')) digits = digits.slice(2);
+    else if (digits.length >= 11 && digits.startsWith('0')) digits = digits.slice(1);
+    if (digits && !digits.startsWith('5')) return '5';
+    return digits.slice(0, 10);
+  };
+
+  const formatPhone = (value) => {
+    const digits = phoneDigits(value);
+    return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 8), digits.slice(8, 10)].filter(Boolean).join(' ');
+  };
+
+  if (phone) {
+    phone.value = formatPhone(phone.value);
+    phone.addEventListener('focus', () => {
+      if (!phone.value) phone.value = '5';
+    });
+    phone.addEventListener('input', () => {
+      phone.value = formatPhone(phone.value) || (document.activeElement === phone ? '5' : '');
+    });
+  }
 
   const topLevelNotices = () => Array.from(inner.children).filter((node) => node.matches?.(noticeSelector));
 

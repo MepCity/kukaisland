@@ -249,6 +249,7 @@ final class Kuka_Island_Core_Language {
 			'Kurumsal fatura için vergi dairesi zorunludur.' => 'Tax office is required for a business invoice.',
 			'VKN 10 rakamdan oluşmalıdır.' => 'The tax number must contain 10 digits.',
 			'Bu alan zorunludur.' => 'This field is required.',
+			'Telefon numarası 5XX XXX XX XX biçiminde olmalıdır.' => 'The phone number must use the 5XX XXX XX XX format.',
 			'Ön Bilgilendirme Formu onayı zorunludur.' => 'Acceptance of the Pre-information Form is required.',
 			'Mesafeli Satış Sözleşmesi onayı zorunludur.' => 'Acceptance of the Distance Sales Agreement is required.',
 			'Siparişinizi sipariş numarası ve e-posta adresinizle takip edin' => 'Track your order with your order number and email address',

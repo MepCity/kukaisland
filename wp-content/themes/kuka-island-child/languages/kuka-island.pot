@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-10T20:41:10+00:00\n"
+"POT-Creation-Date: 2026-08-10T21:37:23+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -186,36 +186,41 @@ msgstr ""
 msgid "Sepeti kapat"
 msgstr ""
 
-#: inc/assets.php:144
+#: inc/assets.php:99
+#: inc/checkout.php:318
+msgid "Bu alan zorunludur."
+msgstr ""
+
+#: inc/assets.php:151
 #: woocommerce/content-product.php:55
 msgid "Tükendi"
 msgstr ""
 
-#: inc/assets.php:145
+#: inc/assets.php:152
 #: woocommerce/single-product/product-image.php:26
 #, php-format
 msgid "%1$s; tam ekran aç (%2$d/%3$d)"
 msgstr ""
 
-#: inc/assets.php:146
+#: inc/assets.php:153
 msgid "Renk seçimi"
 msgstr ""
 
-#: inc/assets.php:147
+#: inc/assets.php:154
 #, php-format
 msgid "%s rengini seç"
 msgstr ""
 
-#: inc/assets.php:148
+#: inc/assets.php:155
 msgid "Beden seçimi"
 msgstr ""
 
-#: inc/assets.php:149
+#: inc/assets.php:156
 #, php-format
 msgid "%s beden tükendi"
 msgstr ""
 
-#: inc/assets.php:150
+#: inc/assets.php:157
 #, php-format
 msgid "%s beden stokta"
 msgstr ""
@@ -287,59 +292,64 @@ msgstr ""
 msgid "Filtreleri temizle"
 msgstr ""
 
-#: inc/checkout.php:234
+#: inc/checkout.php:258
 msgid "Teslimat adresi"
 msgstr ""
 
-#: inc/checkout.php:235
+#: inc/checkout.php:259
 msgid "Fatura bilgileri"
 msgstr ""
 
-#: inc/checkout.php:261
+#: inc/checkout.php:296
+#: inc/checkout.php:323
+msgid "Telefon numarası 5XX XXX XX XX biçiminde olmalıdır."
+msgstr ""
+
+#: inc/checkout.php:357
 msgid "Kişisel bilgiler"
 msgstr ""
 
-#: inc/checkout.php:339
+#: inc/checkout.php:435
 msgid "Sepet"
 msgstr ""
 
-#: inc/checkout.php:340
+#: inc/checkout.php:436
 msgid "Bilgiler ve ödeme"
 msgstr ""
 
-#: inc/checkout.php:341
+#: inc/checkout.php:437
 msgid "Onay"
 msgstr ""
 
-#: inc/checkout.php:344
+#: inc/checkout.php:440
 msgid "Ödeme adımları"
 msgstr ""
 
 #. translators: 1: current step number, 2: total step count.
-#: inc/checkout.php:347
+#: inc/checkout.php:443
 #, php-format
 msgid "%1$d / %2$d"
 msgstr ""
 
 #. translators: %d is the statutory withdrawal window in days.
-#: inc/checkout.php:390
+#: inc/checkout.php:486
 #, php-format
 msgid "%d gün içinde cayma hakkı"
 msgstr ""
 
-#: inc/checkout.php:394
+#: inc/checkout.php:490
 msgid "Yardım gerekiyor mu?"
 msgstr ""
 
-#: inc/checkout.php:395
+#: inc/checkout.php:491
 msgid "Güvenli ödeme"
 msgstr ""
 
-#: inc/checkout.php:395
+#: inc/checkout.php:491
 msgid "Ödeme iyzico altyapısında alınır ve 3D Secure doğrulamasıyla tamamlanır. Kart bilgileriniz Kuka Island sunucusunda saklanmaz."
 msgstr ""
 
-#: inc/checkout.php:396
+#: inc/checkout.php:492
 msgid "Kargo ve iade"
 msgstr ""
 
