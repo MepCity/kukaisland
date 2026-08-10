@@ -11,7 +11,6 @@ if ( 'smtp' === $mode ) {
 	define( 'KUKA_SMTP_USERNAME', 'acceptance-' . 'user' );
 	define( 'KUKA_SMTP_PASSWORD', hash( 'sha256', __FILE__ ) );
 	define( 'KUKA_SMTP_ENCRYPTION', 'tls' );
-	define( 'KUKA_SMTP_FROM_EMAIL', 'siparis@' . 'kukaisland.com' );
 	define( 'KUKA_SMTP_FROM_NAME', 'Kuka ' . 'Island' );
 	define( 'KUKA_SMTP_REPLY_TO_EMAIL', 'destek@' . 'kukaisland.com' );
 	define( 'KUKA_SMTP_REPLY_TO_NAME', 'Kuka ' . 'Island Destek' );
@@ -26,7 +25,10 @@ if ( 'smtp' === $mode ) {
 	$mailer = new PHPMailer\PHPMailer\PHPMailer( true );
 	do_action( 'phpmailer_init', $mailer );
 	echo 'SMTP_TRANSPORT=' . ( 'smtp' === $mailer->Mailer ? 'smtp' : $mailer->Mailer ) . PHP_EOL;
-	echo 'SMTP_IDENTITY=' . ( 'siparis@kukaisland.com' === apply_filters( 'wp_mail_from', 'wordpress@example.test' ) && 'Kuka Island' === apply_filters( 'wp_mail_from_name', 'WordPress' ) ? 'fixed' : 'invalid' ) . PHP_EOL;
+	$wp_from = apply_filters( 'wp_mail_from', 'wordpress@example.test' );
+	$woo_from = apply_filters( 'woocommerce_email_from_address', 'store@example.test' );
+	echo 'SMTP_IDENTITY=' . ( 'info@kukaisland.com' === $wp_from && 'Kuka Island' === apply_filters( 'wp_mail_from_name', 'WordPress' ) ? 'fixed' : 'invalid' ) . PHP_EOL;
+	echo 'MAIL_FROM_IDENTITIES=' . ( $wp_from === $woo_from ? 'wp=woo:' . $wp_from : 'diverged' ) . PHP_EOL;
 	$reply_to_addresses = $mailer->getReplyToAddresses();
 	echo 'SMTP_REPLY_TO=' . ( in_array( 'destek@kukaisland.com', array_column( $reply_to_addresses, 0 ), true ) ? 'separate' : 'missing' ) . PHP_EOL;
 	exit;

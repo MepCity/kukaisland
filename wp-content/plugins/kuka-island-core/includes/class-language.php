@@ -33,7 +33,7 @@ final class Kuka_Island_Core_Language {
 				'help' => array( 'key' => 'help_labels_en', 'mode' => 'labels' ),
 			),
 			'footer' => array_merge(
-				self::simple_fields( array( 'newsletter_eyebrow', 'newsletter_title', 'newsletter_copy', 'newsletter_consent', 'payment_label' ) ),
+				self::simple_fields( array( 'newsletter_eyebrow', 'newsletter_title', 'newsletter_copy', 'newsletter_consent' ) ),
 				array(
 					'help_links' => array( 'key' => 'help_links_labels_en', 'mode' => 'labels' ),
 					'legal_links' => array( 'key' => 'legal_links_labels_en', 'mode' => 'labels' ),
@@ -98,7 +98,6 @@ final class Kuka_Island_Core_Language {
 				'newsletter_title_en' => 'Join our island letters',
 				'newsletter_copy_en' => 'Join our email list for new collections and notes from the studio.',
 				'newsletter_consent_en' => 'I have read the Privacy Policy and consent to receiving communications.',
-				'payment_label_en' => 'Secure payment',
 				'help_links_labels_en' => "Size Guide\nShipping & Delivery\nReturns\nFrequently Asked Questions\nContact\nOrder Tracking",
 				'legal_links_labels_en' => "Distance Sales Agreement\nPre-information Form\nRight of Withdrawal and Returns\nKVKK Privacy Notice\nPrivacy Policy\nCookie Policy\nExplicit Consent Text",
 			),

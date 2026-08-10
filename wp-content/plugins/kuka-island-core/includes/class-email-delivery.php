@@ -21,6 +21,7 @@ final class Kuka_Island_Core_Email_Delivery {
 		add_action( 'wp_mail_failed', array( $this, 'capture_wp_mail_error' ) );
 		add_action( 'phpmailer_init', array( $this, 'configure_smtp' ) );
 		add_filter( 'wp_mail_from', array( $this, 'mail_from' ) );
+		add_filter( 'woocommerce_email_from_address', array( $this, 'mail_from' ) );
 		add_filter( 'wp_mail_from_name', array( $this, 'mail_from_name' ) );
 		add_filter( 'woocommerce_email_headers', array( $this, 'capture_order_context' ), 1, 4 );
 		add_filter( 'kuka_island_operator_warnings', array( $this, 'add_operator_warnings' ) );
@@ -106,8 +107,8 @@ final class Kuka_Island_Core_Email_Delivery {
 	}
 
 	public function mail_from( string $from ): string {
-		$config = self::smtp_config();
-		return null === $config ? $from : $config['from_email'];
+		unset( $from );
+		return self::sender_email();
 	}
 
 	public function mail_from_name( string $name ): string {
@@ -201,7 +202,7 @@ final class Kuka_Island_Core_Email_Delivery {
 
 	/** @return null|array<string, mixed> */
 	private static function smtp_config(): ?array {
-		$required = array( 'KUKA_SMTP_HOST', 'KUKA_SMTP_PORT', 'KUKA_SMTP_USERNAME', 'KUKA_SMTP_PASSWORD', 'KUKA_SMTP_ENCRYPTION', 'KUKA_SMTP_FROM_EMAIL', 'KUKA_SMTP_FROM_NAME' );
+		$required = array( 'KUKA_SMTP_HOST', 'KUKA_SMTP_PORT', 'KUKA_SMTP_USERNAME', 'KUKA_SMTP_PASSWORD', 'KUKA_SMTP_ENCRYPTION', 'KUKA_SMTP_FROM_NAME' );
 		foreach ( $required as $constant ) {
 			if ( ! defined( $constant ) || '' === trim( (string) constant( $constant ) ) ) {
 				return null;
@@ -209,7 +210,7 @@ final class Kuka_Island_Core_Email_Delivery {
 		}
 
 		$encryption = strtolower( trim( (string) KUKA_SMTP_ENCRYPTION ) );
-		$from_email = sanitize_email( (string) KUKA_SMTP_FROM_EMAIL );
+		$from_email = self::sender_email();
 		if ( ! in_array( $encryption, array( 'tls', 'ssl', 'none' ), true ) || (int) KUKA_SMTP_PORT < 1 || ! is_email( $from_email ) || ! str_ends_with( strtolower( $from_email ), '@kukaisland.com' ) ) {
 			return null;
 		}
@@ -226,6 +227,13 @@ final class Kuka_Island_Core_Email_Delivery {
 			'reply_to_email' => is_email( $reply_to ) ? $reply_to : '',
 			'reply_to_name' => defined( 'KUKA_SMTP_REPLY_TO_NAME' ) ? sanitize_text_field( (string) KUKA_SMTP_REPLY_TO_NAME ) : '',
 		);
+	}
+
+	/** Keep WordPress and WooCommerce on the public site e-mail source. */
+	private static function sender_email(): string {
+		$content = class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? Kuka_Island_Core_Site_Appearance::get() : array();
+		$email   = sanitize_email( (string) ( $content['brand']['email'] ?? '' ) );
+		return is_email( $email ) ? $email : 'info@kukaisland.com';
 	}
 
 	private function record_failure( string $message ): void {
