@@ -33,7 +33,7 @@ final class Kuka_Island_Core_Language {
 				'help' => array( 'key' => 'help_labels_en', 'mode' => 'labels' ),
 			),
 			'footer' => array_merge(
-				self::simple_fields( array( 'newsletter_eyebrow', 'newsletter_title', 'newsletter_copy', 'newsletter_consent' ) ),
+				self::simple_fields( array( 'newsletter_eyebrow', 'newsletter_title', 'newsletter_copy', 'newsletter_consent', 'payment_label' ) ),
 				array(
 					'help_links' => array( 'key' => 'help_links_labels_en', 'mode' => 'labels' ),
 					'legal_links' => array( 'key' => 'legal_links_labels_en', 'mode' => 'labels' ),
@@ -98,6 +98,7 @@ final class Kuka_Island_Core_Language {
 				'newsletter_title_en' => 'Join our island letters',
 				'newsletter_copy_en' => 'Join our email list for new collections and notes from the studio.',
 				'newsletter_consent_en' => 'I have read the Privacy Policy and consent to receiving communications.',
+				'payment_label_en' => 'Secure payment',
 				'help_links_labels_en' => "Size Guide\nShipping & Delivery\nReturns\nFrequently Asked Questions\nContact\nOrder Tracking",
 				'legal_links_labels_en' => "Distance Sales Agreement\nPre-information Form\nRight of Withdrawal and Returns\nKVKK Privacy Notice\nPrivacy Policy\nCookie Policy\nExplicit Consent Text",
 			),
@@ -201,7 +202,12 @@ final class Kuka_Island_Core_Language {
 		$map = array(
 			'E-posta adresi' => 'Email address', 'Katıl' => 'Join', 'Şirket' => 'Company',
 			'E-posta' => 'Email', 'E-posta:' => 'Email:', 'Telefon' => 'Phone', 'Telefon:' => 'Phone:',
-			'Destek saatleri:' => 'Support hours:', 'Adres' => 'Address',
+			'Destek saatleri:' => 'Support hours:', 'Adres' => 'Address', 'Satıcı' => 'Seller', 'Marka' => 'Brand',
+			'Vergi Dairesi' => 'Tax Office', 'Vergi Kimlik No' => 'Tax Identification Number', 'MERSİS No' => 'MERSIS Number',
+			'KEP adresi' => 'Registered Email (KEP)', 'Meslek odası' => 'Professional Chamber',
+			'Kayıtlı olunan meslek odası' => 'Professional Chamber',
+			'Mesleki davranış kuralları' => 'Professional Code of Conduct',
+			'Uygulanan mesleki davranış kuralları' => 'Professional Code of Conduct', 'ETBİS numarası' => 'ETBIS Number',
 			'Bikini üstü' => 'Bikini top', 'Bikini altı' => 'Bikini bottom', 'Mayo' => 'Swimsuit',
 			'Göğüs (cm)' => 'Bust (cm)', 'Göğüs altı (cm)' => 'Underbust (cm)', 'Bel (cm)' => 'Waist (cm)',
 			'Kalça (cm)' => 'Hips (cm)', 'Kupa' => 'Cup',
