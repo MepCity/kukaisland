@@ -115,6 +115,7 @@ checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir
 grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
 grep -q 'I have read and accept the Pre-information Form' "$temporary_dir/checkout.html" || fail "English checkout legal consent"
 ! grep -q 'admin@kukaisland.test' "$temporary_dir/checkout.html" || fail "checkout administrator email leak"
+grep -q 'placeholder="5XX XXX XX XX"' "$temporary_dir/checkout.html" && grep -Fq 'pattern="5[0-9]{2} [0-9]{3} [0-9]{2} [0-9]{2}"' "$temporary_dir/checkout.html" || fail "checkout Turkish mobile input contract"
 assert_english_links "$temporary_dir/checkout.html" checkout
 # Raw HTML may contain translated account words inside third-party script data
 # even when no control is rendered. Assert the actual storefront structures;
@@ -127,7 +128,7 @@ checkout_nonce=$(grep -o 'name="woocommerce-process-checkout-nonce" value="[^"]*
 [ -n "$checkout_nonce" ] || fail "checkout nonce"
 curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir/checkout-no-consent.html" -X POST "${WP_URL%/}/en/odeme/" \
 	--data-urlencode 'billing_first_name=' --data-urlencode 'billing_last_name=Testi' \
-  --data-urlencode 'billing_email=duman@example.com' --data-urlencode 'billing_phone=05309481996' \
+  --data-urlencode 'billing_email=duman@example.com' --data-urlencode 'billing_phone=123' \
   --data-urlencode 'billing_customer_type=personal' --data-urlencode 'billing_country=TR' \
   --data-urlencode 'billing_address_1=Ata Sk 2' --data-urlencode 'billing_postcode=34335' \
   --data-urlencode 'billing_city=Besiktas' --data-urlencode 'billing_state=TR34' \
@@ -141,6 +142,8 @@ grep -q '<strong>First name</strong> is a required field' "$temporary_dir/checko
 ! grep -q '<strong>Billing First name</strong>' "$temporary_dir/checkout-no-consent.html" || fail "English prefixed checkout field notice"
 grep -q 'id="billing_first_name" aria-invalid="true" aria-describedby="billing_first_name_error"' "$temporary_dir/checkout-no-consent.html" || fail "English no-JS invalid field association"
 grep -q 'id="billing_first_name_error">This field is required\.' "$temporary_dir/checkout-no-consent.html" || fail "English no-JS inline required message"
+grep -q 'The phone number must use the 5XX XXX XX XX format\.' "$temporary_dir/checkout-no-consent.html" || fail "English phone format validation"
+grep -q 'id="billing_phone_error">The phone number must use the 5XX XXX XX XX format\.' "$temporary_dir/checkout-no-consent.html" || fail "English no-JS inline phone association"
 grep -q 'data-id="kuka_preinfo_accepted"' "$temporary_dir/checkout-no-consent.html" || fail "English consent error field association"
 perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-no-consent.html" || fail "server checkout notices inside grid region"
 pass "checkout rendered + two-consent payment gate"
@@ -190,6 +193,7 @@ grep -q '<strong>Ad</strong> gerekli bir alandır' "$temporary_dir/checkout-tr-r
 ! grep -q '<strong>Fatura Ad</strong>' "$temporary_dir/checkout-tr-required.html" || fail "Turkish prefixed checkout field notice"
 grep -q 'id="billing_first_name" aria-invalid="true" aria-describedby="billing_first_name_error"' "$temporary_dir/checkout-tr-required.html" || fail "Turkish no-JS invalid field association"
 grep -q 'id="billing_first_name_error">Bu alan zorunludur\.' "$temporary_dir/checkout-tr-required.html" || fail "Turkish no-JS inline required message"
+! grep -q 'Telefon numarası 5XX XXX XX XX biçiminde olmalıdır\.' "$temporary_dir/checkout-tr-required.html" || fail "Turkish 0-prefixed phone normalization"
 grep -q 'data-id="kuka_preinfo_accepted"' "$temporary_dir/checkout-tr-required.html" || fail "Turkish consent error field association"
 perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-tr-required.html" || fail "Turkish server notices inside grid region"
 pass "Turkish product → cart → checkout flow"

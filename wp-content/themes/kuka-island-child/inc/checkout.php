@@ -139,6 +139,13 @@ function kuka_island_checkout_field_order( array $fields ): array {
 	if ( isset( $fields['billing']['billing_email'], $fields['billing']['billing_phone'] ) ) {
 		$fields['billing']['billing_email']['class'] = array( 'form-row-first' );
 		$fields['billing']['billing_phone']['class'] = array( 'form-row-last' );
+		$fields['billing']['billing_phone']['placeholder'] = '5XX XXX XX XX';
+		$fields['billing']['billing_phone']['autocomplete'] = 'tel-national';
+		$fields['billing']['billing_phone']['custom_attributes'] = array(
+			'inputmode' => 'numeric',
+			'maxlength' => '18',
+			'pattern'   => '5[0-9]{2} [0-9]{3} [0-9]{2} [0-9]{2}',
+		);
 	}
 	// Fatura adresi bloğu yalnız adres bileşenlerini sorar; alıcı adı ve şirket
 	// bilgisi kişisel/fatura bölümlerinden gelir ve gönderimde kopyalanır.
@@ -258,6 +265,40 @@ function kuka_island_checkout_section_headings( string $field, string $key ): st
 }
 add_filter( 'woocommerce_form_field', 'kuka_island_checkout_section_headings', 10, 2 );
 
+/** Normalize Turkish mobile numbers to the ten-digit national form. */
+function kuka_island_checkout_mobile_digits( string $value ): string {
+	$digits = preg_replace( '/\D+/', '', $value ) ?? '';
+	if ( 12 === strlen( $digits ) && str_starts_with( $digits, '90' ) ) {
+		$digits = substr( $digits, 2 );
+	} elseif ( 11 === strlen( $digits ) && str_starts_with( $digits, '0' ) ) {
+		$digits = substr( $digits, 1 );
+	}
+	return $digits;
+}
+
+/** Store one canonical phone representation regardless of pasted formatting. */
+function kuka_island_checkout_normalize_phone( array $data ): array {
+	if ( isset( $data['billing_phone'] ) ) {
+		$data['billing_phone'] = kuka_island_checkout_mobile_digits( (string) $data['billing_phone'] );
+	}
+	return $data;
+}
+add_filter( 'woocommerce_checkout_posted_data', 'kuka_island_checkout_normalize_phone', 8 );
+
+/** Reject incomplete or non-mobile Turkish phone numbers on the server. */
+function kuka_island_checkout_validate_phone( array $data, WP_Error $errors ): void {
+	$phone = (string) ( $data['billing_phone'] ?? '' );
+	if ( '' === $phone || preg_match( '/^5\d{9}$/', $phone ) ) {
+		return;
+	}
+	$errors->add(
+		'billing_phone_format',
+		__( 'Telefon numarası 5XX XXX XX XX biçiminde olmalıdır.', 'kuka-island' ),
+		array( 'id' => 'billing_phone' )
+	);
+}
+add_action( 'woocommerce_after_checkout_validation', 'kuka_island_checkout_validate_phone', 10, 2 );
+
 /**
  * Preserve field-level required errors in the server-rendered, no-JS response.
  * The enhanced checkout builds the same markup from AJAX error data.
@@ -270,11 +311,17 @@ add_filter( 'woocommerce_form_field', 'kuka_island_checkout_section_headings', 1
  */
 function kuka_island_checkout_server_field_error( string $field, string $key, array $args, $value ): string {
 	unset( $value );
-	if ( ! is_checkout() || 'POST' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) || empty( $args['required'] ) ) {
+	if ( ! is_checkout() || 'POST' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) || ( empty( $args['required'] ) && 'billing_phone' !== $key ) ) {
 		return $field;
 	}
 	$posted = isset( $_POST[ $key ] ) ? trim( (string) wc_clean( wp_unslash( $_POST[ $key ] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-	if ( '' !== $posted ) {
+	$message = esc_html__( 'Bu alan zorunludur.', 'kuka-island' );
+	if ( 'billing_phone' === $key && '' !== $posted ) {
+		if ( preg_match( '/^5\d{9}$/', kuka_island_checkout_mobile_digits( $posted ) ) ) {
+			return $field;
+		}
+		$message = esc_html__( 'Telefon numarası 5XX XXX XX XX biçiminde olmalıdır.', 'kuka-island' );
+	} elseif ( '' !== $posted || empty( $args['required'] ) ) {
 		return $field;
 	}
 
@@ -285,7 +332,7 @@ function kuka_island_checkout_server_field_error( string $field, string $key, ar
 		'id="' . esc_attr( $key ) . '" aria-invalid="true" aria-describedby="' . esc_attr( $error_id ) . '"',
 		$field
 	);
-	$error = '<span class="kuka-field-error" id="' . esc_attr( $error_id ) . '">' . esc_html__( 'Bu alan zorunludur.', 'kuka-island' ) . '</span>';
+	$error = '<span class="kuka-field-error" id="' . esc_attr( $error_id ) . '">' . $message . '</span>';
 	return preg_replace( '/<\/p>\s*$/', $error . '</p>', $field, 1 ) ?? $field . $error;
 }
 add_filter( 'woocommerce_form_field', 'kuka_island_checkout_server_field_error', 20, 4 );
