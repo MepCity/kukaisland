@@ -92,6 +92,13 @@ function kuka_island_child_enqueue_assets(): void {
 	if ( is_checkout() ) {
 		kuka_island_enqueue_style( 'checkout', array( 'kuka-island-cart' ) );
 		kuka_island_enqueue_script( 'checkout', array( 'kuka-island-storefront', 'jquery', 'wc-checkout' ) );
+		wp_localize_script(
+			'kuka-island-checkout',
+			'kukaIslandCheckout',
+			array(
+				'required' => __( 'Bu alan zorunludur.', 'kuka-island' ),
+			)
+		);
 	}
 	if ( is_page() ) {
 		kuka_island_enqueue_style( 'content', array( 'kuka-island-global' ) );

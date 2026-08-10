@@ -114,6 +114,7 @@ checkout_code=$(curl -sS -L -c "$cookie_jar" -b "$cookie_jar" -o "$temporary_dir
 [ "$(grep -o 'name="kuka_[^"]*_accepted"' "$temporary_dir/checkout.html" | sort -u | wc -l | tr -d ' ')" = "2" ] || fail "checkout legal consents"
 grep -q 'id="place_order"' "$temporary_dir/checkout.html" || fail "checkout payment button"
 grep -q 'I have read and accept the Pre-information Form' "$temporary_dir/checkout.html" || fail "English checkout legal consent"
+! grep -q 'admin@kukaisland.test' "$temporary_dir/checkout.html" || fail "checkout administrator email leak"
 assert_english_links "$temporary_dir/checkout.html" checkout
 # Raw HTML may contain translated account words inside third-party script data
 # even when no control is rendered. Assert the actual storefront structures;
@@ -138,6 +139,9 @@ grep -q 'Acceptance of the Pre-information Form is required' "$temporary_dir/che
 grep -q 'Acceptance of the Distance Sales Agreement is required' "$temporary_dir/checkout-no-consent.html" || fail "checkout consent gate (distance sales)"
 grep -q '<strong>First name</strong> is a required field' "$temporary_dir/checkout-no-consent.html" || fail "English natural checkout field notice"
 ! grep -q '<strong>Billing First name</strong>' "$temporary_dir/checkout-no-consent.html" || fail "English prefixed checkout field notice"
+grep -q 'id="billing_first_name" aria-invalid="true" aria-describedby="billing_first_name_error"' "$temporary_dir/checkout-no-consent.html" || fail "English no-JS invalid field association"
+grep -q 'id="billing_first_name_error">This field is required\.' "$temporary_dir/checkout-no-consent.html" || fail "English no-JS inline required message"
+grep -q 'data-id="kuka_preinfo_accepted"' "$temporary_dir/checkout-no-consent.html" || fail "English consent error field association"
 perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-no-consent.html" || fail "server checkout notices inside grid region"
 pass "checkout rendered + two-consent payment gate"
 
@@ -184,6 +188,9 @@ curl -sS -L -c "$tr_cookie_jar" -b "$tr_cookie_jar" -o "$temporary_dir/checkout-
   --data-urlencode 'woocommerce_checkout_place_order=Siparis ver' >/dev/null
 grep -q '<strong>Ad</strong> gerekli bir alandır' "$temporary_dir/checkout-tr-required.html" || fail "Turkish natural checkout field notice"
 ! grep -q '<strong>Fatura Ad</strong>' "$temporary_dir/checkout-tr-required.html" || fail "Turkish prefixed checkout field notice"
+grep -q 'id="billing_first_name" aria-invalid="true" aria-describedby="billing_first_name_error"' "$temporary_dir/checkout-tr-required.html" || fail "Turkish no-JS invalid field association"
+grep -q 'id="billing_first_name_error">Bu alan zorunludur\.' "$temporary_dir/checkout-tr-required.html" || fail "Turkish no-JS inline required message"
+grep -q 'data-id="kuka_preinfo_accepted"' "$temporary_dir/checkout-tr-required.html" || fail "Turkish consent error field association"
 perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-tr-required.html" || fail "Turkish server notices inside grid region"
 pass "Turkish product → cart → checkout flow"
 

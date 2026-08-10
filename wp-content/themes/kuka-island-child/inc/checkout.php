@@ -65,6 +65,23 @@ function kuka_island_checkout_required_field_notice( string $notice, string $fie
 add_filter( 'woocommerce_checkout_required_field_notice', 'kuka_island_checkout_required_field_notice', 20, 3 );
 
 /**
+ * Keep the store administrator address out of storefront checkout previews.
+ * Real customer account data and values deliberately entered in the session
+ * continue to use WooCommerce's normal persistence rules.
+ *
+ * @param mixed  $value Checkout field value.
+ * @param string $key   Checkout field key.
+ * @return mixed
+ */
+function kuka_island_checkout_hide_manager_email( $value, string $key ) {
+	if ( 'billing_email' !== $key || ! is_user_logged_in() || ! current_user_can( 'manage_woocommerce' ) ) {
+		return $value;
+	}
+	return '';
+}
+add_filter( 'woocommerce_checkout_get_value', 'kuka_island_checkout_hide_manager_email', 20, 2 );
+
+/**
  * Which optional fields the operator has made mandatory.
  *
  * Only fields the law leaves to the seller are listed. Name, surname, e-mail,
@@ -240,6 +257,38 @@ function kuka_island_checkout_section_headings( string $field, string $key ): st
 		. '<span class="kuka-checkout-section" role="heading" aria-level="3">' . esc_html( $label ) . '</span></p>' . $field;
 }
 add_filter( 'woocommerce_form_field', 'kuka_island_checkout_section_headings', 10, 2 );
+
+/**
+ * Preserve field-level required errors in the server-rendered, no-JS response.
+ * The enhanced checkout builds the same markup from AJAX error data.
+ *
+ * @param string               $field Rendered field markup.
+ * @param string               $key   Field key.
+ * @param array<string, mixed> $args  Field arguments.
+ * @param mixed                $value Field value.
+ * @return string
+ */
+function kuka_island_checkout_server_field_error( string $field, string $key, array $args, $value ): string {
+	unset( $value );
+	if ( ! is_checkout() || 'POST' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) || empty( $args['required'] ) ) {
+		return $field;
+	}
+	$posted = isset( $_POST[ $key ] ) ? trim( (string) wc_clean( wp_unslash( $_POST[ $key ] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	if ( '' !== $posted ) {
+		return $field;
+	}
+
+	$error_id = $key . '_error';
+	$field    = preg_replace( '/class="form-row\s+/', 'class="form-row kuka-field-invalid ', $field, 1 ) ?? $field;
+	$field    = str_replace(
+		'id="' . esc_attr( $key ) . '"',
+		'id="' . esc_attr( $key ) . '" aria-invalid="true" aria-describedby="' . esc_attr( $error_id ) . '"',
+		$field
+	);
+	$error = '<span class="kuka-field-error" id="' . esc_attr( $error_id ) . '">' . esc_html__( 'Bu alan zorunludur.', 'kuka-island' ) . '</span>';
+	return preg_replace( '/<\/p>\s*$/', $error . '</p>', $field, 1 ) ?? $field . $error;
+}
+add_filter( 'woocommerce_form_field', 'kuka_island_checkout_server_field_error', 20, 4 );
 
 /**
  * Short security note above the payment cards. The sentence is panel-owned so
