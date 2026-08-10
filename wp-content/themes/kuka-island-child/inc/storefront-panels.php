@@ -26,14 +26,23 @@ function kuka_island_cart_title_markup(): string {
 function kuka_island_shipping_progress(): string {
 	$content   = kuka_island_content();
 	$threshold = max( 0.0, (float) ( $content['commercial']['free_shipping_threshold'] ?? 0 ) );
-	$subtotal  = WC()->cart ? (float) WC()->cart->get_displayed_subtotal() : 0.0;
+	$subtotal             = WC()->cart ? (float) WC()->cart->get_displayed_subtotal() : 0.0;
+	$free_shipping_coupon = false;
+	if ( WC()->cart ) {
+		foreach ( WC()->cart->get_coupons() as $coupon ) {
+			if ( $coupon instanceof WC_Coupon && $coupon->get_free_shipping() ) {
+				$free_shipping_coupon = true;
+				break;
+			}
+		}
+	}
 	if ( WC()->cart && 'no' === ( $content['commercial']['ignore_discounts'] ?? 'no' ) ) {
 		$subtotal -= (float) WC()->cart->get_discount_total();
 		if ( WC()->cart->display_prices_including_tax() ) {
 			$subtotal -= (float) WC()->cart->get_discount_tax();
 		}
 	}
-	$remaining = max( 0.0, $threshold - $subtotal );
+	$remaining = $free_shipping_coupon ? 0.0 : max( 0.0, $threshold - $subtotal );
 	$price     = html_entity_decode( wp_strip_all_tags( wc_price( $remaining ) ), ENT_QUOTES, get_bloginfo( 'charset' ) );
 
 	if ( $threshold <= 0 ) {

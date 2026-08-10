@@ -1803,11 +1803,13 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-10 | İçerik belgesi `h2` başlıkları yeni `--text-heading-document` token'ına ayrıldı | Global `--text-heading-medium` tema genelinde katalog, sepet, checkout ve hikâyede kullanılıyor; onu değiştirmek yerine yalnız `.kuka-prose h2` 1440'ta 43,2 px'ten 28,8 px'e indirilir |
 | 2026-08-10 | Site ve işlemsel gönderici e-postasının tek kaynağı `brand.email=info@kukaisland.com` oldu | `wp_mail_from`, WooCommerce gönderici filtresi, SMTP From ve footer aynı panel/seed değerini okur; hukuk belgelerindeki eski adres hukuk danışmanı kararı olmadan değiştirilmez |
 | 2026-08-10 | Footer Sosyal sütunundan site e-postası kaldırıldı; yalnız Instagram ve WhatsApp kaldı | Müşteri görsel geri bildirimi önceki footer görünürlüğü kararını geçersiz kıldı; `brand.email`, iletişim/yasal yüzeyler ve WordPress/WooCommerce gönderici kaynağı değişmedi |
+| 2026-08-11 | Ücretsiz kargo yöntemi `minimum tutar veya ücretsiz kargo kuponu` koşuluna geçirildi | Kupon WooCommerce tarafından kabul edilmesine rağmen eşik-altı sepette yöntem `min_amount` ile kilitli kaldığı için 149 TL sabit ücret düşmüyordu; geçerli ücretsiz kargo kuponu artık ücretsiz yöntemi açar ve ücretli yöntemi gizler |
 
 ---
 
 ## 39. Mevcut durum
 
+- [x] Ücretsiz kargo kuponu düzeltmesi: 2.890 TL eşik-altı sepette TR `149→0 TL`, EN `149→0 TL`; iki dilde toplam `3.039→2.890 TL`, yalnız ücretsiz yöntem görünür ve ilerleme metni hazır durumuna geçer
 - [x] Faz 11 footer sadeleştirmesi tamamlandı: ödeme logoları ve panel anahtarı tamamen kaldırıldı; TR `7/7`, EN `7/7` viewport taşma `0`, ödeme kabı/görseli `0/14`, marka kilidi ve telif `14/14`; iyzico `cards_v2.png` şeridi TR ve EN ödeme sayfasında ayrı ayrı görünür (`200×21` CSS px)
 - [x] Faz 11 belge başlıkları `--text-heading-document` ile 1440'ta iki dilde 43,2→28,8 CSS px; 15 sayfa × 2 dil × 7 viewport = 210/210 yatay taşma 0
 - [x] Faz 11 e-posta tek kaynağı `info@kukaisland.com`: reset seed ve `wp_mail_from=woocommerce_email_from_address`; müşteri takibinde footer e-posta satırı kaldırıldı, Sosyal sütun yalnız Instagram + WhatsApp; sekiz hukuk sayfası hash'i 8/8 değişmedi
