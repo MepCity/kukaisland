@@ -81,7 +81,7 @@ if ( ! $product->is_in_stock() ) {
 	<a class="kuka-product-card__info" href="<?php echo esc_url( $product->get_permalink() ); ?>">
 		<?php if ( $cuts ) : ?><p class="kuka-product-card__cut"><?php echo esc_html( implode( ', ', array_map( 'kuka_island_term_name', $cuts ) ) ); ?></p><?php endif; ?>
 		<div class="kuka-product-card__title-row"><h2><?php echo esc_html( $product->get_name() ); ?></h2><div class="kuka-product-card__price">
-		<?php if ( $product->is_on_sale() ) : ?><span class="screen-reader-text"><?php esc_html_e( 'Eski fiyat:', 'kuka-island' ); ?></span><del><?php echo wp_kses_post( wc_price( $product->get_regular_price() ) ); ?></del><span class="screen-reader-text"><?php esc_html_e( 'Yeni fiyat:', 'kuka-island' ); ?></span><ins><?php echo wp_kses_post( wc_price( $product->get_sale_price() ) ); ?></ins><?php else : ?><?php echo wp_kses_post( $product->get_price_html() ); ?><?php endif; ?>
+		<?php echo wp_kses_post( $product->get_price_html() ); ?>
 		</div></div>
 		<p class="kuka-product-card__color"><span data-card-color-name><?php echo esc_html( $selected_color ? $color_data[ $selected_color ]['name'] : ( $colors[0]->name ?? '' ) ); ?></span><?php if ( $colors ) : ?> · <?php echo esc_html( sprintf( _n( '%d renk', '%d renk', count( $colors ), 'kuka-island' ), count( $colors ) ) ); ?><?php endif; ?></p>
 		<?php if ( ! empty( $card_settings['card_stock_enabled'] ) ) : ?><div class="kuka-product-card__stock-row">

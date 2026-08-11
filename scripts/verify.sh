@@ -11,6 +11,9 @@ printf '%s\n' "$snapshot"
 free_shipping_coupon=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-free-shipping-coupon.php)
 printf '%s\n' "$free_shipping_coupon"
 
+product_card_price=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-product-card-price.php)
+printf '%s\n' "$product_card_price"
+
 email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
 email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
@@ -138,6 +141,16 @@ expect_coupon_line() {
     failures=$((failures + 1))
   fi
 }
+expect_product_card_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$product_card_price" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
 expect_value() {
   label=$1
   actual=$2
@@ -189,6 +202,12 @@ expect_line "English shipping method labels" "SHIPPING_RATE_LABELS_EN=Free shipp
 expect_coupon_line "free shipping coupon test stays below threshold" "FREE_SHIPPING_COUPON_BELOW_THRESHOLD=yes"
 expect_coupon_line "free shipping coupon exposes only free method" "FREE_SHIPPING_COUPON_METHODS=free_shipping"
 expect_coupon_line "free shipping coupon removes shipping cost" "FREE_SHIPPING_COUPON_COST=0.00"
+expect_product_card_line "variable sale product card is on sale" "PRODUCT_CARD_VARIABLE_ON_SALE=yes"
+expect_product_card_line "variable sale product card uses minimum price" "PRODUCT_CARD_MIN_PRICE=1.00"
+expect_product_card_line "Turkish variable sale card shows one lira" "PRODUCT_CARD_ONE_LIRA_TR=present"
+expect_product_card_line "Turkish variable sale card never invents zero lira" "PRODUCT_CARD_ZERO_LIRA_TR=absent"
+expect_product_card_line "English variable sale card shows one lira" "PRODUCT_CARD_ONE_LIRA_EN=present"
+expect_product_card_line "English variable sale card never invents zero lira" "PRODUCT_CARD_ZERO_LIRA_EN=absent"
 expect_line "three size guide tables" "SIZE_GUIDE_TABLES=3"
 expect_line "size set narrowed to S M L" "SIZE_TERMS=S,M,L"
 expect_line "size term menu order" "SIZE_TERM_ORDER=S:0|M:1|L:2"
