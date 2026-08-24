@@ -41,6 +41,18 @@ function kuka_island_prime_catalog_caches( $product_ids = false ): void {
 	}
 }
 add_action( 'woocommerce_before_shop_loop', static function (): void { kuka_island_prime_catalog_caches(); }, 1 );
+add_filter(
+	'woocommerce_shortcode_products_query_results',
+	static function ( object $results ): object {
+		// Non-paginated `[products]` loops do not fire before_shop_loop.
+		// Prime the exact result set before the first product card is rendered.
+		if ( isset( $results->ids ) && is_array( $results->ids ) ) {
+			kuka_island_prime_catalog_caches( $results->ids );
+		}
+		return $results;
+	},
+	5
+);
 
 add_filter(
 	'woocommerce_breadcrumb_defaults',

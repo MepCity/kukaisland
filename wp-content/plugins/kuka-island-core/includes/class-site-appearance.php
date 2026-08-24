@@ -12,6 +12,8 @@ final class Kuka_Island_Core_Site_Appearance {
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
+	/** @var array<string, mixed>|null Request-local merged content cache. */
+	private static ?array $content_cache = null;
 
 	/**
 	 * Register the settings page and the explicit, nonce-protected save action.
@@ -195,6 +197,9 @@ final class Kuka_Island_Core_Site_Appearance {
 	 * @return array<string, mixed>
 	 */
 	public static function get(): array {
+		if ( null !== self::$content_cache ) {
+			return self::$content_cache;
+		}
 		$saved = get_option( self::OPTION_NAME, array() );
 		$legacy_main = "Yeni Gelenler|/magaza/?orderby=date\nTüm Ürünler|/magaza/\nHakkımızda|/hakkimizda/";
 		if ( is_array( $saved ) && $legacy_main === ( $saved['navigation']['main'] ?? '' ) ) {
@@ -207,7 +212,13 @@ final class Kuka_Island_Core_Site_Appearance {
 		if ( isset( $saved['story']['scenes'] ) && is_array( $saved['story']['scenes'] ) ) {
 			$content['story']['scenes'] = $saved['story']['scenes'];
 		}
-		return class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::with_translation_defaults( $content ) : $content;
+		self::$content_cache = class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::with_translation_defaults( $content ) : $content;
+		return self::$content_cache;
+	}
+
+	/** Clear the request-local cache after this class changes the option. */
+	private static function clear_content_cache(): void {
+		self::$content_cache = null;
 	}
 
 	/**
@@ -285,6 +296,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		$saved['home']['category_index_enabled'] = false;
 		$saved['schema_version']                 = self::SCHEMA_VERSION;
 		update_option( self::OPTION_NAME, $saved, false );
+		self::clear_content_cache();
 
 		return $saved;
 	}
@@ -872,6 +884,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			? wp_unslash( $_POST['site_content'] )
 			: array();
 		update_option( self::OPTION_NAME, self::sanitize( $raw ), false );
+		self::clear_content_cache();
 		self::sync_free_shipping_threshold();
 		if ( self::$sanitize_notices ) {
 			set_transient( 'kuka_island_site_notices_' . get_current_user_id(), self::$sanitize_notices, MINUTE_IN_SECONDS );
@@ -899,6 +912,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		}
 		$saved['schema_version'] = self::SCHEMA_VERSION;
 		update_option( self::OPTION_NAME, $saved, false );
+		self::clear_content_cache();
 		wp_safe_redirect( add_query_arg( 'documents-updated', '1', admin_url( 'admin.php?page=kuka-island#kuka-iyzico-readiness-title' ) ) );
 		exit;
 	}

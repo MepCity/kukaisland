@@ -94,7 +94,6 @@ function kuka_island_checkout_required_fields(): array {
 	$settings = kuka_island_content()['checkout'] ?? array();
 	return array(
 		'billing_phone'     => (bool) ( $settings['require_phone'] ?? true ),
-		'billing_company'   => (bool) ( $settings['require_company'] ?? false ),
 		'billing_address_2' => (bool) ( $settings['require_address_2'] ?? false ),
 		'billing_city'      => (bool) ( $settings['require_city'] ?? false ),
 	);
@@ -135,6 +134,14 @@ function kuka_island_checkout_field_order( array $fields ): array {
 		if ( isset( $fields['billing'][ $key ] ) ) {
 			$fields['billing'][ $key ]['required'] = $required;
 		}
+	}
+	// Şirket unvanı yalnız kurumsal fatura seçildiğinde görünür ve zorunludur.
+	// Bireysel müşteride gizli bir `required` alan sipariş gönderimini engellemez.
+	if ( isset( $fields['billing']['billing_company'] ) ) {
+		$customer_type = isset( $_POST['billing_customer_type'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_key( wp_unslash( $_POST['billing_customer_type'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			: 'personal';
+		$fields['billing']['billing_company']['required'] = 'corporate' === $customer_type;
 	}
 	if ( isset( $fields['billing']['billing_email'], $fields['billing']['billing_phone'] ) ) {
 		$fields['billing']['billing_email']['class'] = array( 'form-row-first' );

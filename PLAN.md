@@ -1813,11 +1813,17 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-10 | Footer Sosyal sütunundan site e-postası kaldırıldı; yalnız Instagram ve WhatsApp kaldı | Müşteri görsel geri bildirimi önceki footer görünürlüğü kararını geçersiz kıldı; `brand.email`, iletişim/yasal yüzeyler ve WordPress/WooCommerce gönderici kaynağı değişmedi |
 | 2026-08-11 | Ücretsiz kargo yöntemi `minimum tutar veya ücretsiz kargo kuponu` koşuluna geçirildi | Kupon WooCommerce tarafından kabul edilmesine rağmen eşik-altı sepette yöntem `min_amount` ile kilitli kaldığı için 149 TL sabit ücret düşmüyordu; geçerli ücretsiz kargo kuponu artık ücretsiz yöntemi açar ve ücretli yöntemi gizler |
 | 2026-08-11 | Ürün kartı fiyatı WooCommerce'in `get_price_html()` çıktısına bağlandı | Değişken ürünlerde parent indirim alanları boş olduğu halde doğrudan biçimlendirilince `0 TL` üretiliyordu; kart artık varyasyonların gerçek minimum/aralık fiyatını kullanır |
+| 2026-08-24 | Bülten kaydı çift onaya geçirildi; ilk KVKK kanıtı değişmez kayıt olarak korunur | Yeniden kayıt yalnız doğrulama tokenını yeniler; ilk metin/tarih/IP ezilmez, 48 saatlik HMAC token doğrulanmadan kayıt `confirmed` olmaz ve IP başına 10 dakikada 5 istek sınırı uygulanır |
+| 2026-08-24 | WooCommerce checkout ve katalog orta bulguları birlikte kapatıldı | Mobil toplam AJAX sonrası eşlenir; telefon boş kalabilir; kurumsal alanlar yalnız kurumsal seçimde görünür/zorunludur; içerik, shortcode ve varyasyon önbellekleri istek içinde hazırlanır; sepet fragment isteği yalnız sepet mutasyonunda yapılır |
+| 2026-08-24 | Kurulum sırları STDIN sınırına, GitHub Actions salt-okunur ve SHA-sabit bağımlılıklara alındı | Gerçek yönetici/mağaza yöneticisi parolaları süreç argümanında veya çıktıda bulunmaz; workflow `contents: read` taşır ve iki üçüncü taraf action tam commit SHA'sına sabitlenir |
 
 ---
 
 ## 39. Mevcut durum
 
+- [x] Dokuz orta bulgu kapatıldı: bülten çift onay/kanıt koruma/IP limiti; checkout toplam/şirket/telefon; içerik ve ürün önbelleği; isteğe bağlı cart fragment; STDIN parola aktarımı; SHA-sabit ve salt-okunur CI; son kodla iki bağımsız temiz `reset+verify` `2/2 PASS`, smoke `5/5`
+- [x] Orta bulgu ölçümü: bülten `pending→confirmed`, token özeti `64` karakter ve doğrulamada temiz; kurumsal alan görünür+zorunlu, bireyselde gizli+zorunlu değil; isteğe bağlı telefon değeri boş; ana sayfa eager cart-fragment `0`
+- [x] Katalog sorgu ölçümü: `4` ürün ve `24` varyasyon için priming sonrası `QUERIES_COLD=12`, aynı istek sıcak tur `QUERIES_WARM=0`; parola argv `0`, mutable Action `0`, SHA-sabit Action `2`, workflow permissions bloğu `1`
 - [x] Güvenlik sürüm hattı WordPress `7.0.4`, WooCommerce `11.0.1`, Blocksy/Companion `2.1.53`, Loginizer `2.1.0` olarak sabitlendi; CSP, `nosniff`, Referrer, frame, Permissions Policy, üretim HTTPS HSTS ve RFC 9116 güvenlik iletişim uç noktası Core'a eklendi
 - [x] Checkout odak/onay regresyonu kapatıldı: gerçek tarayıcıda ilk hata odağı `billing_first_name`; `Y→Yasir` boyunca odak aynı alanda ve tamamlanan alanın hata/ARIA'sı temiz; `update_order_review` sonrasında iki yasal onay `2/2` işaretli kaldı
 - [x] Dil sıcak yolu statik önbellekli: istek dili aynı istek imzasında bir kez çözülür, yaklaşık 230 girdili Core ve 14 girdili tema gettext haritaları yalnız ilk ilgili çağrıda kurulur

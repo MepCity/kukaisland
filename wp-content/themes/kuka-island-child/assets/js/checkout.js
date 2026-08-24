@@ -54,13 +54,16 @@
 
   if (phone) {
     phone.value = formatPhone(phone.value);
-    phone.addEventListener('focus', () => {
-      if (!phone.value) phone.value = '5';
-    });
     phone.addEventListener('input', () => {
-      phone.value = formatPhone(phone.value) || (document.activeElement === phone ? '5' : '');
+      phone.value = formatPhone(phone.value);
     });
   }
+
+  const synchronizeSummaryTotal = () => {
+    const summaryTotal = form.querySelector('.kuka-checkout-summary__total');
+    const orderTotal = form.querySelector('#order_review .order-total .woocommerce-Price-amount');
+    if (summaryTotal && orderTotal) summaryTotal.textContent = orderTotal.textContent.trim();
+  };
 
   const topLevelNotices = () => Array.from(inner.children).filter((node) => node.matches?.(noticeSelector));
 
@@ -212,6 +215,7 @@
 
   form.classList.add('kuka-checkout-enhanced');
   rememberLegalConsents();
+  synchronizeSummaryTotal();
   synchronize({focus: true, scroll: true});
 
   new MutationObserver(scheduleSynchronization).observe(form, {childList: true, subtree: true});
@@ -249,6 +253,7 @@
       .on('update_checkout', rememberLegalConsents)
       .on('updated_checkout', () => {
         restoreLegalConsents();
+        synchronizeSummaryTotal();
         synchronize({focus: false, scroll: false});
       })
       .on('checkout_error', () => {

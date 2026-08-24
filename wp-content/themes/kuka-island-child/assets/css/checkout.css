@@ -760,7 +760,7 @@
 }
 
 /* Kurumsal fatura alanları JS gelene kadar açık kalır; §10.6 davranışı. */
-.kuka-checkout-enhanced:not(.kuka-corporate) .kuka-corporate-field {
+body.kuka-checkout-enhanced:not(.kuka-corporate) .kuka-corporate-field {
   display: none !important;
 }
 

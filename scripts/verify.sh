@@ -97,6 +97,11 @@ product_checklist=$(search_count 'kuka-product-checklist' wp-content/plugins/kuk
 hero_main_line=$(search_count 'kuka-hero__title-main' wp-content/themes/kuka-island-child)
 smtp_secret_output_sinks=$(search_count '(echo|print|error_log|add_order_note|wc_get_logger).*(KUKA_SMTP_PASSWORD|\$config\[['"'"']password['"'"']\])' wp-content/plugins/kuka-island-core)
 prompted_passwords=$(search_count '--prompt=(admin_password|user_pass)' scripts)
+password_argv=$(search_count '--(admin_password|user_pass)=' scripts)
+password_stdin_readers=$(search_count 'stream_get_contents\([[:space:]]*STDIN[[:space:]]*\)' scripts/install.sh scripts/seed.sh)
+mutable_actions=$(search_count 'uses:[[:space:]]+[^@[:space:]]+@(v[0-9]+|main|master)([[:space:]]|$)' .github/workflows)
+pinned_actions=$(search_count 'uses:[[:space:]]+[^@[:space:]]+@[0-9a-f]{40}' .github/workflows)
+workflow_permissions=$(search_count '^[[:space:]]{0,2}permissions:' .github/workflows/quality.yml)
 fixed_local_usernames=$(search_count 'kuka_(admin|manager)' .env.example README.md PLAN.md scripts wp-content/plugins/kuka-island-core wp-content/themes/kuka-island-child docs/AKTARMA_HARITASI.md docs/FAZ3D_TEKNIK_RAPORU.md docs/FAZ3E_TEKNIK_RAPORU.md)
 
 cat <<EOF
@@ -124,6 +129,11 @@ PRODUCT_CHECKLIST=$product_checklist
 HERO_MAIN_LINE=$hero_main_line
 SMTP_SECRET_OUTPUT_SINKS=$smtp_secret_output_sinks
 PROMPTED_PASSWORDS=$prompted_passwords
+PASSWORD_ARGV=$password_argv
+PASSWORD_STDIN_READERS=$password_stdin_readers
+MUTABLE_ACTIONS=$mutable_actions
+PINNED_ACTIONS=$pinned_actions
+WORKFLOW_PERMISSIONS=$workflow_permissions
 FIXED_LOCAL_USERNAMES=$fixed_local_usernames
 EOF
 
@@ -254,6 +264,15 @@ expect_line "newsletter table" "NEWSLETTER_TABLE=ready"
 expect_line "native required newsletter form" "NEWSLETTER_FORM=native-required"
 expect_line "newsletter label placeholder and site button" "NEWSLETTER_UI=label+placeholder|site-button"
 expect_line "newsletter notification panel field" "NEWSLETTER_NOTIFICATION_FIELD=panel"
+expect_line "newsletter uses double opt-in" "NEWSLETTER_DOUBLE_OPT_IN=schema+token+confirm"
+expect_line "newsletter preserves first consent evidence" "NEWSLETTER_FIRST_EVIDENCE=immutable"
+expect_line "newsletter has IP and address-pair rate limits" "NEWSLETTER_IP_LIMIT=global+pair"
+expect_line "checkout summary total follows AJAX totals" "CHECKOUT_SUMMARY_TOTAL=ajax-synced"
+expect_line "optional phone can stay empty" "CHECKOUT_OPTIONAL_PHONE=empty-allowed"
+expect_line "company is required only for corporate billing" "CHECKOUT_COMPANY_REQUIRED=corporate-only"
+expect_line "site content is request-local cached" "SITE_CONTENT_CACHE=request-local"
+expect_line "product caches cover shortcode and single product" "PRODUCT_CACHE_PRIMING=shortcode+single"
+expect_line "cart fragments are not an eager dependency" "CART_FRAGMENT_DEPENDENCY=deferred"
 expect_line "retired panel fields removed" "RETIRED_PANEL_FIELDS="
 expect_line "hero overlay layer removed" "HERO_OVERLAY_LAYER=absent"
 expect_line "header top and scrolled modes" "HEADER_TOP_MODE=photo-white-to-paper-dark"
@@ -295,7 +314,12 @@ expect_line "hero Est. 2026 is on its own line" "HERO_EST_LINE=separate"
 expect_line "language hover keeps color and adds underline" "LANGUAGE_HOVER=same-color+underline"
 expect_line "story media waits for target image and warms the next" "STORY_MEDIA_HANDOFF=load-guarded+next-warmed"
 expect_line "SMTP constant names are absent from the database" "SMTP_CONFIG_DATABASE_ROWS=0"
-expect_value "installation passwords never enter an interactive log" "$prompted_passwords" "0"
+expect_value "only the output-suppressed core installer uses a prompt" "$prompted_passwords" "1"
+expect_value "installation passwords never enter process arguments" "$password_argv" "0"
+expect_value "manager password is consumed directly from stdin" "$password_stdin_readers" "1"
+expect_value "GitHub Actions use immutable commits" "$mutable_actions" "0"
+expect_value "both GitHub Actions are SHA-pinned" "$pinned_actions" "2"
+expect_value "GitHub workflow declares least privilege" "$workflow_permissions" "1"
 expect_value "local privileged usernames are not fixed in tracked sources" "$fixed_local_usernames" "0"
 expect_line "site e-mail seed" "SITE_EMAIL=info@kukaisland.com"
 expect_email_line "Exception cannot abort checkout mail" "THROWABLE_EXCEPTION_CAUGHT=yes"

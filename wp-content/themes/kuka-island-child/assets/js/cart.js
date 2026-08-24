@@ -3,8 +3,20 @@
   // Progressive enhancement: CSS keeps corporate fields visible until this
   // script has successfully started, so checkout remains usable without JS.
   document.body.classList.add("kuka-checkout-enhanced");
-  const refreshFragments = () => {
-    if (window.jQuery) window.jQuery(document.body).trigger("wc_fragment_refresh");
+  const refreshFragments = async () => {
+    const endpoint = window.wc_add_to_cart_params?.wc_ajax_url?.toString().replace("%%endpoint%%", "get_refreshed_fragments");
+    if (!endpoint || !window.jQuery) return;
+    const response = await window.fetch(endpoint, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+    });
+    if (!response.ok) throw new Error("cart-fragments-failed");
+    const data = await response.json();
+    Object.entries(data.fragments || {}).forEach(([selector, html]) => {
+      window.jQuery(selector).replaceWith(html);
+    });
+    window.jQuery(document.body).trigger("wc_fragments_refreshed");
   };
   let cartUpdateController = null;
 
@@ -22,7 +34,7 @@
         signal,
       });
       if (!response.ok) throw new Error("cart-update-failed");
-      refreshFragments();
+      await refreshFragments();
     } catch (error) {
       if (error.name === "AbortError") return;
       window.location.assign(form.action);
@@ -81,7 +93,15 @@
   // aynı kuralı uygular.
   const syncCheckout = () => {
     const business = document.querySelector("#billing_customer_type");
-    document.body.classList.toggle("kuka-corporate", business?.value === "corporate");
+    const corporate = business?.value === "corporate";
+    document.body.classList.toggle("kuka-corporate", corporate);
+    ["billing_company", "billing_tax_office", "billing_tax_number"].forEach((id) => {
+      const field = document.querySelector(`#${id}`);
+      if (!field) return;
+      field.required = corporate;
+      field.setAttribute("aria-required", corporate ? "true" : "false");
+      field.closest(".form-row")?.classList.toggle("validate-required", corporate);
+    });
   };
   document.addEventListener("change", (event) => {
     if (event.target.matches("#billing_customer_type")) syncCheckout();

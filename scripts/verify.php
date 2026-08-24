@@ -367,10 +367,28 @@ WP_CLI::line( 'STORY_EMPTY_MEDIA=' . ( str_contains( $story_template, 'kuka-stor
 global $wpdb;
 $newsletter_table = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . 'kuka_newsletter_subscribers' ) );
 $newsletter_form = class_exists( 'Kuka_Island_Core_Newsletter' ) ? Kuka_Island_Core_Newsletter::form() : '';
+$newsletter_columns = $newsletter_table ? $wpdb->get_col( 'SHOW COLUMNS FROM ' . Kuka_Island_Core_Newsletter::table_name() ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+$newsletter_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-newsletter.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$checkout_script = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/checkout.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$checkout_source = (string) file_get_contents( get_stylesheet_directory() . '/inc/checkout.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$asset_source = (string) file_get_contents( get_stylesheet_directory() . '/inc/assets.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$cart_script = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/cart.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$checkout_styles = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/checkout.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$woocommerce_source = (string) file_get_contents( get_stylesheet_directory() . '/inc/woocommerce.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$appearance_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-site-appearance.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 WP_CLI::line( 'NEWSLETTER_TABLE=' . ( $newsletter_table ? 'ready' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_FORM=' . ( str_contains( $newsletter_form, 'method="post"' ) && str_contains( $newsletter_form, 'name="consent" value="1" required' ) ? 'native-required' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_UI=' . ( str_contains( $newsletter_form, 'placeholder="name@example.com"' ) && str_contains( $newsletter_form, 'class="kuka-button"' ) ? 'label+placeholder|site-button' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_NOTIFICATION_FIELD=' . ( array_key_exists( 'newsletter_notification_email', $site_content['footer'] ?? array() ) ? 'panel' : 'missing' ) );
+WP_CLI::line( 'NEWSLETTER_DOUBLE_OPT_IN=' . ( in_array( 'status', $newsletter_columns, true ) && in_array( 'confirmation_hash', $newsletter_columns, true ) && str_contains( $newsletter_source, 'kuka_newsletter_confirm' ) ? 'schema+token+confirm' : 'missing' ) );
+WP_CLI::line( 'NEWSLETTER_FIRST_EVIDENCE=' . ( ! str_contains( $newsletter_source, '$wpdb->replace' ) && str_contains( $newsletter_source, 'confirmation_hash = VALUES(confirmation_hash)' ) ? 'immutable' : 'replaceable' ) );
+WP_CLI::line( 'NEWSLETTER_IP_LIMIT=' . ( str_contains( $newsletter_source, 'IP_RATE_LIMIT' ) && str_contains( $newsletter_source, '$ip_rate_key' ) ? 'global+pair' : 'pair-only' ) );
+WP_CLI::line( 'CHECKOUT_SUMMARY_TOTAL=' . ( str_contains( $checkout_script, 'synchronizeSummaryTotal' ) && str_contains( $checkout_script, ".on('updated_checkout'" ) ? 'ajax-synced' : 'stale' ) );
+WP_CLI::line( 'CHECKOUT_OPTIONAL_PHONE=' . ( ! str_contains( $checkout_script, "phone.value = '5'" ) && str_contains( $checkout_script, 'phone.value = formatPhone(phone.value)' ) ? 'empty-allowed' : 'seeded' ) );
+WP_CLI::line( 'CHECKOUT_COMPANY_REQUIRED=' . ( str_contains( $checkout_source, "'corporate' === \$customer_type" ) && ! str_contains( $checkout_source, "'billing_company'   =>" ) && str_contains( $cart_script, 'field.required = corporate' ) && str_contains( $checkout_styles, 'body.kuka-checkout-enhanced:not(.kuka-corporate)' ) ? 'corporate-only' : 'unconditional' ) );
+WP_CLI::line( 'SITE_CONTENT_CACHE=' . ( str_contains( $appearance_source, 'private static ?array $content_cache' ) && str_contains( $appearance_source, 'null !== self::$content_cache' ) ? 'request-local' : 'missing' ) );
+WP_CLI::line( 'PRODUCT_CACHE_PRIMING=' . ( str_contains( $woocommerce_source, 'woocommerce_shortcode_products_query_results' ) && str_contains( $asset_source, 'kuka_island_prime_catalog_caches( array( get_queried_object_id() ) )' ) ? 'shortcode+single' : 'partial' ) );
+WP_CLI::line( 'CART_FRAGMENT_DEPENDENCY=' . ( str_contains( $asset_source, "'wc-add-to-cart', 'wc-cart-fragments'" ) ? 'eager' : 'deferred' ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );
 $out_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_status' => 'outofstock', 'return' => 'ids' ) );
 WP_CLI::line( 'LOW_STOCK_VARIATIONS=' . count( $low_stock ) );

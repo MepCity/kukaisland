@@ -17,14 +17,17 @@ fi
 docker compose up -d --wait db wordpress
 
 if ! docker compose run --rm wp-cli wp core is-installed >/dev/null 2>&1; then
-  docker compose run --rm -T wp-cli wp core install \
+  if ! printf '%s\n' "$WP_ADMIN_PASSWORD" | docker compose run --rm -T wp-cli wp core install \
     --url="$WP_URL" \
     --title="$WP_TITLE" \
     --admin_user="$WP_ADMIN_USER" \
     --admin_email="$WP_ADMIN_EMAIL" \
     --locale=tr_TR \
-    --admin_password="$WP_ADMIN_PASSWORD" \
-    --skip-email
+    --prompt=admin_password \
+    --skip-email >/dev/null 2>&1; then
+    echo "Hata: WordPress yönetici hesabı güvenli biçimde kurulamadı." >&2
+    exit 1
+  fi
 fi
 
 # Güvenlik sürümü ana imajın taşıdığı çekirdekten bağımsız olarak sabitlenir.

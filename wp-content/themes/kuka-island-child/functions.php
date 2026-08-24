@@ -139,9 +139,15 @@ function kuka_island_emblem_markup(): string {
 
 /** @return array<string, mixed> */
 function kuka_island_content(): array {
+	static $cache = array();
 	if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
+		$locale = function_exists( 'kuka_island_locale' ) ? kuka_island_locale() : 'tr';
+		if ( isset( $cache[ $locale ] ) ) {
+			return $cache[ $locale ];
+		}
 		$content = Kuka_Island_Core_Site_Appearance::get();
-		return class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::localized_content( $content ) : $content;
+		$cache[ $locale ] = class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::localized_content( $content ) : $content;
+		return $cache[ $locale ];
 	}
 	return array();
 }

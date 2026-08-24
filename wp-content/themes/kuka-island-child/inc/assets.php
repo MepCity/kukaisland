@@ -115,12 +115,18 @@ function kuka_island_child_enqueue_assets(): void {
 	if ( is_front_page() || is_shop() || is_product_taxonomy() ) {
 		kuka_island_enqueue_script( 'catalog', array( 'kuka-island-storefront' ) );
 	}
-	kuka_island_enqueue_script( 'cart', array( 'kuka-island-storefront', 'jquery', 'wc-add-to-cart', 'wc-cart-fragments' ) );
+	// The cart panel is rendered server-side. Its own mutations refresh only
+	// their fragments, so a new visitor no longer pays WooCommerce's automatic
+	// cart-fragments AJAX request on every unrelated page.
+	kuka_island_enqueue_script( 'cart', array( 'kuka-island-storefront', 'jquery', 'wc-add-to-cart' ) );
 	if ( ! is_product() ) { return; }
 	kuka_island_enqueue_script( 'product', array( 'kuka-island-storefront', 'jquery', 'wc-add-to-cart-variation' ) );
 
 	$availability = array();
 	$colors       = array();
+	if ( function_exists( 'kuka_island_prime_catalog_caches' ) ) {
+		kuka_island_prime_catalog_caches( array( get_queried_object_id() ) );
+	}
 	$product      = wc_get_product( get_queried_object_id() );
 	if ( $product instanceof WC_Product_Variable ) {
 		foreach ( $product->get_children() as $variation_id ) {

@@ -148,18 +148,16 @@ grep -q 'data-id="kuka_preinfo_accepted"' "$temporary_dir/checkout-no-consent.ht
 perl -0ne 'exit !(/data-checkout-notices-inner>.*?woocommerce-error.*?<\/div>\s*<\/div>\s*<aside/s)' "$temporary_dir/checkout-no-consent.html" || fail "server checkout notices inside grid region"
 pass "checkout rendered + two-consent payment gate"
 
-# WooCommerce fragments have separate language cache keys. The explicit AJAX
-# language parameter is the no-Referer fallback and must return English HTML.
+# The cart panel is server-rendered and refreshes only after a cart mutation.
+# Therefore neither language may bootstrap WooCommerce's eager fragment script
+# or its sessionStorage keys. Explicit AJAX language remains the fallback.
 curl -sS "${WP_URL%/}/sepet/" > "$temporary_dir/fragments-source-tr.html"
-tr_fragment=$(grep -o 'fragment_name":"[^"]*' "$temporary_dir/fragments-source-tr.html" | head -1 | cut -d'"' -f3)
-en_fragment=$(grep -o 'fragment_name":"[^"]*' "$temporary_dir/cart.html" | head -1 | cut -d'"' -f3)
-[ -n "$tr_fragment" ] && [ -n "$en_fragment" ] && [ "$tr_fragment" = "$en_fragment" ] && fail "cart fragment language cache collision"
-tr_hash_key=$(grep -o 'cart_hash_key":"[^"]*' "$temporary_dir/fragments-source-tr.html" | head -1 | cut -d'"' -f3)
-en_hash_key=$(grep -o 'cart_hash_key":"[^"]*' "$temporary_dir/cart.html" | head -1 | cut -d'"' -f3)
-[ -n "$tr_hash_key" ] && [ -n "$en_hash_key" ] && [ "$tr_hash_key" != "$en_hash_key" ] || fail "cart hash language cache collision"
+! grep -q 'wc-cart-fragments-js\|cart_hash_key\|fragment_name' "$temporary_dir/fragments-source-tr.html" || fail "Turkish eager cart fragment bootstrap"
+! grep -q 'wc-cart-fragments-js\|cart_hash_key\|fragment_name' "$temporary_dir/cart.html" || fail "English eager cart fragment bootstrap"
+grep -q 'wc_ajax_url.*kuka_lang=en' "$temporary_dir/cart.html" || fail "English cart mutation language endpoint"
 curl -sS "${WP_URL%/}/?wc-ajax=get_refreshed_fragments&kuka_lang=en" > "$temporary_dir/fragments-en.json"
 grep -q 'Return to shop' "$temporary_dir/fragments-en.json" && grep -q '\\/en\\/magaza\\/' "$temporary_dir/fragments-en.json" || fail "English AJAX fallback"
-pass "language-specific cart fragments/hash + no-Referer AJAX fallback"
+pass "on-demand cart fragments + no-Referer English AJAX fallback"
 
 # The exact reported regression: add in English, then visit Turkish with the
 # same WooCommerce cookie. The server cart must remain populated after the
