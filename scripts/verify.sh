@@ -97,6 +97,7 @@ product_checklist=$(search_count 'kuka-product-checklist' wp-content/plugins/kuk
 hero_main_line=$(search_count 'kuka-hero__title-main' wp-content/themes/kuka-island-child)
 smtp_secret_output_sinks=$(search_count '(echo|print|error_log|add_order_note|wc_get_logger).*(KUKA_SMTP_PASSWORD|\$config\[['"'"']password['"'"']\])' wp-content/plugins/kuka-island-core)
 prompted_passwords=$(search_count '--prompt=(admin_password|user_pass)' scripts)
+fixed_local_usernames=$(search_count 'kuka_(admin|manager)' .env.example README.md PLAN.md scripts wp-content/plugins/kuka-island-core wp-content/themes/kuka-island-child docs/AKTARMA_HARITASI.md docs/FAZ3D_TEKNIK_RAPORU.md docs/FAZ3E_TEKNIK_RAPORU.md)
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -123,6 +124,7 @@ PRODUCT_CHECKLIST=$product_checklist
 HERO_MAIN_LINE=$hero_main_line
 SMTP_SECRET_OUTPUT_SINKS=$smtp_secret_output_sinks
 PROMPTED_PASSWORDS=$prompted_passwords
+FIXED_LOCAL_USERNAMES=$fixed_local_usernames
 EOF
 
 failures=0
@@ -291,6 +293,7 @@ expect_line "language hover keeps color and adds underline" "LANGUAGE_HOVER=same
 expect_line "story media waits for target image and warms the next" "STORY_MEDIA_HANDOFF=load-guarded+next-warmed"
 expect_line "SMTP constant names are absent from the database" "SMTP_CONFIG_DATABASE_ROWS=0"
 expect_value "installation passwords never enter an interactive log" "$prompted_passwords" "0"
+expect_value "local privileged usernames are not fixed in tracked sources" "$fixed_local_usernames" "0"
 expect_line "site e-mail seed" "SITE_EMAIL=info@kukaisland.com"
 expect_email_line "Exception cannot abort checkout mail" "THROWABLE_EXCEPTION_CAUGHT=yes"
 expect_email_line "Error cannot abort checkout mail" "THROWABLE_ERROR_CAUGHT=yes"

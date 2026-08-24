@@ -4,9 +4,8 @@
 
 - Site: `http://localhost:8080/`
 - Yönetim: `http://localhost:8080/wp-admin/`
-- Yönetici: `[removed-admin-user]`
-- Günlük Shop Manager: `[removed-manager-user]`
-- Hesapların birbirinden farklı yerel parolaları Git tarafından yok sayılan `.env` dosyasındadır.
+- Yönetici ve günlük Shop Manager kullanıcı adları rastgele üretilir.
+- Hesapların kullanıcı adları ve birbirinden farklı yerel parolaları Git tarafından yok sayılan `.env` dosyasındadır.
 - Site Görünümü: yönetimde **Kuka Island → Site Görünümü** (`/wp-admin/admin.php?page=kuka-island-appearance`)
 
 Bu bilgi yalnız yerel geliştirme ortamı içindir; `.env.example` içine yazılmamıştır.

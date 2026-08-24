@@ -101,8 +101,8 @@ Ek kontroller: 30/30 PHPCS dosyası PASS; child theme ve Core PHP dosyalarının
 | 19 | PASS | CI: PHP lint, PHPCS, `make install`, `make verify` ve smoke. |
 | 20 | PASS | Debug log kapalı, bind `127.0.0.1`. |
 | 21 | PASS | `docs/DEPLOY_RUNBOOK.md` dosya/DB/medya taşıma, URL değişimi, üretim config'i, noindex, SMTP, kontrol ve rollback içeriyor. |
-| 22 | PASS | `WP_MANAGER_PASSWORD` ayrıdır ve WP-CLI'ya stdin prompt ile verilir; komut argv/`ps` içinde yoktur. |
-| 23 | PASS | Faz 3D raporundaki düz parola çıkarıldı; iki yerel hesap parolası döndürüldü. Git geçmişi yeniden yazılmadı. |
+| 22 | PASS | Yönetici ve Shop Manager kullanıcı adları/parolaları ayrı ve rastgele üretilir; etkileşimli WP-CLI günlüğüne yazılmaz. |
+| 23 | PASS | Faz 3D raporundaki düz parola çıkarıldı; iki yerel hesap bilgisi döndürüldü ve sızıntılı QA günlükleri Git geçmişinden temizlendi. |
 | 24 | PASS | Filtre query canonical'dan çıktı, sayfalama korunuyor, sayfa başına canonical sayısı 1. |
 | 25 | PASS | Asset ölçüm tablosu yukarıda; ana sayfada product/checkout CSS `0/0`. |
 | 26 | PASS | `functions.php` bootstrap düzeyine indirildi; asset, SEO, WooCommerce ve panel işlevleri `inc/` dosyalarına ayrıldı. |

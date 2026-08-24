@@ -128,7 +128,7 @@ WP_CLI::line( 'TRANSLATION_PLUGIN=' . ( $translation_plugins ? implode( ',', $tr
 WP_CLI::line( 'LANGUAGE_PENDING_URLS=' . (string) ( $site_content['languages']['pending_urls'] ?? '' ) );
 $pattern_registry = WP_Block_Patterns_Registry::get_instance();
 WP_CLI::line( 'LOCKED_PATTERNS=' . (int) $pattern_registry->is_registered( 'kuka-island/editorial-story' ) . '/1|' . (int) $pattern_registry->is_registered( 'kuka-island/legal-section' ) . '/1' );
-$manager = get_user_by( 'login', '[removed-manager-user]' );
+$manager = get_user_by( 'email', 'manager@kukaisland.test' );
 WP_CLI::line( 'DAILY_MANAGER=' . ( $manager && in_array( 'shop_manager', (array) $manager->roles, true ) ? 'yes' : 'no' ) );
 $required_pages = array( 'hakkimizda', 'iletisim', 'sik-sorulan-sorular', 'kargo-teslimat', 'iade-degisim', 'gizlilik-politikasi', 'cerez-politikasi', 'kvkk-aydinlatma-metni', 'kullanim-kosullari', 'on-bilgilendirme-formu', 'mesafeli-satis-sozlesmesi', 'acik-riza-metni', 'ticari-elektronik-ileti-onayi', 'beden-rehberi', 'siparis-takibi' );
 $present_pages = array_filter( $required_pages, static fn( string $slug ): bool => (bool) get_page_by_path( $slug ) );

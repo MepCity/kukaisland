@@ -101,7 +101,7 @@ Faz 2'de override yoktur. Faz 3 başlamadan önce önce hook/Blocksy extension p
 - Kök `html/body` yatay taşma maskelemesi kaldırıldı. Beş rota 320–1920 aralığındaki altı hedef genişlikte 30/30 kez sıfır taşmayla ölçüldü; ürün bilgi paneli 1280'de `top:80px` sticky eşiğinde kalır.
 - Ürün lightbox tetikleyicileri `data-panel-trigger` sözleşmesine geçti. `product.js` yalnız galeri/zoom durumunu tutar; `inert`, Tab, Escape ve odak dönüşü `storefront.js` sorumluluğudur.
 - Site Görünümü sekiz gruba tamamlandı. Marka, duyuru bağlantıları, bölüm kaynakları/görünürlüğü, kart anahtarları, footer bağlantıları, kargo durum metinleri ve hesap karşılama metni doğrulanmış varsayılanlarla ön yüze bağlıdır.
-- `Kuka Island` Gutenberg kategorisinde iki `templateLock:all` desen bulunur. Günlük `[removed-manager-user]` kullanıcısı `shop_manager` rolündedir; menüsü içerik, medya, WooCommerce, ürünler, raporlar ve Site Görünümü işlerine odaklıdır.
+- `Kuka Island` Gutenberg kategorisinde iki `templateLock:all` desen bulunur. Rastgele adı yalnız yerel `.env` içinde tutulan günlük kullanıcı `shop_manager` rolündedir; menüsü içerik, medya, WooCommerce, ürünler, raporlar ve Site Görünümü işlerine odaklıdır.
 
 ## Faz 3F içerik ve test yayını sınırı
 

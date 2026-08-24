@@ -84,7 +84,7 @@ Referans dizinleri çalışma zamanında kullanılmaz ve elle düzenlenmez. Prot
 
 ## Sırlar ve üçüncü taraf kodu
 
-`.env.example` yalnız değişken adlarını ve açıklamalarını içerir. Yerel `[removed-admin-user]` ve `[removed-manager-user]` hesaplarının birbirinden farklı parolaları `.env` içindeki `WP_ADMIN_PASSWORD` ve `WP_MANAGER_PASSWORD` değerleridir. `.env`, uploads, veritabanı dökümleri, WordPress çekirdeği, Blocksy parent ve üçüncü taraf eklentileri Git'e alınmaz. iyzico API anahtarları yönetim ekranından ve yalnız sandbox anahtarları hazır olduğunda girilecektir.
+`.env.example` yalnız değişken adlarını ve açıklamalarını içerir. Yerel yönetici ve Shop Manager kullanıcı adları ile birbirinden farklı parolaları ilk kurulumda rastgele üretilip yalnız `.env` içinde tutulur. `.env`, uploads, veritabanı dökümleri, WordPress çekirdeği, Blocksy parent ve üçüncü taraf eklentileri Git'e alınmaz. iyzico API anahtarları yönetim ekranından ve yalnız sandbox anahtarları hazır olduğunda girilecektir.
 
 ## Sorun giderme
 
