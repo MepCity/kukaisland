@@ -1600,6 +1600,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-24 | WordPress 7.0.4, WooCommerce 11.0.1, Blocksy/Companion 2.1.53 ve Loginizer 2.1.0 güvenlik bakım sürümlerine sabitlenir; müşteri yüzüne iyzico izinli CSP ve standart güvenlik başlıkları, üretim HTTPS'e başlangıç HSTS'i ve `security.txt` eklenir; kurulum parolaları etkileşimli WP-CLI günlüğüne verilmez | WordPress 7.0.2 giriş ekranındaki yayımlanmış pre-auth reflected XSS/RCE zincirini, sonraki Author+ RCE açığını, WooCommerce mağaza bildirimi XSS'ini, Blocksy dinamik içerik script riskini ve Loginizer yarış koşulunu kapatmak; taramada doğrulanan eksik başlıkları ödeme akışını koruyarak gidermek ve test parolasının kurulum çıktısına sızmasını önlemek |
 | 2026-08-24 | “Çok yakında” için optimize edilen aynı responsive video çifti ana sayfa hero arka planında da kullanılır; paneldeki masaüstü/mobil hero görselleri yüklenme ve reduced-motion durumlarında poster olarak korunur | Müşteri ana vitrinde hareketli görüntüyü tercih etti; aynı dosyaları yeniden kullanmak ikinci medya kopyası üretmeden görsel süreklilik sağlar ve panel görselleri güvenli geri dönüş olarak kalır |
 | 2026-08-24 | “Çok yakında” ekranında teslim edilen yatay videonun ilk 25 saniyesi kullanılır; masaüstü 1920×1080 ve mobil 1080×1920 ayrı, sessiz MP4 kaynakları sunulur; hareket azaltma tercihinde video indirilmeden poster gösterilir | Ürün → deniz → tek model → iki model akışı ilk deneme için dengeli bir teaser verir; ayrı kadrajlar mobilde kaliteyi korur, 25 saniye ve sessiz kaynaklar tam uzunluktaki 62 MB dosyanın ilk açılış yükünü azaltır ve daha sonra kaynak değiştirilebilir |
 | 2026-08-11 | Checkout telefonu `5XX XXX XX XX` görünümünde, `5XXXXXXXXX` kayıt biçiminde standartlaştırılır; `0` ve `+90` önekli yapıştırmalar normalize edilir, diğer başlangıçlar ve eksik/fazla rakamlar istemci ile sunucuda reddedilir | Sipariş telefonlarının tek biçimde tutulması, mobil klavyede kolay giriş ve hatalı/eksik numaranın siparişe geçmeden alan üzerinde açıklanması gerekir |
@@ -1812,6 +1813,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 39. Mevcut durum
 
+- [x] Güvenlik sürüm hattı WordPress `7.0.4`, WooCommerce `11.0.1`, Blocksy/Companion `2.1.53`, Loginizer `2.1.0` olarak sabitlendi; CSP, `nosniff`, Referrer, frame, Permissions Policy, üretim HTTPS HSTS ve RFC 9116 güvenlik iletişim uç noktası Core'a eklendi
 - [x] Ana sayfa hero aynı `25,000 sn` responsive video çiftini arka planda oynatıyor; mevcut panel görselleri yüklenme/reduced-motion poster fallback'i, başlık-kopya-buton katmanı ve iki dil korunuyor
 - [x] “Çok yakında” video ekranı: ilk `25,000 sn`; masaüstü `1920×1080 / 13.660.330 bayt`, mobil `1080×1920 / 10.905.271 bayt`, ses izi `0/0`; responsive poster, `by Kübra Gültekin` katmanı ve reduced-motion poster fallback tamamlandı
 - [x] Değişken ürün kartı fiyat düzeltmesi: minimum varyasyon `1,00 TL`; TR `₺1/₺0 = 1/0`, EN `₺1/₺0 = 1/0`; geçici denetim ürünü test sonunda silinir

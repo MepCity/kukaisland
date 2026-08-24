@@ -4,6 +4,9 @@ set -eu
 project_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$project_dir"
 ./scripts/ensure-env.sh
+set -a
+. "$project_dir/.env"
+set +a
 
 snapshot=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify.php)
 printf '%s\n' "$snapshot"
@@ -19,13 +22,23 @@ email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
 printf '%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp"
 
+response_headers=$(curl -fsS -D - -o /dev/null "$WP_URL/" | tr -d '\r')
+security_txt=$(curl -fsSL --max-redirs 3 "$WP_URL/.well-known/security.txt")
+header_present() {
+  printf '%s\n' "$response_headers" | grep -Eiq "^$1:"
+}
+security_header_contract="csp:$(header_present 'Content-Security-Policy' && echo yes || echo no)|nosniff:$(header_present 'X-Content-Type-Options' && echo yes || echo no)|referrer:$(header_present 'Referrer-Policy' && echo yes || echo no)|frame:$(header_present 'X-Frame-Options' && echo yes || echo no)|permissions:$(header_present 'Permissions-Policy' && echo yes || echo no)"
+hsts_local=$(header_present 'Strict-Transport-Security' && echo present || echo absent)
+security_txt_contract="contact:$(printf '%s\n' "$security_txt" | grep -Fq 'Contact: mailto:' && echo yes || echo no)|canonical:$(printf '%s\n' "$security_txt" | grep -Fq 'Canonical:' && echo yes || echo no)"
+printf 'SECURITY_HEADERS=%s\nHSTS_LOCAL=%s\nSECURITY_TXT=%s\n' "$security_header_contract" "$hsts_local" "$security_txt_contract"
+
 search_count() {
   pattern=$1
   shift
   if command -v rg >/dev/null 2>&1; then
-    rg -n "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
+    rg -n -- "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
   else
-    grep -ERn --include='*.php' --include='*.js' --include='*.css' "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
+    grep -ERn --include='*.php' --include='*.js' --include='*.css' --include='*.sh' -- "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
   fi
 }
 
@@ -83,6 +96,7 @@ management_map=$(search_count 'kuka-island-management-map' wp-content/plugins/ku
 product_checklist=$(search_count 'kuka-product-checklist' wp-content/plugins/kuka-island-core/includes/class-product-fields.php)
 hero_main_line=$(search_count 'kuka-hero__title-main' wp-content/themes/kuka-island-child)
 smtp_secret_output_sinks=$(search_count '(echo|print|error_log|add_order_note|wc_get_logger).*(KUKA_SMTP_PASSWORD|\$config\[['"'"']password['"'"']\])' wp-content/plugins/kuka-island-core)
+prompted_passwords=$(search_count '--prompt=(admin_password|user_pass)' scripts)
 
 cat <<EOF
 WOOCOMMERCE_OVERRIDES=$override_count
@@ -108,6 +122,7 @@ MANAGEMENT_MAP=$management_map
 PRODUCT_CHECKLIST=$product_checklist
 HERO_MAIN_LINE=$hero_main_line
 SMTP_SECRET_OUTPUT_SINKS=$smtp_secret_output_sinks
+PROMPTED_PASSWORDS=$prompted_passwords
 EOF
 
 failures=0
@@ -164,6 +179,16 @@ expect_value() {
 }
 
 expect_line "child theme active" "ACTIVE_THEME=kuka-island-child"
+expect_line "WordPress security release" "WP_VERSION=7.0.4"
+expect_line "WooCommerce security maintenance release" "WOOCOMMERCE_VERSION=11.0.1"
+expect_line "Blocksy security maintenance release" "BLOCKSY_VERSION=2.1.53"
+expect_line "Blocksy Companion security maintenance release" "BLOCKSY_COMPANION_VERSION=2.1.53"
+expect_line "Loginizer race-condition fix" "LOGINIZER_VERSION=2.1.0"
+expect_line "security header module" "SECURITY_HEADER_MODULE=ready"
+expect_line "CSP keeps iyzico checkout sources" "SECURITY_CSP_IYZICO=allowed"
+expect_value "public response security headers" "$security_header_contract" "csp:yes|nosniff:yes|referrer:yes|frame:yes|permissions:yes"
+expect_value "HSTS stays off on local HTTP" "$hsts_local" "absent"
+expect_value "RFC 9116 security contact" "$security_txt_contract" "contact:yes|canonical:yes"
 expect_line "six-item header menu" "PRIMARY_MENU_COUNT=6"
 expect_line "daily manager" "DAILY_MANAGER=yes"
 expect_line "Coming Soon remains enabled" "STORE_VISIBILITY=coming-soon"
@@ -265,6 +290,7 @@ expect_line "hero Est. 2026 is on its own line" "HERO_EST_LINE=separate"
 expect_line "language hover keeps color and adds underline" "LANGUAGE_HOVER=same-color+underline"
 expect_line "story media waits for target image and warms the next" "STORY_MEDIA_HANDOFF=load-guarded+next-warmed"
 expect_line "SMTP constant names are absent from the database" "SMTP_CONFIG_DATABASE_ROWS=0"
+expect_value "installation passwords never enter an interactive log" "$prompted_passwords" "0"
 expect_line "site e-mail seed" "SITE_EMAIL=info@kukaisland.com"
 expect_email_line "Exception cannot abort checkout mail" "THROWABLE_EXCEPTION_CAUGHT=yes"
 expect_email_line "Error cannot abort checkout mail" "THROWABLE_ERROR_CAUGHT=yes"

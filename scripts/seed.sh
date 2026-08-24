@@ -14,7 +14,7 @@ docker compose run --rm wp-cli wp eval-file /project-scripts/migrate-sizes.php
 docker compose run --rm wp-cli wp eval-file /project-scripts/seed-content.php
 
 if docker compose run --rm wp-cli wp user get [removed-manager-user] >/dev/null 2>&1; then
-  printf '%s\n' "$WP_MANAGER_PASSWORD" | docker compose run --rm -T wp-cli wp user update [removed-manager-user] --role=shop_manager --prompt=user_pass
+  docker compose run --rm -T wp-cli wp user update [removed-manager-user] --role=shop_manager --user_pass="$WP_MANAGER_PASSWORD"
 else
-  printf '%s\n' "$WP_MANAGER_PASSWORD" | docker compose run --rm -T wp-cli wp user create [removed-manager-user] manager@kukaisland.test --role=shop_manager --prompt=user_pass
+  docker compose run --rm -T wp-cli wp user create [removed-manager-user] manager@kukaisland.test --role=shop_manager --user_pass="$WP_MANAGER_PASSWORD"
 fi

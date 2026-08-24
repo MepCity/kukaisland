@@ -114,16 +114,17 @@ Test yayını kabul edilmeden önce hedefin yedeği ayrı bir test veritabanı/d
 
 Kritik hata halinde trafik coming soon/bakım sayfasına alınır; yeni sipariş kabulü durdurulur. Child tema ve Core eklenti önceki paketle değiştirilir; gerekirse yayın öncesi SQL ile `uploads` yedeği geri yüklenir. URL'ler ve cache tekrar doğrulanır, beş smoke akışı çalıştırılır. Geri alınan commit, zaman, sebep ve veri kaybı ihtimali kayıt altına alınır.
 
-## 10. HSTS — üretimde kontrollü etkinleştirme
+## 10. HTTP güvenlik başlıkları ve HSTS
 
-Faz 8'de HSTS eklenmedi: yerel ortam HTTP çalışıyor, üretim alan adı/TLS zinciri bu turda yetki ve test kapsamında değil. Hatalı başlık ziyaretçiyi HTTPS'e kilitleyebileceği için üretim doğrulaması olmadan tema/PHP katmanına konmaz.
+Core eklentisi müşteri yüzeyinde CSP; bütün PHP yanıtlarında `nosniff`, `Referrer-Policy`, `SAMEORIGIN` ve sınırlı `Permissions-Policy` gönderir. CSP, ödeme sayfasındaki eklenti şeridini ve checkout içeriğini bozmamak için yalnız iyzico/iyzipay HTTPS kaynaklarına ayrıca izin verir. `/.well-known/security.txt` güvenlik bildirim adresini yayımlar.
 
-Üretimde bütün sayfalar ve alt kaynaklar HTTPS/200, karma içerik 0 ve sertifika zinciri geçerli olduktan sonra Apache document root `.htaccess` dosyasına `mod_headers` altında yalnız HTTPS yanıtlarında şu düşük başlangıç değeri eklenir:
+HSTS yerel HTTP ortamında kapalıdır. Üretimde WordPress isteği HTTPS algıladığında yalnız `max-age=300` ile kendiliğinden açılır; bu aşamada `includeSubDomains` ve `preload` kullanılmaz. `.htaccess` içine ikinci bir HSTS satırı eklenmez.
 
-```apache
-<IfModule mod_headers.c>
-Header always set Strict-Transport-Security "max-age=300" env=HTTPS
-</IfModule>
+Aktarım sonrası ana sayfa, giriş, ürün ve checkout yanıtlarında başlıklar ayrı ayrı ölçülür:
+
+```sh
+curl -sSI https://[ALAN_ADI] | grep -Ei '^(content-security-policy|strict-transport-security|x-content-type-options|referrer-policy|x-frame-options|permissions-policy):'
+curl -fsS https://[ALAN_ADI]/.well-known/security.txt
 ```
 
-Bu turda `includeSubDomains` ve `preload` eklenmez. Uygulama sonrası `curl -sSI https://[ALAN_ADI] | grep -i '^strict-transport-security:'` çıktısı `max-age=300` göstermelidir. Sorunda satır kaldırılır, web sunucusu yapılandırması yeniden yüklenir ve 300 saniyelik tarayıcı önbelleğinin dolması beklenir. En az bir hafta hatasız gözlemden sonra süre kademeli artırılır.
+HSTS `max-age=300`, güvenlik metni `Contact`, `Expires`, `Preferred-Languages` ve `Canonical` satırlarını göstermelidir. Checkout sandbox ödemesi ve iyzico kart şeridi doğrulandıktan sonra en az bir hafta gözlenir; ancak bundan sonra HSTS süresi ayrı bir değişiklikle kademeli artırılır.
