@@ -16,7 +16,28 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const requiredMessage = window.kukaIslandCheckout?.required || 'This field is required.';
   const phone = form.querySelector('#billing_phone');
+  const legalConsentIds = ['kuka_preinfo_accepted', 'kuka_distance_sales_accepted'];
+  const legalConsentState = new Map();
   let scheduled = false;
+
+  const rememberLegalConsents = () => {
+    legalConsentIds.forEach((id) => {
+      const field = form.querySelector(`#${CSS.escape(id)}`);
+      if (field) legalConsentState.set(id, field.checked);
+    });
+  };
+
+  const restoreLegalConsents = () => {
+    legalConsentIds.forEach((id) => {
+      const field = form.querySelector(`#${CSS.escape(id)}`);
+      if (field && legalConsentState.has(id)) field.checked = legalConsentState.get(id);
+    });
+  };
+
+  const userIsEditing = () => {
+    const active = document.activeElement;
+    return active instanceof HTMLElement && form.contains(active) && active.matches('input, select, textarea');
+  };
 
   const phoneDigits = (value) => {
     let digits = value.replace(/\D/g, '');
@@ -161,14 +182,15 @@
     removeMappedSummaryErrors();
     const visible = topLevelNotices().length > 0;
     region.classList.toggle('is-visible', visible);
+    const mayMoveFocus = focus && !userIsEditing();
     if (!visible) {
       const invalid = firstInvalidField();
-      if (focus) invalid?.focus({preventScroll: true});
+      if (mayMoveFocus) invalid?.focus({preventScroll: true});
       if (scroll) invalid?.scrollIntoView({behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'center'});
       return;
     }
     if (scroll) bringRegionIntoView();
-    if (focus) firstInvalidField()?.focus({preventScroll: true});
+    if (mayMoveFocus) firstInvalidField()?.focus({preventScroll: true});
   };
 
   const synchronize = (options = {}) => {
@@ -184,11 +206,12 @@
     scheduled = true;
     window.requestAnimationFrame(() => {
       scheduled = false;
-      synchronize({focus: true, scroll: true});
+      synchronize({focus: false, scroll: false});
     });
   };
 
   form.classList.add('kuka-checkout-enhanced');
+  rememberLegalConsents();
   synchronize({focus: true, scroll: true});
 
   new MutationObserver(scheduleSynchronization).observe(form, {childList: true, subtree: true});
@@ -206,6 +229,9 @@
   };
   form.addEventListener('input', clearCompletedField);
   form.addEventListener('change', clearCompletedField);
+  form.addEventListener('change', (event) => {
+    if (legalConsentIds.includes(event.target.id)) rememberLegalConsents();
+  });
 
   inner.addEventListener('click', (event) => {
     const link = event.target.closest('.woocommerce-error li[data-id] a');
@@ -219,9 +245,15 @@
   });
 
   if (window.jQuery) {
-    window.jQuery(document.body).on('checkout_error', () => {
-      window.jQuery('html, body').stop(true);
-      synchronize({focus: true, scroll: true});
-    });
+    window.jQuery(document.body)
+      .on('update_checkout', rememberLegalConsents)
+      .on('updated_checkout', () => {
+        restoreLegalConsents();
+        synchronize({focus: false, scroll: false});
+      })
+      .on('checkout_error', () => {
+        window.jQuery('html, body').stop(true);
+        synchronize({focus: true, scroll: true});
+      });
   }
 })();

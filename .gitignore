@@ -3,6 +3,8 @@
 !/.gitignore
 !/.env.example
 !/docker-compose.yml
+!/docker/
+!/docker/**
 !/Makefile
 !/README.md
 !/PLAN.md

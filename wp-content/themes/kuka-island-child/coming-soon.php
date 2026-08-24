@@ -62,10 +62,7 @@ $wordmark_line = implode( ' ', $words );
 				<source media="(max-width: 47.5em)" srcset="<?php echo esc_url( $media_uri . 'coming-soon-mobile-poster.jpg' ); ?>">
 				<img src="<?php echo esc_url( $media_uri . 'coming-soon-desktop-poster.jpg' ); ?>" alt="" width="1920" height="1080" fetchpriority="high">
 			</picture>
-			<video class="kuka-splash__video" autoplay loop muted playsinline preload="metadata" disablepictureinpicture tabindex="-1">
-				<source media="(prefers-reduced-motion: no-preference) and (max-width: 47.5em)" src="<?php echo esc_url( $media_uri . 'coming-soon-mobile.mp4' ); ?>" type="video/mp4">
-				<source media="(prefers-reduced-motion: no-preference) and (min-width: 47.501em)" src="<?php echo esc_url( $media_uri . 'coming-soon-desktop.mp4' ); ?>" type="video/mp4">
-			</video>
+			<video class="kuka-splash__video" loop muted playsinline preload="none" disablepictureinpicture tabindex="-1" data-responsive-video data-mobile-src="<?php echo esc_url( $media_uri . 'coming-soon-mobile.mp4' ); ?>" data-desktop-src="<?php echo esc_url( $media_uri . 'coming-soon-desktop.mp4' ); ?>" data-mobile-poster="<?php echo esc_url( $media_uri . 'coming-soon-mobile-poster.jpg' ); ?>" data-desktop-poster="<?php echo esc_url( $media_uri . 'coming-soon-desktop-poster.jpg' ); ?>"></video>
 		</div>
 	<?php endif; ?>
 	<section class="kuka-splash__mark" aria-labelledby="kuka-splash-status">

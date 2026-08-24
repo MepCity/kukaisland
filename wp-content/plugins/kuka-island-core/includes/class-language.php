@@ -14,6 +14,8 @@ function kuka_island_is_english(): bool {
 
 final class Kuka_Island_Core_Language {
 	private static bool $email_locale_switched = false;
+	private static ?bool $english_request = null;
+	private static ?string $english_request_key = null;
 	/** @return array<string, array<string, array{key:string,mode:string}>> */
 	public static function translation_fields(): array {
 		return array(
@@ -197,8 +199,9 @@ final class Kuka_Island_Core_Language {
 	}
 
 	public function english_interface( string $translation, string $text, string $domain ): string {
-		if ( ! self::is_english_context() || ! in_array( $domain, array( 'kuka-island', 'kuka-island-core' ), true ) ) { return $translation; }
-		$map = array(
+		if ( ! in_array( $domain, array( 'kuka-island', 'kuka-island-core' ), true ) || ! self::is_english_context() ) { return $translation; }
+		static $map = null;
+		$map ??= array(
 			'E-posta adresi' => 'Email address', 'Katıl' => 'Join', 'Şirket' => 'Company',
 			'E-posta' => 'Email', 'E-posta:' => 'Email:', 'Telefon' => 'Phone', 'Telefon:' => 'Phone:',
 			'Destek saatleri:' => 'Support hours:', 'Adres' => 'Address', 'Satıcı' => 'Seller', 'Marka' => 'Brand',
@@ -268,8 +271,8 @@ final class Kuka_Island_Core_Language {
 
 	public function english_plural_interface( string $translation, string $single, string $plural, int $number, string $domain ): string {
 		unset( $plural );
-		if ( ! self::is_english_context() || 'kuka-island' !== $domain ) { return $translation; }
-		$map = array( '%d ürün' => '%d products', '%d renk' => '%d colors' );
+		if ( 'kuka-island' !== $domain || ! self::is_english_context() ) { return $translation; }
+		static $map = array( '%d ürün' => '%d products', '%d renk' => '%d colors' );
 		return isset( $map[ $single ] ) ? sprintf( $map[ $single ], $number ) : $translation;
 	}
 
@@ -316,17 +319,27 @@ final class Kuka_Island_Core_Language {
 
 	public static function is_english_request(): bool {
 		global $wp_query;
-		if ( $wp_query instanceof WP_Query && 'en' === (string) $wp_query->get( 'kuka_lang', '' ) ) { return true; }
+		$query_language = $wp_query instanceof WP_Query ? (string) $wp_query->get( 'kuka_lang', '' ) : '';
+		$request_key = implode( "\0", array(
+			(string) ( $_SERVER['REQUEST_URI'] ?? '/' ),
+			$query_language,
+			(string) ( $_REQUEST['kuka_lang'] ?? '' ),
+			(string) ( $_SERVER['HTTP_REFERER'] ?? '' ),
+			isset( $_GET['wc-ajax'] ) ? 'wc-ajax' : '',
+		) );
+		if ( self::$english_request_key === $request_key && null !== self::$english_request ) { return self::$english_request; }
+		self::$english_request_key = $request_key;
+		if ( 'en' === $query_language ) { return self::$english_request = true; }
 		$path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ), PHP_URL_PATH );
-		if ( (bool) preg_match( '#^/en(?:/|$)#', $path ) ) { return true; }
+		if ( (bool) preg_match( '#^/en(?:/|$)#', $path ) ) { return self::$english_request = true; }
 		if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || isset( $_GET['wc-ajax'] ) ) {
 			$requested = sanitize_key( (string) wp_unslash( $_REQUEST['kuka_lang'] ?? '' ) );
-			if ( in_array( $requested, array( 'tr', 'en' ), true ) ) { return 'en' === $requested; }
+			if ( in_array( $requested, array( 'tr', 'en' ), true ) ) { return self::$english_request = 'en' === $requested; }
 			$referer_path = (string) wp_parse_url( wp_unslash( $_SERVER['HTTP_REFERER'] ?? '' ), PHP_URL_PATH );
-			if ( '' !== $referer_path ) { return (bool) preg_match( '#^/en(?:/|$)#', $referer_path ); }
-			if ( function_exists( 'WC' ) && WC()->session ) { return 'en' === WC()->session->get( 'kuka_storefront_language', 'tr' ); }
+			if ( '' !== $referer_path ) { return self::$english_request = (bool) preg_match( '#^/en(?:/|$)#', $referer_path ); }
+			if ( function_exists( 'WC' ) && WC()->session ) { return self::$english_request = 'en' === WC()->session->get( 'kuka_storefront_language', 'tr' ); }
 		}
-		return false;
+		return self::$english_request = false;
 	}
 
 	public static function is_english_context(): bool {

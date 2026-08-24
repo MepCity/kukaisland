@@ -76,6 +76,7 @@ function kuka_island_coming_soon_assets(): void {
 	}
 	wp_dequeue_style( 'woocommerce-coming-soon' );
 	kuka_island_enqueue_style( 'coming-soon', array( 'kuka-island-global' ) );
+	kuka_island_enqueue_script( 'responsive-video' );
 }
 
 /** Load route-specific presentation assets and product runtime data. */
@@ -105,6 +106,9 @@ function kuka_island_child_enqueue_assets(): void {
 	}
 
 	kuka_island_enqueue_script( 'storefront' );
+	if ( is_front_page() ) {
+		kuka_island_enqueue_script( 'responsive-video' );
+	}
 	if ( is_page( 'hakkimizda' ) ) {
 		kuka_island_enqueue_script( 'story', array( 'kuka-island-storefront' ) );
 	}

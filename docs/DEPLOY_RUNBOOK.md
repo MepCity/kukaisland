@@ -128,3 +128,15 @@ curl -fsS https://[ALAN_ADI]/.well-known/security.txt
 ```
 
 HSTS `max-age=300`, güvenlik metni `Contact`, `Expires`, `Preferred-Languages` ve `Canonical` satırlarını göstermelidir. Checkout sandbox ödemesi ve iyzico kart şeridi doğrulandıktan sonra en az bir hafta gözlenir; ancak bundan sonra HSTS süresi ayrı bir değişiklikle kademeli artırılır.
+
+## 11. Canlı performans kapısı
+
+Önbellek ve veritabanı katmanları hosting paketine aittir; depoda Redis varmış gibi `object-cache.php` kopyalanmaz ve paylaşımlı sunucuda sabit bir InnoDB bellek değeri varsayılmaz. Lansmandan önce Veridyen paneli veya destek kaydıyla aşağıdaki değerler gerçek canlı PHP/MySQL sürecinde ölçülür:
+
+1. OPcache açık olmalı; `opcache.memory_consumption` en az `192`, `opcache.interned_strings_buffer` en az `16`, `opcache.max_accelerated_files` en az `20000` olmalıdır. Yerel Docker aynı sözleşmeyi `docker/php/opcache.ini` ile kullanır.
+2. Redis/Memcached yalnız hosting kalıcı object cache hizmeti sunuyorsa etkinleştirilir. Sonrasında `wp eval 'var_export( wp_using_ext_object_cache() );'` çıktısı `true` ve yönetim ekranı/checkout smoke testi PASS olmalıdır. Hizmet yokken sahte drop-in bırakılmaz.
+3. LiteSpeed veya eşdeğer tam sayfa cache yalnız oturum açmamış vitrin sayfalarında açılır. `/sepet/`, `/odeme/`, `/hesabim/`, `?wc-ajax=*`, WooCommerce session/cart çerezli istekler ve ödeme callback'leri cache dışında kalır. Aynı anonim ana sayfa isteğinde ikinci yanıtın cache HIT, sepet ve checkout yanıtlarının daima BYPASS/MISS olduğu yanıt başlıklarıyla kaydedilir.
+4. `innodb_buffer_pool_size` değeri ve veritabanının gerçek veri+indeks çalışma kümesi hosting tarafından raporlanır. Ayrılmış sunucuda çalışma kümesini taşıyacak değer seçilir; paylaşımlı hostingte körlemesine `512M` zorlanmaz.
+5. Soğuk ve sıcak cache için ana sayfa, katalog, ürün ve checkout TTFB değerleri ayrı ölçülür; WooCommerce beşli smoke `5/5` geçmeden cache ayarı kabul edilmez.
+
+Bu kapı tamamlanmadan “Redis/sayfa cache/MySQL ayarı hazır” yazılmaz; üretim katmanı yerel `docker-compose.yml` üzerinden tahmin edilmez.

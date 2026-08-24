@@ -37,6 +37,7 @@ services:
       - wordpress_data:/var/www/html
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
       - ./wp-content/plugins/kuka-island-core:/var/www/html/wp-content/plugins/kuka-island-core
+      - ./docker/php/opcache.ini:/usr/local/etc/php/conf.d/zz-kuka-opcache.ini:ro
       - ./seed-media:/seed-media:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost/wp-login.php >/dev/null || exit 1"]
