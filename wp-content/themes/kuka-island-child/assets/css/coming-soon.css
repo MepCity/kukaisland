@@ -3,8 +3,8 @@
 
 body.kuka-splash-body {
   margin: 0;
-  background: var(--color-paper);
-  color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-white);
   font-family: var(--font-sans);
 }
 
@@ -17,16 +17,46 @@ body.kuka-splash-body {
   padding: var(--space-6) var(--content-gutter);
 }
 
+.kuka-splash__media,
+.kuka-splash__media::after,
+.kuka-splash__media picture,
+.kuka-splash__media img,
+.kuka-splash__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.kuka-splash__media {
+  overflow: hidden;
+}
+
+.kuka-splash__media::after {
+  background: var(--splash-video-scrim);
+  content: "";
+  pointer-events: none;
+}
+
+.kuka-splash__media img,
+.kuka-splash__video {
+  display: block;
+  object-fit: cover;
+}
+
 /* Basılı ilan hissi veren ince iç çerçeve. */
 .kuka-splash::before {
   position: absolute;
+  z-index: 2;
   inset: var(--splash-frame-inset);
-  border: var(--stroke) solid var(--color-line);
+  border: var(--stroke) solid var(--splash-frame-color);
   content: "";
   pointer-events: none;
 }
 
 .kuka-splash__mark {
+  position: relative;
+  z-index: 1;
   width: var(--splash-measure);
   text-align: center;
 }
@@ -36,7 +66,7 @@ body.kuka-splash-body {
   width: var(--splash-emblem-width);
   height: auto;
   margin: 0 auto var(--space-3);
-  color: var(--color-ink);
+  color: var(--color-white);
 }
 
 .kuka-splash__logo {
@@ -44,6 +74,7 @@ body.kuka-splash-body {
   width: 100%;
   height: auto;
   margin: 0 auto;
+  filter: brightness(0) invert(1);
 }
 
 .kuka-splash__wordmark {
@@ -68,7 +99,7 @@ body.kuka-splash-body {
 
 .kuka-splash__signature {
   margin: var(--space-3) 0 0;
-  color: var(--color-muted);
+  color: var(--color-white);
   font-size: var(--text-body);
   letter-spacing: var(--tracking-label);
 }
@@ -77,11 +108,12 @@ body.kuka-splash-body {
   width: var(--stroke);
   height: var(--splash-divider-height);
   margin: var(--space-4) auto;
-  background: var(--color-line);
+  background: var(--splash-frame-color);
 }
 
 .kuka-splash__status {
   margin: 0;
+  color: var(--color-white);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
@@ -106,12 +138,13 @@ body.kuka-splash-body {
   font-size: var(--text-micro);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+  z-index: 2;
 }
 
 .kuka-splash__login {
-  color: var(--color-muted);
+  color: var(--color-white);
   text-decoration: none;
-  border-bottom: var(--stroke) solid var(--color-line);
+  border-bottom: var(--stroke) solid var(--splash-frame-color);
   padding-bottom: var(--space-0-5);
   transition: color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard);
@@ -119,8 +152,8 @@ body.kuka-splash-body {
 
 .kuka-splash__login:hover,
 .kuka-splash__login:focus-visible {
-  color: var(--color-ink);
-  border-color: var(--color-ink);
+  color: var(--color-white);
+  border-color: var(--color-white);
 }
 
 .kuka-splash__login:focus-visible {
@@ -130,7 +163,13 @@ body.kuka-splash-body {
 
 .kuka-splash__year {
   margin: 0;
-  color: var(--color-muted);
+  color: var(--color-white);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kuka-splash__video {
+    display: none;
+  }
 }
 
 /* Girişte tek bir yumuşak açılış; azaltılmış hareket tercihinde kapalı. */

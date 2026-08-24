@@ -241,6 +241,8 @@ WP_CLI::line( 'APPLICATION_LEGAL_ROWS=mersis:' . ( str_contains( $company_html, 
 $footer_source = (string) file_get_contents( get_stylesheet_directory() . '/footer.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $front_source  = (string) file_get_contents( get_stylesheet_directory() . '/front-page.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $global_source = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$splash_source = (string) file_get_contents( get_stylesheet_directory() . '/coming-soon.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$splash_css    = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/coming-soon.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $story_source  = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/story.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $appearance_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-site-appearance.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 WP_CLI::line( 'FOOTER_WHATSAPP_SOURCE=' . ( str_contains( $footer_source, 'if ( $whatsapp_url )' ) && str_contains( $footer_source, '>WhatsApp <span class="kuka-text-arrow"' ) ? 'phone-helper' : 'missing' ) );
@@ -252,6 +254,18 @@ $plugin_cards_path = WP_PLUGIN_DIR . '/iyzico-woocommerce/assets/images/cards_v2
 WP_CLI::line( 'THEME_PAYMENT_ASSETS=' . ( ! is_dir( $payment_dir ) ? 'absent' : 'present' ) );
 WP_CLI::line( 'CHECKOUT_CARD_STRIP_ASSET=' . ( file_exists( $plugin_cards_path ) ? 'plugin-owned' : 'missing' ) );
 WP_CLI::line( 'PAYMENT_COLOR_ASSET_EXCEPTIONS=0' );
+$splash_media_dir = get_stylesheet_directory() . '/assets/media/';
+$splash_media = array(
+	'desktop_video'  => 'coming-soon-desktop.mp4',
+	'mobile_video'   => 'coming-soon-mobile.mp4',
+	'desktop_poster' => 'coming-soon-desktop-poster.jpg',
+	'mobile_poster'  => 'coming-soon-mobile-poster.jpg',
+);
+$splash_media_ready = array_filter( $splash_media, static fn( string $file ): bool => file_exists( $splash_media_dir . $file ) );
+WP_CLI::line( 'COMING_SOON_MEDIA_FILES=' . count( $splash_media_ready ) . '/4' );
+WP_CLI::line( 'COMING_SOON_VIDEO_BYTES=desktop:' . filesize( $splash_media_dir . $splash_media['desktop_video'] ) . '|mobile:' . filesize( $splash_media_dir . $splash_media['mobile_video'] ) );
+WP_CLI::line( 'COMING_SOON_VIDEO_CONTRACT=' . ( str_contains( $splash_source, 'autoplay loop muted playsinline' ) && str_contains( $splash_source, 'coming-soon-mobile.mp4' ) && str_contains( $splash_source, 'coming-soon-desktop.mp4' ) ? 'responsive+autoplay+muted+loop+playsinline' : 'missing' ) );
+WP_CLI::line( 'COMING_SOON_REDUCED_MOTION=' . ( str_contains( $splash_source, 'prefers-reduced-motion: no-preference' ) && str_contains( $splash_css, '@media (prefers-reduced-motion: reduce)' ) && str_contains( $splash_css, 'display: none' ) ? 'poster-only' : 'missing' ) );
 WP_CLI::line( 'MOBILE_SAFARI_ARROWS=' . ( str_contains( $footer_source, '↗︎' ) && str_contains( $footer_source, 'kuka-text-arrow' ) ? 'text' : 'emoji-risk' ) );
 WP_CLI::line( 'HERO_EST_LINE=' . ( str_contains( $front_source, 'class="kuka-hero__est"' ) && str_contains( $global_source, '.kuka-hero__est' ) ? 'separate' : 'inline' ) );
 WP_CLI::line( 'LANGUAGE_HOVER=' . ( str_contains( $global_source, '.kuka-lang-switcher__list a:hover' ) && str_contains( $global_source, 'text-decoration: underline' ) ? 'same-color+underline' : 'missing' ) );

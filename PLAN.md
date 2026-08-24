@@ -1600,6 +1600,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-24 | “Çok yakında” ekranında teslim edilen yatay videonun ilk 25 saniyesi kullanılır; masaüstü 1920×1080 ve mobil 1080×1920 ayrı, sessiz MP4 kaynakları sunulur; hareket azaltma tercihinde video indirilmeden poster gösterilir | Ürün → deniz → tek model → iki model akışı ilk deneme için dengeli bir teaser verir; ayrı kadrajlar mobilde kaliteyi korur, 25 saniye ve sessiz kaynaklar tam uzunluktaki 62 MB dosyanın ilk açılış yükünü azaltır ve daha sonra kaynak değiştirilebilir |
 | 2026-08-11 | Checkout telefonu `5XX XXX XX XX` görünümünde, `5XXXXXXXXX` kayıt biçiminde standartlaştırılır; `0` ve `+90` önekli yapıştırmalar normalize edilir, diğer başlangıçlar ve eksik/fazla rakamlar istemci ile sunucuda reddedilir | Sipariş telefonlarının tek biçimde tutulması, mobil klavyede kolay giriş ve hatalı/eksik numaranın siparişe geçmeden alan üzerinde açıklanması gerekir |
 | 2026-08-11 | Ürün detayındaki iyzico güven şeridi bilgi kolonunda ortalanır, ilk ürün akordiyonundan 24 px ayrılır ve eklentinin resmî CDN SVG kart logoları 32 × 24 px net gösterim kutusunda tutulur | Müşteri şeridin sola yaslı, detay çizgisine yapışık ve kart işaretlerinin bulanık göründüğünü bildirdi; eklenti varlığı kopyalanmadan vektör kaynak ve güncelleme sınırı korunur |
 | 2026-08-11 | Checkout doğrulaması JS açıkken alanla eşleşen üst özet satırlarını kaldırır; her hatayı ilgili kontrol üzerinde token tabanlı kırmızı çerçeve ve tek satır içi mesajla gösterir, ilk boş alana kaydırıp odaklar ve geçerli girişte durumu anında temizler. Yönetici/test e-postası checkout önizlemesine taşınmaz | Müşteri yalnız alan bazlı geri bildirim istedi; WooCommerce 11'in açıklama düğümü tek kaynaktan yeniden kullanılarak yinelenen mesaj önlenir, JS'siz sunucu özeti ve gerçek müşteri verisi korunur |
@@ -1810,6 +1811,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 39. Mevcut durum
 
+- [x] “Çok yakında” video ekranı: ilk `25,000 sn`; masaüstü `1920×1080 / 13.660.330 bayt`, mobil `1080×1920 / 10.905.271 bayt`, ses izi `0/0`; responsive poster, `by Kübra Gültekin` katmanı ve reduced-motion poster fallback tamamlandı
 - [x] Değişken ürün kartı fiyat düzeltmesi: minimum varyasyon `1,00 TL`; TR `₺1/₺0 = 1/0`, EN `₺1/₺0 = 1/0`; geçici denetim ürünü test sonunda silinir
 - [x] Ücretsiz kargo kuponu düzeltmesi: 2.890 TL eşik-altı sepette TR `149→0 TL`, EN `149→0 TL`; iki dilde toplam `3.039→2.890 TL`, yalnız ücretsiz yöntem görünür ve ilerleme metni hazır durumuna geçer
 - [x] Faz 11 footer sadeleştirmesi tamamlandı: ödeme logoları ve panel anahtarı tamamen kaldırıldı; TR `7/7`, EN `7/7` viewport taşma `0`, ödeme kabı/görseli `0/14`, marka kilidi ve telif `14/14`; iyzico `cards_v2.png` şeridi TR ve EN ödeme sayfasında ayrı ayrı görünür (`200×21` CSS px)

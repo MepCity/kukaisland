@@ -217,6 +217,7 @@ final class Kuka_Island_Core_Language {
 			'Kayıt şu anda tamamlanamadı. Lütfen tekrar deneyin.' => 'Your registration could not be completed. Please try again.',
 			'Ada mektupları' => 'Island letters', 'Yardım' => 'Help', 'Yasal' => 'Legal', 'Sosyal' => 'Social',
 			'WhatsApp destek' => 'WhatsApp support', 'Formunu bul' => 'Find your shape', 'Ürün kategorileri' => 'Product categories',
+			'Çok yakında' => 'Coming soon', 'Oturum aç' => 'Log in', 'by %s' => 'by %s',
 			'Koleksiyon' => 'Collection', 'Tümünü gör' => 'View all', 'Editoryal' => 'Editorial', 'Hikâyeyi oku' => 'Read the story',
 			'Servis güvenceleri' => 'Service assurances', 'Ana sayfa' => 'Home', 'İçeriğe geç' => 'Skip to content',
 			'Duyurular' => 'Announcements', 'Sepete dön' => 'Back to cart', 'Menüyü aç' => 'Open menu', 'Ana menü' => 'Main menu',
