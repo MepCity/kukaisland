@@ -398,6 +398,7 @@ $request_uri = $_SERVER['REQUEST_URI'] ?? null;
 $_SERVER['REQUEST_URI'] = '/en/magaza/?utm_source=poison&product-page=2';
 $clean_canonical = Kuka_Island_Core_Language::current_url( 'en' );
 $english_plural_one = $language_probe->english_plural_interface( '1 ürün', '%d ürün', '%d ürün', 1, 'kuka-island' );
+$taxonomyless_terms = get_terms( array( 'hide_empty' => false, 'number' => 1 ) );
 if ( null === $request_uri ) { unset( $_SERVER['REQUEST_URI'] ); } else { $_SERVER['REQUEST_URI'] = $request_uri; }
 $autoload_rows = $wpdb->get_results( "SELECT option_name, autoload FROM {$wpdb->options} WHERE option_name IN ('kuka_newsletter_db_version','kuka_free_shipping_requirement_version','kuka_island_site_content')", OBJECT_K ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $autoload_ready = 3 === count( array_filter( $autoload_rows, static fn( object $row ): bool => in_array( $row->autoload, array( 'on', 'yes', 'auto-on' ), true ) ) );
@@ -415,6 +416,7 @@ WP_CLI::line( 'CATALOG_NESTED_FILTER=' . ( array( 'valid-cut' ) === $safe_filter
 WP_CLI::line( 'CHECKOUT_PHONE_ARRAY=' . ( '' === ( $phone_array['billing_phone'] ?? null ) ? 'rejected' : 'unsafe' ) );
 WP_CLI::line( 'CHECKOUT_PREVIEW_ADDRESS=' . ( 'Fatura|Teslimat' === $preview_swap ? 'swapped' : $preview_swap ) );
 WP_CLI::line( 'ENGLISH_PLURAL_ONE=' . $english_plural_one );
+WP_CLI::line( 'TAXONOMYLESS_GET_TERMS=' . ( is_array( $taxonomyless_terms ) ? 'null-safe' : 'failed' ) );
 WP_CLI::line( 'CANONICAL_QUERY_POLICY=' . ( str_contains( $clean_canonical, 'product-page=2' ) && ! str_contains( $clean_canonical, 'utm_source' ) ? 'allowlisted' : 'unfiltered' ) );
 WP_CLI::line( 'CART_RESPONSE_PARSER=' . ( str_contains( $cart_script, 'DOMParser' ) && ! str_contains( $cart_script, 'holder.innerHTML' ) ? 'inert' : 'active-html' ) );
 WP_CLI::line( 'TITLE_CALLBACK_DEFAULTS=' . ( str_contains( (string) apply_filters( 'the_title', 'Probe title' ), 'Probe title' ) ? 'compatible' : 'failed' ) );

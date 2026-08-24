@@ -43,9 +43,9 @@ final class Kuka_Island_Core_Taxonomy_Translations {
 		update_term_meta( $term_id, '_kuka_name_en', sanitize_text_field( wp_unslash( $_POST['kuka_name_en'] ?? '' ) ) );
 	}
 
-	public function translate_terms( array $terms, array $taxonomies, array $args, WP_Term_Query $query ): array {
+	public function translate_terms( array $terms, ?array $taxonomies, array $args, WP_Term_Query $query ): array {
 		unset( $args, $query );
-		if ( ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() || ! array_intersect( self::TAXONOMIES, $taxonomies ) ) { return $terms; }
+		if ( empty( $taxonomies ) || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() || ! array_intersect( self::TAXONOMIES, $taxonomies ) ) { return $terms; }
 		foreach ( $terms as $term ) {
 			if ( $term instanceof WP_Term && in_array( $term->taxonomy, self::TAXONOMIES, true ) ) {
 				$term->name = kuka_island_term_name( $term );

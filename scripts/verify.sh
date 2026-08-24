@@ -278,6 +278,7 @@ expect_line "nested catalog filters cannot fatal" "CATALOG_NESTED_FILTER=ignored
 expect_line "array phone input is rejected" "CHECKOUT_PHONE_ARRAY=rejected"
 expect_line "checkout AJAX preview uses delivery address" "CHECKOUT_PREVIEW_ADDRESS=swapped"
 expect_line "English singular product label" "ENGLISH_PLURAL_ONE=1 product"
+expect_line "taxonomyless get_terms accepts null taxonomy" "TAXONOMYLESS_GET_TERMS=null-safe"
 expect_line "canonical query uses an allowlist" "CANONICAL_QUERY_POLICY=allowlisted"
 expect_line "coupon response parsing is inert" "CART_RESPONSE_PARSER=inert"
 expect_line "title callbacks tolerate one argument" "TITLE_CALLBACK_DEFAULTS=compatible"
