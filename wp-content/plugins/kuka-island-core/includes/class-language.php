@@ -274,8 +274,11 @@ final class Kuka_Island_Core_Language {
 	public function english_plural_interface( string $translation, string $single, string $plural, int $number, string $domain ): string {
 		unset( $plural );
 		if ( 'kuka-island' !== $domain || ! self::is_english_context() ) { return $translation; }
-		static $map = array( '%d ürün' => '%d products', '%d renk' => '%d colors' );
-		return isset( $map[ $single ] ) ? sprintf( $map[ $single ], $number ) : $translation;
+		static $map = array(
+			'%d ürün' => array( '%d product', '%d products' ),
+			'%d renk' => array( '%d color', '%d colors' ),
+		);
+		return isset( $map[ $single ] ) ? sprintf( $map[ $single ][ 1 === $number ? 0 : 1 ], $number ) : $translation;
 	}
 
 	public function save_order_locale( WC_Order $order ): void {
@@ -420,9 +423,12 @@ final class Kuka_Island_Core_Language {
 	public static function current_url( string $language ): string {
 		$request = (string) wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' );
 		$home    = untrailingslashit( (string) get_option( 'home' ) );
-		$path    = '/' . ltrim( $request, '/' );
-		$path    = preg_replace( '#^/en(?=/|\?|$)#', '', $path ) ?: '/';
-		return $home . ( 'en' === $language ? '/en' : '' ) . ( str_starts_with( $path, '/' ) ? $path : '/' . $path );
+		$path    = '/' . ltrim( (string) wp_parse_url( $request, PHP_URL_PATH ), '/' );
+		$path    = preg_replace( '#^/en(?=/|$)#', '', $path ) ?: '/';
+		$url     = $home . ( 'en' === $language ? '/en' : '' ) . ( str_starts_with( $path, '/' ) ? $path : '/' . $path );
+		parse_str( (string) wp_parse_url( $request, PHP_URL_QUERY ), $query );
+		$product_page = absint( $query['product-page'] ?? 0 );
+		return $product_page > 1 ? add_query_arg( 'product-page', $product_page, $url ) : $url;
 	}
 
 	public function language_metadata(): void {
@@ -454,27 +460,70 @@ final class Kuka_Island_English_Sitemap_Provider extends WP_Sitemaps_Provider {
 
 	public function get_url_list( $page_num, $object_subtype = '' ): array {
 		unset( $object_subtype );
-		if ( 1 !== (int) $page_num ) { return array(); }
-		$urls = array( array( 'loc' => Kuka_Island_Core_Language::url_for_language( (string) get_option( 'home' ) . '/', 'en' ) ) );
-		foreach ( get_posts( array( 'post_type' => array( 'page', 'product' ), 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids' ) ) as $post_id ) {
-			if ( function_exists( 'wc_get_page_id' ) && wc_get_page_id( 'myaccount' ) === (int) $post_id ) { continue; }
-			$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( get_permalink( $post_id ), 'en' ) );
+		$page_num = max( 1, (int) $page_num );
+		$limit    = wp_sitemaps_get_max_urls( $this->object_type );
+		$offset   = ( $page_num - 1 ) * $limit;
+		$remaining = $limit;
+		$urls      = array();
+
+		if ( 0 === $offset && $remaining ) {
+			$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( (string) get_option( 'home' ) . '/', 'en' ) );
+			--$remaining;
+		} else {
+			$offset = max( 0, $offset - 1 );
 		}
-		foreach ( array( 'product_cat', 'pa_renk', 'pa_kesim', 'pa_beden' ) as $taxonomy ) {
-			if ( ! taxonomy_exists( $taxonomy ) ) { continue; }
-			foreach ( get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false ) ) as $term ) {
+
+		$post_count = self::published_post_count();
+		if ( $remaining && $offset < $post_count ) {
+			$number = min( $remaining, $post_count - $offset );
+			$excluded = function_exists( 'wc_get_page_id' ) ? array_filter( array( wc_get_page_id( 'myaccount' ) ) ) : array();
+			$post_ids = get_posts( array( 'post_type' => array( 'page', 'product' ), 'post_status' => 'publish', 'posts_per_page' => $number, 'offset' => $offset, 'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'ids', 'post__not_in' => $excluded ) );
+			foreach ( $post_ids as $post_id ) {
+				$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( get_permalink( $post_id ), 'en' ) );
+			}
+			$remaining -= count( $post_ids );
+			$offset = 0;
+		} else {
+			$offset = max( 0, $offset - $post_count );
+		}
+
+		foreach ( self::sitemap_taxonomies() as $taxonomy ) {
+			$count = self::taxonomy_term_count( $taxonomy );
+			if ( ! $remaining ) { break; }
+			if ( $offset >= $count ) { $offset -= $count; continue; }
+			$number = min( $remaining, $count - $offset );
+			$terms = get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false, 'number' => $number, 'offset' => $offset, 'orderby' => 'term_id', 'order' => 'ASC' ) );
+			foreach ( is_wp_error( $terms ) ? array() : $terms as $term ) {
 				$term_url = get_term_link( $term );
 				if ( ! is_wp_error( $term_url ) ) { $urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( $term_url, 'en' ) ); }
 			}
-		}
-		if ( function_exists( 'wc_get_page_permalink' ) ) {
-			$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( wc_get_page_permalink( 'shop' ), 'en' ) );
+			$remaining -= is_wp_error( $terms ) ? 0 : count( $terms );
+			$offset = 0;
 		}
 		return $urls;
 	}
 
 	public function get_max_num_pages( $object_subtype = '' ): int {
 		unset( $object_subtype );
-		return 1;
+		$total = 1 + self::published_post_count();
+		foreach ( self::sitemap_taxonomies() as $taxonomy ) { $total += self::taxonomy_term_count( $taxonomy ); }
+		return max( 1, (int) ceil( $total / wp_sitemaps_get_max_urls( $this->object_type ) ) );
+	}
+
+	/** @return array<int, string> */
+	private static function sitemap_taxonomies(): array {
+		return array_values( array_filter( array( 'product_cat', 'pa_renk', 'pa_kesim', 'pa_beden' ), 'taxonomy_exists' ) );
+	}
+
+	private static function published_post_count(): int {
+		$total = 0;
+		foreach ( array( 'page', 'product' ) as $post_type ) { $total += (int) ( wp_count_posts( $post_type )->publish ?? 0 ); }
+		$account_id = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( 'myaccount' ) : 0;
+		return max( 0, $total - ( $account_id > 0 && 'publish' === get_post_status( $account_id ) ? 1 : 0 ) );
+	}
+
+	private static function taxonomy_term_count( string $taxonomy ): int {
+		$count = wp_count_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false ) );
+		return is_wp_error( $count ) ? 0 : (int) $count;
 	}
 }

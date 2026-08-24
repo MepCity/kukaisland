@@ -4,7 +4,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Newsletter {
-	private const DB_VERSION = '2';
+	private const DB_VERSION = '3';
 	private const DB_OPTION = 'kuka_newsletter_db_version';
 	private const RATE_SECONDS = 60;
 	private const IP_RATE_SECONDS = 600;
@@ -54,7 +54,7 @@ final class Kuka_Island_Core_Newsletter {
 		if ( '' !== $previous_version && version_compare( $previous_version, '2', '<' ) ) {
 			$wpdb->query( "UPDATE {$table} SET status = 'confirmed', confirmed_at = consented_at WHERE confirmation_hash = ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		}
-		update_option( self::DB_OPTION, self::DB_VERSION, false );
+		update_option( self::DB_OPTION, self::DB_VERSION, true );
 	}
 
 	public function maybe_install_schema(): void {
@@ -113,7 +113,6 @@ final class Kuka_Island_Core_Newsletter {
 		if ( get_transient( $rate_key ) || $ip_attempts >= self::IP_RATE_LIMIT ) {
 			$this->redirect( 'rate' );
 		}
-		set_transient( $rate_key, 1, self::RATE_SECONDS );
 		set_transient( $ip_rate_key, $ip_attempts + 1, self::IP_RATE_SECONDS );
 
 		$content = Kuka_Island_Core_Site_Appearance::get();
@@ -160,6 +159,7 @@ final class Kuka_Island_Core_Newsletter {
 		if ( ! self::send_mail( $email, $subject, $message ) ) {
 			$this->redirect( 'error' );
 		}
+		set_transient( $rate_key, 1, self::RATE_SECONDS );
 		$this->redirect( 'success' );
 	}
 
@@ -251,8 +251,14 @@ final class Kuka_Island_Core_Newsletter {
 		header( 'Content-Disposition: attachment; filename="kuka-newsletter.csv"' );
 		$out = fopen( 'php://output', 'w' );
 		fputcsv( $out, array( 'id', 'email', 'consent_text', 'consented_at_utc', 'ip_address', 'status', 'confirmed_at_utc' ) );
-		foreach ( $rows as $row ) { fputcsv( $out, $row ); }
+		foreach ( $rows as $row ) { fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $row ) ); }
 		fclose( $out );
 		exit;
+	}
+
+	/** Prevent spreadsheet applications from interpreting exported text as formulas. */
+	private static function csv_cell( mixed $value ): string {
+		$value = (string) $value;
+		return preg_match( '/^(?:\s*[=+\-@]|[\t\r])/', $value ) ? "'" . $value : $value;
 	}
 }

@@ -31,7 +31,7 @@ if ! docker compose run --rm wp-cli wp core is-installed >/dev/null 2>&1; then
 fi
 
 # Güvenlik sürümü ana imajın taşıdığı çekirdekten bağımsız olarak sabitlenir.
-docker compose run --rm wp-cli wp core update --version=7.0.4 --force
+docker compose run --rm wp-cli wp core update --version=7.1 --force
 docker compose run --rm wp-cli wp core update-db
 docker compose run --rm wp-cli wp language core install tr_TR --activate
 docker compose run --rm wp-cli wp plugin install woocommerce --version=11.0.1 --activate --force

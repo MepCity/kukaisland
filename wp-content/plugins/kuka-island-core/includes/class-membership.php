@@ -15,6 +15,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Membership {
+	private const TRACKING_LINK_SECONDS = 172800;
 	/** WooCommerce options that must stay off while membership is disabled. */
 	private const DISABLED_OPTIONS = array(
 		'woocommerce_enable_signup_and_login_from_checkout' => 'no',
@@ -53,6 +54,7 @@ final class Kuka_Island_Core_Membership {
 		add_filter( 'woocommerce_checkout_registration_required', '__return_false', 99 );
 		add_filter( 'woocommerce_checkout_show_terms', '__return_true' );
 		add_action( 'init', array( $this, 'strip_checkout_login_prompt' ) );
+		add_action( 'template_redirect', array( $this, 'hydrate_tracking_request' ), 1 );
 		add_action( 'woocommerce_order_details_after_order_table', array( $this, 'order_tracking_link' ) );
 		add_action( 'woocommerce_email_after_order_table', array( $this, 'email_tracking_link' ), 20, 4 );
 	}
@@ -134,10 +136,50 @@ final class Kuka_Island_Core_Membership {
 	private function tracking_url( WC_Order $order ): string {
 		return add_query_arg(
 			array(
-				'orderid'    => $order->get_order_number(),
-				'order_email' => $order->get_billing_email(),
+				'kuka_track' => self::tracking_token( $order, time() + self::TRACKING_LINK_SECONDS ),
 			),
 			home_url( '/siparis-takibi/' )
 		);
+	}
+
+	/** Replace legacy PII query links and hydrate WooCommerce's tracking form in memory. */
+	public function hydrate_tracking_request(): void {
+		if ( ! is_page( 'siparis-takibi' ) ) {
+			return;
+		}
+		$legacy_id    = absint( $_GET['orderid'] ?? 0 );
+		$legacy_email = sanitize_email( wp_unslash( $_GET['order_email'] ?? '' ) );
+		if ( $legacy_id && $legacy_email ) {
+			$order = wc_get_order( $legacy_id );
+			if ( $order instanceof WC_Order && hash_equals( strtolower( $order->get_billing_email() ), strtolower( $legacy_email ) ) ) {
+				wp_safe_redirect( $this->tracking_url( $order ), 302 );
+				exit;
+			}
+		}
+
+		$token = sanitize_text_field( wp_unslash( $_GET['kuka_track'] ?? '' ) );
+		$order = self::order_from_tracking_token( $token );
+		if ( ! $order ) {
+			return;
+		}
+		$_REQUEST['orderid']     = $order->get_order_number();
+		$_REQUEST['order_email'] = $order->get_billing_email();
+	}
+
+	private static function tracking_token( WC_Order $order, int $expires ): string {
+		$payload = $order->get_id() . '.' . $expires;
+		return $payload . '.' . hash_hmac( 'sha256', $payload, wp_salt( 'auth' ) );
+	}
+
+	private static function order_from_tracking_token( string $token ): ?WC_Order {
+		if ( ! preg_match( '/^(\d+)\.(\d+)\.([a-f0-9]{64})$/', $token, $parts ) ) {
+			return null;
+		}
+		$payload = $parts[1] . '.' . $parts[2];
+		if ( (int) $parts[2] < time() || ! hash_equals( hash_hmac( 'sha256', $payload, wp_salt( 'auth' ) ), $parts[3] ) ) {
+			return null;
+		}
+		$order = wc_get_order( (int) $parts[1] );
+		return $order instanceof WC_Order ? $order : null;
 	}
 }

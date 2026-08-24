@@ -142,9 +142,8 @@
           billing_email: document.querySelector('input[name="billing_email"]')?.value ?? "",
         }),
       });
-      const holder = document.createElement("div");
-      holder.innerHTML = await response.text();
-      const error = holder.querySelector(".woocommerce-error");
+		const holder = new window.DOMParser().parseFromString(await response.text(), "text/html");
+		const error = holder.querySelector(".woocommerce-error");
       if (error) {
         if (errorBox) {
           errorBox.textContent = error.textContent.trim();

@@ -65,7 +65,7 @@ final class Kuka_Island_Core_Page_Translations {
 		$this->saving_editor = false;
 	}
 
-	public function title( string $title, int $post_id ): string {
+	public function title( string $title, int $post_id = 0 ): string {
 		if ( is_admin() || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() || 'page' !== get_post_type( $post_id ) ) { return $title; }
 		$english = trim( (string) get_post_meta( $post_id, '_kuka_title_en', true ) );
 		if ( '' !== $english ) { return $english; }

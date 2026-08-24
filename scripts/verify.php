@@ -219,7 +219,7 @@ $tracking_test_order->set_billing_email( 'guest@example.test' );
 ob_start();
 ( new Kuka_Island_Core_Membership() )->email_tracking_link( $tracking_test_order, false );
 $tracking_email_html = (string) ob_get_clean();
-WP_CLI::line( 'EMAIL_TRACKING_LINK=' . ( str_contains( $tracking_email_html, 'orderid=0' ) && str_contains( $tracking_email_html, 'order_email=guest@example.test' ) ? 'personalized' : 'missing' ) );
+WP_CLI::line( 'EMAIL_TRACKING_LINK=' . ( str_contains( $tracking_email_html, 'kuka_track=' ) && ! str_contains( $tracking_email_html, 'guest%40example.test' ) && ! str_contains( $tracking_email_html, 'order_email' ) ? 'tokenized' : 'missing' ) );
 $tracking_page = get_page_by_path( 'siparis-takibi' );
 WP_CLI::line( 'ORDER_TRACKING_PAGE=' . ( $tracking_page && str_contains( (string) $tracking_page->post_content, '[woocommerce_order_tracking]' ) ? 'ready' : 'missing' ) );
 $terms_page = get_page_by_path( 'kullanim-kosullari' );
@@ -376,6 +376,31 @@ $cart_script = (string) file_get_contents( get_stylesheet_directory() . '/assets
 $checkout_styles = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/checkout.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $woocommerce_source = (string) file_get_contents( get_stylesheet_directory() . '/inc/woocommerce.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $appearance_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-site-appearance.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$language_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-language.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$newsletter_csv = new ReflectionMethod( Kuka_Island_Core_Newsletter::class, 'csv_cell' );
+$appearance_url = new ReflectionMethod( Kuka_Island_Core_Site_Appearance::class, 'sanitize_url' );
+$tracking_url = new ReflectionMethod( Kuka_Island_Core_Membership::class, 'tracking_url' );
+$tracking_order = new WC_Order();
+$tracking_order->set_billing_email( 'private@example.test' );
+$tracking_link = (string) $tracking_url->invoke( new Kuka_Island_Core_Membership(), $tracking_order );
+$filter_get = $_GET;
+$_GET['ki_cut'] = array( 'nested' => array( 'x' ), 'valid-cut' );
+$safe_filter_values = kuka_island_filter_values( 'ki_cut' );
+$_GET = $filter_get;
+$phone_array = kuka_island_checkout_normalize_phone( array( 'billing_phone' => array( 'x' ) ) );
+$preview_post = $_POST;
+$_POST = array();
+kuka_island_checkout_preview_swap_addresses( 'ship_to_different_address=1&billing_country=TR&billing_city=Teslimat&shipping_country=TR&shipping_city=Fatura' );
+$preview_swap = ( $_POST['city'] ?? '' ) . '|' . ( $_POST['s_city'] ?? '' );
+$_POST = $preview_post;
+$language_probe = new Kuka_Island_Core_Language();
+$request_uri = $_SERVER['REQUEST_URI'] ?? null;
+$_SERVER['REQUEST_URI'] = '/en/magaza/?utm_source=poison&product-page=2';
+$clean_canonical = Kuka_Island_Core_Language::current_url( 'en' );
+$english_plural_one = $language_probe->english_plural_interface( '1 ürün', '%d ürün', '%d ürün', 1, 'kuka-island' );
+if ( null === $request_uri ) { unset( $_SERVER['REQUEST_URI'] ); } else { $_SERVER['REQUEST_URI'] = $request_uri; }
+$autoload_rows = $wpdb->get_results( "SELECT option_name, autoload FROM {$wpdb->options} WHERE option_name IN ('kuka_newsletter_db_version','kuka_free_shipping_requirement_version','kuka_island_site_content')", OBJECT_K ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$autoload_ready = 3 === count( array_filter( $autoload_rows, static fn( object $row ): bool => in_array( $row->autoload, array( 'on', 'yes', 'auto-on' ), true ) ) );
 WP_CLI::line( 'NEWSLETTER_TABLE=' . ( $newsletter_table ? 'ready' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_FORM=' . ( str_contains( $newsletter_form, 'method="post"' ) && str_contains( $newsletter_form, 'name="consent" value="1" required' ) ? 'native-required' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_UI=' . ( str_contains( $newsletter_form, 'placeholder="name@example.com"' ) && str_contains( $newsletter_form, 'class="kuka-button"' ) ? 'label+placeholder|site-button' : 'missing' ) );
@@ -383,6 +408,20 @@ WP_CLI::line( 'NEWSLETTER_NOTIFICATION_FIELD=' . ( array_key_exists( 'newsletter
 WP_CLI::line( 'NEWSLETTER_DOUBLE_OPT_IN=' . ( in_array( 'status', $newsletter_columns, true ) && in_array( 'confirmation_hash', $newsletter_columns, true ) && str_contains( $newsletter_source, 'kuka_newsletter_confirm' ) ? 'schema+token+confirm' : 'missing' ) );
 WP_CLI::line( 'NEWSLETTER_FIRST_EVIDENCE=' . ( ! str_contains( $newsletter_source, '$wpdb->replace' ) && str_contains( $newsletter_source, 'confirmation_hash = VALUES(confirmation_hash)' ) ? 'immutable' : 'replaceable' ) );
 WP_CLI::line( 'NEWSLETTER_IP_LIMIT=' . ( str_contains( $newsletter_source, 'IP_RATE_LIMIT' ) && str_contains( $newsletter_source, '$ip_rate_key' ) ? 'global+pair' : 'pair-only' ) );
+WP_CLI::line( 'NEWSLETTER_CSV_FORMULA=' . ( "'  =1+1@example.test" === $newsletter_csv->invoke( null, '  =1+1@example.test' ) ? 'escaped' : 'unsafe' ) );
+WP_CLI::line( 'RELATIVE_URL_BACKSLASH=' . ( '' === $appearance_url->invoke( null, '/\\evil.example' ) ? 'rejected' : 'accepted' ) );
+WP_CLI::line( 'TRACKING_LINK_PII=' . ( str_contains( $tracking_link, 'kuka_track=' ) && ! str_contains( $tracking_link, 'private%40example.test' ) && ! str_contains( $tracking_link, 'order_email' ) ? 'token-only' : 'exposed' ) );
+WP_CLI::line( 'CATALOG_NESTED_FILTER=' . ( array( 'valid-cut' ) === $safe_filter_values ? 'ignored' : 'unsafe' ) );
+WP_CLI::line( 'CHECKOUT_PHONE_ARRAY=' . ( '' === ( $phone_array['billing_phone'] ?? null ) ? 'rejected' : 'unsafe' ) );
+WP_CLI::line( 'CHECKOUT_PREVIEW_ADDRESS=' . ( 'Fatura|Teslimat' === $preview_swap ? 'swapped' : $preview_swap ) );
+WP_CLI::line( 'ENGLISH_PLURAL_ONE=' . $english_plural_one );
+WP_CLI::line( 'CANONICAL_QUERY_POLICY=' . ( str_contains( $clean_canonical, 'product-page=2' ) && ! str_contains( $clean_canonical, 'utm_source' ) ? 'allowlisted' : 'unfiltered' ) );
+WP_CLI::line( 'CART_RESPONSE_PARSER=' . ( str_contains( $cart_script, 'DOMParser' ) && ! str_contains( $cart_script, 'holder.innerHTML' ) ? 'inert' : 'active-html' ) );
+WP_CLI::line( 'TITLE_CALLBACK_DEFAULTS=' . ( str_contains( (string) apply_filters( 'the_title', 'Probe title' ), 'Probe title' ) ? 'compatible' : 'failed' ) );
+WP_CLI::line( 'CONTENT_OPTION_AUTOLOAD=' . ( $autoload_ready ? '3/3' : 'incomplete' ) );
+WP_CLI::line( 'ENGLISH_SITEMAP_PAGING=' . ( ! str_contains( $language_source, "'posts_per_page' => -1" ) && str_contains( $language_source, 'wp_sitemaps_get_max_urls' ) ? 'bounded' : 'unbounded' ) );
+WP_CLI::line( 'DEAD_LANGUAGE_FIELDS=' . ( ! array_key_exists( 'pending_urls', $site_content['languages'] ?? array() ) && ! array_key_exists( 'pending_note', $site_content['languages'] ?? array() ) ? 'absent' : 'present' ) );
+WP_CLI::line( 'NEWSLETTER_RATE_AFTER_MAIL=' . ( strpos( $newsletter_source, 'set_transient( $rate_key' ) > strpos( $newsletter_source, 'self::send_mail' ) ? 'yes' : 'no' ) );
 WP_CLI::line( 'CHECKOUT_SUMMARY_TOTAL=' . ( str_contains( $checkout_script, 'synchronizeSummaryTotal' ) && str_contains( $checkout_script, ".on('updated_checkout'" ) ? 'ajax-synced' : 'stale' ) );
 WP_CLI::line( 'CHECKOUT_OPTIONAL_PHONE=' . ( ! str_contains( $checkout_script, "phone.value = '5'" ) && str_contains( $checkout_script, 'phone.value = formatPhone(phone.value)' ) ? 'empty-allowed' : 'seeded' ) );
 WP_CLI::line( 'CHECKOUT_COMPANY_REQUIRED=' . ( str_contains( $checkout_source, "'corporate' === \$customer_type" ) && ! str_contains( $checkout_source, "'billing_company'   =>" ) && str_contains( $cart_script, 'field.required = corporate' ) && str_contains( $checkout_styles, 'body.kuka-checkout-enhanced:not(.kuka-corporate)' ) ? 'corporate-only' : 'unconditional' ) );

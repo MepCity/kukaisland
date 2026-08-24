@@ -122,6 +122,20 @@ function kuka_island_icon( string $name ): string {
  * upload, which is the expected limit. Both are static/theme-owned, so no
  * sanitisation is required.
  */
+function kuka_island_default_emblem_svg(): string {
+	static $svg = null;
+	if ( null !== $svg ) { return $svg; }
+	$path    = get_stylesheet_directory() . '/assets/img/palmiye.svg';
+	$version = is_file( $path ) ? (string) filemtime( $path ) : '';
+	$cached  = get_option( 'kuka_island_default_emblem_svg', array() );
+	if ( is_array( $cached ) && $version === (string) ( $cached['version'] ?? '' ) ) {
+		return $svg = (string) ( $cached['svg'] ?? '' );
+	}
+	$svg = is_readable( $path ) ? (string) file_get_contents( $path ) : ''; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+	update_option( 'kuka_island_default_emblem_svg', array( 'version' => $version, 'svg' => $svg ), true );
+	return $svg;
+}
+
 function kuka_island_emblem_markup(): string {
 	static $markup = null;
 	if ( null !== $markup ) { return $markup; }
@@ -130,10 +144,7 @@ function kuka_island_emblem_markup(): string {
 		$markup = (string) wp_get_attachment_image( $emblem_id, 'full', false, array( 'class' => 'kuka-logo__emblem', 'alt' => '', 'aria-hidden' => 'true' ) );
 		return $markup;
 	}
-	$path   = get_stylesheet_directory() . '/assets/img/palmiye.svg';
-	$markup = file_exists( $path )
-		? (string) preg_replace( '/<svg /', '<svg class="kuka-logo__emblem" ', file_get_contents( $path ), 1 ) // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		: '';
+	$markup = (string) preg_replace( '/<svg /', '<svg class="kuka-logo__emblem" ', kuka_island_default_emblem_svg(), 1 );
 	return $markup;
 }
 
@@ -163,9 +174,8 @@ function kuka_island_brand_metadata(): void {
 		$url = wp_get_attachment_image_url( absint( $brand['favicon_id'] ), 'full' );
 		if ( $url ) { echo '<link rel="icon" href="' . esc_url( $url ) . '">'; }
 	} else {
-		$icon_path = get_stylesheet_directory() . '/assets/img/palmiye.svg';
-		if ( is_readable( $icon_path ) ) {
-			$icon = (string) file_get_contents( $icon_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$icon = kuka_island_default_emblem_svg();
+		if ( '' !== $icon ) {
 			$light_icon = 'data:image/svg+xml,' . rawurlencode( str_replace( 'currentColor', '#3c2a12', $icon ) );
 			$dark_icon  = 'data:image/svg+xml,' . rawurlencode( str_replace( 'currentColor', '#fffdf8', $icon ) );
 			echo '<link rel="icon" media="(prefers-color-scheme: light)" href="' . esc_attr( $light_icon ) . '">';
@@ -196,6 +206,30 @@ function kuka_island_category_navigation(): array {
 	}
 	return array();
 }
+
+/** Cache the optional home category index's aggregate cut labels. */
+function kuka_island_category_cut_names( int $term_id ): array {
+	$version = (int) get_option( 'kuka_category_index_cache_version', 1 );
+	$key     = 'kuka_category_cuts_' . $term_id . '_' . kuka_island_locale() . '_' . $version;
+	$cached  = get_transient( $key );
+	if ( is_array( $cached ) ) {
+		return $cached;
+	}
+	$product_ids = get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => array( array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $term_id ) ) ) ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+	$cut_terms   = $product_ids ? wp_get_object_terms( $product_ids, 'pa_kesim', array( 'fields' => 'all' ) ) : array();
+	$cut_names   = is_wp_error( $cut_terms ) ? array() : array_map( 'kuka_island_term_name', $cut_terms );
+	$cut_names   = array_values( array_unique( $cut_names ) );
+	set_transient( $key, $cut_names, 12 * HOUR_IN_SECONDS );
+	return $cut_names;
+}
+
+/** Invalidate aggregate labels after product or taxonomy edits without scanning old keys. */
+function kuka_island_invalidate_category_index_cache(): void {
+	update_option( 'kuka_category_index_cache_version', time(), true );
+}
+add_action( 'save_post_product', 'kuka_island_invalidate_category_index_cache' );
+add_action( 'edited_product_cat', 'kuka_island_invalidate_category_index_cache' );
+add_action( 'edited_pa_kesim', 'kuka_island_invalidate_category_index_cache' );
 
 /** Keep fixed brand links and category visibility in one panel-owned menu. */
 function kuka_island_header_menu(): array {
@@ -234,28 +268,15 @@ function kuka_island_whatsapp_url(): string {
  * @return array<int, array{label:string,url:string}>
  */
 function kuka_island_languages(): array {
-	$rows  = kuka_island_menu_lines( (string) ( Kuka_Island_Core_Site_Appearance::get()['languages']['items'] ?? '' ) );
-	$codes = array( 'tr', 'en' );
-	return array_values( array_map( static fn( array $row, int $index ): array => array(
-		'label' => $row['label'],
-		'url'   => Kuka_Island_Core_Language::current_url( $codes[ $index ] ?? $codes[0] ),
-		'code'  => $codes[ $index ] ?? $codes[0],
-	), $rows, array_keys( $rows ) ) );
-}
-
-/**
- * Whether a language entry points at a translation that is not published yet.
- * Listed URLs render as a disabled row instead of a link, so the selector can
- * be visible before the second language exists without producing a 404.
- */
-function kuka_island_language_is_pending( string $url ): bool {
-	unset( $url );
-	return false;
-}
-
-function kuka_island_language_pending_note(): string {
-	$note = trim( (string) ( kuka_island_content()['languages']['pending_note'] ?? '' ) );
-	return '' === $note ? __( 'Yakında', 'kuka-island' ) : $note;
+	if ( ! class_exists( 'Kuka_Island_Core_Site_Appearance' ) || ! class_exists( 'Kuka_Island_Core_Language' ) ) {
+		return array();
+	}
+	$rows = kuka_island_menu_lines( (string) ( Kuka_Island_Core_Site_Appearance::get()['languages']['items'] ?? '' ) );
+	return array_values( array_map( static function ( array $row ): array {
+		$path = '/' . ltrim( (string) wp_parse_url( $row['url'], PHP_URL_PATH ), '/' );
+		$code = preg_match( '#^/en(?:/|$)#', $path ) ? 'en' : 'tr';
+		return array( 'label' => $row['label'], 'url' => Kuka_Island_Core_Language::current_url( $code ), 'code' => $code );
+	}, $rows ) );
 }
 
 require_once get_stylesheet_directory() . '/inc/assets.php';

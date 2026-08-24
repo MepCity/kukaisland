@@ -8,7 +8,20 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Security {
 	public function register(): void {
 		add_action( 'init', array( $this, 'serve_security_txt' ), 0 );
+		add_action( 'init', array( $this, 'block_xmlrpc' ), 0 );
 		add_action( 'init', array( $this, 'send_security_headers' ), 1 );
+		add_filter( 'xmlrpc_enabled', '__return_false' );
+		add_filter( 'xmlrpc_methods', '__return_empty_array' );
+	}
+
+	/** The store has no remote-publishing client; remove the XML-RPC attack surface. */
+	public function block_xmlrpc(): void {
+		if ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) {
+			status_header( 403 );
+			header( 'Content-Type: text/plain; charset=utf-8', true );
+			echo 'XML-RPC is disabled.';
+			exit;
+		}
 	}
 
 	public function send_security_headers(): void {

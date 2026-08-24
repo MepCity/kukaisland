@@ -40,13 +40,10 @@ $hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( $hero_title ) :
 <section class="kuka-category-intro kuka-section" aria-labelledby="kuka-category-title">
 	<h2 id="kuka-category-title" class="kuka-eyebrow"><?php echo esc_html( $home['category_index_label'] ?? __( 'Formunu bul', 'kuka-island' ) ); ?></h2>
 	<div class="kuka-category-index" aria-label="<?php echo esc_attr( $home['category_index_title'] ?? __( 'Ürün kategorileri', 'kuka-island' ) ); ?>">
-		<?php foreach ( $category_items as $index => $category_item ) :
-			$category_slug = basename( untrailingslashit( wp_parse_url( $category_item['url'], PHP_URL_PATH ) ?: '' ) );
-			$category = get_term_by( 'slug', $category_slug, 'product_cat' );
-			$product_ids = $category instanceof WP_Term ? get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => array( array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $category->term_id ) ) ) ) : array(); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
-			$cut_terms = $product_ids ? wp_get_object_terms( $product_ids, 'pa_kesim', array( 'fields' => 'all' ) ) : array();
-			$cut_names = is_wp_error( $cut_terms ) ? array() : array_map( 'kuka_island_term_name', $cut_terms );
-			$cut_names = is_wp_error( $cut_names ) ? array() : array_values( array_unique( $cut_names ) );
+			<?php foreach ( $category_items as $index => $category_item ) :
+				$category_slug = basename( untrailingslashit( wp_parse_url( $category_item['url'], PHP_URL_PATH ) ?: '' ) );
+				$category = get_term_by( 'slug', $category_slug, 'product_cat' );
+				$cut_names = $category instanceof WP_Term ? kuka_island_category_cut_names( $category->term_id ) : array();
 			?>
 			<a class="kuka-category-index__item" href="<?php echo esc_url( kuka_island_content_url( $category_item['url'] ) ); ?>">
 				<span class="kuka-category-index__number"><?php echo esc_html( str_pad( (string) ( $index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span>

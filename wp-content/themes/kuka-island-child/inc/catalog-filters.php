@@ -10,6 +10,7 @@ defined( 'ABSPATH' ) || exit;
 /** @return array<int, string> */
 function kuka_island_filter_values( string $key ): array {
 	$raw = isset( $_GET[ $key ] ) ? (array) wp_unslash( $_GET[ $key ] ) : array(); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$raw = array_filter( $raw, 'is_string' );
 	return array_values( array_filter( array_map( 'sanitize_title', $raw ) ) );
 }
 

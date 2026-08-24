@@ -13,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Shipping {
 	private const REQUIREMENT_MIGRATION_OPTION = 'kuka_free_shipping_requirement_version';
-	private const REQUIREMENT_MIGRATION_VERSION = 1;
+	private const REQUIREMENT_MIGRATION_VERSION = 2;
 
 	public function register(): void {
 		add_action( 'init', array( $this, 'migrate_free_shipping_requirement' ), 20 );
@@ -33,7 +33,7 @@ final class Kuka_Island_Core_Shipping {
 		}
 
 		Kuka_Island_Core_Site_Appearance::sync_free_shipping_threshold();
-		update_option( self::REQUIREMENT_MIGRATION_OPTION, self::REQUIREMENT_MIGRATION_VERSION, false );
+		update_option( self::REQUIREMENT_MIGRATION_OPTION, self::REQUIREMENT_MIGRATION_VERSION, true );
 
 		if ( class_exists( 'WC_Cache_Helper' ) ) {
 			WC_Cache_Helper::get_transient_version( 'shipping', true );

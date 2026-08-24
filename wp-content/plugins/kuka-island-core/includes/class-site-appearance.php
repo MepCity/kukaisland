@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 11;
+	private const SCHEMA_VERSION = 12;
 	private const CAPABILITY = 'manage_woocommerce';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
@@ -93,8 +93,6 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'languages' => array(
 				'items' => "Türkçe|/\nEnglish|/en/",
-				'pending_urls' => '',
-				'pending_note' => '',
 			),
 			'hero' => array(
 				'enabled' => true, 'desktop_image_id' => 0, 'mobile_image_id' => 0, 'eyebrow' => 'KUKA ISLAND / YENİ SEZON',
@@ -268,7 +266,9 @@ final class Kuka_Island_Core_Site_Appearance {
 			$saved['legal']['etbis_number'] = '';
 		}
 		unset(
-			$saved['languages']['items_en'],
+				$saved['languages']['items_en'],
+				$saved['languages']['pending_urls'],
+				$saved['languages']['pending_note'],
 			$saved['brand']['social_links_labels_en'],
 			$saved['legal']['address'],
 			$saved['commercial']['return_period_days'],
@@ -295,7 +295,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		// kalmasın diye bir kez kapatılır, sonra panelden açılabilir.
 		$saved['home']['category_index_enabled'] = false;
 		$saved['schema_version']                 = self::SCHEMA_VERSION;
-		update_option( self::OPTION_NAME, $saved, false );
+		update_option( self::OPTION_NAME, $saved, true );
 		self::clear_content_cache();
 
 		return $saved;
@@ -334,8 +334,6 @@ final class Kuka_Island_Core_Site_Appearance {
 				'note'   => __( 'Header’daki dil seçeneklerini yönetir. Dil adları çevrilmez; her dil kendi dilinde yazılır.', 'kuka-island-core' ),
 				'fields' => array(
 					'items'        => array( __( 'Diller (Etiket|URL öneki) — tek satır seçici gizlenir', 'kuka-island-core' ), 'link_lines' ),
-					'pending_urls' => array( __( 'Henüz yayında olmayan dil URL’leri (virgülle) — bağlantı yerine bilgi gösterilir', 'kuka-island-core' ), 'text' ),
-					'pending_note' => array( __( 'Yayında olmayan dil için gösterilecek not', 'kuka-island-core' ), 'text' ),
 				),
 			),
 			'hero'         => array(
@@ -663,13 +661,19 @@ final class Kuka_Island_Core_Site_Appearance {
 
 		$shipping = get_page_by_path( 'kargo-teslimat', OBJECT, 'page' );
 		$returns = get_page_by_path( 'iade-degisim', OBJECT, 'page' );
-		$products = get_posts( array( 'post_type' => 'product', 'post_status' => 'publish', 'numberposts' => -1, 'fields' => 'ids' ) );
-		$real_product = false;
-		foreach ( $products as $product_id ) {
-			if ( get_post_meta( $product_id, '_kuka_pilot_expected_variations', true ) ) { continue; }
-			$product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : null;
-			if ( $product && '' !== $product->get_price() && (float) $product->get_price() > 0 ) { $real_product = true; break; }
-		}
+		$real_product = (bool) get_posts(
+			array(
+				'post_type'      => 'product',
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					'relation' => 'AND',
+					array( 'key' => '_kuka_pilot_expected_variations', 'compare' => 'NOT EXISTS' ),
+					array( 'key' => '_price', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ),
+				),
+			)
+		);
 		$active_plugins = (array) get_option( 'active_plugins', array() );
 		$iyzico_active = (bool) array_filter( $active_plugins, static fn( string $plugin ): bool => str_contains( $plugin, 'iyzico' ) );
 		$plugin_cards = glob( WP_PLUGIN_DIR . '/*iyzico*/assets/images/cards_v2.png' ) ?: array();
@@ -883,7 +887,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		$raw = isset( $_POST['site_content'] ) && is_array( $_POST['site_content'] )
 			? wp_unslash( $_POST['site_content'] )
 			: array();
-		update_option( self::OPTION_NAME, self::sanitize( $raw ), false );
+		update_option( self::OPTION_NAME, self::sanitize( $raw ), true );
 		self::clear_content_cache();
 		self::sync_free_shipping_threshold();
 		if ( self::$sanitize_notices ) {
@@ -911,7 +915,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			unset( $label );
 		}
 		$saved['schema_version'] = self::SCHEMA_VERSION;
-		update_option( self::OPTION_NAME, $saved, false );
+		update_option( self::OPTION_NAME, $saved, true );
 		self::clear_content_cache();
 		wp_safe_redirect( add_query_arg( 'documents-updated', '1', admin_url( 'admin.php?page=kuka-island#kuka-iyzico-readiness-title' ) ) );
 		exit;
@@ -982,8 +986,8 @@ final class Kuka_Island_Core_Site_Appearance {
 						}
 						$value = implode( "\n", array_slice( $rows, 0, 10 ) );
 						break;
-					case 'lines':
-						$value = array_slice( array_values( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ) ), 0, 3 );
+						case 'lines':
+							$value = array_slice( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ), 0, 3, true );
 						break;
 					case 'url_lines':
 						$value = array_slice( array_map( array( self::class, 'sanitize_url' ), preg_split( '/\R/', (string) $value ) ?: array() ), 0, 3 );
@@ -1047,7 +1051,7 @@ final class Kuka_Island_Core_Site_Appearance {
 
 	private static function sanitize_url( string $value ): string {
 		$value = trim( $value );
-		if ( str_starts_with( $value, '/' ) && ! str_starts_with( $value, '//' ) ) {
+		if ( str_starts_with( $value, '/' ) && ! str_starts_with( $value, '//' ) && ! str_contains( $value, '\\' ) ) {
 			return '/' . ltrim( sanitize_text_field( $value ), '/' );
 		}
 		return preg_match( '#^https?://#i', $value ) ? esc_url_raw( $value, array( 'http', 'https' ) ) : '';

@@ -178,9 +178,9 @@ final class Kuka_Island_Core_Content {
 			. '</tfoot></table></div>';
 	}
 
-	/** @param array<string, string> $attributes */
-	public function value( array $attributes ): string {
-		$attributes = shortcode_atts( array( 'name' => '' ), $attributes, 'kuka_value' );
+	/** @param array<string, string>|string $attributes */
+	public function value( array|string $attributes ): string {
+		$attributes = shortcode_atts( array( 'name' => '' ), (array) $attributes, 'kuka_value' );
 		$content    = Kuka_Island_Core_Site_Appearance::get();
 		if ( class_exists( 'Kuka_Island_Core_Language' ) ) { $content = Kuka_Island_Core_Language::localized_content( $content ); }
 		$shipping_carrier = (string) $content['commercial']['shipping_carrier'];

@@ -32,10 +32,11 @@ add_action(
 		$description_key = function_exists( 'kuka_island_is_english' ) && kuka_island_is_english() ? '_kuka_meta_description_en' : '_kuka_meta_description';
 		$title_key = function_exists( 'kuka_island_is_english' ) && kuka_island_is_english() ? '_kuka_seo_title_en' : '_kuka_seo_title';
 		$description = (string) ( $product->get_meta( $description_key ) ?: $product->get_meta( '_kuka_meta_description' ) );
-		if ( ! $description ) { return; }
-		echo '<meta name="description" content="' . esc_attr( $description ) . '">' . "\n";
 		echo '<meta property="og:title" content="' . esc_attr( (string) ( $product->get_meta( $title_key ) ?: $product->get_meta( '_kuka_seo_title' ) ?: $product->get_name() ) ) . '">' . "\n";
-		echo '<meta property="og:description" content="' . esc_attr( $description ) . '">' . "\n";
+		if ( $description ) {
+			echo '<meta name="description" content="' . esc_attr( $description ) . '">' . "\n";
+			echo '<meta property="og:description" content="' . esc_attr( $description ) . '">' . "\n";
+		}
 	},
 	2
 );

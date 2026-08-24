@@ -496,7 +496,7 @@ if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 	}
 	$current['hero']['text_tone'] = $defaults['hero']['text_tone'];
 	unset( $current['home']['service_1'], $current['home']['service_2'], $current['home']['service_3'] );
-	update_option( Kuka_Island_Core_Site_Appearance::OPTION_NAME, $current, false );
+	update_option( Kuka_Island_Core_Site_Appearance::OPTION_NAME, $current, true );
 	Kuka_Island_Core_Site_Appearance::sync_free_shipping_threshold();
 }
 flush_rewrite_rules( false );

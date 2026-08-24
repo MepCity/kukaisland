@@ -128,13 +128,19 @@ final class Kuka_Island_Core_Product_Fields {
 		$this->saving_editor = true;
 		wp_update_post( array( 'ID' => $post_id, 'post_content' => wp_kses_post( wp_unslash( $_POST['kuka_description_tr'] ?? $post->post_content ) ), 'post_excerpt' => wp_kses_post( wp_unslash( $_POST['kuka_short_description_tr'] ?? $post->post_excerpt ) ) ) );
 		$this->saving_editor = false;
-		foreach ( array( '_kuka_name_en', '_kuka_seo_title_en', '_kuka_fit_en', '_kuka_model_info_en' ) as $key ) {
+		foreach ( array( '_kuka_name_en', '_kuka_seo_title_en', '_kuka_fit_en', '_kuka_model_info_en', '_kuka_meta_description_en' ) as $key ) {
 			update_post_meta( $post_id, $key, sanitize_text_field( wp_unslash( $_POST[ $key ] ?? '' ) ) );
 		}
-		foreach ( array( '_kuka_description_en', '_kuka_short_description_en', '_kuka_material_en', '_kuka_care_en', '_kuka_fit_en', '_kuka_model_info_en', '_kuka_meta_description_en' ) as $key ) {
+		foreach ( array( '_kuka_description_en', '_kuka_short_description_en' ) as $key ) {
 			update_post_meta( $post_id, $key, wp_kses_post( wp_unslash( $_POST[ $key ] ?? '' ) ) );
 		}
-		foreach ( array_keys( self::FIELDS ) as $key ) { update_post_meta( $post_id, $key, sanitize_text_field( wp_unslash( $_POST[ $key ] ?? '' ) ) ); }
+		foreach ( array( '_kuka_material_en', '_kuka_care_en' ) as $key ) {
+			update_post_meta( $post_id, $key, sanitize_textarea_field( wp_unslash( $_POST[ $key ] ?? '' ) ) );
+		}
+		foreach ( array_keys( self::FIELDS ) as $key ) {
+			$sanitize = in_array( $key, array( '_kuka_material', '_kuka_care' ), true ) ? 'sanitize_textarea_field' : 'sanitize_text_field';
+			update_post_meta( $post_id, $key, $sanitize( wp_unslash( $_POST[ $key ] ?? '' ) ) );
+		}
 	}
 
 	private static function translated_meta( WC_Product $product, string $key, string $fallback ): string {
@@ -182,7 +188,7 @@ final class Kuka_Island_Core_Product_Fields {
 		return $markup;
 	}
 
-	public function english_post_title( string $title, int $post_id ): string {
+	public function english_post_title( string $title, int $post_id = 0 ): string {
 		if ( is_admin() || ! function_exists( 'kuka_island_is_english' ) || ! kuka_island_is_english() || 'product' !== get_post_type( $post_id ) ) { return $title; }
 		$english = trim( (string) get_post_meta( $post_id, '_kuka_name_en', true ) );
 		return '' !== $english ? $english : $title;
@@ -219,7 +225,9 @@ final class Kuka_Island_Core_Product_Fields {
 		}
 
 		foreach ( self::FIELDS as $key => $label ) {
-			$value = isset( $_POST[ $key ] ) ? sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) : '';
+			$value = isset( $_POST[ $key ] )
+				? ( in_array( $key, array( '_kuka_material', '_kuka_care' ), true ) ? sanitize_textarea_field( wp_unslash( $_POST[ $key ] ) ) : sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) )
+				: '';
 			$product->update_meta_data( $key, $value );
 		}
 	}

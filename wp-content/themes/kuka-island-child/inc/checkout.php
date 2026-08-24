@@ -285,8 +285,10 @@ function kuka_island_checkout_mobile_digits( string $value ): string {
 
 /** Store one canonical phone representation regardless of pasted formatting. */
 function kuka_island_checkout_normalize_phone( array $data ): array {
-	if ( isset( $data['billing_phone'] ) ) {
-		$data['billing_phone'] = kuka_island_checkout_mobile_digits( (string) $data['billing_phone'] );
+	if ( isset( $data['billing_phone'] ) && is_string( $data['billing_phone'] ) ) {
+		$data['billing_phone'] = kuka_island_checkout_mobile_digits( $data['billing_phone'] );
+	} elseif ( isset( $data['billing_phone'] ) ) {
+		$data['billing_phone'] = '';
 	}
 	return $data;
 }
@@ -294,7 +296,7 @@ add_filter( 'woocommerce_checkout_posted_data', 'kuka_island_checkout_normalize_
 
 /** Reject incomplete or non-mobile Turkish phone numbers on the server. */
 function kuka_island_checkout_validate_phone( array $data, WP_Error $errors ): void {
-	$phone = (string) ( $data['billing_phone'] ?? '' );
+	$phone = is_string( $data['billing_phone'] ?? null ) ? $data['billing_phone'] : '';
 	if ( '' === $phone || preg_match( '/^5\d{9}$/', $phone ) ) {
 		return;
 	}
@@ -321,7 +323,8 @@ function kuka_island_checkout_server_field_error( string $field, string $key, ar
 	if ( ! is_checkout() || 'POST' !== strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) || ( empty( $args['required'] ) && 'billing_phone' !== $key ) ) {
 		return $field;
 	}
-	$posted = isset( $_POST[ $key ] ) ? trim( (string) wc_clean( wp_unslash( $_POST[ $key ] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$raw_posted = isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$posted     = is_string( $raw_posted ) ? trim( (string) wc_clean( $raw_posted ) ) : '';
 	$message = esc_html__( 'Bu alan zorunludur.', 'kuka-island' );
 	if ( 'billing_phone' === $key && '' !== $posted ) {
 		if ( preg_match( '/^5\d{9}$/', kuka_island_checkout_mobile_digits( $posted ) ) ) {
@@ -398,6 +401,24 @@ function kuka_island_checkout_swap_addresses( array $data ): array {
 	return $data;
 }
 add_filter( 'woocommerce_checkout_posted_data', 'kuka_island_checkout_swap_addresses' );
+
+/** Keep AJAX shipping/tax preview aligned with the address swap used at order creation. */
+function kuka_island_checkout_preview_swap_addresses( string $post_data ): void {
+	parse_str( $post_data, $data );
+	if ( empty( $data['ship_to_different_address'] ) ) {
+		return;
+	}
+	foreach ( array( 'country' => 'country', 'state' => 'state', 'postcode' => 'postcode', 'city' => 'city', 'address_1' => 'address', 'address_2' => 'address_2' ) as $field => $ajax_field ) {
+		$delivery = $data[ 'billing_' . $field ] ?? null;
+		$invoice  = $data[ 'shipping_' . $field ] ?? null;
+		if ( ! is_string( $delivery ) || ! is_string( $invoice ) ) {
+			continue;
+		}
+		$_POST[ $ajax_field ]        = wc_clean( $invoice ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$_POST[ 's_' . $ajax_field ] = wc_clean( $delivery ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	}
+}
+add_action( 'woocommerce_checkout_update_order_review', 'kuka_island_checkout_preview_swap_addresses', 5 );
 
 /**
  * Turn the panel delivery-time value into a concrete date window.

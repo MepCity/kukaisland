@@ -337,7 +337,7 @@ if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 	}
 	unset( $scene );
 	$site_content['schema_version'] = 7;
-	update_option( Kuka_Island_Core_Site_Appearance::OPTION_NAME, $site_content, false );
+	update_option( Kuka_Island_Core_Site_Appearance::OPTION_NAME, $site_content, true );
 }
 
 $common_meta = array(
