@@ -1600,6 +1600,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 | Tarih | Karar | Gerekçe |
 |---|---|---|
+| 2026-08-24 | “Çok yakında” için optimize edilen aynı responsive video çifti ana sayfa hero arka planında da kullanılır; paneldeki masaüstü/mobil hero görselleri yüklenme ve reduced-motion durumlarında poster olarak korunur | Müşteri ana vitrinde hareketli görüntüyü tercih etti; aynı dosyaları yeniden kullanmak ikinci medya kopyası üretmeden görsel süreklilik sağlar ve panel görselleri güvenli geri dönüş olarak kalır |
 | 2026-08-24 | “Çok yakında” ekranında teslim edilen yatay videonun ilk 25 saniyesi kullanılır; masaüstü 1920×1080 ve mobil 1080×1920 ayrı, sessiz MP4 kaynakları sunulur; hareket azaltma tercihinde video indirilmeden poster gösterilir | Ürün → deniz → tek model → iki model akışı ilk deneme için dengeli bir teaser verir; ayrı kadrajlar mobilde kaliteyi korur, 25 saniye ve sessiz kaynaklar tam uzunluktaki 62 MB dosyanın ilk açılış yükünü azaltır ve daha sonra kaynak değiştirilebilir |
 | 2026-08-11 | Checkout telefonu `5XX XXX XX XX` görünümünde, `5XXXXXXXXX` kayıt biçiminde standartlaştırılır; `0` ve `+90` önekli yapıştırmalar normalize edilir, diğer başlangıçlar ve eksik/fazla rakamlar istemci ile sunucuda reddedilir | Sipariş telefonlarının tek biçimde tutulması, mobil klavyede kolay giriş ve hatalı/eksik numaranın siparişe geçmeden alan üzerinde açıklanması gerekir |
 | 2026-08-11 | Ürün detayındaki iyzico güven şeridi bilgi kolonunda ortalanır, ilk ürün akordiyonundan 24 px ayrılır ve eklentinin resmî CDN SVG kart logoları 32 × 24 px net gösterim kutusunda tutulur | Müşteri şeridin sola yaslı, detay çizgisine yapışık ve kart işaretlerinin bulanık göründüğünü bildirdi; eklenti varlığı kopyalanmadan vektör kaynak ve güncelleme sınırı korunur |
@@ -1811,6 +1812,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 39. Mevcut durum
 
+- [x] Ana sayfa hero aynı `25,000 sn` responsive video çiftini arka planda oynatıyor; mevcut panel görselleri yüklenme/reduced-motion poster fallback'i, başlık-kopya-buton katmanı ve iki dil korunuyor
 - [x] “Çok yakında” video ekranı: ilk `25,000 sn`; masaüstü `1920×1080 / 13.660.330 bayt`, mobil `1080×1920 / 10.905.271 bayt`, ses izi `0/0`; responsive poster, `by Kübra Gültekin` katmanı ve reduced-motion poster fallback tamamlandı
 - [x] Değişken ürün kartı fiyat düzeltmesi: minimum varyasyon `1,00 TL`; TR `₺1/₺0 = 1/0`, EN `₺1/₺0 = 1/0`; geçici denetim ürünü test sonunda silinir
 - [x] Ücretsiz kargo kuponu düzeltmesi: 2.890 TL eşik-altı sepette TR `149→0 TL`, EN `149→0 TL`; iki dilde toplam `3.039→2.890 TL`, yalnız ücretsiz yöntem görünür ve ilerleme metni hazır durumuna geçer
