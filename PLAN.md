@@ -1816,15 +1816,19 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-24 | Bülten kaydı çift onaya geçirildi; ilk KVKK kanıtı değişmez kayıt olarak korunur | Yeniden kayıt yalnız doğrulama tokenını yeniler; ilk metin/tarih/IP ezilmez, 48 saatlik HMAC token doğrulanmadan kayıt `confirmed` olmaz ve IP başına 10 dakikada 5 istek sınırı uygulanır |
 | 2026-08-24 | WooCommerce checkout ve katalog orta bulguları birlikte kapatıldı | Mobil toplam AJAX sonrası eşlenir; telefon boş kalabilir; kurumsal alanlar yalnız kurumsal seçimde görünür/zorunludur; içerik, shortcode ve varyasyon önbellekleri istek içinde hazırlanır; sepet fragment isteği yalnız sepet mutasyonunda yapılır |
 | 2026-08-24 | Kurulum sırları STDIN sınırına, GitHub Actions salt-okunur ve SHA-sabit bağımlılıklara alındı | Gerçek yönetici/mağaza yöneticisi parolaları süreç argümanında veya çıktıda bulunmaz; workflow `contents: read` taşır ve iki üçüncü taraf action tam commit SHA'sına sabitlenir |
+| 2026-08-24 | Düşük bulguların uygulanabilir olanları kapatıldı; yanlış pozitifler kod davranışıyla doğrulandı | 32 bulgunun 24'ü doğrulandı, 6'sı kısmen doğrulandı, 2'si yanlış pozitifti. CSV/URL/girdi sertleştirmesi, e-posta içermeyen imzalı takip bağlantısı, XML-RPC kapısı, bounded sitemap, güvenli AJAX adres önizlemesi, autoload/sorgu/varlık önbelleği ve kaynak checksum'ları uygulandı; iyzico/WooCommerce uyumluluğu gerektiren mevcut CSP inline istisnası kontrollü olarak korundu |
 
 ---
 
 ## 39. Mevcut durum
 
+- [x] Düşük bulgu denetimi: `32` kayıt ayrı ayrı incelendi; `24` doğrulandı, `6` kısmen doğrulandı, `2` yanlış pozitif çıktı. Uygulanabilir kod ve yapılandırma maddeleri kapatıldı; doğrulama envanteri `13 grup / 111 satır / 152 kontrol`
+- [x] Düşük bulgu regresyon kapısı: yeni `17/17` güvenlik/uyumluluk kontrolü PASS; XML-RPC `403`, varlık önbelleği `max-age=31536000, immutable`, içerik seçeneği autoload `3/3`, müşteri e-postası taşıyan takip URL'i `0`
+- [x] WordPress `7.1` uyumluluk turu: iki bağımsız temiz `make reset && make verify` sonucu `2/2 PASS`; her iki turda smoke `5/5`, son tekrar doğrulaması `VERIFY=PASS`, PHPCS `50/50`
 - [x] Dokuz orta bulgu kapatıldı: bülten çift onay/kanıt koruma/IP limiti; checkout toplam/şirket/telefon; içerik ve ürün önbelleği; isteğe bağlı cart fragment; STDIN parola aktarımı; SHA-sabit ve salt-okunur CI; son kodla iki bağımsız temiz `reset+verify` `2/2 PASS`, smoke `5/5`
 - [x] Orta bulgu ölçümü: bülten `pending→confirmed`, token özeti `64` karakter ve doğrulamada temiz; kurumsal alan görünür+zorunlu, bireyselde gizli+zorunlu değil; isteğe bağlı telefon değeri boş; ana sayfa eager cart-fragment `0`
 - [x] Katalog sorgu ölçümü: `4` ürün ve `24` varyasyon için priming sonrası `QUERIES_COLD=12`, aynı istek sıcak tur `QUERIES_WARM=0`; parola argv `0`, mutable Action `0`, SHA-sabit Action `2`, workflow permissions bloğu `1`
-- [x] Güvenlik sürüm hattı WordPress `7.0.4`, WooCommerce `11.0.1`, Blocksy/Companion `2.1.53`, Loginizer `2.1.0` olarak sabitlendi; CSP, `nosniff`, Referrer, frame, Permissions Policy, üretim HTTPS HSTS ve RFC 9116 güvenlik iletişim uç noktası Core'a eklendi
+- [x] Güvenlik sürüm hattı WordPress `7.1`, WooCommerce `11.0.1`, Blocksy/Companion `2.1.53`, Loginizer `2.1.0` olarak sabitlendi; CSP, `nosniff`, Referrer, frame, Permissions Policy, üretim HTTPS HSTS ve RFC 9116 güvenlik iletişim uç noktası Core'a eklendi
 - [x] Checkout odak/onay regresyonu kapatıldı: gerçek tarayıcıda ilk hata odağı `billing_first_name`; `Y→Yasir` boyunca odak aynı alanda ve tamamlanan alanın hata/ARIA'sı temiz; `update_order_review` sonrasında iki yasal onay `2/2` işaretli kaldı
 - [x] Dil sıcak yolu statik önbellekli: istek dili aynı istek imzasında bir kez çözülür, yaklaşık 230 girdili Core ve 14 girdili tema gettext haritaları yalnız ilk ilgili çağrıda kurulur
 - [x] Yerel OPcache `192 MB`, interned strings `16 MB`, dosya eşiği `20.000`; Redis/LiteSpeed/InnoDB canlı değeri doğrulanmadığı için `docs/DEPLOY_RUNBOOK.md` §11 performans kapısında açık ölçüm olarak tutulur
