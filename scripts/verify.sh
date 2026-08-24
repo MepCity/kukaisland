@@ -38,7 +38,7 @@ search_count() {
   if command -v rg >/dev/null 2>&1; then
     rg -n -- "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
   else
-    grep -ERn --include='*.php' --include='*.js' --include='*.css' --include='*.sh' -- "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
+    grep -ERn --include='*.php' --include='*.js' --include='*.css' --include='*.sh' --include='*.yml' --include='*.yaml' -- "$pattern" "$@" 2>/dev/null | wc -l | tr -d ' '
   fi
 }
 
