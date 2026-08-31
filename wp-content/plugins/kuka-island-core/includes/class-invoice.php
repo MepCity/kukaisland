@@ -41,6 +41,7 @@ final class Kuka_Island_Core_Invoice {
 		require_once $dir . 'interface-invoice-provider.php';
 		require_once $dir . 'interface-soap-transport.php';
 		require_once $dir . 'class-invoice-exceptions.php';
+		require_once $dir . 'class-edm-fault-classifier.php';
 		require_once $dir . 'class-invoice-status.php';
 		require_once $dir . 'class-invoice-fixture-guard.php';
 		require_once $dir . 'class-invoice-config.php';

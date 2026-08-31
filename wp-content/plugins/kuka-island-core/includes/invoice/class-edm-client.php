@@ -10,6 +10,11 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_EDM_Client {
+	/** REQUEST_HEADER/CHANNEL_NAME. Fixed integration channel label. */
+	private const CHANNEL_NAME = 'WEB';
+	/** REQUEST_HEADER/HOSTNAME. Fixed label, never a real machine name. */
+	private const HOSTNAME = 'kukaisland';
+
 	private Kuka_Island_Core_Invoice_Config $config;
 	private Kuka_Island_Core_SOAP_Transport_Interface $transport;
 	private ?string $session_id = null;
@@ -40,6 +45,137 @@ final class Kuka_Island_Core_EDM_Client {
 	}
 
 	/**
+	 * Build a REQUEST_HEADER that matches EDM's published SOAP envelope.
+	 *
+	 * WSDL (tns:REQUEST_HEADERType) declares, in this order and all optional:
+	 * SESSION_ID, CLIENT_TXN_ID, INTL_TXN_ID, INTL_PARENT_TXN_ID, ACTION_DATE,
+	 * CHANGE_INFO, REASON, APPLICATION_NAME, HOSTNAME, CHANNEL_NAME,
+	 * SIMULATION_FLAG, COMPRESSED, ATTRIBUTES.
+	 *
+	 * EDM's own reference envelope populates SESSION_ID, CLIENT_TXN_ID,
+	 * ACTION_DATE, REASON, APPLICATION_NAME, HOSTNAME, CHANNEL_NAME and
+	 * COMPRESSED. Sending only three of those was the deviation this method
+	 * removes: on Login the reference envelope carries SESSION_ID = 0, because
+	 * there is no session yet.
+	 *
+	 * APPLICATION_NAME is always the contracted value and is never derived from
+	 * the request, the host or any user input.
+	 *
+	 * @param string $session_id    Session identifier, or '0' for Login.
+	 * @param string $reason        Operation name recorded as REASON.
+	 * @param string $client_txn_id Caller-chosen transaction id. Empty means a
+	 *                              fresh UUID; SendInvoice passes the document
+	 *                              UUID so the header stays idempotency-bound.
+	 * @return array<string, string>
+	 */
+	private function build_request_header( string $session_id, string $reason, string $client_txn_id = '' ): array {
+		return array(
+			'SESSION_ID'       => $session_id,
+			'CLIENT_TXN_ID'    => '' !== $client_txn_id ? $client_txn_id : wp_generate_uuid4(),
+			'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
+			'REASON'           => $reason,
+			'APPLICATION_NAME' => $this->config->get_application_name(),
+			'HOSTNAME'         => self::request_hostname(),
+			'CHANNEL_NAME'     => self::CHANNEL_NAME,
+			// EDM's reference envelope sends the literal 'N': the payload is
+			// not gzip-compressed.
+			'COMPRESSED'       => 'N',
+		);
+	}
+
+	/**
+	 * Stable, non-identifying host label for REQUEST_HEADER/HOSTNAME.
+	 *
+	 * A real machine name can leak internal infrastructure, and a
+	 * request-derived Host header is attacker-controlled, so neither is used.
+	 * The value is a fixed application label.
+	 */
+	private static function request_hostname(): string {
+		return self::HOSTNAME;
+	}
+
+	/**
+	 * Map a classified login fault onto the right exception.
+	 *
+	 * Categories that cannot improve on retry become permanent; transport-level
+	 * ones stay transient so the queue may retry them. The safe verdict rides
+	 * along on the exception; the fault message does not.
+	 *
+	 * @param array<string, mixed> $verdict Output of the fault classifier.
+	 */
+	private static function login_exception_for( array $verdict ): Kuka_Island_Core_Invoice_Exception {
+		$category = (string) ( $verdict['category'] ?? Kuka_Island_Core_EDM_Fault_Classifier::CAT_UNCLASSIFIED );
+
+		switch ( $category ) {
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_CREDENTIALS:
+				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
+					'EDM login authentication failed.',
+					'edm_auth_failed',
+					__( 'EDM giriş bilgileri hatalı.', 'kuka-island-core' )
+				);
+				break;
+
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_CONTRACT:
+				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
+					'EDM refused the login request contract.',
+					'edm_login_contract_rejected',
+					__( 'EDM giriş isteği biçimi reddedildi.', 'kuka-island-core' )
+				);
+				break;
+
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_NOT_FOUND:
+				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
+					'EDM login endpoint did not resolve to the service.',
+					'edm_login_endpoint_not_found',
+					__( 'EDM servis adresi bulunamadı.', 'kuka-island-core' )
+				);
+				break;
+
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_SESSION:
+				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
+					'EDM rejected the login session state.',
+					'edm_login_session_rejected',
+					__( 'EDM oturum bilgisi reddedildi.', 'kuka-island-core' )
+				);
+				break;
+
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_TLS:
+				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
+					'EDM login TLS failure.',
+					'edm_login_tls_failure',
+					__( 'EDM sunucusuyla güvenli bağlantı kurulamadı.', 'kuka-island-core' )
+				);
+				break;
+
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_TIMEOUT:
+				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
+					'EDM login timed out.',
+					'edm_login_timeout',
+					__( 'EDM sunucusu zamanında yanıt vermedi.', 'kuka-island-core' )
+				);
+				break;
+
+			case Kuka_Island_Core_EDM_Fault_Classifier::CAT_SERVER:
+				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
+					'EDM login remote server error.',
+					'edm_login_server_error',
+					__( 'EDM sunucusunda geçici bir hata oluştu.', 'kuka-island-core' )
+				);
+				break;
+
+			default:
+				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
+					'EDM login network / server fault.',
+					'edm_login_fault',
+					__( 'EDM sunucusuna bağlanılamadı. Lütfen kısa süre sonra tekrar deneyin.', 'kuka-island-core' )
+				);
+				break;
+		}
+
+		return $exception->set_diagnostic( $verdict );
+	}
+
+	/**
 	 * Authenticate with EDM and obtain a SessionID.
 	 *
 	 * @return string SessionID.
@@ -67,11 +203,7 @@ final class Kuka_Island_Core_EDM_Client {
 		}
 
 		$request = array(
-			'REQUEST_HEADER' => array(
-				'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-				'CLIENT_TXN_ID'    => wp_generate_uuid4(),
-				'APPLICATION_NAME' => $this->config->get_application_name(),
-			),
+			'REQUEST_HEADER' => self::build_request_header( '0', 'Login' ),
 			'USER_NAME'      => $this->config->get_username(),
 			'PASSWORD'       => $this->config->get_password(),
 		);
@@ -84,33 +216,25 @@ final class Kuka_Island_Core_EDM_Client {
 			$response = $this->transport->call( 'Login', $request );
 		} catch ( SoapFault $fault ) {
 			$this->session_id = null;
-			$msg = strtolower( (string) $fault->getMessage() );
-			$is_auth = str_contains( $msg, 'user' )
-				|| str_contains( $msg, 'password' )
-				|| str_contains( $msg, 'secret' )
-				|| str_contains( $msg, 'yetkisiz' )
-				|| str_contains( $msg, 'hatalı' );
 
-			if ( $is_auth ) {
-				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
-					'EDM login authentication failed.',
-					'edm_auth_failed',
-					__( 'EDM giriş bilgileri hatalı.', 'kuka-island-core' )
-				);
-			}
-
-			throw new Kuka_Island_Core_Invoice_Transient_Exception(
-				'EDM login network / server fault.',
-				'edm_login_fault',
-				__( 'EDM sunucusuna bağlanılamadı. Lütfen kısa süre sonra tekrar deneyin.', 'kuka-island-core' )
+			// The fault message is untrusted remote text and may quote the
+			// request back, so it is classified rather than read. Only the
+			// resulting fixed vocabulary is ever carried or printed.
+			$verdict = Kuka_Island_Core_EDM_Fault_Classifier::classify(
+				isset( $fault->faultcode ) ? (string) $fault->faultcode : '',
+				(string) $fault->getMessage()
 			);
+
+			throw self::login_exception_for( $verdict );
 		} catch ( Exception $e ) {
 			$this->session_id = null;
-			throw new Kuka_Island_Core_Invoice_Transient_Exception(
+			$verdict = Kuka_Island_Core_EDM_Fault_Classifier::classify( '', (string) $e->getMessage() );
+
+			throw ( new Kuka_Island_Core_Invoice_Transient_Exception(
 				'EDM login unexpected error.',
 				'edm_login_error',
 				__( 'EDM oturumu açılırken iletişim hatası oluştu.', 'kuka-island-core' )
-			);
+			) )->set_diagnostic( $verdict );
 		}
 
 		$session_id = $this->extract_session_id_from_response( $response );
@@ -136,11 +260,7 @@ final class Kuka_Island_Core_EDM_Client {
 		}
 
 		$request = array(
-			'REQUEST_HEADER' => array(
-				'SESSION_ID'       => $this->session_id,
-				'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-				'APPLICATION_NAME' => $this->config->get_application_name(),
-			),
+			'REQUEST_HEADER' => self::build_request_header( (string) $this->session_id, 'Logout' ),
 		);
 
 		try {
@@ -173,11 +293,7 @@ final class Kuka_Island_Core_EDM_Client {
 		return $this->execute_with_session(
 			function ( string $session_id ) use ( $clean_id ): array {
 				$request = array(
-					'REQUEST_HEADER' => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					'REQUEST_HEADER' => self::build_request_header( (string) $session_id, 'CheckUser' ),
 					'USER'           => array(
 						'IDENTIFIER'   => $clean_id,
 						'DOCUMENTTYPE' => 'INVOICE',
@@ -263,12 +379,9 @@ final class Kuka_Island_Core_EDM_Client {
 				}
 
 				$request = array(
-					'REQUEST_HEADER' => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'CLIENT_TXN_ID'    => $payload['uuid'] ?? wp_generate_uuid4(),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					// CLIENT_TXN_ID stays bound to the document UUID: it is the
+					// idempotency key EDM sees for this invoice.
+					'REQUEST_HEADER' => self::build_request_header( (string) $session_id, 'SendInvoice', (string) ( $payload['uuid'] ?? '' ) ),
 					'SENDER'         => array(
 						'vkn'   => $this->config->get_sender_vkn(),
 						'alias' => $this->config->get_sender_alias(),
@@ -295,11 +408,7 @@ final class Kuka_Island_Core_EDM_Client {
 			function ( string $session_id ) use ( $uuid, $invoice_number ): Kuka_Island_Core_Invoice_Result {
 				$now_date = gmdate( 'Y-m-d' );
 				$request  = array(
-					'REQUEST_HEADER' => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					'REQUEST_HEADER' => self::build_request_header( (string) $session_id, 'GetInvoiceStatus' ),
 					'INVOICE'        => array(
 						'UUID' => $uuid,
 					),
@@ -330,11 +439,7 @@ final class Kuka_Island_Core_EDM_Client {
 		return $this->execute_with_session(
 			function ( string $session_id ) use ( $uuid, $format ): string {
 				$request = array(
-					'REQUEST_HEADER'       => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					'REQUEST_HEADER'       => self::build_request_header( (string) $session_id, 'GetInvoice' ),
 					'INVOICE_SEARCH_KEY'   => array(
 						'UUID' => $uuid,
 					),
@@ -359,11 +464,7 @@ final class Kuka_Island_Core_EDM_Client {
 		return $this->execute_with_session(
 			function ( string $session_id ) use ( $uuid, $email, $format ): bool {
 				$request = array(
-					'REQUEST_HEADER'       => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					'REQUEST_HEADER'       => self::build_request_header( (string) $session_id, 'EmailInvoice' ),
 					'INVOICE'              => array(
 						array(
 							'UUID' => $uuid,
@@ -388,11 +489,7 @@ final class Kuka_Island_Core_EDM_Client {
 		return $this->execute_with_session(
 			function ( string $session_id ): array {
 				$request = array(
-					'REQUEST_HEADER' => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					'REQUEST_HEADER' => self::build_request_header( (string) $session_id, 'CheckCounter' ),
 				);
 
 				$response = $this->transport->call( 'CheckCounter', $request );
@@ -438,11 +535,7 @@ final class Kuka_Island_Core_EDM_Client {
 		return $this->execute_with_session(
 			function ( string $session_id ) use ( $serial_code, $fiscal_year, $send_type ): array {
 				$request = array(
-					'REQUEST_HEADER' => array(
-						'SESSION_ID'       => $session_id,
-						'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-						'APPLICATION_NAME' => $this->config->get_application_name(),
-					),
+					'REQUEST_HEADER' => self::build_request_header( (string) $session_id, 'GetInvoiceSerial' ),
 					'YEAR'           => $fiscal_year,
 				);
 
@@ -515,12 +608,25 @@ final class Kuka_Island_Core_EDM_Client {
 	}
 
 	/**
-	 * Differentiate SOAP Faults into transient vs permanent exceptions without leaking secrets or payload details.
+	 * Differentiate SOAP Faults into transient vs permanent exceptions without
+	 * leaking secrets, payload details or remote fault text.
+	 *
+	 * The document-level rejection markers are kept, because they carry
+	 * business meaning the generic classifier does not model. Everything else
+	 * is handed to Kuka_Island_Core_EDM_Fault_Classifier, and in both cases the
+	 * exception carries only the safe verdict -- never the message.
 	 */
 	private function handle_soap_fault( SoapFault $fault ): never {
+		$verdict = Kuka_Island_Core_EDM_Fault_Classifier::classify(
+			isset( $fault->faultcode ) ? (string) $fault->faultcode : '',
+			(string) $fault->getMessage()
+		);
+
 		$msg = strtolower( (string) $fault->getMessage() );
 
-		// Permanent business validation / schema / duplicate / permission errors.
+		// Permanent business validation / duplicate / permission errors. These
+		// are document-level verdicts, so they stay distinct from the transport
+		// vocabulary above.
 		if ( str_contains( $msg, 'aynı fatura' )
 			|| str_contains( $msg, 'mükerrer' )
 			|| str_contains( $msg, 'duplicate' )
@@ -529,19 +635,27 @@ final class Kuka_Island_Core_EDM_Client {
 			|| str_contains( $msg, 'geçersiz vkn' )
 			|| str_contains( $msg, 'kullanıcı bulunamadı' )
 			|| str_contains( $msg, 'yetkisiz' ) ) {
-			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+			throw ( new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'EDM business rejection.',
 				'edm_business_rejection',
 				__( 'Fatura EDM tarafından iş kuralı veya şema hatası sebebiyle reddedildi.', 'kuka-island-core' )
-			);
+			) )->set_diagnostic( $verdict );
+		}
+
+		if ( ! (bool) ( $verdict['retryable'] ?? true ) ) {
+			throw ( new Kuka_Island_Core_Invoice_Permanent_Exception(
+				'EDM refused the request.',
+				'edm_request_refused',
+				__( 'EDM isteği kalıcı olarak reddetti.', 'kuka-island-core' )
+			) )->set_diagnostic( $verdict );
 		}
 
 		// Transient / network / timeout errors.
-		throw new Kuka_Island_Core_Invoice_Transient_Exception(
+		throw ( new Kuka_Island_Core_Invoice_Transient_Exception(
 			'EDM SOAP Fault.',
 			'edm_soap_fault',
 			__( 'EDM servisi geçici bir hata bildirdi. İşlem tekrar denenebilir.', 'kuka-island-core' )
-		);
+		) )->set_diagnostic( $verdict );
 	}
 
 	/* --------------------------------------------------------------------- */

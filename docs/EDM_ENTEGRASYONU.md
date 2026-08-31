@@ -387,6 +387,97 @@ Kurulum ve çalıştırma:
 
 ---
 
+## 12.5 Login REQUEST_HEADER sözleşmesi ve güvenli hata sınıflandırması
+
+### 12.5.1 Kök neden: eksik REQUEST_HEADER
+
+`Login` gerçek EDM test endpoint'inde `edm_login_fault` veriyordu. Sebep kimlik bilgisi
+değildi: istemci `REQUEST_HEADER` içinde yalnız **üç** alan gönderiyordu
+(`ACTION_DATE`, `CLIENT_TXN_ID`, `APPLICATION_NAME`).
+
+Güncel test WSDL'i (`tns:REQUEST_HEADERType`, `xs:sequence`, hepsi `minOccurs="0"`):
+
+```
+SESSION_ID, CLIENT_TXN_ID, INTL_TXN_ID, INTL_PARENT_TXN_ID, ACTION_DATE,
+CHANGE_INFO, REASON, APPLICATION_NAME, HOSTNAME, CHANNEL_NAME,
+SIMULATION_FLAG, COMPRESSED, ATTRIBUTES
+```
+
+EDM'in resmî zarfı bunlardan sekizini doldurur. `Kuka_Island_Core_EDM_Client::build_request_header()`
+artık tam olarak bu sekizini üretiyor:
+
+| Alan | Değer |
+|---|---|
+| `SESSION_ID` | Login'de literal `0` (henüz oturum yok), diğerlerinde gerçek oturum |
+| `CLIENT_TXN_ID` | Yeni UUID. **İstisna:** `SendInvoice` belge UUID'sini geçirir — EDM'in gördüğü idempotency anahtarı odur |
+| `ACTION_DATE` | `Y-m-d\TH:i:s` (UTC) |
+| `REASON` | Operasyon adı (`Login`, `CheckCounter`, `GetInvoiceSerial`, …) |
+| `APPLICATION_NAME` | Her zaman `ozelyazilim.kukaisland`. İstekten, host'tan veya kullanıcı girdisinden **türetilmez** |
+| `HOSTNAME` | Sabit `kukaisland` etiketi. Gerçek makine adı iç altyapıyı sızdırır, istekten gelen `Host` başlığı saldırgan kontrollüdür; ikisi de kullanılmaz |
+| `CHANNEL_NAME` | Sabit `WEB` |
+| `COMPRESSED` | Literal `N` — yük gzip'lenmiyor |
+
+Endpoint notu: EDM'in maildeki `/EFaturaEDM21/` adresi 404 veriyor. Aktif olan
+`/EFaturaEDM21ea/EFaturaEDM.svc` ve WSDL'in kendi `soap:address` değeri de bunu gösteriyor;
+§13.1 allow-list'i zaten yalnız bunu kabul ediyor.
+
+### 12.5.2 Güvenli SOAP hata sınıflandırması
+
+Bir `SoapFault` mesajı **güvenilmeyen uzak metindir**: isteği geri alıntılayabilir (kullanıcı
+adı dahil), çevrilmemiştir ve kararlı değildir. Bu yüzden hiçbir çıktıya, log satırına, sipariş
+notuna veya veritabanına yazılmaz.
+
+`Kuka_Island_Core_EDM_Fault_Classifier` mesajı **sabit bir kelime dağarcığına** indirger:
+
+| Alan | İçerik |
+|---|---|
+| `category` | `credentials_rejected`, `session_invalid`, `endpoint_not_found`, `request_contract_rejected`, `remote_server_error`, `network_timeout`, `tls_failure`, `http_transport_failure`, `unclassified_fault` |
+| `fault_kind` | Faultcode katlanmış hâli: `http`, `client`, `server`, `wsdl`, `protocol`, `none`, `other` |
+| `marker` | **Eşleşen grubun adı** (`authentication`, `timeout`, `http_not_found`, …) — eşleşen metin değil |
+| `retryable` | Yeniden denemenin makul olup olmadığı |
+| `digest` | Mesajın sha256'sının ilk 8 hane'si — "geçen koşuyla aynı hata mı" sorusunu metin okumadan yanıtlar |
+
+Sınıflandırma sırası önce taşıma katmanı kanıtına bakar (404, timeout, TLS, 5xx), çünkü bunlar
+kimlik doğrulama gibi görünen kelimeler taşıyabilir. Hiçbir işaretçi eşleşmezse **sessizlikten
+kimlik doğrulama sonucu uydurulmaz**; yalnız faultcode'a göre karar verilir.
+
+Sonuç `Kuka_Island_Core_Invoice_Exception::set_diagnostic()` ile istisnaya iliştirilir ve
+`get_safe_diagnostic_line()` ile basılır. Satır yapısı katı bir dilbilgisine uyar, bu yüzden
+uzak metnin içine sızması yapısal olarak mümkün değildir:
+
+```
+category:<a-z_>|fault_kind:<a-z>|marker:<a-z_>|retryable:yes|no|digest:<8 hex>
+```
+
+Kategoriden istisna tipine eşleme: `credentials_rejected`, `request_contract_rejected`,
+`endpoint_not_found`, `session_invalid` → **kalıcı**; `network_timeout`, `tls_failure`,
+`remote_server_error`, `http_transport_failure`, `unclassified_fault` → **geçici** (kuyruk
+yeniden deneyebilir).
+
+### 12.5.3 Ölçülen gerçek sonuç
+
+`./scripts/edm-test-run.sh test-edm-sandbox.php` — EDM **test** endpoint'i, yalnız salt-okunur:
+
+```
+REAL_EDM_WSDL=PASS|environment:test|application_name_ok:yes
+REAL_EDM_LOGIN=PASS|session_obtained:yes
+REAL_EDM_CHECK_COUNTER=PASS|counter_left:<sayı>
+REAL_EDM_GET_INVOICE_SERIAL=PASS|unfiltered_registered_serials:<sayı>|…
+REAL_EDM_CHECK_USER=BLOCKED|reason:no_sender_vkn_supplied
+REAL_EDM_LOGOUT=PASS|session_closed:yes
+REAL_EDM_WRITE_OPERATIONS=NONE|send_invoice:0|load_invoice:0|create_serial:0|email_invoice:0
+```
+
+`CheckUser` gönderici VKN gerektirir; kimlik dosyasında yoksa **BLOCKED** yazılır, sahte PASS
+üretilmez. Oturum her koşuda `Logout` ile kapatılır.
+
+Yalnız `Login`, `CheckCounter`, `GetInvoiceSerial` ve `Logout` gerçek EDM'ye karşı ölçülmüştür.
+Aynı başlık `SendInvoice`, `GetInvoice`, `EmailInvoice` ve `GetInvoiceStatus` için de üretilir
+fakat **bu operasyonlar EDM'ye karşı çalıştırılmamıştır**; kendi kapıları arkasında BLOCKED
+kalmaya devam eder.
+
+---
+
 ## 13. İzole sandbox TASLAK YÜKLEME deneyi
 
 `scripts/edm-sandbox-invoice.php` + `scripts/edm-sandbox-run.sh`, §4'teki numaralandırma

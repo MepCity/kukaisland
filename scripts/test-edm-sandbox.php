@@ -17,6 +17,12 @@
  * No username, password, secret key, session id, VKN, alias, serial code or
  * last-serial value is ever printed.
  *
+ * A failure additionally prints the classification produced by
+ * Kuka_Island_Core_EDM_Fault_Classifier: a category, a folded fault kind, the
+ * NAME of the matched marker and a truncated digest. The SOAP fault message
+ * itself is never printed -- it is untrusted remote text that may quote the
+ * request back.
+ *
  * Credentials come from a mode-600 file outside the git work tree, bind-mounted
  * read-only into the container. Run through the wrapper:
  *   ./scripts/edm-test-run.sh test-edm-sandbox.php
@@ -35,6 +41,17 @@ $block_all = static function ( string $reason ) use ( $steps ): void {
 		WP_CLI::line( sprintf( '%s=BLOCKED|reason:%s', $step, $reason ) );
 	}
 	WP_CLI::line( 'REAL_EDM_WRITE_OPERATIONS=NONE|send_invoice:0|load_invoice:0|create_serial:0|email_invoice:0' );
+};
+
+/**
+ * Safe suffix for a failing step. Emits classification tokens, never remote text.
+ *
+ * @param Kuka_Island_Core_Invoice_Exception $e Caught exception.
+ */
+$safe_detail = static function ( Kuka_Island_Core_Invoice_Exception $e ): string {
+	$line = $e->get_safe_diagnostic_line();
+
+	return sprintf( 'safe_code:%s%s', $e->get_safe_error_code(), '' !== $line ? '|' . $line : '' );
 };
 
 $loaded = kuka_edm_test_credentials( true );
@@ -79,7 +96,7 @@ try {
 	$login_ok = '' !== $client->login();
 	WP_CLI::line( $login_ok ? 'REAL_EDM_LOGIN=PASS|session_obtained:yes' : 'REAL_EDM_LOGIN=FAIL|session_obtained:no' );
 } catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-	WP_CLI::line( sprintf( 'REAL_EDM_LOGIN=FAIL|safe_code:%s', $e->get_safe_error_code() ) );
+	WP_CLI::line( sprintf( 'REAL_EDM_LOGIN=FAIL|%s', $safe_detail( $e ) ) );
 }
 
 if ( ! $login_ok ) {
@@ -103,7 +120,7 @@ try {
 			: 'REAL_EDM_CHECK_COUNTER=FAIL|reason:counter_left_missing'
 	);
 } catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-	WP_CLI::line( sprintf( 'REAL_EDM_CHECK_COUNTER=FAIL|safe_code:%s', $e->get_safe_error_code() ) );
+	WP_CLI::line( sprintf( 'REAL_EDM_CHECK_COUNTER=FAIL|%s', $safe_detail( $e ) ) );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -116,7 +133,7 @@ try {
 	$unfiltered       = $client->get_invoice_serial( '', (int) gmdate( 'Y' ), '' );
 	$unfiltered_count = count( $unfiltered['serials'] ?? array() );
 } catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-	$unfiltered_code = $e->get_safe_error_code();
+	$unfiltered_code = $safe_detail( $e );
 }
 
 $series          = $config->get_series_earchive();
@@ -127,7 +144,7 @@ if ( '' !== $series ) {
 		$filtered       = $client->get_invoice_serial( $series, (int) gmdate( 'Y' ), Kuka_Island_Core_Invoice_Numbering::SERIAL_TYPE_EARCHIVE );
 		$filtered_count = count( $filtered['serials'] ?? array() );
 	} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-		$filtered_code = $e->get_safe_error_code();
+		$filtered_code = $safe_detail( $e );
 	}
 }
 
@@ -143,7 +160,7 @@ if ( null !== $unfiltered_count ) {
 		)
 	);
 } else {
-	WP_CLI::line( sprintf( 'REAL_EDM_GET_INVOICE_SERIAL=FAIL|safe_code:%s', $unfiltered_code ?: 'unknown' ) );
+	WP_CLI::line( sprintf( 'REAL_EDM_GET_INVOICE_SERIAL=FAIL|%s', $unfiltered_code ?: 'safe_code:unknown' ) );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -157,7 +174,7 @@ if ( '' === $config->get_sender_vkn() ) {
 		$user = $client->check_user( $config->get_sender_vkn() );
 		WP_CLI::line( sprintf( 'REAL_EDM_CHECK_USER=PASS|is_einvoice_user:%s|alias_present:%s', ! empty( $user['is_einvoice_user'] ) ? 'yes' : 'no', '' !== (string) ( $user['alias'] ?? '' ) ? 'yes' : 'no' ) );
 	} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-		WP_CLI::line( sprintf( 'REAL_EDM_CHECK_USER=FAIL|safe_code:%s', $e->get_safe_error_code() ) );
+		WP_CLI::line( sprintf( 'REAL_EDM_CHECK_USER=FAIL|%s', $safe_detail( $e ) ) );
 	}
 }
 
@@ -169,7 +186,7 @@ try {
 	$logout_ok = $client->logout() && null === $client->get_session_id();
 	WP_CLI::line( $logout_ok ? 'REAL_EDM_LOGOUT=PASS|session_closed:yes' : 'REAL_EDM_LOGOUT=FAIL|session_closed:no' );
 } catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-	WP_CLI::line( sprintf( 'REAL_EDM_LOGOUT=FAIL|safe_code:%s', $e->get_safe_error_code() ) );
+	WP_CLI::line( sprintf( 'REAL_EDM_LOGOUT=FAIL|%s', $safe_detail( $e ) ) );
 }
 
 WP_CLI::line( 'REAL_EDM_WRITE_OPERATIONS=NONE|send_invoice:0|load_invoice:0|create_serial:0|email_invoice:0' );

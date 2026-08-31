@@ -2688,6 +2688,261 @@ $report(
 /* ========================================================================== */
 /* TEST 15 - Database keyset isolation                                        */
 /* ========================================================================== */
+/* REQUEST_HEADER contract and safe SOAP fault classification                  */
+/* ========================================================================== */
+
+/**
+ * Transport that records every request instead of sending it.
+ *
+ * Answers just enough for the client to proceed. No network, no document.
+ */
+final class Kuka_Island_Test_Header_Capture_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, array<string, mixed>> Last request per operation. */
+	public array $captured = array();
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->captured[ $operation ] = $parameters;
+
+		switch ( $operation ) {
+			case 'Login':
+				return array( 'SESSION_ID' => 'session-fixture-0001', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+			case 'CheckCounter':
+				return array( 'COUNTER_LEFT' => 42 );
+			case 'GetInvoiceSerial':
+				return array( 'INVOICESERIAL' => array() );
+			case 'CheckUser':
+				return array( 'USER' => array() );
+			default:
+				return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+	}
+}
+
+$header_transport = new Kuka_Island_Test_Header_Capture_Transport();
+$header_client    = new Kuka_Island_Core_EDM_Client( $config, $header_transport );
+$header_client->login();
+$header_client->check_counter();
+$header_client->get_invoice_serial( '', (int) gmdate( 'Y' ), '' );
+$header_client->check_user( '1234567890' );
+$header_client->logout();
+
+// WSDL tns:REQUEST_HEADERType, and the fields EDM's reference envelope fills.
+$expected_header_fields = array( 'SESSION_ID', 'CLIENT_TXN_ID', 'ACTION_DATE', 'REASON', 'APPLICATION_NAME', 'HOSTNAME', 'CHANNEL_NAME', 'COMPRESSED' );
+
+$login_header  = (array) ( $header_transport->captured['Login']['REQUEST_HEADER'] ?? array() );
+$missing_login = array();
+foreach ( $expected_header_fields as $field ) {
+	if ( ! array_key_exists( $field, $login_header ) || '' === (string) $login_header[ $field ] ) {
+		$missing_login[] = $field;
+	}
+}
+
+$report(
+	'INVOICE_LOGIN_REQUEST_HEADER_CONTRACT',
+	array() === $missing_login
+	// Login carries no session yet, so the reference envelope sends 0.
+	&& '0' === (string) ( $login_header['SESSION_ID'] ?? '' )
+	&& 'Login' === (string) ( $login_header['REASON'] ?? '' )
+	&& 'N' === (string) ( $login_header['COMPRESSED'] ?? '' )
+	&& 'ozelyazilim.kukaisland' === (string) ( $login_header['APPLICATION_NAME'] ?? '' )
+	&& 1 === preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/', (string) ( $login_header['ACTION_DATE'] ?? '' ) )
+	&& 1 === preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', (string) ( $login_header['CLIENT_TXN_ID'] ?? '' ) ),
+	sprintf(
+		'fields:%d|missing:%s|session_id:%s|reason:%s|compressed:%s|application_name_ok:%s|action_date_shape:%s|client_txn_id_uuid:%s',
+		count( $expected_header_fields ),
+		empty( $missing_login ) ? 'none' : implode( ',', $missing_login ),
+		(string) ( $login_header['SESSION_ID'] ?? 'absent' ),
+		(string) ( $login_header['REASON'] ?? 'absent' ),
+		(string) ( $login_header['COMPRESSED'] ?? 'absent' ),
+		'ozelyazilim.kukaisland' === (string) ( $login_header['APPLICATION_NAME'] ?? '' ) ? 'yes' : 'no',
+		1 === preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/', (string) ( $login_header['ACTION_DATE'] ?? '' ) ) ? 'ok' : 'bad',
+		1 === preg_match( '/^[0-9a-f-]{36}$/i', (string) ( $login_header['CLIENT_TXN_ID'] ?? '' ) ) ? 'yes' : 'no'
+	)
+);
+
+// Every session-bearing operation carries the same complete header, its own
+// REASON and the real session id.
+$session_ops     = array( 'CheckCounter', 'GetInvoiceSerial', 'CheckUser', 'Logout' );
+$session_problem = array();
+foreach ( $session_ops as $op ) {
+	$hdr = (array) ( $header_transport->captured[ $op ]['REQUEST_HEADER'] ?? array() );
+	foreach ( $expected_header_fields as $field ) {
+		if ( ! array_key_exists( $field, $hdr ) || '' === (string) $hdr[ $field ] ) {
+			$session_problem[] = $op . ':' . $field;
+		}
+	}
+	if ( 'session-fixture-0001' !== (string) ( $hdr['SESSION_ID'] ?? '' ) ) {
+		$session_problem[] = $op . ':session_id';
+	}
+	if ( $op !== (string) ( $hdr['REASON'] ?? '' ) ) {
+		$session_problem[] = $op . ':reason';
+	}
+}
+
+$report(
+	'INVOICE_SESSION_REQUEST_HEADER_CONTRACT',
+	array() === $session_problem && count( $session_ops ) === count( array_intersect( $session_ops, array_keys( $header_transport->captured ) ) ),
+	sprintf(
+		'operations:%d|complete:%s|problems:%s',
+		count( $session_ops ),
+		array() === $session_problem ? 'yes' : 'no',
+		empty( $session_problem ) ? 'none' : implode( ',', $session_problem )
+	)
+);
+
+// SendInvoice keeps CLIENT_TXN_ID bound to the document UUID: it is the
+// idempotency key EDM sees, so the richer header must not replace it.
+$send_transport = new Kuka_Island_Test_Header_Capture_Transport();
+$send_client    = new Kuka_Island_Core_EDM_Client( $config, $send_transport );
+$send_reflection = new ReflectionMethod( Kuka_Island_Core_EDM_Client::class, 'build_request_header' );
+$send_reflection->setAccessible( true );
+$bound_header = (array) $send_reflection->invoke( $send_client, 'session-fixture-0001', 'SendInvoice', 'uuid-fixture-abc' );
+
+$report(
+	'INVOICE_SENDINVOICE_HEADER_KEEPS_UUID',
+	'uuid-fixture-abc' === (string) ( $bound_header['CLIENT_TXN_ID'] ?? '' )
+	&& 'SendInvoice' === (string) ( $bound_header['REASON'] ?? '' )
+	&& 'session-fixture-0001' === (string) ( $bound_header['SESSION_ID'] ?? '' )
+	&& 'N' === (string) ( $bound_header['COMPRESSED'] ?? '' ),
+	sprintf(
+		'client_txn_id_bound:%s|reason:%s|compressed:%s',
+		'uuid-fixture-abc' === (string) ( $bound_header['CLIENT_TXN_ID'] ?? '' ) ? 'yes' : 'no',
+		(string) ( $bound_header['REASON'] ?? 'absent' ),
+		(string) ( $bound_header['COMPRESSED'] ?? 'absent' )
+	)
+);
+
+// Fault classification: fixed vocabulary, correct retry semantics.
+$fault_cases = array(
+	'auth_turkish'      => array( 's:Client', 'Kullanıcı adı veya şifre hatalı', Kuka_Island_Core_EDM_Fault_Classifier::CAT_CREDENTIALS, false ),
+	'auth_english'      => array( 's:Client', 'Invalid login: user name not recognised', Kuka_Island_Core_EDM_Fault_Classifier::CAT_CREDENTIALS, false ),
+	'unauthorised'      => array( 'Client', 'Unauthorized', Kuka_Island_Core_EDM_Fault_Classifier::CAT_CREDENTIALS, false ),
+	'session'           => array( 's:Client', 'Aktif session bulunamadi', Kuka_Island_Core_EDM_Fault_Classifier::CAT_NOT_FOUND, false ),
+	'session_expired'   => array( 's:Client', 'Session expired, please login again', Kuka_Island_Core_EDM_Fault_Classifier::CAT_SESSION, false ),
+	'not_found'         => array( 'HTTP', 'Error Fetching http headers: 404 Not Found', Kuka_Island_Core_EDM_Fault_Classifier::CAT_NOT_FOUND, false ),
+	'timeout'           => array( 'HTTP', 'Connection timed out after 30 seconds', Kuka_Island_Core_EDM_Fault_Classifier::CAT_TIMEOUT, true ),
+	'tls'               => array( 'HTTP', 'SSL certificate problem: unable to verify', Kuka_Island_Core_EDM_Fault_Classifier::CAT_TLS, true ),
+	'server_500'        => array( 'HTTP', 'Internal Server Error', Kuka_Island_Core_EDM_Fault_Classifier::CAT_SERVER, true ),
+	'schema'            => array( 's:Client', 'The formatter threw an exception: element was not expected', Kuka_Island_Core_EDM_Fault_Classifier::CAT_CONTRACT, false ),
+	'validation'        => array( 's:Client', 'Zorunlu alan eksik', Kuka_Island_Core_EDM_Fault_Classifier::CAT_CONTRACT, false ),
+	'bare_client'       => array( 's:Client', 'islem gerceklestirilemedi', Kuka_Island_Core_EDM_Fault_Classifier::CAT_CONTRACT, false ),
+	'bare_server'       => array( 's:Server', 'islem gerceklestirilemedi', Kuka_Island_Core_EDM_Fault_Classifier::CAT_SERVER, true ),
+	'bare_http'         => array( 'HTTP', 'unexpected transport condition', Kuka_Island_Core_EDM_Fault_Classifier::CAT_TRANSPORT, true ),
+	'no_code_no_marker' => array( '', 'something entirely unmodelled', Kuka_Island_Core_EDM_Fault_Classifier::CAT_UNCLASSIFIED, true ),
+);
+
+$classifier_ok      = true;
+$classifier_wrong   = array();
+$classifier_digests = array();
+foreach ( $fault_cases as $case => $spec ) {
+	$verdict = Kuka_Island_Core_EDM_Fault_Classifier::classify( $spec[0], $spec[1] );
+	$hit     = $verdict['category'] === $spec[2] && $verdict['retryable'] === $spec[3];
+	/*
+	 * The safe line must be built ENTIRELY from the fixed vocabulary. Matching
+	 * a strict grammar is what proves no remote text can appear -- searching
+	 * for message words would not, because a category name legitimately shares
+	 * ordinary English words such as "server" or "session" with fault text.
+	 */
+	$line = Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( $verdict );
+	if ( 1 !== preg_match( '/^category:[a-z_]+\|fault_kind:[a-z]+\|marker:[a-z_]+\|retryable:(yes|no)\|digest:[0-9a-f]{8}$/', $line ) ) {
+		$hit = false;
+	}
+	$classifier_digests[] = $verdict['digest'];
+	if ( ! $hit ) {
+		$classifier_ok      = false;
+		$classifier_wrong[] = $case . '(' . $verdict['category'] . ')';
+	}
+}
+// The digest must be stable for the same message and differ across messages.
+$digest_stable = Kuka_Island_Core_EDM_Fault_Classifier::classify( 'HTTP', 'same text' )['digest']
+	=== Kuka_Island_Core_EDM_Fault_Classifier::classify( 'HTTP', 'same text' )['digest'];
+
+$report(
+	'INVOICE_FAULT_CLASSIFIER_MATRIX',
+	$classifier_ok && $digest_stable && count( array_unique( $classifier_digests ) ) >= 10,
+	sprintf(
+		'cases:%d|wrong:%s|digest_stable:%s|distinct_digests:%d',
+		count( $fault_cases ),
+		empty( $classifier_wrong ) ? 'none' : implode( ',', $classifier_wrong ),
+		$digest_stable ? 'yes' : 'no',
+		count( array_unique( $classifier_digests ) )
+	)
+);
+
+/*
+ * A fault message that quotes credentials back must not survive anywhere on the
+ * exception: not in the message, the safe code, the user message or the
+ * diagnostic line.
+ */
+$leaky_message = 'Login failed for user name test_user with password secret_password_123 (session sess-abc-999, VKN 1234567890)';
+$leak_transport = new class( $leaky_message ) implements Kuka_Island_Core_SOAP_Transport_Interface {
+	private string $message;
+
+	public function __construct( string $message ) {
+		$this->message = $message;
+	}
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		throw new SoapFault( 's:Client', $this->message );
+	}
+};
+
+$leak_needles = array( 'test_user', 'secret_password_123', 'sess-abc-999', '1234567890', 'secret_key_456' );
+$leak_found   = array();
+try {
+	( new Kuka_Island_Core_EDM_Client( $config, $leak_transport ) )->login();
+} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
+	$surface = implode(
+		"\n",
+		array(
+			$e->getMessage(),
+			$e->get_safe_error_code(),
+			$e->get_user_message(),
+			$e->get_safe_diagnostic_line(),
+			(string) wp_json_encode( $e->get_diagnostic() ),
+		)
+	);
+	foreach ( $leak_needles as $needle ) {
+		if ( str_contains( $surface, $needle ) ) {
+			$leak_found[] = $needle;
+		}
+	}
+	$leak_code       = $e->get_safe_error_code();
+	$leak_diagnostic = $e->get_safe_diagnostic_line();
+}
+
+$report(
+	'INVOICE_FAULT_MESSAGE_NEVER_LEAKS',
+	array() === $leak_found
+	&& 'edm_auth_failed' === ( $leak_code ?? '' )
+	&& str_contains( (string) ( $leak_diagnostic ?? '' ), 'category:credentials_rejected' )
+	&& str_contains( (string) ( $leak_diagnostic ?? '' ), 'marker:authentication' ),
+	sprintf(
+		'needles_checked:%d|leaked:%s|safe_code:%s|diagnostic:%s',
+		count( $leak_needles ),
+		empty( $leak_found ) ? 'none' : implode( ',', $leak_found ),
+		(string) ( $leak_code ?? 'none' ),
+		(string) ( $leak_diagnostic ?? 'none' )
+	)
+);
+
+/* ========================================================================== */
 
 $post_keysets = kuka_invoice_capture_keysets();
 
