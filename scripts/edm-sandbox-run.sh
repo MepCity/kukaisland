@@ -4,7 +4,15 @@
 # Default behaviour is PLAN: nothing is created. Creating the single test
 # document requires BOTH gates:
 #   1. KUKA_EDM_ALLOW_SANDBOX_WRITE=true   (literal)
-#   2. --confirm=LoadInvoice               (must name the planned operation)
+#   2. confirm=LoadInvoice                 (must name the planned operation)
+#
+# The confirmation is passed BARE, without leading dashes: `wp eval-file`
+# forwards positional arguments only and rejects `--confirm=...` as one of its
+# own unknown parameters before the script runs.
+#
+# Usage:
+#   ./scripts/edm-sandbox-run.sh                                            # PLAN
+#   KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
 #
 # Mounts:
 #   credential file  -> /run/edm/edm-test.env      read-only

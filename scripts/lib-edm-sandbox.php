@@ -364,26 +364,125 @@ function kuka_sandbox_resolve_series( string $configured, array $registered, boo
 }
 
 /**
- * Fail-closed sender / recipient verification.
+ * Sender fields the sandbox compares against, verified in the EDM test portal.
  *
- * Blocking checks cover only what cannot be invented: the connection identity
- * CheckUser proves, the mailbox alias EDM itself reports, the sender fiscal
- * block UBL requires, and a resolved recipient / profile pair. A username and a
- * password prove a connection, not a taxpayer, so every required sender fiscal
- * field still has to come from the EDM portal or API. A single missing one is a
- * BLOCKED reason and is named in the output.
+ * Read from Tanımlar -> Firmalarım -> Görüntüle/Güncelle on the EDM TEST
+ * account and hard-coded here on purpose. The whole point is that this is an
+ * INDEPENDENT reference: deriving it from Kuka_Island_Core_Invoice_Config or
+ * from the credential file would compare a value with itself and prove nothing.
+ * Nothing may be passed in and nothing may be read from the environment.
  *
- * The postcode is the one field that is NOT required. All sixteen sample
- * invoices in EDM's own XML ÖRNEKLERİ package omit the supplier
- * cbc:PostalZone, and the EDM test portal (Tanımlar -> Firmalarım) exposes no
- * postcode field, so demanding it would only force an invented value.
+ * These are not secrets, but they are still test-account values: they are never
+ * written to a WordPress option, to the database or to any production runtime
+ * path, and kuka_sandbox_sender_fixture_for() refuses to release them outside a
+ * proved EDM test endpoint.
+ *
+ * The portal has no postcode field, so none is listed. See
+ * kuka_sandbox_verify_sender().
+ *
+ * @return array<string, string>
+ */
+function kuka_sandbox_expected_sender_fixture(): array {
+	return array(
+		'sender_vkn'        => '3230512384',
+		'sender_alias'      => 'urn:mail:defaultgb@edmbilisim.com.tr',
+		'sender_title'      => '2018 - EDM BİLİŞİM SİSTEMLERİ VE DANIŞMANLIK HİZMETLERİ ANONİM ŞİRKETİ',
+		'sender_tax_office' => 'SELÇUK',
+		'sender_address'    => 'BOMONTİ BUSİNESS CENTER',
+		'sender_district'   => 'Esenler',
+		'sender_city'       => 'İstanbul',
+	);
+}
+
+/**
+ * Release the portal fixture only for a proved EDM test endpoint.
+ *
+ * Both facts are required, exactly as in kuka_sandbox_resolve_defaults(): the
+ * environment label alone never unlocks it, and neither does a verified
+ * endpoint under a live label. A live configuration therefore has no path to
+ * these values at all -- it receives the empty array and its sender
+ * verification falls back on CheckUser, which is the only authority there.
+ *
+ * @param array<string, mixed> $endpoint    Verdict of kuka_sandbox_verify_test_endpoint().
+ * @param string               $environment Resolved config environment.
+ * @return array<string, string> Empty when the endpoint is not the proved test service.
+ */
+function kuka_sandbox_sender_fixture_for( array $endpoint, string $environment ): array {
+	if ( true !== ( $endpoint['ok'] ?? false ) ) {
+		return array();
+	}
+	if ( KUKA_SANDBOX_TEST_ENVIRONMENT !== strtolower( trim( $environment ) ) ) {
+		return array();
+	}
+
+	return kuka_sandbox_expected_sender_fixture();
+}
+
+/**
+ * Compare the configured sender block against the portal fixture.
+ *
+ * Byte-for-byte on every field the portal publishes. Only FIELD NAMES are
+ * returned for a mismatch: the configured value is what is under suspicion, so
+ * echoing it would defeat the check being reported.
+ *
+ * @param array<string, string> $configured Configured sender fields.
+ * @param array<string, string> $fixture    Portal fixture, possibly empty.
+ * @return array{ok: bool, available: bool, mismatched: array<int, string>}
+ */
+function kuka_sandbox_match_sender_fixture( array $configured, array $fixture ): array {
+	if ( array() === $fixture ) {
+		return array(
+			'ok'         => false,
+			'available'  => false,
+			'mismatched' => array(),
+		);
+	}
+
+	$mismatched = array();
+	foreach ( $fixture as $field => $expected ) {
+		if ( (string) ( $configured[ $field ] ?? '' ) !== (string) $expected ) {
+			$mismatched[] = $field;
+		}
+	}
+
+	return array(
+		'ok'         => array() === $mismatched,
+		'available'  => true,
+		'mismatched' => $mismatched,
+	);
+}
+
+/**
+ * Fail-closed sender / recipient verification, split by document profile.
+ *
+ * CheckUser is a GİB e-Invoice REGISTRY lookup, not a source of the sender's
+ * own mailbox. EDM's own connector library names the operation
+ * "Vergi Kimlik No ile e-fatura mükellefi arama"
+ * (EFaturaEDMConnectorLibrary.cs, CheckUser_byIdentifier). A taxpayer that
+ * issues e-Archive documents has no reason to appear in that registry, so
+ * requiring a USER entry -- and deriving the sender alias from it -- was simply
+ * the wrong authority for an e-Archive sender. Measured on the EDM test
+ * account: CheckUser succeeds and returns an empty USER list.
+ *
+ * The split:
+ *
+ *   EARSIVFATURA        the sender block is proved against the independent
+ *                       portal fixture. An empty CheckUser result is expected
+ *                       and is reported as information, never as a failure.
+ *   e-Invoice profiles  unchanged and NOT relaxed: a USER entry is required and
+ *                       the alias EDM returns must match the configured one
+ *                       byte-for-byte.
+ *
+ * The postcode is the one company field that is NOT required. All sixteen
+ * sample invoices in EDM's XML ÖRNEKLERİ package omit the supplier
+ * cbc:PostalZone, and the test portal exposes no postcode field.
  *
  * The serial is NOT blocking. LoadInvoice runs with GENERATEINVOICEIDONLOAD =
  * true, so an absent serial only means EDM assigns the number itself; a
  * supplied-but-unusable serial still blocks, via series_selection_valid.
  *
  * @param array<string, mixed> $facts Observed facts.
- * @return array{ok: bool, checks: array<string, bool>, info: array<string, string>, failed: array<int, string>, missing_company_fields: array<int, string>}
+ * @return array{ok: bool, profile: string, checks: array<string, bool>, info: array<string, string>, failed: array<int, string>, missing_company_fields: array<int, string>, mismatched_fixture_fields: array<int, string>}
  */
 function kuka_sandbox_verify_sender( array $facts ): array {
 	$edm_alias     = (string) ( $facts['edm_alias'] ?? '' );
@@ -392,9 +491,8 @@ function kuka_sandbox_verify_sender( array $facts ): array {
 	$check_user_ok = true === ( $facts['check_user_ok'] ?? false );
 	$defaults      = (array) ( $facts['defaults'] ?? array() );
 	$series        = (array) ( $facts['series'] ?? array() );
+	$fixture       = (array) ( $facts['sender_fixture'] ?? array() );
 
-	// sender_postcode is NOT required: EDM's sample invoices omit the supplier
-	// cbc:PostalZone and its test portal has no postcode field to read one from.
 	$required_company = array( 'sender_vkn', 'sender_alias', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city' );
 	$missing_company  = array();
 	foreach ( $required_company as $field ) {
@@ -404,16 +502,27 @@ function kuka_sandbox_verify_sender( array $facts ): array {
 	}
 
 	$defaults_ok = true === ( $defaults['ok'] ?? false );
+	$profile     = $defaults_ok ? (string) ( $defaults['profile_id'] ?? '' ) : '';
+	$is_earchive = KUKA_SANDBOX_DOCUMENTED_PROFILE_ID === $profile;
+
+	$fixture_match = kuka_sandbox_match_sender_fixture( $company, $fixture );
 
 	$checks = array(
-		'check_user_ok'              => $check_user_ok,
-		// Byte-for-byte. A near-miss alias is a refusal, not a warning.
-		'alias_exact_match'          => '' !== $config_alias && $edm_alias === $config_alias,
 		'company_fields_complete'    => array() === $missing_company,
-		'profile_id_resolved'        => $defaults_ok && '' !== (string) ( $defaults['profile_id'] ?? '' ),
+		'profile_id_resolved'        => $defaults_ok && '' !== $profile,
 		'receiver_identity_resolved' => $defaults_ok && 1 === preg_match( '/^\d{10,11}$/', (string) ( $defaults['receiver_vkn'] ?? '' ) ),
 		'series_selection_valid'     => true === ( $series['ok'] ?? false ),
 	);
+
+	if ( $is_earchive ) {
+		// The fixture is the authority here. It is released only for a proved
+		// test endpoint, so an unavailable fixture is itself a refusal.
+		$checks['sender_matches_portal_fixture'] = $fixture_match['available'] && $fixture_match['ok'];
+	} else {
+		// e-Invoice: the GİB registry is the authority and stays mandatory.
+		$checks['check_user_ok']     = $check_user_ok;
+		$checks['alias_exact_match'] = '' !== $config_alias && $edm_alias === $config_alias;
+	}
 
 	$failed = array_keys(
 		array_filter(
@@ -422,21 +531,88 @@ function kuka_sandbox_verify_sender( array $facts ): array {
 		)
 	);
 
-	// Reported, never blocking. Sources are labels, not values.
+	// Reported, never blocking. Labels and field names only, never values.
 	$info = array(
-		'profile_source'  => (string) ( $defaults['profile_source'] ?? 'none' ),
-		'receiver_source' => (string) ( $defaults['receiver_source'] ?? 'none' ),
-		'series_mode'     => (string) ( $series['reason'] ?? 'unknown' ),
-		'series_sent'     => true === ( $series['send'] ?? false ) ? 'yes' : 'no',
+		'sender_identity_source' => $is_earchive ? 'portal_verified_test_fixture' : 'edm_checkuser_registry_alias',
+		'check_user_role'        => 'einvoice_registry_lookup',
+		'check_user_requirement' => $is_earchive ? 'not_applicable_for_earchive_sender' : 'required_for_einvoice_sender',
+		'check_user_result'      => $check_user_ok ? 'user_entry_present' : 'user_entry_absent',
+		'fixture_available'      => $fixture_match['available'] ? 'yes' : 'no',
+		'profile_source'         => (string) ( $defaults['profile_source'] ?? 'none' ),
+		'receiver_source'        => (string) ( $defaults['receiver_source'] ?? 'none' ),
+		'series_mode'            => (string) ( $series['reason'] ?? 'unknown' ),
+		'series_sent'            => true === ( $series['send'] ?? false ) ? 'yes' : 'no',
 	);
 
 	return array(
-		'ok'                     => array() === $failed,
-		'checks'                 => $checks,
-		'info'                   => $info,
-		'failed'                 => $failed,
-		'missing_company_fields' => $missing_company,
+		'ok'                        => array() === $failed,
+		'profile'                   => $is_earchive ? 'earchive' : 'einvoice',
+		'checks'                    => $checks,
+		'info'                      => $info,
+		'failed'                    => $failed,
+		'missing_company_fields'    => $missing_company,
+		'mismatched_fixture_fields' => $fixture_match['mismatched'],
 	);
+}
+
+/**
+ * Turn a failed verification into an accurate operator instruction.
+ *
+ * The old text always said "every listed sender field must come from the EDM
+ * portal" even when every field was present and the real problem was something
+ * else entirely. Each sentence below is produced only by the check that
+ * actually failed, and none of them carries a value -- only field names.
+ *
+ * @param array<string, mixed> $verification Output of kuka_sandbox_verify_sender().
+ * @return array<int, string>
+ */
+function kuka_sandbox_sender_guidance( array $verification ): array {
+	if ( true === ( $verification['ok'] ?? false ) ) {
+		return array();
+	}
+
+	$failed   = (array) ( $verification['failed'] ?? array() );
+	$lines    = array();
+	$earchive = 'earchive' === (string) ( $verification['profile'] ?? '' );
+
+	if ( in_array( 'company_fields_complete', $failed, true ) ) {
+		$lines[] = sprintf(
+			'Missing sender field(s), read them from the EDM portal (Tanımlar -> Firmalarım): %s',
+			implode( ', ', (array) $verification['missing_company_fields'] )
+		);
+	}
+
+	if ( in_array( 'sender_matches_portal_fixture', $failed, true ) ) {
+		$mismatched = (array) ( $verification['mismatched_fixture_fields'] ?? array() );
+		$lines[]    = array() === $mismatched
+			? 'The portal sender fixture is unavailable: it is released only for the proved EDM test endpoint.'
+			: sprintf(
+				'Configured sender field(s) do not match the EDM test portal record (field names only): %s',
+				implode( ', ', $mismatched )
+			);
+	}
+
+	if ( in_array( 'check_user_ok', $failed, true ) ) {
+		$lines[] = 'CheckUser returned no GİB e-Invoice registry entry for this sender. That is an e-Invoice registration matter at GİB/EDM, not a configuration error here.';
+	}
+
+	if ( in_array( 'alias_exact_match', $failed, true ) ) {
+		$lines[] = 'The mailbox alias EDM returned does not match the configured one byte-for-byte.';
+	}
+
+	if ( in_array( 'series_selection_valid', $failed, true ) ) {
+		$lines[] = 'The configured invoice series cannot be used; leave it empty to let EDM assign the number.';
+	}
+
+	if ( in_array( 'profile_id_resolved', $failed, true ) || in_array( 'receiver_identity_resolved', $failed, true ) ) {
+		$lines[] = 'The sandbox profile or recipient identity could not be resolved for a proved EDM test endpoint.';
+	}
+
+	if ( $earchive ) {
+		$lines[] = 'Note: an empty CheckUser result is expected for an e-Archive sender and is not a failure.';
+	}
+
+	return $lines;
 }
 
 /**
@@ -1228,6 +1404,7 @@ function kuka_sandbox_execute_write(
 		'exit_code'       => 1,
 		'state_recorded'  => false,
 		'assigned_number' => '',
+		'fault'           => array(),
 	);
 
 	$claimed              = $claim->claim( $uuid, $operation );
@@ -1240,15 +1417,29 @@ function kuka_sandbox_execute_write(
 	}
 	$base['claimed'] = true;
 
-	$parsed = null;
-	$threw  = false;
+	$parsed      = null;
+	$threw       = false;
+	$fault_class = array();
 	try {
 		$base['call_attempted'] = true;
 		$response               = $transport->call( 'LoadInvoice', $load_request );
 		$parsed                 = kuka_sandbox_parse_load_invoice_response( $response, $uuid );
 	} catch ( Throwable $t ) {
 		$threw = true;
+		/*
+		 * An uncertain outcome forbids a retry, so the operator's only way
+		 * forward is knowing WHAT kind of refusal it was. The message itself is
+		 * untrusted remote text and is never kept: only the allow-listed
+		 * classification is.
+		 */
+		if ( class_exists( 'Kuka_Island_Core_EDM_Fault_Classifier' ) ) {
+			$fault_class = Kuka_Island_Core_EDM_Fault_Classifier::classify(
+				( $t instanceof SoapFault && isset( $t->faultcode ) ) ? (string) $t->faultcode : '',
+				(string) $t->getMessage()
+			);
+		}
 	}
+	$base['fault'] = $fault_class;
 
 	$classification         = kuka_sandbox_classify_call( $parsed, $threw );
 	$base['classification'] = $classification;
@@ -1259,6 +1450,10 @@ function kuka_sandbox_execute_write(
 		: ( KUKA_SANDBOX_CALL_DEFINITIVE === $classification ? Kuka_Sandbox_Claim::S_FAILED_DEFINITIVE : Kuka_Sandbox_Claim::S_UNCERTAIN );
 
 	$extra = array( 'outcome' => (string) ( $parsed['outcome'] ?? ( $threw ? 'transport_exception' : 'unknown' ) ) );
+	if ( array() !== $fault_class ) {
+		// Allow-listed tokens only; no remote text reaches the state file.
+		$extra['fault'] = $fault_class;
+	}
 	if ( KUKA_SANDBOX_CALL_SUCCESS === $classification ) {
 		$extra['assigned_number']  = (string) $parsed['assigned_number'];
 		$extra['return_code']      = $parsed['return_code'];

@@ -603,6 +603,61 @@ Doğrulama başarısızsa `SANDBOX_ENDPOINT=BLOCKED|reason:<token>|login_attempt
 tüm adımlar BLOCKED olur ve **Login denenmez**. URL hiçbir zaman basılmaz: özel bir WSDL
 userinfo taşıyabilir, bu yüzden yalnız neden token'ı dışarı çıkar.
 
+### 13.1.1 `CheckUser` ne değildir
+
+`CheckUser`, **GİB e-Fatura mükellef listesini** sorgular. EDM'in kendi gönderdiği
+`EFaturaEDMConnectorLibrary.cs` dosyasında (satır 2017, `CheckUser_byIdentifier`) tanım aynen:
+
+> Vergi Kimlik No ile e-fatura mükellefi arama
+
+Bu yüzden **e-Arşiv göndereni** için `CheckUser`'ın USER kaydı döndürmesi zorunlu değildir;
+e-Arşiv zaten e-Fatura kaydı olmayan tarafa kesilen belgedir. Gerçek ölçüm (EDM test hesabı):
+çağrı `PASS`, `user_entry:absent`, `response_fields:none`. Bu bir SOAP veya parser hatası değil,
+boş USER dizisidir.
+
+Gönderici alias'ını bu sorgudan türetmek yanlış otoriteye başvurmaktı. Sözleşme profile göre
+ayrıldı:
+
+| Profil | Gönderici kimliği otoritesi | `CheckUser` |
+|---|---|---|
+| `EARSIVFATURA` | Bağımsız **portal fixture**'ı ile birebir karşılaştırma | Bloklamaz. Boş sonuç `not_applicable_for_earchive_sender` bilgi etiketiyle raporlanır |
+| e-Fatura profilleri | `CheckUser` USER kaydı **ve** dönen alias'ın birebir eşleşmesi | **Zorunlu, gevşetilmedi** |
+
+Çıktıdaki kaynak etiketleri makine tarafından test edilebilir:
+
+```
+sender_identity_source=portal_verified_test_fixture      (e-Arşiv)
+sender_identity_source=edm_checkuser_registry_alias      (e-Fatura)
+check_user_role=einvoice_registry_lookup
+check_user_requirement=not_applicable_for_earchive_sender | required_for_einvoice_sender
+```
+
+**Fixture'ın bağımsızlığı.** `kuka_sandbox_expected_sender_fixture()` **parametre almaz** ve
+gövdesinde `$config`, `$facts`, `$loaded`, `get_sender_`, `getenv`, `get_option`,
+`KUKA_EDM_SENDER`, `func_get_arg` geçmez — aksi hâlde değer kendisiyle karşılaştırılmış olurdu.
+`kuka_sandbox_sender_fixture_for()` onu yalnız **kanıtlanmış test endpoint'i + `test` etiketi**
+birlikteyken serbest bırakır; canlı yapılandırma boş dizi alır ve gönderici doğrulaması tek
+otorite olarak `CheckUser`'a düşer. Değerler WordPress ayarına, veritabanına veya üretim
+çalışma yoluna hiç yazılmaz.
+
+**Yanlış yönlendirme düzeltildi.** PLAN çıktısı artık gerçekten başarısız olan kontrole göre
+konuşuyor: eksik alan varsa yalnız eksik alan adlarını, fixture uyuşmazlığı varsa yalnız
+uyuşmayan alan adlarını (değerleri değil) bildiriyor; e-Fatura tarafında boş `CheckUser` sonucu
+"GİB e-Fatura kaydı meselesi" olarak açıklanıyor; e-Arşiv tarafında boş sonuç hata olarak
+gösterilmiyor.
+
+### 13.1.2 Onay kapısının çağrı biçimi
+
+`wp eval-file` **yalnız çıplak positional** argüman aktarır; `--confirm=LoadInvoice` WP-CLI
+tarafından kendi bilinmeyen parametresi sanılıp script çalışmadan `unknown --confirm parameter`
+ile reddedilir. Belgelenen biçim bu yüzden çıplaktır:
+
+```bash
+KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
+```
+
+Kapının gücü değişmedi: operasyon adı hâlâ tam olarak yazılmak zorunda.
+
 ### 13.2 Sandbox fixture kimlikleri
 
 Bu bölümdeki iki değer için raporlanan kaynak etiketi `documented_example_fixture`'dır —

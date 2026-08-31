@@ -492,133 +492,268 @@ $report(
 );
 
 /* ========================================================================== */
-/* Sender verification: fail-closed on everything that cannot be looked up      */
+/* Sender verification: profile-aware, fail-closed                             */
 /* ========================================================================== */
 
-$complete_company = array(
-	'sender_vkn'        => '1234567890',
-	'sender_alias'      => 'urn:mail:box@example.com',
-	'sender_title'      => 'Test A.S.',
-	'sender_tax_office' => 'Kadikoy',
-	'sender_address'    => 'Moda Cad. 1',
-	'sender_district'   => 'Kadikoy',
-	'sender_city'       => 'Istanbul',
-	'sender_postcode'   => '34710',
-);
+/*
+ * CheckUser is a GİB e-Invoice REGISTRY lookup. EDM's own connector library
+ * names it "Vergi Kimlik No ile e-fatura mükellefi arama"
+ * (EFaturaEDMConnectorLibrary.cs :: CheckUser_byIdentifier), so an e-Archive
+ * sender has no reason to appear in it and its emptiness must not block. For
+ * e-Archive the authority is the independent portal fixture; for e-Invoice the
+ * registry stays mandatory and is not relaxed.
+ */
+$portal_fixture = kuka_sandbox_expected_sender_fixture();
 
-$good_facts = array(
-	'defaults'         => kuka_sandbox_resolve_defaults( 'test', $good_endpoint, '', '', '1234567890' ),
-	'series'           => kuka_sandbox_resolve_series( 'KUK', array( 'AAA', 'kuk', 'ZZZ' ), true ),
-	'check_user_ok'    => true,
-	'edm_alias'        => 'urn:mail:box@example.com',
-	'configured_alias' => 'urn:mail:box@example.com',
-	'company_fields'   => $complete_company,
-);
+// The fixture must be a constant. If it were ever derived from a caller, the
+// comparison would be a value against itself and would prove nothing.
+$fixture_call_a = kuka_sandbox_expected_sender_fixture();
+$fixture_call_b = kuka_sandbox_expected_sender_fixture();
 
-$baseline = kuka_sandbox_verify_sender( $good_facts );
+$fixture_source     = (string) file_get_contents( __DIR__ . '/lib-edm-sandbox.php' );
+$fixture_fn_start   = strpos( $fixture_source, 'function kuka_sandbox_expected_sender_fixture(' );
+$fixture_fn_body    = false !== $fixture_fn_start
+	? substr( $fixture_source, $fixture_fn_start, ( strpos( $fixture_source, "\n}\n", $fixture_fn_start ) ?: $fixture_fn_start ) - $fixture_fn_start )
+	: '';
+// Anything that could pull a value in from outside the literal.
+$fixture_taints = array();
+foreach ( array( '$config', '$facts', '$loaded', 'get_sender_', 'getenv', 'get_option', 'KUKA_EDM_SENDER', 'func_get_arg', '$_' ) as $taint ) {
+	if ( '' !== $fixture_fn_body && str_contains( $fixture_fn_body, $taint ) ) {
+		$fixture_taints[] = $taint;
+	}
+}
+
 $report(
-	'SANDBOX_VERIFY_ALL_PASS_ALLOWS_PLAN',
-	true === $baseline['ok'] && array() === $baseline['failed'] && 6 === count( $baseline['checks'] ),
-	sprintf( 'checks:%d|failed:%s', count( $baseline['checks'] ), empty( $baseline['failed'] ) ? 'none' : implode( ',', $baseline['failed'] ) )
-);
-
-// An absent serial must NOT block: EDM assigns the number instead.
-$no_series_facts  = array_merge( $good_facts, array( 'series' => kuka_sandbox_resolve_series( '', array(), true ) ) );
-$no_series_result = kuka_sandbox_verify_sender( $no_series_facts );
-$report(
-	'SANDBOX_MISSING_SERIES_DOES_NOT_BLOCK',
-	true === $no_series_result['ok']
-	&& array() === $no_series_result['failed']
-	&& 'no' === $no_series_result['info']['series_sent']
-	&& 'not_configured_edm_assigns_the_number' === $no_series_result['info']['series_mode'],
+	'SANDBOX_SENDER_FIXTURE_IS_INDEPENDENT',
+	$fixture_call_a === $fixture_call_b
+	&& $fixture_call_a === $portal_fixture
+	&& 7 === count( $portal_fixture )
+	&& '' !== $fixture_fn_body
+	// Takes no argument at all, so nothing can be injected.
+	&& 0 === ( new ReflectionFunction( 'kuka_sandbox_expected_sender_fixture' ) )->getNumberOfParameters()
+	&& array() === $fixture_taints
+	&& ! array_key_exists( 'sender_postcode', $portal_fixture ),
 	sprintf(
-		'ok:%s|series_sent:%s|series_mode:%s',
-		$no_series_result['ok'] ? 'yes' : 'no',
-		$no_series_result['info']['series_sent'],
-		$no_series_result['info']['series_mode']
+		'fields:%d|deterministic:%s|parameters:%d|derives_from_config:%s|postcode_listed:%s',
+		count( $portal_fixture ),
+		$fixture_call_a === $fixture_call_b ? 'yes' : 'no',
+		( new ReflectionFunction( 'kuka_sandbox_expected_sender_fixture' ) )->getNumberOfParameters(),
+		empty( $fixture_taints ) ? 'no' : implode( ',', $fixture_taints ),
+		array_key_exists( 'sender_postcode', $portal_fixture ) ? 'yes' : 'no'
 	)
 );
 
-$negatives = array(
-	'check_user_failed'      => array( 'check_user_ok' => false, 'expect' => 'check_user_ok' ),
-	'alias_mismatch'         => array( 'edm_alias' => 'urn:mail:OTHER@example.com', 'expect' => 'alias_exact_match' ),
-	'alias_case_mismatch'    => array( 'edm_alias' => 'URN:MAIL:BOX@EXAMPLE.COM', 'expect' => 'alias_exact_match' ),
-	'alias_whitespace'       => array( 'edm_alias' => ' urn:mail:box@example.com', 'expect' => 'alias_exact_match' ),
-	'empty_configured_alias' => array( 'configured_alias' => '', 'expect' => 'alias_exact_match' ),
-	'defaults_refused_live'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'live', $bad_endpoint, '', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
-	'defaults_missing'       => array( 'defaults' => array(), 'expect' => 'receiver_identity_resolved' ),
-	'defaults_unproved_wsdl' => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', $bad_endpoint, '', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
-	'bad_receiver_override'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', $good_endpoint, '', '123', '1234567890' ), 'expect' => 'receiver_identity_resolved' ),
-	'bad_profile_override'   => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', $good_endpoint, 'bad profile', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
-	'malformed_series'       => array( 'series' => kuka_sandbox_resolve_series( 'KUKA', array(), true ), 'expect' => 'series_selection_valid' ),
-	'unregistered_series'    => array( 'series' => kuka_sandbox_resolve_series( 'KUK', array( 'AAA' ), true ), 'expect' => 'series_selection_valid' ),
-	'unverifiable_series'    => array( 'series' => kuka_sandbox_resolve_series( 'KUK', array(), false ), 'expect' => 'series_selection_valid' ),
-	'series_missing'         => array( 'series' => array(), 'expect' => 'series_selection_valid' ),
+// The fixture is released only for a proved TEST endpoint.
+$fixture_gate_cases = array(
+	'test_label_verified_url' => array( $good_endpoint, 'test', true ),
+	'live_label_verified_url' => array( $good_endpoint, 'live', false ),
+	'test_label_live_url'     => array( $bad_endpoint, 'test', false ),
+	'live_label_live_url'     => array( $bad_endpoint, 'live', false ),
 );
-
-$negative_results = array();
-$negatives_ok     = true;
-foreach ( $negatives as $case => $mutation ) {
-	$expected = $mutation['expect'];
-	unset( $mutation['expect'] );
-	$result = kuka_sandbox_verify_sender( array_merge( $good_facts, $mutation ) );
-	$hit    = ( false === $result['ok'] ) && in_array( $expected, $result['failed'], true );
-	$negative_results[ $case ] = $hit ? 'blocked' : 'LEAKED';
+$fixture_gate_ok      = true;
+$fixture_gate_details = array();
+foreach ( $fixture_gate_cases as $case => $spec ) {
+	$released = kuka_sandbox_sender_fixture_for( $spec[0], $spec[1] );
+	$hit      = $spec[2] ? ( $released === $portal_fixture ) : ( array() === $released );
+	$fixture_gate_details[ $case ] = $hit ? ( $spec[2] ? 'released' : 'withheld' ) : 'WRONG';
 	if ( ! $hit ) {
-		$negatives_ok = false;
+		$fixture_gate_ok = false;
 	}
 }
+
+$report(
+	'SANDBOX_SENDER_FIXTURE_TEST_ONLY',
+	$fixture_gate_ok,
+	implode( '|', array_map( static fn( string $k, string $v ): string => $k . ':' . $v, array_keys( $fixture_gate_details ), $fixture_gate_details ) )
+);
 
 /*
- * Each REQUIRED sender fiscal field, one at a time. Every one of them is a value
- * that must come from EDM's portal or API and is named in the output.
- *
- * sender_postcode is excluded on purpose: all sixteen sample invoices in EDM's
- * XML ÖRNEKLERİ package omit the supplier cbc:PostalZone and the test portal
- * (Tanımlar -> Firmalarım) has no postcode field, so it is optional. The
- * assertion right after this loop proves an empty one does not block.
+ * Behaviour matrix. The company block starts as an exact copy of the portal
+ * fixture, plus the postcode the portal does not publish.
  */
-foreach ( array_diff( array_keys( $complete_company ), array( 'sender_postcode' ) ) as $field ) {
-	$broken           = $complete_company;
-	$broken[ $field ] = '';
-	$result           = kuka_sandbox_verify_sender( array_merge( $good_facts, array( 'company_fields' => $broken ) ) );
-	$hit              = ( false === $result['ok'] )
-		&& in_array( 'company_fields_complete', $result['failed'], true )
-		&& in_array( $field, $result['missing_company_fields'], true );
-	$negative_results[ 'company_' . $field ] = $hit ? 'blocked' : 'LEAKED';
+$complete_company = array_merge( $portal_fixture, array( 'sender_postcode' => '' ) );
+
+$earchive_defaults = kuka_sandbox_resolve_defaults( 'test', $good_endpoint, '', '', '9999999999' );
+$einvoice_defaults = kuka_sandbox_resolve_defaults( 'test', $good_endpoint, 'TICARIFATURA', '', '9999999999' );
+
+$earchive_facts = array(
+	'defaults'         => $earchive_defaults,
+	'series'           => kuka_sandbox_resolve_series( '', array(), true ),
+	// Measured reality on the EDM test account: the call succeeds, the registry
+	// returns nothing.
+	'check_user_ok'    => false,
+	'edm_alias'        => '',
+	'configured_alias' => $portal_fixture['sender_alias'],
+	'company_fields'   => $complete_company,
+	'sender_fixture'   => $portal_fixture,
+);
+
+$einvoice_facts = array_merge(
+	$earchive_facts,
+	array(
+		'defaults'      => $einvoice_defaults,
+		'check_user_ok' => true,
+		'edm_alias'     => $portal_fixture['sender_alias'],
+	)
+);
+
+/**
+ * Mutate one company field by a single character.
+ *
+ * @param array<string, string> $company Company block.
+ * @param string                $field   Field to disturb.
+ * @return array<string, string>
+ */
+$one_char_off = static function ( array $company, string $field ): array {
+	$company[ $field ] = $company[ $field ] . 'X';
+
+	return $company;
+};
+
+$matrix = array(
+	// 1. e-Archive, correct fixture, empty CheckUser -> PASS.
+	'earchive_fixture_match_checkuser_empty' => array( $earchive_facts, true, '' ),
+	// 2-5. One character off in each portal field -> BLOCKED.
+	'earchive_vkn_one_char_off'              => array( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_vkn' ) ) ), false, 'sender_matches_portal_fixture' ),
+	'earchive_alias_one_char_off'            => array( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_alias' ) ) ), false, 'sender_matches_portal_fixture' ),
+	'earchive_title_differs'                 => array( array_merge( $earchive_facts, array( 'company_fields' => array_merge( $complete_company, array( 'sender_title' => 'BASKA UNVAN A.S.' ) ) ) ), false, 'sender_matches_portal_fixture' ),
+	'earchive_tax_office_differs'            => array( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_tax_office' ) ) ), false, 'sender_matches_portal_fixture' ),
+	'earchive_address_differs'               => array( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_address' ) ) ), false, 'sender_matches_portal_fixture' ),
+	'earchive_district_differs'              => array( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_district' ) ) ), false, 'sender_matches_portal_fixture' ),
+	'earchive_city_differs'                  => array( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_city' ) ) ), false, 'sender_matches_portal_fixture' ),
+	// 6. Missing required company field -> BLOCKED.
+	'earchive_missing_required_field'        => array( array_merge( $earchive_facts, array( 'company_fields' => array_merge( $complete_company, array( 'sender_city' => '' ) ) ) ), false, 'company_fields_complete' ),
+	// Fixture withheld (unproved endpoint) -> BLOCKED, never silently skipped.
+	'earchive_fixture_unavailable'           => array( array_merge( $earchive_facts, array( 'sender_fixture' => array() ) ), false, 'sender_matches_portal_fixture' ),
+	// 7-9. e-Invoice keeps the registry requirement.
+	'einvoice_checkuser_empty'               => array( array_merge( $einvoice_facts, array( 'check_user_ok' => false, 'edm_alias' => '' ) ), false, 'check_user_ok' ),
+	'einvoice_alias_differs'                 => array( array_merge( $einvoice_facts, array( 'edm_alias' => $portal_fixture['sender_alias'] . 'X' ) ), false, 'alias_exact_match' ),
+	'einvoice_alias_exact'                   => array( $einvoice_facts, true, '' ),
+	// 10. A test label over a live endpoint resolves nothing -> BLOCKED.
+	'live_endpoint_under_test_label'         => array(
+		array_merge(
+			$earchive_facts,
+			array(
+				'defaults'       => kuka_sandbox_resolve_defaults( 'test', $bad_endpoint, '', '', '9999999999' ),
+				'sender_fixture' => kuka_sandbox_sender_fixture_for( $bad_endpoint, 'test' ),
+			)
+		),
+		false,
+		'profile_id_resolved',
+	),
+	// 12. Empty postcode must not block.
+	'earchive_postcode_empty'                => array( $earchive_facts, true, '' ),
+	// 13. Empty series must not block.
+	'earchive_series_empty'                  => array( array_merge( $earchive_facts, array( 'series' => kuka_sandbox_resolve_series( '', array(), false ) ) ), true, '' ),
+);
+
+$matrix_ok      = true;
+$matrix_details = array();
+foreach ( $matrix as $case => $spec ) {
+	$verdict = kuka_sandbox_verify_sender( $spec[0] );
+	$hit     = $verdict['ok'] === $spec[1]
+		&& ( '' === $spec[2] || in_array( $spec[2], $verdict['failed'], true ) );
+
+	// A blocked case must always produce actionable guidance, and guidance must
+	// never contain a configured value -- only field names.
+	$guidance = implode( ' ', kuka_sandbox_sender_guidance( $verdict ) );
+	if ( ! $verdict['ok'] && '' === trim( $guidance ) ) {
+		$hit = false;
+	}
+	foreach ( array( $portal_fixture['sender_alias'], $portal_fixture['sender_title'], $portal_fixture['sender_vkn'] ) as $value ) {
+		if ( str_contains( $guidance, $value ) ) {
+			$hit = false;
+		}
+	}
+
+	$matrix_details[ $case ] = $hit ? ( $verdict['ok'] ? 'PASS' : 'blocked' ) : ( 'WRONG(' . ( $verdict['ok'] ? 'pass' : implode( '+', $verdict['failed'] ) ) . ')' );
 	if ( ! $hit ) {
-		$negatives_ok = false;
+		$matrix_ok = false;
 	}
 }
 
-// An empty sender postcode must NOT block, and must not be named as missing.
-$no_postcode_company             = $complete_company;
-$no_postcode_company['sender_postcode'] = '';
-$no_postcode_verify              = kuka_sandbox_verify_sender( array_merge( $good_facts, array( 'company_fields' => $no_postcode_company ) ) );
-
 $report(
-	'SANDBOX_MISSING_POSTCODE_DOES_NOT_BLOCK',
-	true === $no_postcode_verify['ok']
-	&& array() === $no_postcode_verify['failed']
-	&& ! in_array( 'sender_postcode', $no_postcode_verify['missing_company_fields'], true )
-	&& true === $no_postcode_verify['checks']['company_fields_complete'],
+	'SANDBOX_SENDER_PROFILE_MATRIX',
+	$matrix_ok,
 	sprintf(
-		'ok:%s|failed:%s|missing_company_fields:%s',
-		$no_postcode_verify['ok'] ? 'yes' : 'no',
-		empty( $no_postcode_verify['failed'] ) ? 'none' : implode( ',', $no_postcode_verify['failed'] ),
-		empty( $no_postcode_verify['missing_company_fields'] ) ? 'none' : implode( ',', $no_postcode_verify['missing_company_fields'] )
+		'cases:%d|wrong:%s',
+		count( $matrix ),
+		implode( ',', array_keys( array_filter( $matrix_details, static fn( string $v ): bool => str_starts_with( $v, 'WRONG' ) ) ) ) ?: 'none'
 	)
 );
 
+// The information labels the report must carry, verbatim and machine-testable.
+$earchive_pass = kuka_sandbox_verify_sender( $earchive_facts );
+$einvoice_pass = kuka_sandbox_verify_sender( $einvoice_facts );
+
 $report(
-	'SANDBOX_VERIFY_NEGATIVE_MATRIX',
-	$negatives_ok,
+	'SANDBOX_SENDER_IDENTITY_SOURCE_LABELS',
+	'portal_verified_test_fixture' === $earchive_pass['info']['sender_identity_source']
+	&& 'einvoice_registry_lookup' === $earchive_pass['info']['check_user_role']
+	&& 'not_applicable_for_earchive_sender' === $earchive_pass['info']['check_user_requirement']
+	&& 'user_entry_absent' === $earchive_pass['info']['check_user_result']
+	&& 'earchive' === $earchive_pass['profile']
+	// The e-Invoice side keeps the registry as its authority.
+	&& 'edm_checkuser_registry_alias' === $einvoice_pass['info']['sender_identity_source']
+	&& 'required_for_einvoice_sender' === $einvoice_pass['info']['check_user_requirement']
+	&& 'einvoice' === $einvoice_pass['profile']
+	// CheckUser is never a blocking check on the e-Archive path.
+	&& ! array_key_exists( 'check_user_ok', $earchive_pass['checks'] )
+	&& ! array_key_exists( 'alias_exact_match', $earchive_pass['checks'] )
+	&& array_key_exists( 'check_user_ok', $einvoice_pass['checks'] ),
 	sprintf(
-		'cases:%d|leaked:%s',
-		count( $negative_results ),
-		implode( ',', array_keys( array_filter( $negative_results, static fn( string $v ): bool => 'blocked' !== $v ) ) ) ?: 'none'
+		'earchive:sender_identity_source=%s,check_user_role=%s,check_user_requirement=%s,check_user_result=%s,check_user_blocking=%s|einvoice:sender_identity_source=%s,check_user_requirement=%s,check_user_blocking=%s',
+		$earchive_pass['info']['sender_identity_source'],
+		$earchive_pass['info']['check_user_role'],
+		$earchive_pass['info']['check_user_requirement'],
+		$earchive_pass['info']['check_user_result'],
+		array_key_exists( 'check_user_ok', $earchive_pass['checks'] ) ? 'yes' : 'no',
+		$einvoice_pass['info']['sender_identity_source'],
+		$einvoice_pass['info']['check_user_requirement'],
+		array_key_exists( 'check_user_ok', $einvoice_pass['checks'] ) ? 'yes' : 'no'
 	)
 );
+
+// Guidance must reflect the check that actually failed, never the old blanket
+// "supply every sender field" text.
+$guidance_complete_but_mismatched = kuka_sandbox_sender_guidance(
+	kuka_sandbox_verify_sender( array_merge( $earchive_facts, array( 'company_fields' => $one_char_off( $complete_company, 'sender_city' ) ) ) )
+);
+$guidance_missing = kuka_sandbox_sender_guidance(
+	kuka_sandbox_verify_sender( array_merge( $earchive_facts, array( 'company_fields' => array_merge( $complete_company, array( 'sender_city' => '' ) ) ) ) )
+);
+$guidance_registry = kuka_sandbox_sender_guidance(
+	kuka_sandbox_verify_sender( array_merge( $einvoice_facts, array( 'check_user_ok' => false, 'edm_alias' => '' ) ) )
+);
+
+$mismatch_text = implode( ' ', $guidance_complete_but_mismatched );
+$missing_text  = implode( ' ', $guidance_missing );
+$registry_text = implode( ' ', $guidance_registry );
+
+$report(
+	'SANDBOX_SENDER_GUIDANCE_IS_ACCURATE',
+	// A field-value mismatch names the field and does NOT ask for missing ones.
+	str_contains( $mismatch_text, 'sender_city' )
+	&& ! str_contains( $mismatch_text, 'Missing sender field' )
+	// A genuinely absent field asks for exactly that field.
+	&& str_contains( $missing_text, 'Missing sender field' )
+	&& str_contains( $missing_text, 'sender_city' )
+	// An empty registry answer is described as a GİB registration matter.
+	&& str_contains( $registry_text, 'GİB e-Invoice registry' )
+	// The e-Archive path never presents an empty registry answer as an error.
+	&& str_contains( $mismatch_text, 'not a failure' )
+	&& array() === kuka_sandbox_sender_guidance( $earchive_pass ),
+	sprintf(
+		'mismatch_names_field:%s|mismatch_avoids_missing_text:%s|missing_asks_for_field:%s|registry_explained:%s|passing_run_silent:%s',
+		str_contains( $mismatch_text, 'sender_city' ) ? 'yes' : 'no',
+		str_contains( $mismatch_text, 'Missing sender field' ) ? 'NO' : 'yes',
+		str_contains( $missing_text, 'sender_city' ) ? 'yes' : 'no',
+		str_contains( $registry_text, 'GİB e-Invoice registry' ) ? 'yes' : 'no',
+		array() === kuka_sandbox_sender_guidance( $earchive_pass ) ? 'yes' : 'no'
+	)
+);
+
+$good_facts = $earchive_facts;
 
 /* ========================================================================== */
 /* LoadInvoiceResponse parser fixtures                                          */
@@ -1355,6 +1490,43 @@ $report(
 		$noseries_write['create_verdict'],
 		$noseries_write['result_label'],
 		'' !== (string) $noseries_write['assigned_number'] ? 'read_back' : 'missing'
+	)
+);
+
+/*
+ * An uncertain write must carry a safe fault classification: the retry is
+ * forbidden, so the classification is the operator's only way forward. Only
+ * allow-listed tokens may appear -- never the SOAP fault text.
+ */
+$fault_transport = new Kuka_Sandbox_Mock_Transport(
+	static function (): array {
+		throw new SoapFault( 's:Client', 'Kullanıcı adı veya şifre hatalı (secret_password_123)' );
+	}
+);
+$fault_claim = new Kuka_Sandbox_Claim( $state_root . '/faultclass.json' );
+$fault_claim->acquire();
+$fault_write = kuka_sandbox_execute_write( $fault_claim, $fault_transport, array(), $uuid, 'LoadInvoice' );
+$fault_claim->release();
+
+$fault_line = array() !== (array) ( $fault_write['fault'] ?? array() )
+	? Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( (array) $fault_write['fault'] )
+	: '';
+
+$report(
+	'SANDBOX_UNCERTAIN_WRITE_CARRIES_SAFE_FAULT',
+	KUKA_SANDBOX_CALL_UNCERTAIN === $fault_write['classification']
+	&& array() !== (array) $fault_write['fault']
+	&& 1 === preg_match( '/^category:[a-z_]+\|fault_kind:[a-z]+\|marker:[a-z_]+\|retryable:(yes|no)$/', $fault_line )
+	// The remote text, including the credential it quoted, never survives.
+	&& ! str_contains( $fault_line, 'secret_password_123' )
+	&& ! str_contains( (string) wp_json_encode( $fault_write ), 'secret_password_123' )
+	&& 1 === $fault_transport->calls,
+	sprintf(
+		'calls:%d|classification:%s|fault_line_shape:%s|remote_text_leaked:%s',
+		$fault_transport->calls,
+		$fault_write['classification'],
+		1 === preg_match( '/^category:[a-z_]+\|fault_kind:[a-z]+\|marker:[a-z_]+\|retryable:(yes|no)$/', $fault_line ) ? 'ok' : 'BAD',
+		str_contains( (string) wp_json_encode( $fault_write ), 'secret_password_123' ) ? 'YES' : 'none'
 	)
 );
 

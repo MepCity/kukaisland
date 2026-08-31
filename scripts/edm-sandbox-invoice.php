@@ -28,7 +28,7 @@
  *   - no exclusive claim lock (another run in progress)
  *   - state in_flight, uncertain, confirmed or failed_definitive
  *   - KUKA_EDM_ALLOW_SANDBOX_WRITE not the literal string "true"
- *   - --confirm=<operation> absent or not matching the planned operation
+ *   - confirm=<operation> absent or not matching the planned operation
  *
  * Nothing here creates a WooCommerce order or writes any database row. The
  * production Kuka_Island_Core_Invoice_Manager and its
@@ -36,7 +36,8 @@
  * write-capable method is added to the plugin: the LoadInvoice request is
  * assembled here and issued through the transport the client already owns.
  *
- * Run only through ./scripts/edm-sandbox-run.sh
+ * Run only through ./scripts/edm-sandbox-run.sh:
+ *   KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
  *
  * @package Kuka_Island_Core
  */
@@ -203,13 +204,19 @@ try {
 	$serial_query_ok = false;
 }
 
+/*
+ * check_user_ok means "the GİB e-Invoice registry returned a usable entry for
+ * this identifier", NOT "the call did not throw". CheckUser succeeding with an
+ * empty USER list is the normal answer for a taxpayer that is not an e-Invoice
+ * user, and reporting that as a present entry would be false.
+ */
 $check_user_ok = false;
 $edm_alias     = '';
 if ( '' !== $config->get_sender_vkn() ) {
 	try {
 		$user          = $client->check_user( $config->get_sender_vkn() );
-		$check_user_ok = true;
 		$edm_alias     = (string) ( $user['alias'] ?? '' );
+		$check_user_ok = '' !== $edm_alias;
 	} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
 		$check_user_ok = false;
 	}
@@ -223,10 +230,18 @@ if ( '' !== $config->get_sender_vkn() ) {
  */
 $series = kuka_sandbox_resolve_series( $config->get_series_earchive(), $registered_codes, $serial_query_ok );
 
+/*
+ * The portal fixture is the e-Archive sender authority. It is released only for
+ * the endpoint already proved above -- never from the config or the credential
+ * file, which would compare a value with itself.
+ */
+$sender_fixture = kuka_sandbox_sender_fixture_for( $endpoint, $config->get_environment() );
+
 $verification = kuka_sandbox_verify_sender(
 	array(
 		'defaults'                => $defaults,
 		'series'                  => $series,
+		'sender_fixture'          => $sender_fixture,
 		'check_user_ok'           => $check_user_ok,
 		'edm_alias'               => $edm_alias,
 		'configured_alias'        => $config->get_sender_alias(),
@@ -266,9 +281,11 @@ $info_summary = implode(
 if ( ! $verification['ok'] ) {
 	WP_CLI::line(
 		sprintf(
-			'SANDBOX_SENDER_IDENTITY=BLOCKED|failed:%s|missing_sender_fields:%s|%s|%s|serial_query_ok:%s|registered_serials:%d',
+			'SANDBOX_SENDER_IDENTITY=BLOCKED|profile:%s|failed:%s|missing_sender_fields:%s|mismatched_fixture_fields:%s|%s|%s|serial_query_ok:%s|registered_serials:%d',
+			$verification['profile'],
 			implode( ',', $verification['failed'] ),
 			empty( $verification['missing_company_fields'] ) ? 'none' : implode( ',', $verification['missing_company_fields'] ),
+			empty( $verification['mismatched_fixture_fields'] ) ? 'none' : implode( ',', $verification['mismatched_fixture_fields'] ),
 			$check_summary,
 			$info_summary,
 			$serial_query_ok ? 'yes' : 'no',
@@ -277,13 +294,19 @@ if ( ! $verification['ok'] ) {
 	);
 	$block_from( array_slice( $all_steps, 2 ), 'sender_verification_failed' );
 	$client->logout();
-	WP_CLI::log( 'Nothing was invented and no draft was uploaded. Every listed sender field must come from the EDM portal or API; supply them, then re-run.' );
+	// Guidance is produced from the checks that actually failed, so it never
+	// tells the operator to supply fields that are already present.
+	WP_CLI::log( 'Nothing was invented and no draft was uploaded.' );
+	foreach ( kuka_sandbox_sender_guidance( $verification ) as $guidance_line ) {
+		WP_CLI::log( '  - ' . $guidance_line );
+	}
 	exit( 0 );
 }
 
 WP_CLI::line(
 	sprintf(
-		'SANDBOX_SENDER_IDENTITY=PASS|%s|%s|registered_serials:%d',
+		'SANDBOX_SENDER_IDENTITY=PASS|profile:%s|%s|%s|registered_serials:%d',
+		$verification['profile'],
 		$check_summary,
 		$info_summary,
 		count( $registered_codes )
@@ -407,10 +430,24 @@ WP_CLI::line( 'SANDBOX_DUPLICATE_GUARD=PASS|state:idle|uuid_deterministic:yes|ed
 
 $allow_write = 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' );
 
+/*
+ * `wp eval-file` forwards BARE positional arguments only: a leading `--` makes
+ * WP-CLI parse the token as one of its own parameters and abort with
+ * "unknown --confirm parameter" before this file ever runs. The documented gate
+ * is therefore `confirm=LoadInvoice`; the `--confirm=` spelling stays accepted
+ * for anyone invoking this script outside WP-CLI. Either way the operation has
+ * to be named in full, so the gate is unchanged in strength.
+ */
 $confirmed_operation = '';
 foreach ( $cli_args as $arg ) {
-	if ( is_string( $arg ) && str_starts_with( $arg, '--confirm=' ) ) {
-		$confirmed_operation = substr( $arg, strlen( '--confirm=' ) );
+	if ( ! is_string( $arg ) ) {
+		continue;
+	}
+	foreach ( array( 'confirm=', '--confirm=' ) as $prefix ) {
+		if ( str_starts_with( $arg, $prefix ) ) {
+			$confirmed_operation = substr( $arg, strlen( $prefix ) );
+			break;
+		}
 	}
 }
 
@@ -422,7 +459,7 @@ if ( ! $allow_write || $planned_operation !== $confirmed_operation ) {
 	WP_CLI::line( '>>> Nothing is sent to a recipient: SendInvoice is not called.' );
 	WP_CLI::line( '>>> Nothing has been created. Both gates are required:' );
 	WP_CLI::line( '>>>   1) KUKA_EDM_ALLOW_SANDBOX_WRITE=true  (literal)' );
-	WP_CLI::line( sprintf( '>>>   2) --confirm=%s', $planned_operation ) );
+	WP_CLI::line( sprintf( '>>>   2) confirm=%s   (bare, no leading dashes: wp eval-file forwards positional args only)', $planned_operation ) );
 	WP_CLI::line( '' );
 	$block( 'SANDBOX_DRAFT_UPLOAD', $allow_write ? 'operation_not_confirmed' : 'sandbox_write_not_enabled' );
 	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
@@ -488,6 +525,10 @@ if ( KUKA_SANDBOX_CALL_SUCCESS !== $write['classification'] ) {
 	$block( 'SANDBOX_XML_READBACK', 'document_not_confirmed' );
 	$block( 'SANDBOX_CBC_ID_READBACK', 'document_not_confirmed' );
 	WP_CLI::line( sprintf( 'SANDBOX_WRITE_OPERATIONS=%s|count:1|result:%s', $planned_operation, $write['result_label'] ) );
+	if ( array() !== (array) ( $write['fault'] ?? array() ) ) {
+		// Classification tokens only. The SOAP fault text is never printed.
+		WP_CLI::line( sprintf( 'SANDBOX_DRAFT_UPLOAD_FAULT=%s', Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( (array) $write['fault'] ) ) );
+	}
 	if ( KUKA_SANDBOX_CALL_UNCERTAIN === $write['classification'] ) {
 		WP_CLI::log( 'Uncertain: the call left this process and a document may exist at EDM. No automatic retry. Reconcile the UUID read-only before any further decision.' );
 	}
