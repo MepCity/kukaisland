@@ -24,6 +24,11 @@ const KUKA_SANDBOX_UUID_SEED = 'kuka-island-edm-sandbox-e2e-v1';
 /** Host-side state directory (read-write mount). Never the database. */
 const KUKA_SANDBOX_STATE_DIR = '/run/edm/state';
 
+/** Outcome classes for a write attempt. */
+const KUKA_SANDBOX_CALL_SUCCESS    = 'success';
+const KUKA_SANDBOX_CALL_DEFINITIVE = 'definitive_rejection';
+const KUKA_SANDBOX_CALL_UNCERTAIN  = 'uncertain';
+
 /**
  * Deterministic RFC-4122-shaped UUID from a fixed seed.
  */
@@ -114,15 +119,22 @@ function kuka_sandbox_verify_sender( array $facts ): array {
  * recursive search is performed, so an unrelated nested ID can never be mistaken
  * for a fiscal document number.
  *
+ * Classification is deliberately asymmetric. Only a structurally complete
+ * rejection -- REQUEST_RETURN present, RETURN_CODE numeric and non-zero -- is
+ * treated as a definitive refusal. Every other non-success shape means the call
+ * was made and a document may well exist at EDM, so it classifies as
+ * 'uncertain' and must never trigger an automatic second write.
+ *
  * @param mixed  $response      Raw SOAP response.
  * @param string $expected_uuid Deterministic UUID that was sent.
- * @return array{ok: bool, outcome: string, return_code: int|null, assigned_number: string, returned_uuid: string, detail: string}
+ * @return array{ok: bool, outcome: string, classification: string, return_code: int|null, assigned_number: string, returned_uuid: string, detail: string}
  */
 function kuka_sandbox_parse_load_invoice_response( $response, string $expected_uuid ): array {
-	$fail = static function ( string $outcome, string $detail, ?int $code = null, string $number = '', string $uuid = '' ): array {
+	$fail = static function ( string $outcome, string $classification, string $detail, ?int $code = null, string $number = '', string $uuid = '' ): array {
 		return array(
 			'ok'              => false,
 			'outcome'         => $outcome,
+			'classification'  => $classification,
 			'return_code'     => $code,
 			'assigned_number' => $number,
 			'returned_uuid'   => $uuid,
@@ -134,46 +146,47 @@ function kuka_sandbox_parse_load_invoice_response( $response, string $expected_u
 		$response = json_decode( (string) wp_json_encode( $response ), true );
 	}
 	if ( ! is_array( $response ) ) {
-		return $fail( 'malformed', 'response_not_a_structure' );
+		return $fail( 'malformed', KUKA_SANDBOX_CALL_UNCERTAIN, 'response_not_a_structure' );
 	}
 
 	if ( ! isset( $response['REQUEST_RETURN'] ) || ! is_array( $response['REQUEST_RETURN'] ) ) {
-		return $fail( 'malformed', 'missing_request_return' );
+		return $fail( 'malformed', KUKA_SANDBOX_CALL_UNCERTAIN, 'missing_request_return' );
 	}
 	$request_return = $response['REQUEST_RETURN'];
 	if ( ! array_key_exists( 'RETURN_CODE', $request_return ) || ! is_numeric( $request_return['RETURN_CODE'] ) ) {
-		return $fail( 'malformed', 'missing_or_non_numeric_return_code' );
+		return $fail( 'malformed', KUKA_SANDBOX_CALL_UNCERTAIN, 'missing_or_non_numeric_return_code' );
 	}
 	$return_code = (int) $request_return['RETURN_CODE'];
 
 	if ( 0 !== $return_code ) {
-		return $fail( 'business_error', 'return_code_not_success', $return_code );
+		return $fail( 'business_error', KUKA_SANDBOX_CALL_DEFINITIVE, 'return_code_not_success', $return_code );
 	}
 
 	if ( ! isset( $response['INVOICE'] ) ) {
-		return $fail( 'malformed', 'missing_invoice_element', $return_code );
+		return $fail( 'malformed', KUKA_SANDBOX_CALL_UNCERTAIN, 'missing_invoice_element', $return_code );
 	}
 	$invoice = $response['INVOICE'];
 	if ( is_array( $invoice ) && array_key_exists( 0, $invoice ) ) {
 		$invoice = $invoice[0];
 	}
 	if ( ! is_array( $invoice ) ) {
-		return $fail( 'malformed', 'invoice_element_not_a_structure', $return_code );
+		return $fail( 'malformed', KUKA_SANDBOX_CALL_UNCERTAIN, 'invoice_element_not_a_structure', $return_code );
 	}
 
 	$returned_uuid = isset( $invoice['UUID'] ) && is_scalar( $invoice['UUID'] ) ? (string) $invoice['UUID'] : '';
 	if ( '' === $returned_uuid || 0 !== strcasecmp( $returned_uuid, $expected_uuid ) ) {
-		return $fail( 'uuid_mismatch', 'returned_uuid_does_not_match_sent_uuid', $return_code, '', $returned_uuid );
+		return $fail( 'uuid_mismatch', KUKA_SANDBOX_CALL_UNCERTAIN, 'returned_uuid_does_not_match_sent_uuid', $return_code, '', $returned_uuid );
 	}
 
 	$assigned = isset( $invoice['ID'] ) && is_scalar( $invoice['ID'] ) ? (string) $invoice['ID'] : '';
 	if ( '' === trim( $assigned ) ) {
-		return $fail( 'empty_id', 'edm_returned_no_document_number', $return_code, '', $returned_uuid );
+		return $fail( 'empty_id', KUKA_SANDBOX_CALL_UNCERTAIN, 'edm_returned_no_document_number', $return_code, '', $returned_uuid );
 	}
 
 	return array(
 		'ok'              => true,
 		'outcome'         => 'success',
+		'classification'  => KUKA_SANDBOX_CALL_SUCCESS,
 		'return_code'     => $return_code,
 		'assigned_number' => $assigned,
 		'returned_uuid'   => $returned_uuid,
@@ -361,6 +374,8 @@ final class Kuka_Sandbox_Claim {
 	public const S_CONFIRMED         = 'confirmed';
 	public const S_FAILED_DEFINITIVE = 'failed_definitive';
 	public const S_UNCERTAIN         = 'uncertain';
+	/** Not a lifecycle state: the persisted record cannot be trusted. */
+	public const S_CORRUPT           = 'corrupt';
 
 	private string $state_file;
 	private string $lock_file;
@@ -410,6 +425,11 @@ final class Kuka_Sandbox_Claim {
 	}
 
 	/**
+	 * Raw record, or an empty array when there is nothing usable to read.
+	 *
+	 * Callers must consult status() for the trustworthiness of that record;
+	 * read() alone cannot distinguish "no file" from "damaged file".
+	 *
 	 * @return array<string, mixed>
 	 */
 	public function read(): array {
@@ -425,12 +445,79 @@ final class Kuka_Sandbox_Claim {
 		return is_array( $decoded ) ? $decoded : array();
 	}
 
-	public function state(): string {
-		$state = (string) ( $this->read()['state'] ?? self::S_IDLE );
+	/**
+	 * Trustworthiness of the persisted claim record.
+	 *
+	 * A missing file is genuinely idle: nothing was ever claimed. Anything else
+	 * that cannot be read back as a complete, self-consistent record is CORRUPT
+	 * and can never be claimed, because a damaged record may be hiding an
+	 * in-flight or confirmed document at EDM. Recovery is a read-only
+	 * reconciliation by UUID at EDM, never deleting or resetting this file.
+	 *
+	 * @return array{state: string, reason: string, record: array<string, mixed>}
+	 */
+	public function status(): array {
+		$known = array( self::S_IDLE, self::S_IN_FLIGHT, self::S_CONFIRMED, self::S_FAILED_DEFINITIVE, self::S_UNCERTAIN );
 
-		return in_array( $state, array( self::S_IDLE, self::S_IN_FLIGHT, self::S_CONFIRMED, self::S_FAILED_DEFINITIVE, self::S_UNCERTAIN ), true )
-			? $state
-			: self::S_IDLE;
+		$verdict = static function ( string $state, string $reason, array $record = array() ): array {
+			return array(
+				'state'  => $state,
+				'reason' => $reason,
+				'record' => $record,
+			);
+		};
+
+		if ( ! file_exists( $this->state_file ) ) {
+			return $verdict( self::S_IDLE, 'no_state_file' );
+		}
+		if ( ! is_readable( $this->state_file ) ) {
+			return $verdict( self::S_CORRUPT, 'state_file_unreadable' );
+		}
+
+		$raw = file_get_contents( $this->state_file );
+		if ( false === $raw ) {
+			return $verdict( self::S_CORRUPT, 'state_file_unreadable' );
+		}
+		if ( '' === trim( (string) $raw ) ) {
+			return $verdict( self::S_CORRUPT, 'state_file_empty' );
+		}
+
+		$decoded = json_decode( (string) $raw, true );
+		if ( ! is_array( $decoded ) || JSON_ERROR_NONE !== json_last_error() ) {
+			return $verdict( self::S_CORRUPT, 'state_file_invalid_json' );
+		}
+		if ( ! isset( $decoded['state'] ) || ! is_string( $decoded['state'] ) ) {
+			return $verdict( self::S_CORRUPT, 'state_field_missing', $decoded );
+		}
+
+		$state = $decoded['state'];
+		if ( ! in_array( $state, $known, true ) ) {
+			return $verdict( self::S_CORRUPT, 'unknown_state_value', $decoded );
+		}
+
+		// Any non-idle state must carry the identifiers that make reconciliation
+		// possible. Without them the record cannot be acted on safely.
+		if ( self::S_IDLE !== $state ) {
+			if ( '' === trim( (string) ( $decoded['uuid'] ?? '' ) ) ) {
+				return $verdict( self::S_CORRUPT, 'missing_uuid_for_state_' . $state, $decoded );
+			}
+			if ( '' === trim( (string) ( $decoded['operation'] ?? '' ) ) ) {
+				return $verdict( self::S_CORRUPT, 'missing_operation_for_state_' . $state, $decoded );
+			}
+		}
+		if ( self::S_CONFIRMED === $state && '' === trim( (string) ( $decoded['assigned_number'] ?? '' ) ) ) {
+			return $verdict( self::S_CORRUPT, 'confirmed_without_assigned_number', $decoded );
+		}
+
+		return $verdict( $state, 'ok', $decoded );
+	}
+
+	public function state(): string {
+		return $this->status()['state'];
+	}
+
+	public function state_reason(): string {
+		return $this->status()['reason'];
 	}
 
 	/**
@@ -624,4 +711,196 @@ final class Kuka_Sandbox_Claim {
 			'state'   => $written ? self::S_IDLE : $current,
 		);
 	}
+}
+
+/**
+ * PROFILEID confirmation gate.
+ *
+ * Supplying a value is not the same as EDM having confirmed it. The write stage
+ * therefore requires a second, separately recorded value -- the exact PROFILEID
+ * EDM confirmed in writing -- and demands a byte-for-byte match with the one the
+ * harness would send. Until that written answer exists the operator has nothing
+ * to record, so the gate stays closed and no value is ever guessed.
+ *
+ * @param string $configured PROFILEID the harness would send.
+ * @param string $confirmed  PROFILEID EDM confirmed in writing.
+ * @return array{ok: bool, reason: string}
+ */
+function kuka_sandbox_profile_confirmation( string $configured, string $confirmed ): array {
+	if ( '' === trim( $configured ) ) {
+		return array(
+			'ok'     => false,
+			'reason' => 'profile_id_not_supplied',
+		);
+	}
+	if ( '' === trim( $confirmed ) ) {
+		return array(
+			'ok'     => false,
+			'reason' => 'profile_id_not_confirmed_by_edm_in_writing',
+		);
+	}
+	// Byte-for-byte. A near-miss is a refusal, not a warning.
+	if ( $configured !== $confirmed ) {
+		return array(
+			'ok'     => false,
+			'reason' => 'configured_profile_does_not_match_confirmed_profile',
+		);
+	}
+
+	return array(
+		'ok'     => true,
+		'reason' => 'profile_confirmed',
+	);
+}
+
+/**
+ * Classify a write attempt.
+ *
+ * @param array<string, mixed>|null $parsed Parser output, or null when the call threw.
+ * @param bool                      $threw  Whether the transport call raised.
+ */
+function kuka_sandbox_classify_call( ?array $parsed, bool $threw ): string {
+	if ( $threw || null === $parsed ) {
+		// The call left this process. A document may exist at EDM.
+		return KUKA_SANDBOX_CALL_UNCERTAIN;
+	}
+
+	$classification = (string) ( $parsed['classification'] ?? KUKA_SANDBOX_CALL_UNCERTAIN );
+
+	return in_array( $classification, array( KUKA_SANDBOX_CALL_SUCCESS, KUKA_SANDBOX_CALL_DEFINITIVE, KUKA_SANDBOX_CALL_UNCERTAIN ), true )
+		? $classification
+		: KUKA_SANDBOX_CALL_UNCERTAIN;
+}
+
+/**
+ * Turn a classification plus the settle result into the reported verdict.
+ *
+ * A successful external call whose confirmed state could not be persisted is
+ * NEVER reported as PASS or as confirmed: the on-disk record still says
+ * in_flight, so a second write stays refused and the operator must reconcile.
+ *
+ * @param string               $classification Call classification.
+ * @param array<string, mixed> $settle Result of Kuka_Sandbox_Claim::settle().
+ * @return array{create_verdict: string, result_label: string, status_token: string, exit_code: int, state_recorded: bool}
+ */
+function kuka_sandbox_resolve_report( string $classification, array $settle ): array {
+	$written = true === ( $settle['written'] ?? false );
+
+	if ( KUKA_SANDBOX_CALL_SUCCESS === $classification && $written ) {
+		return array(
+			'create_verdict' => 'PASS',
+			'result_label'   => 'confirmed',
+			'status_token'   => 'confirmed',
+			'exit_code'      => 0,
+			'state_recorded' => true,
+		);
+	}
+
+	if ( KUKA_SANDBOX_CALL_SUCCESS === $classification && ! $written ) {
+		return array(
+			'create_verdict' => 'FAIL',
+			'result_label'   => 'state_persist_failed_manual_reconciliation_required',
+			'status_token'   => 'state_persist_failed_manual_reconciliation_required',
+			'exit_code'      => 1,
+			'state_recorded' => false,
+		);
+	}
+
+	if ( KUKA_SANDBOX_CALL_DEFINITIVE === $classification ) {
+		return array(
+			'create_verdict' => 'FAIL',
+			'result_label'   => $written ? 'failed_definitive' : 'state_persist_failed_manual_reconciliation_required',
+			'status_token'   => $written ? 'failed_definitive' : 'state_persist_failed_manual_reconciliation_required',
+			'exit_code'      => 1,
+			'state_recorded' => $written,
+		);
+	}
+
+	return array(
+		'create_verdict' => 'FAIL',
+		'result_label'   => $written ? 'uncertain_manual_reconciliation_required' : 'state_persist_failed_manual_reconciliation_required',
+		'status_token'   => $written ? 'uncertain_manual_reconciliation_required' : 'state_persist_failed_manual_reconciliation_required',
+		'exit_code'      => 1,
+		'state_recorded' => $written,
+	);
+}
+
+/**
+ * The complete write sequence: claim, single call, classify, settle, resolve.
+ *
+ * This is the driver's write path. The driver calls it and so does the harness,
+ * with a mocked transport and an injectable claim, so the reported verdict and
+ * the number of external calls are both provable without touching EDM.
+ *
+ * Exactly one transport call is ever attempted, and only after the claim moved
+ * the record from idle to in_flight on disk.
+ *
+ * @param Kuka_Sandbox_Claim                            $claim        Lock-guarded claim.
+ * @param Kuka_Island_Core_SOAP_Transport_Interface     $transport    Transport to call.
+ * @param array<string, mixed>                          $load_request LoadInvoice request payload.
+ * @param string                                        $uuid         Deterministic UUID sent.
+ * @param string                                        $operation    Operation name.
+ * @return array<string, mixed>
+ */
+function kuka_sandbox_execute_write(
+	Kuka_Sandbox_Claim $claim,
+	Kuka_Island_Core_SOAP_Transport_Interface $transport,
+	array $load_request,
+	string $uuid,
+	string $operation
+): array {
+	$base = array(
+		'claimed'         => false,
+		'claim_reason'    => '',
+		'call_attempted'  => false,
+		'classification'  => 'not_attempted',
+		'parsed'          => null,
+		'settle'          => array(),
+		'create_verdict'  => 'BLOCKED',
+		'result_label'    => 'no_write_attempted',
+		'status_token'    => 'no_write_attempted',
+		'exit_code'       => 1,
+		'state_recorded'  => false,
+		'assigned_number' => '',
+	);
+
+	$claimed              = $claim->claim( $uuid, $operation );
+	$base['claim_reason'] = (string) $claimed['reason'];
+	if ( ! $claimed['ok'] ) {
+		$base['status_token'] = 'claim_refused';
+		$base['result_label'] = 'claim_refused';
+
+		return $base;
+	}
+	$base['claimed'] = true;
+
+	$parsed = null;
+	$threw  = false;
+	try {
+		$base['call_attempted'] = true;
+		$response               = $transport->call( 'LoadInvoice', $load_request );
+		$parsed                 = kuka_sandbox_parse_load_invoice_response( $response, $uuid );
+	} catch ( Throwable $t ) {
+		$threw = true;
+	}
+
+	$classification         = kuka_sandbox_classify_call( $parsed, $threw );
+	$base['classification'] = $classification;
+	$base['parsed']         = $parsed;
+
+	$settle_target = KUKA_SANDBOX_CALL_SUCCESS === $classification
+		? Kuka_Sandbox_Claim::S_CONFIRMED
+		: ( KUKA_SANDBOX_CALL_DEFINITIVE === $classification ? Kuka_Sandbox_Claim::S_FAILED_DEFINITIVE : Kuka_Sandbox_Claim::S_UNCERTAIN );
+
+	$extra = array( 'outcome' => (string) ( $parsed['outcome'] ?? ( $threw ? 'transport_exception' : 'unknown' ) ) );
+	if ( KUKA_SANDBOX_CALL_SUCCESS === $classification ) {
+		$extra['assigned_number']  = (string) $parsed['assigned_number'];
+		$extra['return_code']      = $parsed['return_code'];
+		$base['assigned_number']   = (string) $parsed['assigned_number'];
+	}
+
+	$settle         = $claim->settle( $settle_target, $extra );
+	$base['settle'] = $settle;
+
+	return array_merge( $base, kuka_sandbox_resolve_report( $classification, $settle ) );
 }

@@ -233,20 +233,29 @@ try {
 // operation for this experiment is therefore LoadInvoice.
 $planned_operation = 'LoadInvoice';
 
+// Supplying a PROFILEID is not the same as EDM having confirmed it. PLAN reports
+// the confirmation state without echoing any value; the write gate below is what
+// the confirmation actually controls.
+$profile_gate = kuka_sandbox_profile_confirmation(
+	$sandbox_profile,
+	(string) ( $loaded['sandbox']['profile_id_confirmed'] ?? '' )
+);
+
 WP_CLI::line(
 	sprintf(
-		'SANDBOX_PLAN=PASS|operation:%s|generate_invoice_id_on_load:true|invoice_id_attribute:omitted|ubl_cbc_id_sent:%s|vat_percent:%s|net:%s|tax:%s|payable:%s|uuid_deterministic:yes',
+		'SANDBOX_PLAN=PASS|operation:%s|generate_invoice_id_on_load:true|invoice_id_attribute:omitted|ubl_cbc_id_sent:%s|vat_percent:%s|net:%s|tax:%s|payable:%s|uuid_deterministic:yes|profile_confirmed:%s',
 		$planned_operation,
 		$built['cbc_id_sent'] ? 'present' : 'absent',
 		$built['totals']['percent'],
 		$built['totals']['net'],
 		$built['totals']['tax'],
-		$built['totals']['payable']
+		$built['totals']['payable'],
+		$profile_gate['ok'] ? 'yes' : 'no'
 	)
 );
 
 /* ========================================================================== */
-/* Claim: exclusive lock plus state machine                                    */
+/* Claim: exclusive lock plus corrupt-aware state machine                      */
 /* ========================================================================== */
 
 $claim = new Kuka_Sandbox_Claim( KUKA_SANDBOX_STATE_DIR . '/sandbox-e2e.json' );
@@ -255,29 +264,23 @@ if ( ! $claim->acquire() ) {
 	$block( 'SANDBOX_CLAIM', 'exclusive_lock_unavailable_another_run_in_progress' );
 	$block_from( array_slice( $all_steps, 4 ), 'no_claim' );
 	$client->logout();
-	exit( 0 );
+	exit( 1 );
 }
 
-$state_now = $claim->state();
-WP_CLI::line( sprintf( 'SANDBOX_CLAIM=PASS|lock:acquired|state:%s', $state_now ) );
+$status    = $claim->status();
+$state_now = $status['state'];
 
-$reread_only = static function ( string $reason ) use ( $claim, $client, $uuid, $block ): void {
-	$stored = $claim->read();
-	WP_CLI::line(
-		sprintf(
-			'SANDBOX_DUPLICATE_GUARD=PASS|state:%s|second_write_refused:yes|reason:%s',
-			(string) ( $stored['state'] ?? 'unknown' ),
-			$reason
-		)
-	);
+/**
+ * Read-only reconciliation. Never a write, never a PASS for a failed query.
+ */
+$reconcile_only = static function ( string $reason, string $recorded_number ) use ( $client, $uuid, $block ): void {
 	$block( 'SANDBOX_CREATE', $reason );
 	$block( 'SANDBOX_NUMBER_ASSIGNED', 'no_new_document' );
 
-	// Read-only reconciliation. A failed query is reported as FAIL, never PASS.
 	$status_ok = false;
 	$mapped    = '';
 	try {
-		$result    = $client->get_invoice_status( $uuid, (string) ( $stored['assigned_number'] ?? '' ) );
+		$result    = $client->get_invoice_status( $uuid, $recorded_number );
 		$status_ok = true;
 		$mapped    = $result->get_status();
 	} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
@@ -289,8 +292,23 @@ $reread_only = static function ( string $reason ) use ( $claim, $client, $uuid, 
 	WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
 };
 
+if ( Kuka_Sandbox_Claim::S_CORRUPT === $state_now ) {
+	// A damaged record may be hiding an in-flight or confirmed document. It is
+	// never treated as idle and it is never repaired by deleting the file.
+	WP_CLI::line( sprintf( 'SANDBOX_CLAIM=BLOCKED|state:corrupt|reason:%s|write_refused:yes', $status['reason'] ) );
+	WP_CLI::line( 'SANDBOX_DUPLICATE_GUARD=PASS|state:corrupt|second_write_refused:yes' );
+	$reconcile_only( 'claim_record_corrupt', '' );
+	WP_CLI::log( 'Do not delete or reset the state file. Reconcile the deterministic UUID against EDM first, then decide.' );
+	$claim->release();
+	$client->logout();
+	exit( 1 );
+}
+
+WP_CLI::line( sprintf( 'SANDBOX_CLAIM=PASS|lock:acquired|state:%s|record:%s', $state_now, $status['reason'] ) );
+
 if ( Kuka_Sandbox_Claim::S_IDLE !== $state_now ) {
-	$reread_only( 'state_' . $state_now );
+	WP_CLI::line( sprintf( 'SANDBOX_DUPLICATE_GUARD=PASS|state:%s|second_write_refused:yes', $state_now ) );
+	$reconcile_only( 'state_' . $state_now, (string) ( $status['record']['assigned_number'] ?? '' ) );
 	$claim->release();
 	$client->logout();
 	exit( 0 );
@@ -299,8 +317,19 @@ if ( Kuka_Sandbox_Claim::S_IDLE !== $state_now ) {
 WP_CLI::line( 'SANDBOX_DUPLICATE_GUARD=PASS|state:idle|uuid_deterministic:yes|edm_duplicate_detection:second_layer' );
 
 /* ========================================================================== */
-/* Gates: explicit env opt-in plus operation confirmation                       */
+/* Gates: PROFILEID confirmation, explicit env opt-in, operation confirmation   */
 /* ========================================================================== */
+
+if ( ! $profile_gate['ok'] ) {
+	WP_CLI::line( sprintf( 'SANDBOX_PROFILE_GATE=BLOCKED|profile_confirmed:no|reason:%s', $profile_gate['reason'] ) );
+	$block( 'SANDBOX_CREATE', 'profileid_not_confirmed_by_edm' );
+	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
+	WP_CLI::log( 'EDM has not confirmed a PROFILEID in writing. No value is guessed and no document is created.' );
+	$claim->release();
+	$client->logout();
+	exit( 0 );
+}
+WP_CLI::line( 'SANDBOX_PROFILE_GATE=PASS|profile_confirmed:yes|byte_for_byte_match:yes' );
 
 $allow_write = 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' );
 
@@ -328,21 +357,7 @@ if ( ! $allow_write || $planned_operation !== $confirmed_operation ) {
 }
 
 /* ========================================================================== */
-/* Claim the write BEFORE the external call                                    */
-/* ========================================================================== */
-
-$claimed = $claim->claim( $uuid, $planned_operation );
-if ( ! $claimed['ok'] ) {
-	$block( 'SANDBOX_CREATE', 'claim_failed:' . $claimed['reason'] );
-	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
-	$claim->release();
-	$client->logout();
-	exit( 1 );
-}
-WP_CLI::line( sprintf( 'SANDBOX_CREATE=RUNNING|operation:%s|state:%s|state_recorded:yes', $planned_operation, $claimed['state'] ) );
-
-/* ========================================================================== */
-/* The single write call                                                        */
+/* The single write call, through the shared, harness-tested write path         */
 /* ========================================================================== */
 
 $issue_date = gmdate( 'Y-m-d' );
@@ -362,8 +377,8 @@ $header     = array(
 	'MARKED'                          => false,
 );
 
-// Only send the serial binding when a series is actually configured. The
-// verification above already guarantees this, so this is a defensive guard.
+// Only bind a serial when one is actually configured. Verification already
+// guarantees this; the guard is defensive.
 $series_code = $config->get_series_earchive();
 if ( '' !== $series_code ) {
 	$header['INVOICESERIAL_REQUESTED'] = $series_code;
@@ -394,71 +409,13 @@ $load_request = array(
 	'GENERATEINVOICEIDONLOAD' => true,
 );
 
-$parsed          = null;
-$settle_target   = Kuka_Sandbox_Claim::S_UNCERTAIN;
-$settle_extra    = array();
-$assigned_number = '';
+WP_CLI::line( sprintf( 'SANDBOX_CREATE=RUNNING|operation:%s|state:in_flight|state_recorded:yes', $planned_operation ) );
 
-try {
-	$response = $client->get_transport()->call( 'LoadInvoice', $load_request );
-	$parsed   = kuka_sandbox_parse_load_invoice_response( $response, $uuid );
+$write = kuka_sandbox_execute_write( $claim, $client->get_transport(), $load_request, $uuid, $planned_operation );
 
-	if ( $parsed['ok'] ) {
-		$assigned_number = $parsed['assigned_number'];
-		$settle_target   = Kuka_Sandbox_Claim::S_CONFIRMED;
-		$settle_extra    = array(
-			'assigned_number' => $assigned_number,
-			'return_code'     => $parsed['return_code'],
-		);
-	} else {
-		// A structurally valid answer that is not a success is definitive: EDM
-		// examined the request and rejected or mis-answered it.
-		$settle_target = Kuka_Sandbox_Claim::S_FAILED_DEFINITIVE;
-		$settle_extra  = array(
-			'outcome'     => $parsed['outcome'],
-			'detail'      => $parsed['detail'],
-			'return_code' => $parsed['return_code'],
-		);
-	}
-} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
-	$settle_target = Kuka_Sandbox_Claim::S_FAILED_DEFINITIVE;
-	$settle_extra  = array( 'outcome' => 'permanent_exception:' . $e->get_safe_error_code() );
-} catch ( Throwable $t ) {
-	// Timeout, dropped connection, SOAP fault: the call may have succeeded at
-	// EDM. Uncertain, never retried automatically.
-	$settle_target = Kuka_Sandbox_Claim::S_UNCERTAIN;
-	$settle_extra  = array( 'outcome' => 'transport_uncertain' );
-}
-
-$settled = $claim->settle( $settle_target, $settle_extra );
-
-if ( Kuka_Sandbox_Claim::S_CONFIRMED === $settle_target && $settled['written'] ) {
-	WP_CLI::line( sprintf( 'SANDBOX_CREATE=PASS|operation:%s|state:%s|state_recorded:yes', $planned_operation, $settled['state'] ) );
-} else {
-	WP_CLI::line(
-		sprintf(
-			'SANDBOX_CREATE=FAIL|operation:%s|settle_target:%s|state:%s|state_recorded:%s|outcome:%s',
-			$planned_operation,
-			$settle_target,
-			$settled['state'],
-			$settled['written'] ? 'yes' : 'no',
-			(string) ( $settle_extra['outcome'] ?? ( $parsed['outcome'] ?? 'unknown' ) )
-		)
-	);
-}
-
-if ( Kuka_Sandbox_Claim::S_CONFIRMED !== $settle_target ) {
-	$block( 'SANDBOX_NUMBER_ASSIGNED', 'document_not_confirmed' );
-	$block( 'SANDBOX_STATUS_READBACK', 'document_not_confirmed' );
-	$block( 'SANDBOX_XML_READBACK', 'document_not_confirmed' );
-	$block( 'SANDBOX_CBC_ID_READBACK', 'document_not_confirmed' );
-	WP_CLI::line(
-		sprintf(
-			'SANDBOX_WRITE_OPERATIONS=%s|count:1|result:%s',
-			$planned_operation,
-			Kuka_Sandbox_Claim::S_UNCERTAIN === $settle_target ? 'uncertain_manual_reconciliation_required' : 'failed_definitive'
-		)
-	);
+if ( ! $write['claimed'] ) {
+	$block( 'SANDBOX_CREATE', 'claim_failed:' . $write['claim_reason'] );
+	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
 	$claim->release();
 	$client->logout();
 	exit( 1 );
@@ -466,9 +423,39 @@ if ( Kuka_Sandbox_Claim::S_CONFIRMED !== $settle_target ) {
 
 WP_CLI::line(
 	sprintf(
+		'SANDBOX_CREATE=%s|operation:%s|classification:%s|state:%s|state_recorded:%s|status:%s',
+		$write['create_verdict'],
+		$planned_operation,
+		$write['classification'],
+		(string) ( $write['settle']['state'] ?? 'unknown' ),
+		$write['state_recorded'] ? 'yes' : 'no',
+		$write['status_token']
+	)
+);
+
+$assigned_number = (string) $write['assigned_number'];
+
+if ( KUKA_SANDBOX_CALL_SUCCESS !== $write['classification'] ) {
+	$block( 'SANDBOX_NUMBER_ASSIGNED', 'document_not_confirmed' );
+	$block( 'SANDBOX_STATUS_READBACK', 'document_not_confirmed' );
+	$block( 'SANDBOX_XML_READBACK', 'document_not_confirmed' );
+	$block( 'SANDBOX_CBC_ID_READBACK', 'document_not_confirmed' );
+	WP_CLI::line( sprintf( 'SANDBOX_WRITE_OPERATIONS=%s|count:1|result:%s', $planned_operation, $write['result_label'] ) );
+	if ( KUKA_SANDBOX_CALL_UNCERTAIN === $write['classification'] ) {
+		WP_CLI::log( 'Uncertain: the call left this process and a document may exist at EDM. No automatic retry. Reconcile the UUID read-only before any further decision.' );
+	}
+	$claim->release();
+	$client->logout();
+	exit( $write['exit_code'] );
+}
+
+// The call succeeded. Measurements still run even when the confirmed state could
+// not be persisted, but the run is not reported as PASS or confirmed.
+WP_CLI::line(
+	sprintf(
 		'SANDBOX_NUMBER_ASSIGNED=PASS|edm_returned_number:yes|number_length:%d|return_code:%d|uuid_echoed_by_edm:yes',
 		strlen( $assigned_number ),
-		(int) $parsed['return_code']
+		(int) ( $write['parsed']['return_code'] ?? 0 )
 	)
 );
 
@@ -479,9 +466,9 @@ WP_CLI::line(
 $status_ok     = false;
 $mapped_status = '';
 try {
-	$status        = $client->get_invoice_status( $uuid, $assigned_number );
+	$status_result = $client->get_invoice_status( $uuid, $assigned_number );
 	$status_ok     = true;
-	$mapped_status = $status->get_status();
+	$mapped_status = $status_result->get_status();
 } catch ( Kuka_Island_Core_Invoice_Exception $e ) {
 	$mapped_status = 'query_failed:' . $e->get_safe_error_code();
 }
@@ -502,8 +489,8 @@ try {
 	$checks['xml_retrieved'] = '' !== trim( (string) $xml_back );
 
 	if ( $checks['xml_retrieved'] ) {
-		$dom                   = new DOMDocument();
-		$checks['xml_parsed']  = (bool) $dom->loadXML( $xml_back );
+		$dom                  = new DOMDocument();
+		$checks['xml_parsed'] = (bool) $dom->loadXML( $xml_back );
 		if ( $checks['xml_parsed'] ) {
 			$xp    = new DOMXPath( $dom );
 			$one   = static function ( DOMXPath $xp, string $q ): string {
@@ -553,8 +540,18 @@ WP_CLI::line(
 	)
 );
 
-WP_CLI::line( sprintf( 'SANDBOX_WRITE_OPERATIONS=%s|count:1|result:confirmed', $planned_operation ) );
+WP_CLI::line( sprintf( 'SANDBOX_WRITE_OPERATIONS=%s|count:1|result:%s', $planned_operation, $write['result_label'] ) );
 
 $claim->release();
 $client->logout();
+
+if ( 0 !== $write['exit_code'] ) {
+	WP_CLI::error(
+		sprintf(
+			'LoadInvoice succeeded at EDM but the confirmed state could not be persisted (%s). The on-disk record still says in_flight, a second write stays refused, and manual reconciliation is required.',
+			$write['status_token']
+		)
+	);
+}
+
 WP_CLI::success( 'EDM sandbox experiment finished.' );

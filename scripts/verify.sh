@@ -654,6 +654,17 @@ expect_sandbox_line "state write failure is never reported as recorded" "SANDBOX
 expect_sandbox_line "sandbox harness leaves no temporary files" "SANDBOX_HARNESS_TEMP_CLEANED=PASS|temp_root_removed:yes"
 expect_sandbox_match "plugin gained no document-creating capability" "^SANDBOX_PLUGIN_HAS_NO_WRITE_CAPABILITY=PASS\\|module_files:[0-9]{2,}\\|hits:none$"
 expect_sandbox_line "production numbering guard untouched" "SANDBOX_NUMBERING_GUARD_UNTOUCHED=PASS|invoice_numbering_unconfirmed:present|provenance_required:present"
+
+# Corrupt claim records, call classification and the driver write path.
+expect_sandbox_match "corrupt claim records are fail-closed" "^SANDBOX_STATE_CORRUPTION_FAIL_CLOSED=PASS\\|cases:11\\|missing_file=idle "
+expect_sandbox_line "a corrupt record blocks the write path entirely" "SANDBOX_CORRUPT_STATE_BLOCKS_WRITE=PASS|empty_file:calls=0|malformed_json:calls=0|unknown_state:calls=0|partial_in_flight:calls=0"
+expect_sandbox_match "only a complete rejection is definitive" "^SANDBOX_CALL_CLASSIFICATION=PASS\\|cases:9\\|nonzero_return_code=definitive_rejection "
+expect_sandbox_match "driver write path verdicts" "^SANDBOX_DRIVER_WRITE_PATH=PASS\\|cases:6\\|success=PASS/confirmed "
+expect_sandbox_line "settle persist failure is never PASS or confirmed" "SANDBOX_SETTLE_PERSIST_FAILURE_NOT_CONFIRMED=PASS|calls:1|classification:success|verdict:FAIL|label:state_persist_failed_manual_reconciliation_required|state_recorded:no|exit:1|number_available:yes|record_state:in_flight|second_write:refused"
+expect_sandbox_line "an uncertain record makes no second call" "SANDBOX_UNCERTAIN_SECOND_RUN_NO_WRITE=PASS|calls:0|claimed:no|reason:claim_refused_from_state_uncertain"
+expect_sandbox_line "PROFILEID confirmation gate" "SANDBOX_PROFILE_CONFIRMATION_GATE=PASS|nothing_supplied:blocked|supplied_unconfirmed:blocked|random_unconfirmed:blocked|mismatch:blocked|case_mismatch:blocked|whitespace_mismatch:blocked|exact_match:open"
+expect_sandbox_line "a random profile never reaches the write path" "SANDBOX_RANDOM_PROFILE_NO_WRITE=PASS|gate_open:no|write_calls:0|reason:profile_id_not_confirmed_by_edm_in_writing"
+expect_sandbox_line "state fixtures are cleaned up" "SANDBOX_STATE_FIXTURES_CLEANED=PASS|temp_root_removed:yes"
 expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
 expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"
 expect_line "unknown legal values stay hidden" "APPLICATION_LEGAL_ROWS=mersis:0|kep:0|chamber:0|rules:0|etbis:0"

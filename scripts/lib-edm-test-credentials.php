@@ -67,8 +67,13 @@ function kuka_edm_test_credential_map(): array {
  */
 function kuka_edm_sandbox_credential_map(): array {
 	return array(
-		'KUKA_EDM_SANDBOX_RECEIVER_VKN' => 'receiver_vkn',
-		'KUKA_EDM_SANDBOX_PROFILE_ID'   => 'profile_id',
+		'KUKA_EDM_SANDBOX_RECEIVER_VKN'      => 'receiver_vkn',
+		'KUKA_EDM_SANDBOX_PROFILE_ID'        => 'profile_id',
+		// The PROFILEID EDM confirmed in writing. Recorded separately from the
+		// value the harness would send so the two can be matched byte-for-byte.
+		// Until EDM answers there is nothing to record and the write gate stays
+		// shut.
+		'KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED' => 'profile_id_confirmed',
 	);
 }
 

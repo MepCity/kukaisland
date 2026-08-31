@@ -372,6 +372,7 @@ Alanlar:
 | `KUKA_EDM_SERIES_EINVOICE` | opsiyonel | — |
 | `KUKA_EDM_SANDBOX_RECEIVER_VKN` | sandbox için | **Uydurulmaz.** EDM yazılı teyit etmediyse boş bırakılır ve sandbox BLOCKED olur |
 | `KUKA_EDM_SANDBOX_PROFILE_ID` | sandbox için | **Sabitlenmez.** EDM teyidi olmadan boş bırakılır |
+| `KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED` | sandbox yazma için | EDM'in **yazılı olarak teyit ettiği** profil değeri. Gönderilecek değerle byte-for-byte eşleşmezse yazma BLOCKED |
 
 `--status` çıktısı yalnız `supplied` / `absent` gösterir; hiçbir değer, uzunluk veya parça yazılmaz.
 
@@ -430,10 +431,52 @@ idle -> in_flight -> confirmed
 | Kural | Uygulama |
 |---|---|
 | Eşzamanlılık | `flock(LOCK_EX\|LOCK_NB)`; kilit alınamazsa BLOCKED. İki süreçten yalnız biri sahip olur |
-| Claim | Yalnız `idle`'dan. `in_flight`, `uncertain`, `confirmed`, `failed_definitive` → ikinci yazma **koşulsuz reddedilir** |
+| Claim | Yalnız `idle`'dan. `in_flight`, `uncertain`, `confirmed`, `failed_definitive`, `corrupt` → ikinci yazma **koşulsuz reddedilir** |
 | Timeout / bağlantı kopması | Çağrı EDM'de başarılı olmuş olabileceği için `uncertain`. **Otomatik tekrar yok** |
 | `uncertain` çıkışı | Yalnız UUID ile `GetInvoiceStatus` / `GetInvoice` uzlaştırması sonrası, belgenin **yok olduğu kesin kanıtlanırsa** ve operatör istediğinde `reset_after_reconcile('document_absent_at_edm')` |
 | Kalıcılık | temp dosya + `rename`, mod **600**. Yazma başarısızsa `state_recorded:yes` **yazılmaz** |
+
+**Bozuk durum kaydı fail-closed.** `status()` "dosya yok" ile "dosya bozuk"u ayırır. Yalnız
+**dosyanın hiç bulunmaması** `idle` sayılır:
+
+| Girdi | Durum |
+|---|---|
+| Dosya yok | `idle` (`no_state_file`) |
+| Geçerli `idle` kaydı | `idle` (`ok`) |
+| Dosya okunamıyor | `corrupt` (`state_file_unreadable`) |
+| Boş / yalnız boşluk | `corrupt` (`state_file_empty`) |
+| Geçersiz JSON, JSON nesne değil | `corrupt` (`state_file_invalid_json`) |
+| `state` alanı yok | `corrupt` (`state_field_missing`) |
+| Bilinmeyen state değeri | `corrupt` (`unknown_state_value`) |
+| `idle` dışı state'te `uuid` veya `operation` eksik | `corrupt` (`missing_uuid_for_state_*` / `missing_operation_for_state_*`) |
+| `confirmed` ama `assigned_number` yok | `corrupt` (`confirmed_without_assigned_number`) |
+
+Bozuk kayıt **hiçbir koşulda** claim/write alamaz. Araç kullanıcıyı dosyayı silmeye veya
+sıfırlamaya yönlendirmez; çıktı açıkça şunu söyler: önce deterministik UUID ile EDM üzerinde
+salt-okunur uzlaştırma yapılmalı.
+
+**Yazma sonucu sınıflandırması asimetrik.** Yalnız **yapısal olarak eksiksiz bir ret**
+`failed_definitive` olabilir: `REQUEST_RETURN` mevcut **ve** `RETURN_CODE` sayısal **ve**
+`RETURN_CODE != 0`. Diğer her non-success şekli, çağrı yapılmış ve belge oluşmuş olabileceği için
+`uncertain`:
+
+| Yanıt | Sınıf |
+|---|---|
+| `RETURN_CODE != 0` (sayısal) | `definitive_rejection` |
+| `RETURN_CODE = 0`, `INVOICE` yok | `uncertain` |
+| `RETURN_CODE = 0`, `ID` boş | `uncertain` |
+| `RETURN_CODE = 0`, `UUID` eksik/farklı | `uncertain` |
+| Beklenen şemaya uymayan başarı yanıtı | `uncertain` |
+| Parse edilemeyen yanıt | `uncertain` |
+| Ağ / timeout / SOAP bağlantı kopması | `uncertain` |
+
+`uncertain` durumunda otomatik ikinci `LoadInvoice` **kesinlikle yasak**; yalnız salt-okunur
+uzlaştırma yapılır.
+
+**Settle persist hatası.** Dış çağrı başarılı olsa bile `confirmed` durumu diske yazılamazsa:
+`SANDBOX_CREATE=PASS` **yazılmaz**, `result:confirmed` **yazılmaz**, durum
+`state_persist_failed_manual_reconciliation_required` olur, disk kaydı `in_flight` kalır, ikinci
+yazma reddedilir ve komut **non-zero** çıkar. Numara ve readback ölçümleri yine de yapılır.
 
 **LoadInvoice yanıtı kesin doğrulanır.** Hiçbir yanıt varsayılan olarak başarı sayılmaz:
 
@@ -466,7 +509,7 @@ Diğer kapılar:
 | DB | WooCommerce siparişi oluşturmaz; hiçbir tabloya yazmaz. Durum yalnız host tarafındaki JSON dosyasında |
 | KDV | Bu dosyada sabit `KUKA_SANDBOX_VAT_PERCENT = 20`, `cbc:Note` içinde açıkça TEST etiketiyle belirtilir. Mağazanın vergi ayarları okunmaz ve değiştirilmez |
 | Alıcı kimliği | Yalnız `KUKA_EDM_SANDBOX_RECEIVER_VKN`. Kodda hiçbir sabit alıcı numarası yok |
-| PROFILEID | Yalnız `KUKA_EDM_SANDBOX_PROFILE_ID`. Kodda sabitlenmiş profil değeri yok |
+| PROFILEID | Yalnız `KUKA_EDM_SANDBOX_PROFILE_ID`. Kodda sabitlenmiş profil değeri yok. **Ayrıca** yazma kapısı `KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED` (EDM'in yazılı teyidi) ile **byte-for-byte** eşleşme ister; teyit yoksa `PROFILEID_CONFIRMED=false` nedeniyle BLOCKED. Rastgele/nonempty bir profil yazma aşamasını açamaz. PLAN yalnız `profile_confirmed:no` raporlar, değeri basmaz |
 | `INVOICESERIAL_REQUESTED` | Seri boşsa gönderilmez ve yazma aşamasına geçilmez |
 | Belge | Sentetik ve açıkça TEST işaretli (`cbc:Note`: "TEST BELGESI … GERCEK SATIS DEGILDIR", kalem adı "SANDBOX TEST KALEMI") |
 | Mükerrerlik | UUID sabit tohumdan deterministik; durum makinesi ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |

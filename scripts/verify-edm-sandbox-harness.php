@@ -366,7 +366,10 @@ foreach ( array( Kuka_Sandbox_Claim::S_CONFIRMED, Kuka_Sandbox_Claim::S_FAILED_D
 	$c    = new Kuka_Sandbox_Claim( $file );
 	$c->acquire();
 	$c->claim( $uuid, 'LoadInvoice' );
-	$c->settle( $terminal );
+	// A confirmed record must carry the assigned number, otherwise status()
+	// classifies it as corrupt (proved separately by the confirmed_no_number
+	// fixture below).
+	$c->settle( $terminal, Kuka_Sandbox_Claim::S_CONFIRMED === $terminal ? array( 'assigned_number' => 'KUK2026000000001' ) : array() );
 	$again = $c->claim( $uuid, 'LoadInvoice' );
 	$hit   = false === $again['ok'] && str_contains( $again['reason'], $terminal );
 	$terminal_detail[ $terminal ] = $hit ? 'refused' : 'LEAKED';
@@ -456,6 +459,391 @@ $report(
 	&& str_contains( $numbering_src, 'NUMBER_SOURCE_EDM === $source' ),
 	'invoice_numbering_unconfirmed:present|provenance_required:present'
 );
+
+/* ========================================================================== */
+/* Corrupt state records are fail-closed                                        */
+/* ========================================================================== */
+
+$state_root = rtrim( sys_get_temp_dir(), '/' ) . '/kuka-sandbox-state-' . bin2hex( random_bytes( 6 ) );
+mkdir( $state_root, 0700, true );
+
+/**
+ * Mocked transport that counts every call. No network, no EDM.
+ */
+final class Kuka_Sandbox_Mock_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	public int $calls = 0;
+	/** @var array<int, string> */
+	public array $operations = array();
+	/** @var callable */
+	private $responder;
+
+	public function __construct( callable $responder ) {
+		$this->responder = $responder;
+	}
+
+	public function call( string $action, array $parameters ) {
+		++$this->calls;
+		$this->operations[] = $action;
+
+		return ( $this->responder )( $action, $parameters );
+	}
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+}
+
+$make_state_file = static function ( string $root, string $name, ?string $contents ): string {
+	$file = $root . '/' . $name . '.json';
+	if ( null !== $contents ) {
+		file_put_contents( $file, $contents );
+		chmod( $file, 0600 );
+	}
+	return $file;
+};
+
+$state_cases = array(
+	'missing_file'       => array( 'contents' => null, 'expect_state' => Kuka_Sandbox_Claim::S_IDLE, 'expect_reason' => 'no_state_file' ),
+	'empty_file'         => array( 'contents' => '', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'state_file_empty' ),
+	'whitespace_file'    => array( 'contents' => "   \n\t ", 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'state_file_empty' ),
+	'malformed_json'     => array( 'contents' => '{"state": "idle"', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'state_file_invalid_json' ),
+	'json_not_object'    => array( 'contents' => '"just a string"', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'state_file_invalid_json' ),
+	'missing_state_key'  => array( 'contents' => '{"uuid":"x","operation":"LoadInvoice"}', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'state_field_missing' ),
+	'unknown_state'      => array( 'contents' => '{"state":"halfway","uuid":"x","operation":"LoadInvoice"}', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'unknown_state_value' ),
+	'partial_in_flight'  => array( 'contents' => '{"state":"in_flight"}', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'missing_uuid_for_state_in_flight' ),
+	'in_flight_no_op'    => array( 'contents' => '{"state":"in_flight","uuid":"abc"}', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'missing_operation_for_state_in_flight' ),
+	'confirmed_no_number' => array( 'contents' => '{"state":"confirmed","uuid":"abc","operation":"LoadInvoice"}', 'expect_state' => Kuka_Sandbox_Claim::S_CORRUPT, 'expect_reason' => 'confirmed_without_assigned_number' ),
+	'valid_idle'         => array( 'contents' => '{"state":"idle"}', 'expect_state' => Kuka_Sandbox_Claim::S_IDLE, 'expect_reason' => 'ok' ),
+);
+
+$state_ok      = true;
+$state_details = array();
+foreach ( $state_cases as $case => $spec ) {
+	$file    = $make_state_file( $state_root, $case, $spec['contents'] );
+	$probe   = new Kuka_Sandbox_Claim( $file );
+	$status  = $probe->status();
+	$hit     = $status['state'] === $spec['expect_state'] && $status['reason'] === $spec['expect_reason'];
+	$state_details[ $case ] = $hit ? $status['state'] : ( 'MISMATCH(' . $status['state'] . '/' . $status['reason'] . ')' );
+	if ( ! $hit ) {
+		$state_ok = false;
+	}
+}
+
+$report(
+	'SANDBOX_STATE_CORRUPTION_FAIL_CLOSED',
+	$state_ok,
+	sprintf(
+		'cases:%d|%s',
+		count( $state_cases ),
+		implode( ' ', array_map( static fn( string $k, string $v ): string => $k . '=' . $v, array_keys( $state_details ), $state_details ) )
+	)
+);
+
+// A corrupt record must stop the write path before any transport call.
+$corrupt_calls = array();
+$corrupt_ok    = true;
+foreach ( array( 'empty_file', 'malformed_json', 'unknown_state', 'partial_in_flight' ) as $case ) {
+	$claim_c   = new Kuka_Sandbox_Claim( $state_root . '/' . $case . '.json' );
+	$claim_c->acquire();
+	$transport = new Kuka_Sandbox_Mock_Transport(
+		static function (): array {
+			return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+	);
+	$result    = kuka_sandbox_execute_write( $claim_c, $transport, array(), $uuid, 'LoadInvoice' );
+	$claim_c->release();
+	$hit                     = 0 === $transport->calls && false === $result['claimed'] && false === $result['call_attempted'];
+	$corrupt_calls[ $case ] = $hit ? 'calls=0' : 'LEAKED(calls=' . $transport->calls . ')';
+	if ( ! $hit ) {
+		$corrupt_ok = false;
+	}
+}
+$report(
+	'SANDBOX_CORRUPT_STATE_BLOCKS_WRITE',
+	$corrupt_ok,
+	implode( '|', array_map( static fn( string $k, string $v ): string => $k . ':' . $v, array_keys( $corrupt_calls ), $corrupt_calls ) )
+);
+
+/* ========================================================================== */
+/* Call classification: only a complete rejection is definitive                 */
+/* ========================================================================== */
+
+$classification_cases = array(
+	'nonzero_return_code'   => array(
+		'response' => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 5 ), 'INVOICE' => array( array( 'UUID' => $uuid, 'ID' => 'X' ) ) ),
+		'expect'   => KUKA_SANDBOX_CALL_DEFINITIVE,
+	),
+	'success_missing_invoice' => array(
+		'response' => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) ),
+		'expect'   => KUKA_SANDBOX_CALL_UNCERTAIN,
+	),
+	'success_empty_id'      => array(
+		'response' => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ), 'INVOICE' => array( array( 'UUID' => $uuid, 'ID' => '' ) ) ),
+		'expect'   => KUKA_SANDBOX_CALL_UNCERTAIN,
+	),
+	'success_uuid_missing'  => array(
+		'response' => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ), 'INVOICE' => array( array( 'ID' => 'X' ) ) ),
+		'expect'   => KUKA_SANDBOX_CALL_UNCERTAIN,
+	),
+	'success_uuid_mismatch' => array(
+		'response' => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ), 'INVOICE' => array( array( 'UUID' => 'ffffffff-0000-4000-8000-000000000000', 'ID' => 'X' ) ) ),
+		'expect'   => KUKA_SANDBOX_CALL_UNCERTAIN,
+	),
+	'off_schema_success'    => array(
+		'response' => array( 'RESULT' => 'OK' ),
+		'expect'   => KUKA_SANDBOX_CALL_UNCERTAIN,
+	),
+	'unparseable'           => array(
+		'response' => 'not xml, not a struct',
+		'expect'   => KUKA_SANDBOX_CALL_UNCERTAIN,
+	),
+	'clean_success'         => array(
+		'response' => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ), 'INVOICE' => array( array( 'UUID' => $uuid, 'ID' => 'KUK2026000000999' ) ) ),
+		'expect'   => KUKA_SANDBOX_CALL_SUCCESS,
+	),
+);
+
+$class_ok      = true;
+$class_details = array();
+foreach ( $classification_cases as $case => $spec ) {
+	$parsed = kuka_sandbox_parse_load_invoice_response( $spec['response'], $uuid );
+	$actual = kuka_sandbox_classify_call( $parsed, false );
+	$hit    = $actual === $spec['expect'];
+	$class_details[ $case ] = $hit ? $actual : ( 'MISMATCH(' . $actual . ')' );
+	if ( ! $hit ) {
+		$class_ok = false;
+	}
+}
+// A thrown transport call is always uncertain, never definitive.
+$thrown = kuka_sandbox_classify_call( null, true );
+if ( KUKA_SANDBOX_CALL_UNCERTAIN !== $thrown ) {
+	$class_ok                        = false;
+	$class_details['transport_threw'] = 'MISMATCH(' . $thrown . ')';
+} else {
+	$class_details['transport_threw'] = $thrown;
+}
+
+$report(
+	'SANDBOX_CALL_CLASSIFICATION',
+	$class_ok,
+	sprintf(
+		'cases:%d|%s',
+		count( $class_details ),
+		implode( ' ', array_map( static fn( string $k, string $v ): string => $k . '=' . $v, array_keys( $class_details ), $class_details ) )
+	)
+);
+
+/* ========================================================================== */
+/* Driver-level write path with a mocked transport                              */
+/* ========================================================================== */
+
+$drive = static function ( string $name, callable $responder ) use ( $state_root, $uuid ): array {
+	$file      = $state_root . '/drive-' . $name . '.json';
+	$claim     = new Kuka_Sandbox_Claim( $file );
+	$claim->acquire();
+	$transport = new Kuka_Sandbox_Mock_Transport( $responder );
+	$result    = kuka_sandbox_execute_write( $claim, $transport, array( 'x' => 1 ), $uuid, 'LoadInvoice' );
+	$state     = $claim->state();
+	$claim->release();
+
+	return array(
+		'result'    => $result,
+		'calls'     => $transport->calls,
+		'end_state' => $state,
+		'file'      => $file,
+	);
+};
+
+$ok_response = static fn(): array => array(
+	'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+	'INVOICE'        => array( array( 'UUID' => $uuid, 'ID' => 'KUK2026000000777' ) ),
+);
+
+$driver_cases = array(
+	'success'             => array(
+		'responder' => $ok_response,
+		'expect'    => array( 'verdict' => 'PASS', 'label' => 'confirmed', 'state' => Kuka_Sandbox_Claim::S_CONFIRMED, 'exit' => 0, 'calls' => 1 ),
+	),
+	'nonzero_code'        => array(
+		'responder' => static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 9 ) ),
+		'expect'    => array( 'verdict' => 'FAIL', 'label' => 'failed_definitive', 'state' => Kuka_Sandbox_Claim::S_FAILED_DEFINITIVE, 'exit' => 1, 'calls' => 1 ),
+	),
+	'empty_id'            => array(
+		'responder' => static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ), 'INVOICE' => array( array( 'UUID' => $uuid, 'ID' => '' ) ) ),
+		'expect'    => array( 'verdict' => 'FAIL', 'label' => 'uncertain_manual_reconciliation_required', 'state' => Kuka_Sandbox_Claim::S_UNCERTAIN, 'exit' => 1, 'calls' => 1 ),
+	),
+	'uuid_mismatch'       => array(
+		'responder' => static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ), 'INVOICE' => array( array( 'UUID' => 'ffffffff-0000-4000-8000-000000000000', 'ID' => 'X' ) ) ),
+		'expect'    => array( 'verdict' => 'FAIL', 'label' => 'uncertain_manual_reconciliation_required', 'state' => Kuka_Sandbox_Claim::S_UNCERTAIN, 'exit' => 1, 'calls' => 1 ),
+	),
+	'missing_invoice'     => array(
+		'responder' => static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) ),
+		'expect'    => array( 'verdict' => 'FAIL', 'label' => 'uncertain_manual_reconciliation_required', 'state' => Kuka_Sandbox_Claim::S_UNCERTAIN, 'exit' => 1, 'calls' => 1 ),
+	),
+	'transport_exception' => array(
+		'responder' => static function (): array {
+			throw new SoapFault( 'HTTP', 'Connection timed out' );
+		},
+		'expect'    => array( 'verdict' => 'FAIL', 'label' => 'uncertain_manual_reconciliation_required', 'state' => Kuka_Sandbox_Claim::S_UNCERTAIN, 'exit' => 1, 'calls' => 1 ),
+	),
+);
+
+$driver_ok      = true;
+$driver_details = array();
+foreach ( $driver_cases as $case => $spec ) {
+	$run    = $drive( $case, $spec['responder'] );
+	$expect = $spec['expect'];
+	$hit    = $run['result']['create_verdict'] === $expect['verdict']
+		&& $run['result']['result_label'] === $expect['label']
+		&& $run['end_state'] === $expect['state']
+		&& $run['result']['exit_code'] === $expect['exit']
+		&& $run['calls'] === $expect['calls'];
+	$driver_details[ $case ] = $hit
+		? $expect['verdict'] . '/' . $expect['state']
+		: sprintf( 'MISMATCH(%s/%s/exit=%d/calls=%d)', $run['result']['create_verdict'], $run['end_state'], $run['result']['exit_code'], $run['calls'] );
+	if ( ! $hit ) {
+		$driver_ok = false;
+	}
+}
+
+$report(
+	'SANDBOX_DRIVER_WRITE_PATH',
+	$driver_ok,
+	sprintf(
+		'cases:%d|%s',
+		count( $driver_cases ),
+		implode( ' ', array_map( static fn( string $k, string $v ): string => $k . '=' . $v, array_keys( $driver_details ), $driver_details ) )
+	)
+);
+
+// Successful call whose confirmed state cannot be persisted: never PASS, never
+// confirmed, record stays in_flight, second write refused, non-zero exit.
+$persist_dir = $state_root . '/persistfail';
+mkdir( $persist_dir, 0700, true );
+$persist_file  = $persist_dir . '/state.json';
+$persist_claim = new Kuka_Sandbox_Claim( $persist_file, $state_root . '/persistfail.lock' );
+$persist_claim->acquire();
+$persist_transport = new Kuka_Sandbox_Mock_Transport(
+	static function () use ( $persist_dir, $uuid ): array {
+		// The directory becomes unwritable between claim and settle.
+		chmod( $persist_dir, 0500 );
+		return array(
+			'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+			'INVOICE'        => array( array( 'UUID' => $uuid, 'ID' => 'KUK2026000000888' ) ),
+		);
+	}
+);
+$persist_result = kuka_sandbox_execute_write( $persist_claim, $persist_transport, array(), $uuid, 'LoadInvoice' );
+chmod( $persist_dir, 0700 );
+$persist_state  = $persist_claim->state();
+$persist_second = $persist_claim->claim( $uuid, 'LoadInvoice' );
+$persist_claim->release();
+
+$report(
+	'SANDBOX_SETTLE_PERSIST_FAILURE_NOT_CONFIRMED',
+	1 === $persist_transport->calls
+	&& KUKA_SANDBOX_CALL_SUCCESS === $persist_result['classification']
+	&& 'PASS' !== $persist_result['create_verdict']
+	&& 'confirmed' !== $persist_result['result_label']
+	&& 'state_persist_failed_manual_reconciliation_required' === $persist_result['status_token']
+	&& false === $persist_result['state_recorded']
+	&& 1 === $persist_result['exit_code']
+	&& 'KUK2026000000888' === $persist_result['assigned_number']
+	&& Kuka_Sandbox_Claim::S_IN_FLIGHT === $persist_state
+	&& false === $persist_second['ok'],
+	sprintf(
+		'calls:%d|classification:%s|verdict:%s|label:%s|state_recorded:%s|exit:%d|number_available:%s|record_state:%s|second_write:%s',
+		$persist_transport->calls,
+		$persist_result['classification'],
+		$persist_result['create_verdict'],
+		$persist_result['result_label'],
+		$persist_result['state_recorded'] ? 'yes' : 'no',
+		$persist_result['exit_code'],
+		'' !== $persist_result['assigned_number'] ? 'yes' : 'no',
+		$persist_state,
+		$persist_second['ok'] ? 'ALLOWED' : 'refused'
+	)
+);
+
+// An uncertain record refuses a second write and makes no call.
+$uncertain_file  = $state_root . '/drive-empty_id.json';
+$uncertain_claim = new Kuka_Sandbox_Claim( $uncertain_file );
+$uncertain_claim->acquire();
+$uncertain_transport = new Kuka_Sandbox_Mock_Transport( static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) ) );
+$uncertain_second    = kuka_sandbox_execute_write( $uncertain_claim, $uncertain_transport, array(), $uuid, 'LoadInvoice' );
+$uncertain_claim->release();
+
+$report(
+	'SANDBOX_UNCERTAIN_SECOND_RUN_NO_WRITE',
+	0 === $uncertain_transport->calls
+	&& false === $uncertain_second['claimed']
+	&& false === $uncertain_second['call_attempted']
+	&& str_contains( $uncertain_second['claim_reason'], 'uncertain' ),
+	sprintf( 'calls:%d|claimed:%s|reason:%s', $uncertain_transport->calls, $uncertain_second['claimed'] ? 'yes' : 'no', $uncertain_second['claim_reason'] )
+);
+
+/* ========================================================================== */
+/* PROFILEID confirmation gate                                                  */
+/* ========================================================================== */
+
+$profile_cases = array(
+	'nothing_supplied'      => array( '', '', false, 'profile_id_not_supplied' ),
+	'supplied_unconfirmed'  => array( 'EARSIVFATURA', '', false, 'profile_id_not_confirmed_by_edm_in_writing' ),
+	'random_unconfirmed'    => array( 'WHATEVER123', '', false, 'profile_id_not_confirmed_by_edm_in_writing' ),
+	'mismatch'              => array( 'TICARIFATURA', 'EARSIVFATURA', false, 'configured_profile_does_not_match_confirmed_profile' ),
+	'case_mismatch'         => array( 'earsivfatura', 'EARSIVFATURA', false, 'configured_profile_does_not_match_confirmed_profile' ),
+	'whitespace_mismatch'   => array( 'EARSIVFATURA ', 'EARSIVFATURA', false, 'configured_profile_does_not_match_confirmed_profile' ),
+	'exact_match'           => array( 'EARSIVFATURA', 'EARSIVFATURA', true, 'profile_confirmed' ),
+);
+$profile_ok      = true;
+$profile_details = array();
+foreach ( $profile_cases as $case => $spec ) {
+	$gate = kuka_sandbox_profile_confirmation( $spec[0], $spec[1] );
+	$hit  = $gate['ok'] === $spec[2] && $gate['reason'] === $spec[3];
+	$profile_details[ $case ] = $hit ? ( $gate['ok'] ? 'open' : 'blocked' ) : ( 'MISMATCH(' . $gate['reason'] . ')' );
+	if ( ! $hit ) {
+		$profile_ok = false;
+	}
+}
+$report(
+	'SANDBOX_PROFILE_CONFIRMATION_GATE',
+	$profile_ok,
+	implode( '|', array_map( static fn( string $k, string $v ): string => $k . ':' . $v, array_keys( $profile_details ), $profile_details ) )
+);
+
+// A random, unconfirmed profile must never reach the write path.
+$profile_transport = new Kuka_Sandbox_Mock_Transport( static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) ) );
+$random_gate       = kuka_sandbox_profile_confirmation( 'RANDOM_PROFILE_' . bin2hex( random_bytes( 3 ) ), '' );
+if ( $random_gate['ok'] ) {
+	// Only a confirmed gate may proceed; this branch must never run.
+	$claim_p = new Kuka_Sandbox_Claim( $state_root . '/profile.json' );
+	$claim_p->acquire();
+	kuka_sandbox_execute_write( $claim_p, $profile_transport, array(), $uuid, 'LoadInvoice' );
+	$claim_p->release();
+}
+$report(
+	'SANDBOX_RANDOM_PROFILE_NO_WRITE',
+	false === $random_gate['ok'] && 0 === $profile_transport->calls,
+	sprintf( 'gate_open:%s|write_calls:%d|reason:%s', $random_gate['ok'] ? 'yes' : 'no', $profile_transport->calls, $random_gate['reason'] )
+);
+
+// Clean up the state fixtures.
+foreach ( (array) glob( $state_root . '/*' ) as $leftover ) {
+	if ( is_file( $leftover ) ) {
+		wp_delete_file( $leftover );
+	} elseif ( is_dir( $leftover ) ) {
+		foreach ( (array) glob( $leftover . '/*' ) as $inner ) {
+			wp_delete_file( $inner );
+		}
+		rmdir( $leftover );
+	}
+}
+rmdir( $state_root );
+$report( 'SANDBOX_STATE_FIXTURES_CLEANED', ! is_dir( $state_root ), sprintf( 'temp_root_removed:%s', is_dir( $state_root ) ? 'no' : 'yes' ) );
 
 if ( ! empty( $failures ) ) {
 	WP_CLI::error( sprintf( 'EDM sandbox harness verification failed (%d: %s).', count( $failures ), implode( ', ', $failures ) ) );
