@@ -46,5 +46,6 @@ docker compose run --rm wp-cli wp plugin activate kuka-island-core
 # kurulumdan kalmışsa silinir.
 docker compose run --rm wp-cli wp plugin delete nextend-facebook-connect >/dev/null 2>&1 || true
 ./scripts/seed.sh
+docker compose up -d --wait wp-cron
 
 echo "Kurulum hazır: $WP_URL"

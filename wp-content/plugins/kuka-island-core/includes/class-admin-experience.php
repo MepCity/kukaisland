@@ -10,6 +10,67 @@ final class Kuka_Island_Core_Admin_Experience {
 		add_action( 'init', array( $this, 'register_patterns' ) );
 		add_action( 'admin_menu', array( $this, 'register_management_map' ), 25 );
 		add_action( 'admin_menu', array( $this, 'simplify_shop_manager_menu' ), 999 );
+		add_action( 'add_meta_boxes', array( $this, 'replace_order_custom_fields' ), 100, 2 );
+	}
+
+	/**
+	 * Replace the editable raw order-meta editor with a safe payment summary.
+	 *
+	 * WooCommerce uses `order_custom` on HPOS screens and WordPress uses
+	 * `postcustom` on legacy order screens. Neither is an operational interface:
+	 * changing gateway metadata there can make the local order record disagree
+	 * with the payment provider.
+	 *
+	 * @param string $screen_id     Current post type or HPOS screen ID.
+	 * @param mixed  $order_or_post Order object on HPOS, post on legacy storage.
+	 */
+	public function replace_order_custom_fields( string $screen_id, $order_or_post ): void {
+		if ( ! in_array( $screen_id, array( 'shop_order', 'woocommerce_page_wc-orders', 'admin_page_wc-orders' ), true ) ) {
+			return;
+		}
+
+		remove_meta_box( 'order_custom', $screen_id, 'normal' );
+		remove_meta_box( 'postcustom', $screen_id, 'normal' );
+
+		$order = $order_or_post instanceof WC_Order ? $order_or_post : wc_get_order( $order_or_post );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		add_meta_box(
+			'kuka-order-payment-summary',
+			__( 'Ödeme özeti', 'kuka-island-core' ),
+			array( $this, 'render_order_payment_summary' ),
+			$screen_id,
+			'side',
+			'default'
+		);
+	}
+
+	/** Render payment gateway metadata without editable controls. */
+	public function render_order_payment_summary( $order_or_post ): void {
+		$order = $order_or_post instanceof WC_Order ? $order_or_post : wc_get_order( $order_or_post );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$last_four = preg_replace( '/\D+/', '', (string) $order->get_meta( 'iyzico_last_four_digits', true ) );
+		$rows      = array(
+			__( 'Ödeme yöntemi', 'kuka-island-core' ) => $order->get_payment_method_title(),
+			__( 'İşlem numarası', 'kuka-island-core' ) => $order->get_transaction_id(),
+			__( 'Kart tipi', 'kuka-island-core' ) => (string) $order->get_meta( 'iyzico_card_type', true ),
+			__( 'Kart kuruluşu', 'kuka-island-core' ) => (string) $order->get_meta( 'iyzico_card_association', true ),
+			__( 'Kart ailesi', 'kuka-island-core' ) => (string) $order->get_meta( 'iyzico_card_family', true ),
+			__( 'Kartın son dört hanesi', 'kuka-island-core' ) => '' !== $last_four ? '•••• ' . substr( $last_four, -4 ) : '',
+		);
+		?>
+		<table class="widefat striped"><tbody>
+		<?php foreach ( array_filter( $rows, static fn( string $value ): bool => '' !== trim( $value ) ) as $label => $value ) : ?>
+			<tr><th scope="row"><?php echo esc_html( $label ); ?></th><td><?php echo esc_html( $value ); ?></td></tr>
+		<?php endforeach; ?>
+		</tbody></table>
+		<p class="description"><?php esc_html_e( 'Bu bilgiler ödeme sağlayıcısı tarafından kaydedilir ve bu ekrandan değiştirilemez.', 'kuka-island-core' ); ?></p>
+		<?php
 	}
 
 	/** Put the operator's task-to-screen directory under the shared Kuka Island menu. */

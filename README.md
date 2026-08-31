@@ -89,6 +89,7 @@ Referans dizinleri çalışma zamanında kullanılmaz ve elle düzenlenmez. Prot
 ## Sorun giderme
 
 - Port doluysa `.env` içindeki `WP_PORT` ve `WP_URL` birlikte değiştirilir, sonra `docker compose up -d --wait` çalıştırılır.
+- Yerel zamanlanmış işler `wp-cron` servisi tarafından dakikada bir WP-CLI üzerinden çalıştırılır; durum için `docker compose ps wp-cron`, hata kaydı için `docker compose logs wp-cron` kullanılır.
 - Sağlıksız konteynerde `docker compose ps` ve `docker compose logs wordpress db` incelenir; debug log üretimde açılmaz.
 - Seed medya bulunamazsa `KUKA_PROTOTYPE_DIR=/mutlak/prototip/yolu make install` kullanılır.
 - Tema değişikliği görünmüyorsa `make wp ARGS='cache flush'` ve tarayıcı hard refresh uygulanır.

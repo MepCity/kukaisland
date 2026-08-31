@@ -119,31 +119,33 @@ foreach ( array( 297, 125 ) as $order_id ) {
 WP_CLI::line( 'ORDER_BILLING_FIELDS=' . implode( '|', $billing ) );
 
 /*
- * 6. The Kargo İşlemleri drawer must have exactly one scrolling layer.
+ * 6. The fulfillment drawer has one and only one scrolling layer.
  *
- * A local `[class*="fulfillment-drawer"] { overflow: hidden }` rule overrode
- * the core `overflow-y: auto` on both the panel and its body, and the script
- * meant to compensate never ran because the React container does not exist yet
- * when it executes. Both stay gone. The only allowed drawer rule neutralizes
- * the non-scrolling inner body's wheel trap so WooCommerce's panel remains the
- * sole scroll container.
+ * WooCommerce makes both the outer panel and its inner body scroll containers.
+ * The inner body has no scroll range on desktop but carries
+ * `overscroll-behavior:none`, so Chrome consumes wheel/trackpad input there
+ * instead of chaining it to the scrollable outer panel. Our single allowed
+ * rule neutralizes that inner container. Document locks and scroll JavaScript
+ * are forbidden because both reintroduced the bug in real-browser tests.
  */
 $css_file = WP_PLUGIN_DIR . '/kuka-island-core/assets/admin-orders.css';
+$js_file  = WP_PLUGIN_DIR . '/kuka-island-core/assets/admin-orders.js';
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-$css      = file_exists( $css_file ) ? (string) file_get_contents( $css_file ) : '';
+$css             = file_exists( $css_file ) ? (string) file_get_contents( $css_file ) : '';
+$css_no_comments = (string) preg_replace( '#/\*.*?\*/#s', '', $css );
 $drawer_rules    = 0;
 $safe_body_rules = 0;
-foreach ( preg_split( '/\}/', $css ) ?: array() as $block ) {
+$document_locks  = 0;
+
+foreach ( explode( '}', $css_no_comments ) as $block ) {
 	$parts    = explode( '{', $block, 2 );
 	$selector = trim( (string) ( $parts[0] ?? '' ) );
 	$body     = trim( (string) ( $parts[1] ?? '' ) );
 	if ( '' === $selector ) {
 		continue;
 	}
-	// Comments are stripped so the explanation above does not count as a rule.
-	$selector = trim( (string) preg_replace( '#/\*.*?\*/#s', '', $selector ) );
 	foreach ( array( 'fulfillment-drawer', 'wc_order_fulfillments_panel_container', 'data-kuka-scroll', 'data-kuka-drawer', 'kuka-fulfillment-drawer-open' ) as $needle ) {
-		if ( '' !== $selector && str_contains( $selector, $needle ) ) {
+		if ( str_contains( $selector, $needle ) ) {
 			++$drawer_rules;
 		}
 	}
@@ -155,12 +157,21 @@ foreach ( preg_split( '/\}/', $css ) ?: array() as $block ) {
 	) {
 		++$safe_body_rules;
 	}
+	if (
+		preg_match( '/(^|[\s,])(html|body)([\s.:#\[,]|$)/', $selector )
+		&& preg_match( '/overflow[^;}]*:\s*(hidden|clip)/i', $body )
+	) {
+		++$document_locks;
+	}
 }
-$script_gone = ! file_exists( WP_PLUGIN_DIR . '/kuka-island-core/assets/admin-orders.js' )
+
+$script_gone = ! file_exists( $js_file )
 	&& ! wp_script_is( 'kuka-island-admin-orders', 'registered' );
+
 WP_CLI::line(
 	'DRAWER_SCROLL_CONTRACT=drawer_rules:' . $drawer_rules
 	. '|safe_body_rules:' . $safe_body_rules
+	. '|document_locks:' . $document_locks
 	. '|script:' . ( $script_gone ? 'removed' : 'PRESENT' )
 );
 

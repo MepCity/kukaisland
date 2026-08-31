@@ -95,7 +95,6 @@ function kuka_island_checkout_required_fields(): array {
 	return array(
 		'billing_phone'     => (bool) ( $settings['require_phone'] ?? true ),
 		'billing_address_2' => (bool) ( $settings['require_address_2'] ?? false ),
-		'billing_city'      => (bool) ( $settings['require_city'] ?? false ),
 	);
 }
 
@@ -113,13 +112,12 @@ function kuka_island_checkout_field_order( array $fields ): array {
 		'billing_first_name'    => 10,
 		'billing_last_name'     => 20,
 		'billing_email'         => 30,
-		'billing_phone'         => 40,
-		'billing_country'       => 55,
-		'billing_address_1'     => 60,
-		'billing_address_2'     => 65,
+		'billing_country'       => 40,
+		'billing_address_1'     => 50,
+		'billing_address_2'     => 60,
 		'billing_postcode'      => 70,
-		'billing_city'          => 75,
-		'billing_state'         => 80,
+		'billing_state'         => 75,
+		'billing_phone'         => 80,
 		'billing_customer_type' => 110,
 		'billing_company'       => 115,
 		'billing_tax_office'    => 116,
@@ -135,6 +133,9 @@ function kuka_island_checkout_field_order( array $fields ): array {
 			$fields['billing'][ $key ]['required'] = $required;
 		}
 	}
+	// Türkiye teslimatında il, posta koduyla birlikte yeterli bölgesel bilgidir.
+	// Serbest metin "şehir/ilçe" alanı aynı bilgiyi ikinci kez istemesin.
+	unset( $fields['billing']['billing_city'], $fields['shipping']['shipping_city'] );
 	// Şirket unvanı yalnız kurumsal fatura seçildiğinde görünür ve zorunludur.
 	// Bireysel müşteride gizli bir `required` alan sipariş gönderimini engellemez.
 	if ( isset( $fields['billing']['billing_company'] ) ) {
@@ -144,8 +145,8 @@ function kuka_island_checkout_field_order( array $fields ): array {
 		$fields['billing']['billing_company']['required'] = 'corporate' === $customer_type;
 	}
 	if ( isset( $fields['billing']['billing_email'], $fields['billing']['billing_phone'] ) ) {
-		$fields['billing']['billing_email']['class'] = array( 'form-row-first' );
-		$fields['billing']['billing_phone']['class'] = array( 'form-row-last' );
+		$fields['billing']['billing_email']['class'] = array( 'form-row-wide' );
+		$fields['billing']['billing_phone']['class'] = array( 'form-row-wide' );
 		$fields['billing']['billing_phone']['placeholder'] = '5XX XXX XX XX';
 		$fields['billing']['billing_phone']['autocomplete'] = 'tel-national';
 		$fields['billing']['billing_phone']['custom_attributes'] = array(
@@ -154,9 +155,29 @@ function kuka_island_checkout_field_order( array $fields ): array {
 			'pattern'   => '5[0-9]{2} [0-9]{3} [0-9]{2} [0-9]{2}',
 		);
 	}
+	foreach ( array( 'billing', 'shipping' ) as $fieldset ) {
+		$prefix = $fieldset . '_';
+		if ( isset( $fields[ $fieldset ][ $prefix . 'address_1' ] ) ) {
+			$fields[ $fieldset ][ $prefix . 'address_1' ]['label']       = __( 'Adres', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'address_1' ]['placeholder'] = __( 'Cadde, sokak, bina ve kapı numarası', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'address_1' ]['class']       = array( 'form-row-wide' );
+		}
+		if ( isset( $fields[ $fieldset ][ $prefix . 'address_2' ] ) ) {
+			$fields[ $fieldset ][ $prefix . 'address_2' ]['label']       = __( 'Adres devamı', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'address_2' ]['placeholder'] = __( 'Site, blok, daire vb.', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'address_2' ]['class']       = array( 'form-row-wide' );
+		}
+		if ( isset( $fields[ $fieldset ][ $prefix . 'postcode' ] ) ) {
+			$fields[ $fieldset ][ $prefix . 'postcode' ]['class'] = array( 'form-row-first' );
+		}
+		if ( isset( $fields[ $fieldset ][ $prefix . 'state' ] ) ) {
+			$fields[ $fieldset ][ $prefix . 'state' ]['label'] = __( 'İl', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'state' ]['class'] = array( 'form-row-last' );
+		}
+	}
 	// Fatura adresi bloğu yalnız adres bileşenlerini sorar; alıcı adı ve şirket
 	// bilgisi kişisel/fatura bölümlerinden gelir ve gönderimde kopyalanır.
-	unset( $fields['shipping']['shipping_first_name'], $fields['shipping']['shipping_last_name'], $fields['shipping']['shipping_company'] );
+	unset( $fields['shipping']['shipping_first_name'], $fields['shipping']['shipping_last_name'], $fields['shipping']['shipping_company'], $fields['shipping']['shipping_phone'] );
 	return $fields;
 }
 add_filter( 'woocommerce_checkout_fields', 'kuka_island_checkout_field_order', 30 );
@@ -173,8 +194,8 @@ add_filter( 'woocommerce_checkout_fields', 'kuka_island_checkout_field_order', 3
  */
 function kuka_island_checkout_address_priorities(): array {
 	return array(
-		'phone' => 40, 'country' => 55, 'address_1' => 60,
-		'address_2' => 65, 'postcode' => 70, 'city' => 75, 'state' => 80,
+		'country' => 40, 'address_1' => 50, 'address_2' => 60,
+		'postcode' => 70, 'state' => 75, 'phone' => 80,
 	);
 }
 
@@ -207,6 +228,7 @@ function kuka_island_checkout_address_required(): array {
 function kuka_island_checkout_locale( array $locale ): array {
 	$required = kuka_island_checkout_address_required();
 	foreach ( array_keys( $locale ) as $code ) {
+		unset( $locale[ $code ]['city'] );
 		foreach ( kuka_island_checkout_address_priorities() as $field => $priority ) {
 			if ( isset( $locale[ $code ][ $field ] ) ) {
 				$locale[ $code ][ $field ]['priority'] = $priority;
@@ -216,6 +238,23 @@ function kuka_island_checkout_locale( array $locale ): array {
 			if ( isset( $locale[ $code ][ $field ] ) ) {
 				$locale[ $code ][ $field ]['required'] = $is_required;
 			}
+		}
+		if ( isset( $locale[ $code ]['address_1'] ) ) {
+			$locale[ $code ]['address_1']['label']       = __( 'Adres', 'kuka-island' );
+			$locale[ $code ]['address_1']['placeholder'] = __( 'Cadde, sokak, bina ve kapı numarası', 'kuka-island' );
+			$locale[ $code ]['address_1']['class']       = array( 'form-row-wide' );
+		}
+		if ( isset( $locale[ $code ]['address_2'] ) ) {
+			$locale[ $code ]['address_2']['label']       = __( 'Adres devamı', 'kuka-island' );
+			$locale[ $code ]['address_2']['placeholder'] = __( 'Site, blok, daire vb.', 'kuka-island' );
+			$locale[ $code ]['address_2']['class']       = array( 'form-row-wide' );
+		}
+		if ( isset( $locale[ $code ]['postcode'] ) ) {
+			$locale[ $code ]['postcode']['class'] = array( 'form-row-first' );
+		}
+		if ( isset( $locale[ $code ]['state'] ) ) {
+			$locale[ $code ]['state']['label'] = __( 'İl', 'kuka-island' );
+			$locale[ $code ]['state']['class'] = array( 'form-row-last' );
 		}
 	}
 	return $locale;
@@ -229,6 +268,7 @@ add_filter( 'woocommerce_get_country_locale', 'kuka_island_checkout_locale', 20 
  * @return array<string, array<string, mixed>>
  */
 function kuka_island_checkout_default_address_fields( array $fields ): array {
+	unset( $fields['city'] );
 	foreach ( kuka_island_checkout_address_priorities() as $field => $priority ) {
 		if ( isset( $fields[ $field ] ) ) {
 			$fields[ $field ]['priority'] = $priority;
@@ -240,7 +280,24 @@ function kuka_island_checkout_default_address_fields( array $fields ): array {
 		}
 	}
 	if ( isset( $fields['phone'] ) ) {
-		$fields['phone']['class'] = array( 'form-row-last' );
+		$fields['phone']['class'] = array( 'form-row-wide' );
+	}
+	if ( isset( $fields['address_1'] ) ) {
+		$fields['address_1']['label']       = __( 'Adres', 'kuka-island' );
+		$fields['address_1']['placeholder'] = __( 'Cadde, sokak, bina ve kapı numarası', 'kuka-island' );
+		$fields['address_1']['class']       = array( 'form-row-wide' );
+	}
+	if ( isset( $fields['address_2'] ) ) {
+		$fields['address_2']['label']       = __( 'Adres devamı', 'kuka-island' );
+		$fields['address_2']['placeholder'] = __( 'Site, blok, daire vb.', 'kuka-island' );
+		$fields['address_2']['class']       = array( 'form-row-wide' );
+	}
+	if ( isset( $fields['postcode'] ) ) {
+		$fields['postcode']['class'] = array( 'form-row-first' );
+	}
+	if ( isset( $fields['state'] ) ) {
+		$fields['state']['label'] = __( 'İl', 'kuka-island' );
+		$fields['state']['class'] = array( 'form-row-last' );
 	}
 	return $fields;
 }

@@ -55,8 +55,13 @@ final class Kuka_Island_Core_Content {
 	 * same; the values come from the panel so one edit reaches all of them.
 	 */
 	public function company_details(): string {
-		$legal = Kuka_Island_Core_Site_Appearance::get()['legal'];
-		$brand = Kuka_Island_Core_Site_Appearance::get()['brand'];
+		$content = Kuka_Island_Core_Site_Appearance::get();
+		$legal   = $content['legal'];
+		$brand   = $content['brand'];
+		// MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS satırları
+		// operatörün alan durumuna bağlıdır: yalnız "mevcut" ve doğrulanmış
+		// değer yayımlanır. "Bekliyor" ve "uygulanamaz" satırlar hiç basılmaz,
+		// böylece sitede yer tutucu veya varsayılmış hukuki bilgi çıkmaz.
 		$rows  = array(
 			array( __( 'Satıcı', 'kuka-island-core' ), $legal['company_title'] ),
 			array( __( 'Marka', 'kuka-island-core' ), $legal['brand_name'] ),
@@ -65,15 +70,17 @@ final class Kuka_Island_Core_Content {
 			array( __( 'Adres', 'kuka-island-core' ), $legal['address_full'] ),
 			array( __( 'Telefon', 'kuka-island-core' ), $legal['telephone'] ),
 			array( __( 'E-posta', 'kuka-island-core' ), $brand['email'] ),
-			array( __( 'MERSİS No', 'kuka-island-core' ), $legal['mersis_number'] ),
-			array( __( 'KEP adresi', 'kuka-island-core' ), $legal['kep_address'] ?? '' ),
-			array( __( 'Kayıtlı olunan meslek odası', 'kuka-island-core' ), $legal['professional_chamber'] ?? '' ),
-			array( __( 'Uygulanan mesleki davranış kuralları', 'kuka-island-core' ), $legal['professional_rules_url'] ?? '', true ),
-			array( __( 'ETBİS numarası', 'kuka-island-core' ), $legal['etbis_number'] ),
+			array( __( 'MERSİS No', 'kuka-island-core' ), $legal['mersis_number'], false, 'mersis_number' ),
+			array( __( 'KEP adresi', 'kuka-island-core' ), $legal['kep_address'] ?? '', false, 'kep_address' ),
+			array( __( 'Kayıtlı olunan meslek odası', 'kuka-island-core' ), $legal['professional_chamber'] ?? '', false, 'professional_chamber' ),
+			array( __( 'Uygulanan mesleki davranış kuralları', 'kuka-island-core' ), $legal['professional_rules_url'] ?? '', true, 'professional_rules_url' ),
+			array( __( 'ETBİS numarası', 'kuka-island-core' ), $legal['etbis_number'], false, 'etbis_number' ),
 		);
 		$html  = '<dl class="kuka-company-details">';
 		foreach ( $rows as $row ) {
 			[ $label, $detail ] = $row;
+			$gate  = (string) ( $row[3] ?? '' );
+			if ( '' !== $gate && ! Kuka_Island_Core_Site_Appearance::legal_field_publishable( $content, $gate ) ) { continue; }
 			$value = (string) $detail;
 			if ( '' === trim( $value ) || str_contains( $value, '[' ) ) { continue; }
 			$display = ! empty( $row[2] ) ? '<a href="' . esc_url( $value ) . '">' . esc_html( $value ) . '</a>' : esc_html( $value );
@@ -204,7 +211,11 @@ final class Kuka_Island_Core_Content {
 			'telephone' => esc_html( (string) $content['legal']['telephone'] ),
 			'tax_office' => esc_html( (string) $content['legal']['tax_office'] ),
 			'tax_number' => esc_html( (string) $content['legal']['tax_number'] ),
-			'mersis_number' => esc_html( (string) $content['legal']['mersis_number'] ),
+			// Sözleşme şablonundaki MERSİS yer tutucusu yalnız alan durumu
+			// "mevcut" ve değer doğrulanmışsa basılır; aksi hâlde boş döner.
+			'mersis_number' => Kuka_Island_Core_Site_Appearance::legal_field_publishable( $content, 'mersis_number' )
+				? esc_html( (string) $content['legal']['mersis_number'] )
+				: '',
 		);
 		$name = sanitize_key( (string) $attributes['name'] );
 		return isset( $values[ $name ] ) ? '<span data-kuka-value="' . esc_attr( $name ) . '">' . wp_kses_post( $values[ $name ] ) . '</span>' : '';

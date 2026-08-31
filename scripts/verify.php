@@ -37,6 +37,7 @@ WP_CLI::line( 'IYZICO_VERSION=' . ( get_plugin_data( WP_PLUGIN_DIR . '/iyzico-wo
 WP_CLI::line( 'LOGINIZER_VERSION=' . ( get_plugin_data( WP_PLUGIN_DIR . '/loginizer/loginizer.php' )['Version'] ?? 'missing' ) );
 WP_CLI::line( 'SECURITY_HEADER_MODULE=' . ( class_exists( 'Kuka_Island_Core_Security' ) ? 'ready' : 'missing' ) );
 WP_CLI::line( 'SECURITY_CSP_IYZICO=' . ( class_exists( 'Kuka_Island_Core_Security' ) && str_contains( Kuka_Island_Core_Security::content_security_policy(), 'https://*.iyzipay.com' ) ? 'allowed' : 'missing' ) );
+WP_CLI::line( 'SECURITY_CSP_WC_VARIATIONS=' . ( class_exists( 'Kuka_Island_Core_Security' ) && ! str_contains( Kuka_Island_Core_Security::content_security_policy(), "'unsafe-eval'" ) && str_contains( Kuka_Island_Core_Security::content_security_policy( true ), "'unsafe-eval'" ) ? 'product-only' : 'unscoped' ) );
 WP_CLI::line( 'TIMEZONE=' . wp_timezone_string() );
 WP_CLI::line( 'CURRENCY=' . get_woocommerce_currency() );
 WP_CLI::line( 'PRICE_FORMAT=' . wp_strip_all_tags( html_entity_decode( wc_price( 2890 ), ENT_QUOTES, 'UTF-8' ) ) );
@@ -44,6 +45,7 @@ WP_CLI::line( 'PRICE_SETTINGS=' . get_option( 'woocommerce_currency_pos' ) . '|'
 WP_CLI::line( 'ACTIVE_THEME=' . wp_get_theme()->get_stylesheet() );
 WP_CLI::line( 'HPOS=' . get_option( 'woocommerce_custom_orders_table_enabled' ) );
 WP_CLI::line( 'GUEST_CHECKOUT=' . get_option( 'woocommerce_enable_guest_checkout' ) );
+WP_CLI::line( 'STOCK_DISPLAY_FORMAT=' . get_option( 'woocommerce_stock_format' ) );
 WP_CLI::line( 'STORE_VISIBILITY=' . ( 'yes' === get_option( 'woocommerce_coming_soon' ) ? 'coming-soon' : 'live' ) );
 WP_CLI::line( 'COMING_SOON_SCOPE=' . ( 'yes' === get_option( 'woocommerce_store_pages_only' ) ? 'store-only' : 'whole-site' ) );
 WP_CLI::line( 'SEARCH_ENGINE_VISIBILITY=' . ( get_option( 'blog_public' ) ? 'index' : 'noindex' ) );
@@ -230,10 +232,12 @@ $size_html = do_shortcode( '[kuka_size_guide]' );
 WP_CLI::line( 'SIZE_GUIDE_TABLES=' . substr_count( $size_html, '<table>' ) );
 WP_CLI::line( 'INSTAGRAM_LINK=' . ( str_contains( (string) ( $site_content['brand']['social_links'] ?? '' ), 'https://www.instagram.com/kukaisland' ) ? 'yes' : 'no' ) );
 $iyzico_checks = Kuka_Island_Core_Site_Appearance::iyzico_application_checks( $site_content );
-$iyzico_complete = count( array_filter( $iyzico_checks, static fn( array $check ): bool => $check['complete'] ) );
-$iyzico_missing = count( $iyzico_checks ) - $iyzico_complete;
-WP_CLI::line( sprintf( 'IYZICO_APPLICATION_READINESS=%d/%d|missing:%d', $iyzico_complete, count( $iyzico_checks ), $iyzico_missing ) );
+$iyzico_totals = Kuka_Island_Core_Site_Appearance::iyzico_readiness_totals( $iyzico_checks );
+WP_CLI::line( sprintf( 'IYZICO_APPLICATION_READINESS=%d/%d|missing:%d', $iyzico_totals['complete'], $iyzico_totals['total'], $iyzico_totals['missing'] ) );
+WP_CLI::line( sprintf( 'IYZICO_APPLICATION_ROWS=%d|not_applicable:%d', count( $iyzico_checks ), $iyzico_totals['not_applicable'] ) );
 WP_CLI::line( 'IYZICO_APPLICATION_LINKS=' . count( array_filter( $iyzico_checks, static fn( array $check ): bool => '' !== $check['url'] ) ) . '/' . count( $iyzico_checks ) );
+$legal_states = Kuka_Island_Core_Site_Appearance::legal_field_states( $site_content );
+WP_CLI::line( 'LEGAL_FIELD_STATUS=' . implode( '|', array_map( static fn( string $key, string $state ): string => $key . ':' . $state, array_keys( $legal_states ), $legal_states ) ) );
 $document_keys = array( 'iyzico_tax_certificate', 'iyzico_signature_circular', 'iyzico_identity_copy', 'iyzico_iban_document', 'iyzico_findeks_report' );
 $document_complete = count( array_filter( $document_keys, static fn( string $key ): bool => ! empty( $site_content['legal'][ $key ] ) ) );
 WP_CLI::line( 'IYZICO_MANUAL_DOCUMENTS=' . $document_complete . '/5' );
@@ -313,7 +317,13 @@ if ( isset( $site_content['hero']['overlay_strength'] ) ) { $retired_panel_field
 if ( isset( $site_content['footer']['payment_label'] ) ) { $retired_panel_fields[] = 'payment_label'; }
 if ( isset( $site_content['footer']['payment_label_en'] ) ) { $retired_panel_fields[] = 'payment_label_en'; }
 if ( isset( $site_content['footer']['payment_logos_enabled'] ) ) { $retired_panel_fields[] = 'payment_logos_enabled'; }
+if ( isset( $site_content['checkout']['require_city'] ) ) { $retired_panel_fields[] = 'require_city'; }
 WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', $retired_panel_fields ) );
+
+$checkout_fields = WC()->checkout()->get_checkout_fields();
+$billing_fields  = $checkout_fields['billing'] ?? array();
+$shipping_fields = $checkout_fields['shipping'] ?? array();
+WP_CLI::line( 'CHECKOUT_ADDRESS_FLOW=' . ( ! isset( $billing_fields['billing_city'] ) && ! isset( $shipping_fields['shipping_city'] ) && ! isset( $shipping_fields['shipping_phone'] ) && 'Adres' === ( $billing_fields['billing_address_1']['label'] ?? '' ) && 'İl' === ( $billing_fields['billing_state']['label'] ?? '' ) && 70 === ( $billing_fields['billing_postcode']['priority'] ?? 0 ) && 75 === ( $billing_fields['billing_state']['priority'] ?? 0 ) && 80 === ( $billing_fields['billing_phone']['priority'] ?? 0 ) ? 'address|address2|postcode+province|phone' : 'mismatch' ) );
 $theme_css = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $theme_tokens = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/tokens.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 WP_CLI::line( 'HERO_OVERLAY_LAYER=' . ( str_contains( $theme_css, '.kuka-hero__content::before' ) || str_contains( $theme_tokens, '--hero-overlay-strength' ) ? 'present' : 'absent' ) );
@@ -374,8 +384,11 @@ $checkout_source = (string) file_get_contents( get_stylesheet_directory() . '/in
 $asset_source = (string) file_get_contents( get_stylesheet_directory() . '/inc/assets.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $cart_script = (string) file_get_contents( get_stylesheet_directory() . '/assets/js/cart.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $checkout_styles = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/checkout.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+WP_CLI::line( 'CHECKOUT_CHECKBOX_ALIGNMENT=' . ( str_contains( $checkout_styles, 'grid-template-columns: var(--space-2) minmax(0, 1fr);' ) && str_contains( $checkout_styles, '.kuka-checkout-toggle input' ) && str_contains( $checkout_styles, '.kuka-legal-consents input' ) ? 'shared-grid' : 'drift-risk' ) );
+WP_CLI::line( 'CHECKOUT_ERROR_STYLE=' . ( str_contains( $checkout_styles, '.form-row.kuka-field-invalid input.input-text' ) && str_contains( $checkout_styles, 'outline: 0 !important;' ) && str_contains( $checkout_styles, '.kuka-legal-consent.kuka-field-invalid' ) && str_contains( $checkout_styles, 'border-bottom: var(--stroke) solid var(--color-error);' ) ? 'underline-only' : 'boxed-or-missing' ) );
 $woocommerce_source = (string) file_get_contents( get_stylesheet_directory() . '/inc/woocommerce.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $appearance_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-site-appearance.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$admin_experience_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-admin-experience.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $language_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-language.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $newsletter_csv = new ReflectionMethod( Kuka_Island_Core_Newsletter::class, 'csv_cell' );
 $appearance_url = new ReflectionMethod( Kuka_Island_Core_Site_Appearance::class, 'sanitize_url' );
@@ -428,6 +441,7 @@ WP_CLI::line( 'CHECKOUT_SUMMARY_TOTAL=' . ( str_contains( $checkout_script, 'syn
 WP_CLI::line( 'CHECKOUT_OPTIONAL_PHONE=' . ( ! str_contains( $checkout_script, "phone.value = '5'" ) && str_contains( $checkout_script, 'phone.value = formatPhone(phone.value)' ) ? 'empty-allowed' : 'seeded' ) );
 WP_CLI::line( 'CHECKOUT_COMPANY_REQUIRED=' . ( str_contains( $checkout_source, "'corporate' === \$customer_type" ) && ! str_contains( $checkout_source, "'billing_company'   =>" ) && str_contains( $cart_script, 'field.required = corporate' ) && str_contains( $checkout_styles, 'body.kuka-checkout-enhanced:not(.kuka-corporate)' ) ? 'corporate-only' : 'unconditional' ) );
 WP_CLI::line( 'SITE_CONTENT_CACHE=' . ( str_contains( $appearance_source, 'private static ?array $content_cache' ) && str_contains( $appearance_source, 'null !== self::$content_cache' ) ? 'request-local' : 'missing' ) );
+WP_CLI::line( 'ORDER_META_ADMIN=' . ( str_contains( $admin_experience_source, "remove_meta_box( 'order_custom'" ) && str_contains( $admin_experience_source, "remove_meta_box( 'postcustom'" ) && str_contains( $admin_experience_source, "'kuka-order-payment-summary'" ) && str_contains( $admin_experience_source, "'•••• ' . substr" ) ? 'raw-hidden|summary-readonly' : 'editable-or-missing' ) );
 WP_CLI::line( 'PRODUCT_CACHE_PRIMING=' . ( str_contains( $woocommerce_source, 'woocommerce_shortcode_products_query_results' ) && str_contains( $asset_source, 'kuka_island_prime_catalog_caches( array( get_queried_object_id() ) )' ) ? 'shortcode+single' : 'partial' ) );
 WP_CLI::line( 'CART_FRAGMENT_DEPENDENCY=' . ( str_contains( $asset_source, "'wc-add-to-cart', 'wc-cart-fragments'" ) ? 'eager' : 'deferred' ) );
 $low_stock = wc_get_products( array( 'type' => 'variation', 'limit' => -1, 'stock_quantity' => 2, 'return' => 'ids' ) );

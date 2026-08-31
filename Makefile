@@ -16,7 +16,7 @@ help:
 
 up:
 	@./scripts/ensure-env.sh
-	docker compose up -d --wait db wordpress
+	docker compose up -d --wait db wordpress wp-cron
 
 down:
 	docker compose down

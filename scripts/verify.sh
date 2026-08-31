@@ -17,6 +17,24 @@ printf '%s\n' "$free_shipping_coupon"
 product_card_price=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-product-card-price.php)
 printf '%s\n' "$product_card_price"
 
+fulfillments=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-fulfillments.php)
+printf '%s\n' "$fulfillments"
+
+legal_status=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-legal-status.php)
+printf '%s\n' "$legal_status"
+
+iyzico_idempotency=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-iyzico-idempotency.php)
+printf '%s\n' "$iyzico_idempotency"
+
+iyzico_isolation=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-iyzico-test-isolation.php)
+printf '%s\n' "$iyzico_isolation"
+
+order_experience=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-order-experience.php)
+printf '%s\n' "$order_experience"
+
+refund_guard=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-iyzico-refund-guard.php)
+printf '%s\n' "$refund_guard"
+
 email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
 email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
@@ -160,6 +178,17 @@ expect_email_line() {
     failures=$((failures + 1))
   fi
 }
+
+expect_fulfillment_line() {
+  label=$1
+  expected=$2
+  if printf '%s\n' "$fulfillments" | grep -Fqx "$expected"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $expected)" >&2
+    failures=$((failures + 1))
+  fi
+}
 expect_coupon_line() {
   label=$1
   line=$2
@@ -174,6 +203,56 @@ expect_product_card_line() {
   label=$1
   line=$2
   if printf '%s\n' "$product_card_price" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_isolation_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$iyzico_isolation" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_refund_guard_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$refund_guard" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_order_experience_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$order_experience" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_iyzico_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$iyzico_idempotency" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_legal_status_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$legal_status" | grep -Fqx "$line"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected $line)" >&2
@@ -195,11 +274,26 @@ expect_value() {
 expect_line "child theme active" "ACTIVE_THEME=kuka-island-child"
 expect_line "WordPress current release" "WP_VERSION=7.1"
 expect_line "WooCommerce security maintenance release" "WOOCOMMERCE_VERSION=11.0.1"
+expect_fulfillment_line "WooCommerce Fulfillments feature" "FULFILLMENTS_FEATURE=PASS"
+expect_fulfillment_line "Fulfillments uses HPOS" "HPOS=PASS"
+expect_fulfillment_line "Fulfillments order table" "FULFILLMENTS_TABLE=PASS"
+expect_fulfillment_line "Fulfillments meta table" "FULFILLMENTS_META_TABLE=PASS"
+expect_fulfillment_line "Fulfillments data store" "FULFILLMENTS_DATA_STORE=PASS|WC_Data_Store"
+expect_fulfillment_line "Fulfillments REST routes" "FULFILLMENTS_REST=PASS|routes:4"
+expect_fulfillment_line "Fulfillments HPOS admin UI" "FULFILLMENTS_HPOS_UI=PASS"
+expect_fulfillment_line "guest order fulfillment UI" "GUEST_ORDER_DETAILS_UI=PASS"
+expect_fulfillment_line "Aras Kargo tracking provider" "ARAS_KARGO=PASS|https://www.araskargo.com.tr/Tracking/Detail?trackingNumber=1234567890"
+expect_fulfillment_line "Yurtiçi Kargo tracking provider" "YURTICI_KARGO=PASS|https://www.yurticikargo.com/Tracking/Detail/1234567890"
+expect_fulfillment_line "created fulfillment customer email" "CUSTOMER_FULFILLMENT_CREATED=PASS"
+expect_fulfillment_line "updated fulfillment customer email" "CUSTOMER_FULFILLMENT_UPDATED=PASS"
+expect_fulfillment_line "deleted fulfillment customer email" "CUSTOMER_FULFILLMENT_DELETED=PASS"
+expect_fulfillment_line "guest fulfillment email target" "GUEST_FULFILLMENT_EMAIL_TARGET=PASS|unsaved-order"
 expect_line "Blocksy security maintenance release" "BLOCKSY_VERSION=2.1.53"
 expect_line "Blocksy Companion security maintenance release" "BLOCKSY_COMPANION_VERSION=2.1.53"
 expect_line "Loginizer race-condition fix" "LOGINIZER_VERSION=2.1.0"
 expect_line "security header module" "SECURITY_HEADER_MODULE=ready"
 expect_line "CSP keeps iyzico checkout sources" "SECURITY_CSP_IYZICO=allowed"
+expect_line "CSP allows WooCommerce variation templates only on products" "SECURITY_CSP_WC_VARIATIONS=product-only"
 expect_value "public response security headers" "$security_header_contract" "csp:yes|nosniff:yes|referrer:yes|frame:yes|permissions:yes"
 expect_value "HSTS stays off on local HTTP" "$hsts_local" "absent"
 expect_value "RFC 9116 security contact" "$security_txt_contract" "contact:yes|canonical:yes"
@@ -211,8 +305,9 @@ expect_line "Coming Soon remains enabled" "STORE_VISIBILITY=coming-soon"
 expect_line "Coming Soon covers the whole site" "COMING_SOON_SCOPE=whole-site"
 expect_line "search engines remain blocked" "SEARCH_ENGINE_VISIBILITY=noindex"
 expect_line "private acceptance preview" "PRIVATE_PREVIEW=ready"
-expect_line "measured Site Appearance inventory" "SITE_APPEARANCE_INVENTORY=13_groups|111_rows|152_controls"
+expect_line "measured Site Appearance inventory" "SITE_APPEARANCE_INVENTORY=13_groups|115_rows|156_controls"
 expect_line "classic checkout" "CHECKOUT_CLASSIC=yes"
+expect_line "stock quantity appears only when low" "STOCK_DISPLAY_FORMAT=low_amount"
 expect_line "no legal draft warnings left" "LEGAL_DRAFT_WARNINGS=0"
 expect_line "central legal company data" "LEGAL_CENTRAL_COMPANY=8/8"
 expect_line "41 bilingual appearance fields" "LANGUAGE_TRANSLATABLE_FIELDS=41"
@@ -290,9 +385,13 @@ expect_line "checkout summary total follows AJAX totals" "CHECKOUT_SUMMARY_TOTAL
 expect_line "optional phone can stay empty" "CHECKOUT_OPTIONAL_PHONE=empty-allowed"
 expect_line "company is required only for corporate billing" "CHECKOUT_COMPANY_REQUIRED=corporate-only"
 expect_line "site content is request-local cached" "SITE_CONTENT_CACHE=request-local"
+expect_line "order raw metadata is replaced by a read-only payment summary" "ORDER_META_ADMIN=raw-hidden|summary-readonly"
 expect_line "product caches cover shortcode and single product" "PRODUCT_CACHE_PRIMING=shortcode+single"
 expect_line "cart fragments are not an eager dependency" "CART_FRAGMENT_DEPENDENCY=deferred"
 expect_line "retired panel fields removed" "RETIRED_PANEL_FIELDS="
+expect_line "checkout address uses province-only reference flow" "CHECKOUT_ADDRESS_FLOW=address|address2|postcode+province|phone"
+expect_line "checkout checkbox and labels share alignment grid" "CHECKOUT_CHECKBOX_ALIGNMENT=shared-grid"
+expect_line "checkout errors use underline-only treatment" "CHECKOUT_ERROR_STYLE=underline-only"
 expect_line "hero overlay layer removed" "HERO_OVERLAY_LAYER=absent"
 expect_line "header top and scrolled modes" "HEADER_TOP_MODE=photo-white-to-paper-dark"
 expect_line "membership disabled" "MEMBERSHIP_ENABLED=no"
@@ -305,9 +404,66 @@ expect_line "membership terms draft" "MEMBERSHIP_TERMS_STATUS=draft"
 expect_line "WooCommerce account page kept" "MYACCOUNT_PAGE=kept"
 expect_line "guest cart lifetime panel value" "GUEST_SESSION_HOURS=48"
 expect_line "Instagram link" "INSTAGRAM_LINK=yes"
-expect_line "iyzico automatic readiness" "IYZICO_APPLICATION_READINESS=7/12|missing:5"
-expect_line "all readiness rows link to their screen" "IYZICO_APPLICATION_LINKS=12/12"
+expect_line "iyzico automatic readiness" "IYZICO_APPLICATION_READINESS=7/15|missing:8"
+expect_line "no legal row is declared not applicable yet" "IYZICO_APPLICATION_ROWS=15|not_applicable:0"
+expect_line "all readiness rows link to their screen" "IYZICO_APPLICATION_LINKS=15/15"
+expect_line "legal identifiers default to pending" "LEGAL_FIELD_STATUS=mersis_number:pending|kep_address:pending|professional_chamber:pending|professional_rules_url:pending|etbis_number:pending"
+expect_legal_status_line "three legal states resolve independently" "LEGAL_STATE_RESOLUTION=present:present|pending:pending|not_applicable:not_applicable|unverified:unverified"
+expect_legal_status_line "only verified present values are published" "LEGAL_STATE_PUBLISHED=present:5|pending:0|not_applicable:0|unverified:0"
+expect_legal_status_line "not applicable rows leave the readiness denominator" "LEGAL_STATE_READINESS=present:12/15|pending:7/15|not_applicable:7/10|unverified:7/15"
+expect_legal_status_line "pending rows count as launch gaps, not applicable rows do not" "LEGAL_STATE_MISSING=present:3|pending:8|not_applicable:3|unverified:8"
+expect_legal_status_line "legal value verification rules" "LEGAL_VALUE_VERIFICATION=filled:yes|empty:no|placeholder:no|bad_email:no|good_email:yes|bad_url:no|good_url:yes"
+expect_legal_status_line "unknown or absent status input falls back to pending" "LEGAL_STATUS_SANITIZE=unknown:pending|absent:pending|explicit:not_applicable"
+expect_legal_status_line "migration never assigns not applicable" "LEGAL_MIGRATION_TARGETS=PENDING,PRESENT"
+expect_legal_status_line "shipped default legal status" "LEGAL_STATUS_DEFAULT=pending"
 expect_line "manual iyzico documents start unchecked" "IYZICO_MANUAL_DOCUMENTS=0/5"
+expect_iyzico_line "iyzico guard lives in the core plugin, not in the gateway" "IYZICO_GUARD_LOCATION=core-plugin"
+expect_iyzico_line "iyzico guard owns the route and callback hooks" "IYZICO_GUARD_HOOKS=rest:10|callback:1|probe:1"
+expect_iyzico_line "iyzico guard is scoped to the checkout form flow" "IYZICO_GUARD_SCOPE=CHECKOUT_FORM_AUTH"
+expect_iyzico_line "iyzico concurrency uses a connection scoped advisory lock" "IYZICO_LOCK_PRIMITIVE=advisory-lock|expiry_rules:0|name_length:49"
+expect_iyzico_line "iyzico status probe carries no payment token" "IYZICO_STATUS_PROBE=token-free|auth:order-key"
+expect_iyzico_line "iyzico currency verification fails closed" "IYZICO_CURRENCY=fail-closed"
+expect_iyzico_line "iyzico secret and signature never reach a log" "IYZICO_SECRET_LEAKS=0"
+expect_iyzico_line "record-before-processing guard is gone" "IYZICO_LEGACY_GUARD=removed"
+expect_iyzico_line "iyzico delivery is recorded only after it settles" "IYZICO_GUARD_ORDER=signature<lock<preflight<vendor<settled<record"
+expect_iyzico_line "iyzico settlement contract requires every clause" "IYZICO_SETTLED_MATRIX=both_success_same_id:PASS|success_failure:PASS|failure_success:PASS|empty_success:PASS|success_empty:PASS|empty_stored_id:PASS|empty_expected_id:PASS|different_id:PASS"
+expect_iyzico_line "iyzico payment is verified against the API before the vendor runs" "IYZICO_PREFLIGHT=before-vendor|default:live-api|override:test-only"
+expect_iyzico_line "a concurrent return never sees a thank-you page or a GET reload" "IYZICO_CALLBACK_INPROGRESS=409-holding-page|no-meta-refresh|post-retry"
+expect_iyzico_line "one shared order level lock guards both channels" "IYZICO_LOCK_SCOPE=order-level|recheck_after_lock:yes|shared_name:stable"
+expect_iyzico_line "the timed claim implementation is fully gone" "IYZICO_LEGACY_CLAIM=removed|daily_cron:none"
+expect_isolation_line "fixture cleanup refuses every unowned target" "ISOLATION_OWNERSHIP=owned:PASS|protected_order:PASS|protected_order_189:PASS|missing_run_id:PASS|invalid_order_id:PASS|not_created_by_this_run:PASS|run_meta_absent:PASS|run_meta_other_run:PASS|fixture_marker_absent:PASS|fixture_marker_wrong:PASS"
+expect_isolation_line "long lived sandbox orders can never be a cleanup target" "ISOLATION_PROTECTED=5/5"
+expect_isolation_line "no wildcard, e-mail or date based delete exists" "ISOLATION_FORBIDDEN_DELETES=like_delete:none|email_delete:none|date_delete:none|wildcard_meta:none|bulk_wc_orders:none"
+expect_isolation_line "cleanup is gated on the shared ownership predicate" "ISOLATION_CLEANUP=predicate-gated|refusal_fails_run:yes"
+expect_isolation_line "each run carries its own UUID" "ISOLATION_RUN_ID=uuid-per-run"
+expect_isolation_line "a run id must be a real UUID, not any 36 characters" "ISOLATION_RUN_ID_FORMAT=valid:PASS|thirty_six_spaces:PASS|thirty_six_chars:PASS|wrong_version:PASS|wrong_variant:PASS|empty:PASS"
+expect_isolation_line "gateway row cleanup needs id, order and token to agree" "ISOLATION_PROVIDER_ROWS=owned:PASS|row_not_found:PASS|row_id_mismatch:PASS|order_id_mismatch:PASS|token_mismatch:PASS|protected_order:PASS|incomplete_record:PASS"
+expect_isolation_line "a customer row needs every ownership clause" "ISOLATION_CUSTOMER_ROWS=only_run_orders:PASS|empty_linked_orders:PASS|preexisting_customer:PASS|mixed_real_and_run_orders:PASS|not_a_run_candidate:PASS|row_not_found:PASS|email_mismatch:PASS|registered_user:PASS|missing_run_email:PASS"
+expect_isolation_line "one shutdown coordinator releases the lock only after cleanup" "ISOLATION_SHUTDOWN_ORDER=cleanup-then-release|single_coordinator:yes|idempotent:yes"
+expect_isolation_line "a blocked run exits non-zero and never creates the fixture" "ISOLATION_FAIL_EXIT=lock:yes|stale:yes|fixture:yes|mu_write:yes|option_write:yes|final:yes|created_by_test:no"
+expect_isolation_line "every linked order is re-checked on the live record" "ISOLATION_LINKED_ORDERS=linked_full_ownership:PASS|linked_run_meta_mismatch:PASS|linked_marker_missing:PASS|linked_protected_order:PASS|linked_order_missing:PASS|linked_not_created:PASS"
+expect_isolation_line "the e-mail acceptance fixture tears itself down" "ISOLATION_EMAIL_FIXTURE=run-owned-teardown|raw_delete:none"
+expect_isolation_line "every teardown transition is proven purely" "ISOLATION_CLEANUP_TRANSITIONS=idle_starts:PASS|running_no_reentry:PASS|succeeded_terminal:PASS|failed_terminal:PASS|finish_clean:PASS|finish_provider:PASS|finish_customer:PASS|finish_option:PASS|finish_mu_plugin:PASS"
+expect_isolation_line "no runtime fault injection, preflight before writes" "ISOLATION_HARNESS_SAFETY=fault_injection:0|preflight:before-writes|write_verified:yes"
+expect_isolation_line "cleanup state is explicit and success is conditional" "ISOLATION_CLEANUP_STATE=four-state|success-conditional|no-reentry|refusal-exits-nonzero"
+expect_isolation_line "the e-mail teardown uses the same state contract" "ISOLATION_EMAIL_CLEANUP_STATE=four-state|refusal-exits-nonzero"
+expect_isolation_line "the harness lock is taken before any shared write" "ISOLATION_HARNESS_LOCK=before-shared-writes|run_scoped_teardown:yes"
+expect_isolation_line "the baseline is compared as primary key sets" "ISOLATION_BASELINE=primary-key-sets"
+expect_order_experience_line "shipping vocabulary covers both delivery paths" "FULFILLMENT_MAP=total:61|drawer:35|php:26"
+expect_order_experience_line "no raw fulfillment wording and no collateral domain" "FULFILLMENT_WORDING=raw_yerine_getirme:0|empty:0|other_domain_affected:0|unrelated_wc_affected:0"
+expect_order_experience_line "handed to courier is never called delivered" "FULFILLMENT_DELIVERY_TERM=teslim_edildi_in_map:0"
+expect_order_experience_line "wording never attaches outside the orders screens" "FULFILLMENT_SCOPE=dashboard_hooked:no"
+expect_order_experience_line "wording attaches on the orders screen" "FULFILLMENT_HOOKED=orders_screen:yes"
+expect_order_experience_line "no second summary or guide on the order screen" "ORDER_OVERVIEW_REMOVED=yes|leftovers:0"
+expect_order_experience_line "the fulfillment drawer has one safe scrolling layer" "DRAWER_SCROLL_CONTRACT=drawer_rules:1|safe_body_rules:1|document_locks:0|script:removed"
+expect_order_experience_line "customer details stay in the Billing panel" "ORDER_BILLING_FIELDS=297:first:set,last:set,email:set,phone:empty|125:first:set,last:set,email:set,phone:set"
+expect_order_experience_line "long lived sandbox orders are unchanged" "PROTECTED_ORDERS=5/5"
+expect_refund_guard_line "an unsafe automatic iyzico refund is refused on every clause" "REFUND_PREFLIGHT=valid_latest_row:PASS|payment_id_null:PASS|payment_id_empty:PASS|conversation_id_empty:PASS|status_failure:PASS|payment_status_failure:PASS|verified_id_differs:PASS|no_verified_id:PASS|order_id_mismatch:PASS|latest_row_missing:PASS"
+expect_refund_guard_line "a healthy older row cannot excuse a broken newest row" "REFUND_STALE_LATEST_ROW=older-ok-but-latest-blocked"
+expect_refund_guard_line "the refund guard runs before the record is saved" "REFUND_GUARD_SHAPE=before-save|manual-skipped|other-gateways-skipped"
+expect_refund_guard_line "the refund guard reads the row the gateway would use" "REFUND_ROW_SELECTION=matches-vendor"
+expect_refund_guard_line "the refund guard leaks nothing" "REFUND_GUARD_LEAKS=0"
+expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
 expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"
 expect_line "unknown legal values stay hidden" "APPLICATION_LEGAL_ROWS=mersis:0|kep:0|chamber:0|rules:0|etbis:0"
 expect_line "footer payment logos and CSS are absent" "FOOTER_PAYMENT_LOGOS=absent"

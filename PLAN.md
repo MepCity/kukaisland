@@ -1118,7 +1118,15 @@ Mesafeli Satış Sözleşmesi · Ön Bilgilendirme Formu · İade ve Teslimat Ko
 
 Bunların tamamı iyzico başvurusundan **önce** canlı olmalıdır.
 
-İletişim sayfası merkezî şirket kısa kodundan ticari unvan, marka, merkez adresi, e-posta, telefon ve yalnız mevcutsa MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS satırlarını gösterir. Eksik değer için yer tutucu veya uydurma bilgi yayımlanmaz; MERSİS/KEP/oda/ETBİS müşteri girdisi bekler.
+İletişim sayfası merkezî şirket kısa kodundan ticari unvan, marka, merkez adresi, e-posta ve telefon satırlarını gösterir. MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS satırlarının her biri panelde kendi durumunu taşır ve tek bir zorunlu kriter olarak değerlendirilmez:
+
+| Durum | Sitede | Lansman sayımı |
+| --- | --- | --- |
+| **Mevcut** | Yalnız değer dolu ve kendi doğrulamasını geçiyorsa yayımlanır | Tamamlanmış sayılır |
+| **Bekliyor** (varsayılan) | Yayımlanmaz | Lansman eksikliği sayılır |
+| **Uygulanamaz** | Yayımlanmaz | Ne eksik ne tamam sayılır; ölçüm paydasından düşer |
+
+Eksik değer için yer tutucu veya uydurma bilgi yayımlanmaz. “Uygulanamaz” yalnız operatörün panelde verdiği açık bir beyandır; kod hiçbir alanı şirket türünden veya boşluktan yola çıkarak uygulanamaz saymaz.
 
 ### 20.2 Kategoriye özgü — mayo ve iç giyim
 
@@ -1797,7 +1805,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-04 | Yumuşatma semantik hareket ve odak token'larıyla yapılır | `--duration-micro` mevcut 240 ms'e, `--duration-panel` mevcut 420 ms'e, `--duration-image` mevcut 240 ms'e ve `--focus-color` mevcut `ink-soft`a bağlandı; gölge, radius veya yeni sayısal değer eklenmedi |
 | 2026-08-06 | Şirket bilgileri girildi: satıcı Kübra Gültekin (şahıs işletmesi), VKN 4220658128, Beşiktaş VD, Akat Mah. adresi, iletişim telefonu +90 530 948 19 96 | Müşteri vergi levhasından geldi; tek kaynak Site Görünümü → Şirket ve Yasal; panelden düzenlenebilir |
 | 2026-08-06 | TC Kimlik No bilinçli olarak hiçbir yere girilmedi ve yayınlanmıyor | Mesafeli satış sözleşmesi için gerekmiyor; VKN ayrı bir numara olarak yeterli; işletme sahibinin kimlik verisini açığa çıkarmak KVKW maruziyeti yaratır ve müşterimizi korumak zorundayız |
-| 2026-08-06 | MERSİS numarası alanı ve şablon satırı kaldırıldı | Şahıs işletmeleri MERSİS numarası taşımaz; boş yer tutucu göstermek yerine alan kapatıldı |
+| 2026-08-06 | MERSİS numarası alanı ve şablon satırı kaldırıldı | Şahıs işletmeleri MERSİS numarası taşımaz; boş yer tutucu göstermek yerine alan kapatıldı — **2026-08-30 tarihli kararla geçersiz kılındı** |
 | 2026-08-06 | "Şirket unvanı" etiketi yerine "Satıcı / unvan" ve ek "İşletme adı" satırı kullanıldı | Şahıs işletmesinde ticaret ünvanı yoktur; satıcı gerçek kişi adıdır, işletme adı Kuka Island ayrı satırda |
 | 2026-08-06 | WhatsApp panel alanı URL'den telefon numarasına çevrildi; wa.me bağlantısı koddan üretiliyor | Müşteri yalnızca numara girer; boşluk/parantez/tire temizlenir, baştaki 0 → 90, +90 kabul edilir. 0530 948 19 96 → https://wa.me/905309481996. Boşken WhatsApp arayüzü hiç görünmez |
 | 2026-08-06 | Yüzen WhatsApp düğmesi sağ altta sabit, marka `ink` renginde; checkout ve ödeme sayfasında gizli | iyzico yüzen promosyonunun yerine geçmesin diye sade ve küçük; gölge/büyük radius yok (§11.1); WhatsApp yeşili kullanılmadı (§11.2) |
@@ -1816,6 +1824,15 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 | 2026-08-24 | Bülten kaydı çift onaya geçirildi; ilk KVKK kanıtı değişmez kayıt olarak korunur | Yeniden kayıt yalnız doğrulama tokenını yeniler; ilk metin/tarih/IP ezilmez, 48 saatlik HMAC token doğrulanmadan kayıt `confirmed` olmaz ve IP başına 10 dakikada 5 istek sınırı uygulanır |
 | 2026-08-24 | WooCommerce checkout ve katalog orta bulguları birlikte kapatıldı | Mobil toplam AJAX sonrası eşlenir; telefon boş kalabilir; kurumsal alanlar yalnız kurumsal seçimde görünür/zorunludur; içerik, shortcode ve varyasyon önbellekleri istek içinde hazırlanır; sepet fragment isteği yalnız sepet mutasyonunda yapılır |
 | 2026-08-24 | Kurulum sırları STDIN sınırına, GitHub Actions salt-okunur ve SHA-sabit bağımlılıklara alındı | Gerçek yönetici/mağaza yöneticisi parolaları süreç argümanında veya çıktıda bulunmaz; workflow `contents: read` taşır ve iki üçüncü taraf action tam commit SHA'sına sabitlenir |
+| 2026-08-30 | **Yönetici deneyimi ilkesi:** bir operasyon mümkün olduğunca başladığı ana ekranda tamamlanır | Kullanıcı aynı iş için farklı yönetim sayfaları arasında dolaştırılmaz. Teknik sistem adları yerine yapılan işi anlatan ifadeler kullanılır. Sipariş operasyonunun merkezi sipariş düzenleme ekranıdır |
+| 2026-08-30 | WooCommerce Fulfillments'ın “yerine getirme” dili **kargo diline** çevrildi (61 eşleme) | “Yerine getirme” depo terimidir ve satıcıya hiçbir şey anlatmaz; satıcının yaptığı iş kargo işidir. Çeviri iki kanalda birden yapılır: React çekmecesi `wp.i18n.setLocaleData()`, PHP yüzeyleri dar kapsamlı `gettext`. Yalnız sipariş listesi/düzenleme ekranında ve Türkçe yönetici dilinde çalışır; vendor dosyası değiştirilmez |
+| 2026-08-30 | “Kargoya verildi” ile “Teslim edildi” bilinçli olarak ayrı tutuldu | Kargoya verilme satıcının yaptığı işlemdir; teslim edilme ancak kargo firması doğruladığında kullanılır. Terminoloji haritasında hiçbir yerde “teslim edildi” geçmez |
+| 2026-08-31 | Sipariş ekranına eklenen müşteri özeti ve sipariş akışı rehberi **tamamen kaldırıldı** | Ekranda zaten var olan bilgiyi ikinci kez göstermek operatöre yardım etmiyor, kalabalık yaratıyordu. Müşteri bilgisi yalnız WooCommerce'in kendi Faturalama bölümünde; operasyon sipariş durumu, ürün satırları ve Kargo İşlemleri paneliyle yürütülür. İkinci bir rehber veya veri özeti oluşturulmaz |
+| 2026-08-31 | “Kargoya verildi” ile “Teslim edildi” ayrımı **terminolojide** korunur | Kargoya verilme satıcının işlemidir; teslim edilme ancak kargo firması doğruladığında kullanılır. WooCommerce'in `completed` durumu satıcının siparişi kapatmasıdır, kargo doğrulaması değildir |
+| 2026-08-31 | DHL entegrasyonu geldiğinde **WooCommerce Fulfillments kaydına** bağlanacak | Kargo firması entegrasyonu Kargo İşlemleri panelindeki mevcut gönderim kaydını kullanacak; kendi sipariş verisini kurmayacak. Entegrasyon gerçekten bağlanana kadar çalışmayan bir düğme gösterilmez |
+| 2026-08-30 | iyzico entegrasyon testi **run-owned izolasyona** geçirildi | Test kalıcı veritabanında gerçek sipariş oluşturuyor; izole geçici veritabanı, testin canlı REST rotasını ve dönüş callback'ini HTTP üzerinden sürmesi gerektiği için uygulanabilir değil. Bunun yerine her koşu kendi UUID'sini üretir, oluşturduğu her kaydın kimliğini anında saklar ve temizlik yalnız kimlik + run UUID + fixture işareti üçü birden eşleşirse siler. Doğrulanamayan hedef silinmez, koşu FAIL olur |
+| 2026-08-30 | MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS tek zorunlu kriter olmaktan çıkıp alan başına **mevcut / bekliyor / uygulanamaz** beyanına geçirildi | Tek kriter beş farklı yükümlülüğü aynı kefeye koyuyordu: gerçekten uygulanmayan bir alan sonsuza kadar eksik görünüyor, doldurulmuş bir alan da diğerleri yüzünden gizleniyordu. Varsayılan “bekliyor”dur; yalnız doğrulanmış “mevcut” değer yayımlanır, “uygulanamaz” satır ne yayımlanır ne eksik sayılır |
+| 2026-08-30 | 2026-08-06 tarihli “şahıs işletmesi MERSİS taşımaz, alan kaldırıldı” kararı geçersiz kılındı; alan panelde geri açıldı ve durumu **bekliyor** bırakıldı | Karar hukuki bir varsayımdı ve koddaki zorunlu kriterle de çelişiyordu (alan kaldırılmış sayılırken readiness onu arıyordu). MERSİS yükümlülüğü şirket türüne göre değişir; §20.3'teki e-Belge maddesiyle aynı gerekçeyle mali müşavir teyidi olmadan “uygulanamaz” seçilmez. Teyit gelirse operatör paneldeki durumu kendisi çevirir, kod bunu kendiliğinden yapmaz |
 | 2026-08-24 | Düşük bulguların uygulanabilir olanları kapatıldı; sınıflandırma canlı WordPress çağrısıyla düzeltildi | 32 bulgunun 25'i doğrulandı, 6'sı kısmen doğrulandı, 1'i yanlış pozitifti. Taksonomisiz `get_terms()` ikinci filtre argümanını `null` gönderdiği için nullable imza ve erken dönüş eklendi. CSV/URL/girdi sertleştirmesi, e-posta içermeyen imzalı takip bağlantısı, XML-RPC kapısı, bounded sitemap, güvenli AJAX adres önizlemesi, autoload/sorgu/varlık önbelleği ve kaynak checksum'ları uygulandı; iyzico/WooCommerce uyumluluğu gerektiren mevcut CSP inline istisnası kontrollü olarak korundu |
 
 ---
@@ -1850,7 +1867,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [ ] Canlı sipariş #87 durumu, gerçek SMTP teslimatı/SPF/DKIM ve canlı cron anlık ölçümü üretim erişimiyle doğrulanacak
 - [x] Faz 8 footer ödeme şeridi, iki dil logosu, şirket/iletişim alanları ve 12 otomatik + 5 manuel iyzico hazırlık kontrolü tamamlandı
 - [x] Faz 8 ölçümü: otomatik hazırlık 7/12; 14/14 TR/EN viewport yatay taşma 0; Visa 20 CSS px / 5,29 mm
-- [ ] MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS müşteri/iyzico cevabıyla doldurulacak
+- [ ] MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS alanlarının her biri panelde **mevcut / bekliyor / uygulanamaz** olarak işaretlenecek; beşi de şu anda `bekliyor`. MERSİS için “uygulanamaz” yalnız mali müşavir teyidinden sonra seçilir (§20.1)
 
 - [x] Ana yaklaşım belirlendi
 - [x] Ana plan oluşturuldu

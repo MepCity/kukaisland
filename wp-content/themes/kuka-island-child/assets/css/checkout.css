@@ -717,20 +717,25 @@
   border-bottom-color: var(--color-ink);
 }
 
-/* Hata alanın kendisinde görünür. İçe alınmış outline ölçüyü değiştirmeden dört
-   kenarı çerçeveler; satır içi açıklama da aria-describedby hedefidir. */
-.woocommerce-checkout .kuka-checkout__fields .kuka-field-invalid input.input-text,
-.woocommerce-checkout .kuka-checkout__fields .kuka-field-invalid textarea,
-.woocommerce-checkout .kuka-checkout__fields .kuka-field-invalid select,
-.woocommerce-checkout .kuka-checkout__fields .kuka-field-invalid .select2-selection--single {
+/* Jacquemus hata dili: alanı kutuya almadan yalnız alt çizgiyi kırmızıya çevir.
+   Satır içi açıklama alanın hemen altında kalır ve aria-describedby hedefidir. */
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid input.input-text,
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid textarea,
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid select,
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid .select2-selection--single {
   border-bottom-color: var(--color-error);
-  outline: var(--stroke) solid var(--color-error);
-  outline-offset: calc(var(--stroke) * -1);
+}
+
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid input.input-text:focus-visible,
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid textarea:focus-visible,
+.woocommerce-checkout .kuka-checkout__fields .form-row.kuka-field-invalid select:focus-visible {
+  outline: 0 !important;
+  border-bottom-width: var(--focus-outline-width);
 }
 
 .woocommerce-checkout .kuka-field-error {
   display: block;
-  margin-top: var(--space-1);
+  margin-top: var(--space-0-5);
   color: var(--color-error);
   font-size: var(--text-caption);
   line-height: var(--leading-body);
@@ -741,8 +746,9 @@
 }
 
 .woocommerce-checkout .kuka-checkout__fields .kuka-checkout-toggle label {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: var(--space-2) minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-1);
   margin: 0;
   font-family: var(--font-sans);
@@ -756,7 +762,7 @@
 .kuka-checkout-toggle input {
   width: var(--space-2);
   height: var(--space-2);
-  flex: 0 0 auto;
+  margin: var(--stroke) 0 0;
 }
 
 /* Kurumsal fatura alanları JS gelene kadar açık kalır; §10.6 davranışı. */
@@ -862,8 +868,9 @@ body.kuka-checkout-enhanced:not(.kuka-corporate) .kuka-corporate-field {
   border-top: var(--stroke) solid var(--color-line);
 }
 
-.kuka-legal-consents label {
-  display: flex;
+.woocommerce-checkout #payment .kuka-legal-consents label {
+  display: grid;
+  grid-template-columns: var(--space-2) minmax(0, 1fr);
   align-items: start;
   gap: var(--space-1-5);
   margin-block: var(--space-1-5);
@@ -876,15 +883,13 @@ body.kuka-checkout-enhanced:not(.kuka-corporate) .kuka-corporate-field {
 }
 
 .kuka-legal-consent.kuka-field-invalid {
-  outline: var(--stroke) solid var(--color-error);
-  outline-offset: calc(var(--stroke) * -1);
+  border-bottom: var(--stroke) solid var(--color-error);
 }
 
-.kuka-legal-consents input {
+.woocommerce-checkout #payment .kuka-legal-consents input {
   width: var(--space-2);
   height: var(--space-2);
-  margin-top: var(--space-0-5);
-  flex: 0 0 auto;
+  margin: var(--stroke) 0 0;
 }
 
 .kuka-legal-consents a {

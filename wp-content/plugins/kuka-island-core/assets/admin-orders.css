@@ -5,25 +5,22 @@
  * şeridindedir. Genel `body`, `.components-*` veya wp-admin geneli seçici
  * kullanılmaz.
  *
- * Kargo İşlemleri çekmecesinde yalnız WooCommerce 11.0.1'in iç içe scroll
- * konteyneri düzeltilir. Çekirdekte panel ve gövde birlikte `overflow-y:auto`
- * olur; gövdenin ayrıca `overscroll-behavior:none` taşıması, gövdenin kendi
- * scroll aralığı olmadığı masaüstünde wheel/trackpad olayını kayabilen üst
- * panele aktarmadan yutar. Panel tek scroll konteyneri olarak bırakılır.
+ * Kargo İşlemleri çekmecesinde WooCommerce 11.0.1'in iç içe scroll yapısı
+ * düzeltilir. Çekirdek hem dış paneli hem iç gövdeyi `overflow-y:auto` yapar;
+ * iç gövde ayrıca `overscroll-behavior:none` taşır. İç gövdenin kendi scroll
+ * aralığı olmadığı masaüstünde wheel/trackpad olayı burada tutulur ve kayabilen
+ * dış panele ulaşmaz. Bu yüzden dış panel tek scroll konteyneri yapılır.
+ *
+ * KORUMA SÖZLEŞMESİ: Bu kuralı kaldırmayın; yerine `html/body overflow:hidden`,
+ * `position:fixed` belge kilidi, MutationObserver veya wheel yönlendirme
+ * JavaScript'i eklemeyin. Bunlar gerçek Chrome testinde panel içi wheel
+ * kaydırmasını yeniden bozmuştur. Ayrıntı: docs/KARGO_SCROLL_KORUMA_NOTU.md
  */
 
 /* --------------------------------------------------------------------- */
 /* Kargo çekmecesi: wheel/trackpad dış panele ulaşsın                     */
 /* --------------------------------------------------------------------- */
 
-/*
- * Seçici bilerek yalnız gerçek iç gövde sınıfıdır. Eski
- * `[class*="fulfillment-drawer"]` yaklaşımı paneli de eşleyip kaydırmayı
- * tamamen kapatıyordu. `height:auto` mobildeki ikinci sabit scroll alanını,
- * `overflow:visible` ve `overscroll-behavior:auto` ise wheel tuzağını kaldırır.
- * Dış `.woocommerce-fulfillment-drawer__panel` WooCommerce'in kendi
- * `overflow-y:auto` kuralıyla tek dikey scroll alanı olarak çalışır.
- */
 .woocommerce_page_wc-orders .woocommerce-fulfillment-drawer__body {
 	height: auto;
 	overflow: visible;

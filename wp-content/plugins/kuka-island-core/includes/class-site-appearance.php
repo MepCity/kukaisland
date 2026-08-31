@@ -8,8 +8,12 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Core_Site_Appearance {
 	public const OPTION_NAME = 'kuka_island_site_content';
 	/** Bumped whenever a stored field is retired, renamed or force-reset. */
-	private const SCHEMA_VERSION = 12;
+	private const SCHEMA_VERSION = 14;
 	private const CAPABILITY = 'manage_woocommerce';
+	/** Operator-declared state of one legal identifier. Never inferred by code. */
+	public const LEGAL_STATUS_PENDING = 'pending';
+	public const LEGAL_STATUS_PRESENT = 'present';
+	public const LEGAL_STATUS_NOT_APPLICABLE = 'not_applicable';
 	/** @var array<int, string> */
 	private static array $sanitize_notices = array();
 	/** @var array<string, mixed>|null Request-local merged content cache. */
@@ -158,12 +162,20 @@ final class Kuka_Island_Core_Site_Appearance {
 				'address_short' => 'Akat Mh. Etiler',
 				'telephone' => '0530 948 19 96', 'mersis_number' => '', 'kep_address' => '',
 				'professional_chamber' => '', 'professional_rules_url' => '', 'etbis_number' => '',
+				// Her yasal kimlik alanı kendi operatör beyanını taşır. Varsayılan
+				// "bekliyor"dur; "uygulanamaz" hukuki bir karardır ve koddan
+				// türetilmez (§20.1).
+				'mersis_status' => self::LEGAL_STATUS_PENDING,
+				'kep_status' => self::LEGAL_STATUS_PENDING,
+				'professional_chamber_status' => self::LEGAL_STATUS_PENDING,
+				'professional_rules_status' => self::LEGAL_STATUS_PENDING,
+				'etbis_status' => self::LEGAL_STATUS_PENDING,
 				'iyzico_tax_certificate' => false, 'iyzico_signature_circular' => false,
 				'iyzico_identity_copy' => false, 'iyzico_iban_document' => false, 'iyzico_findeks_report' => false,
 			),
 			'checkout' => array(
 				'require_phone' => true, 'require_company' => false,
-				'require_address_2' => false, 'require_city' => false,
+				'require_address_2' => false,
 			),
 			'content' => array(
 				'size_top_rows' => "S|84–88|72–76|A–B\nM|88–92|76–80|B–C\nL|92–98|80–84|C–D",
@@ -265,6 +277,18 @@ final class Kuka_Island_Core_Site_Appearance {
 		if ( str_contains( (string) ( $saved['legal']['etbis_number'] ?? '' ), '[' ) ) {
 			$saved['legal']['etbis_number'] = '';
 		}
+		// Yasal kimlik alanları tek zorunlu kriter olmaktan çıkıp alan başına
+		// üç durumlu beyana geçti. Operatörün girdiği değer korunur: doğrulanmış
+		// bir değer "mevcut" sayılır, geri kalan her şey "bekliyor" olur.
+		// Hiçbir alan otomatik "uygulanamaz" yapılmaz; bu hukuki bir karardır.
+		foreach ( self::legal_status_map() as $status_key => $value_key ) {
+			if ( isset( $saved['legal'][ $status_key ] ) ) {
+				continue;
+			}
+			$saved['legal'][ $status_key ] = self::legal_value_verified( $value_key, (string) ( $saved['legal'][ $value_key ] ?? '' ) )
+				? self::LEGAL_STATUS_PRESENT
+				: self::LEGAL_STATUS_PENDING;
+		}
 		unset(
 				$saved['languages']['items_en'],
 				$saved['languages']['pending_urls'],
@@ -278,6 +302,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			$saved['footer']['payment_label_en'],
 			$saved['footer']['payment_logos_enabled'],
 			$saved['footer']['brand_copy'],
+			$saved['checkout']['require_city'],
 			$saved['home']['manifesto_title'],
 			$saved['home']['manifesto_copy'],
 			$saved['panels']
@@ -447,7 +472,7 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'legal'        => array(
 				'label'  => __( '10. Şirket ve Yasal Bilgiler', 'kuka-island-core' ),
-				'note'   => __( 'Footer, iletişim ve yasal sayfalardaki tek kaynak şirket bilgilerini yönetir.', 'kuka-island-core' ),
+				'note'   => __( 'Footer, iletişim ve yasal sayfalardaki tek kaynak şirket bilgilerini yönetir. MERSİS, KEP, meslek odası, davranış kuralları ve ETBİS satırlarının her biri kendi durumunu taşır: “Bekliyor” lansman eksikliği sayılır, “Mevcut” yalnız doğrulanmış değerle yayımlanır, “Uygulanamaz” ne yayımlanır ne eksik sayılır. “Uygulanamaz” hukuki bir beyandır; mali müşavir veya hukuk danışmanı teyidi olmadan seçmeyin.', 'kuka-island-core' ),
 				'fields' => array(
 					'company_title' => array( __( 'Satıcı / unvan', 'kuka-island-core' ), 'text' ),
 					'brand_name'    => array( __( 'İşletme adı', 'kuka-island-core' ), 'text' ),
@@ -456,11 +481,16 @@ final class Kuka_Island_Core_Site_Appearance {
 					'address_full'  => array( __( 'Açık adres (yasal sayfalarda zorunlu; sözleşmelerdekiyle aynı kalmalı)', 'kuka-island-core' ), 'textarea' ),
 					'address_short' => array( __( 'Kısa adres (pazarlama yüzeyleri)', 'kuka-island-core' ), 'text' ),
 					'telephone'     => array( __( 'Yasal iletişim telefonu', 'kuka-island-core' ), 'text' ),
-					'mersis_number' => array( __( 'MERSİS numarası (yoksa boş bırakın)', 'kuka-island-core' ), 'text' ),
-					'kep_address'   => array( __( 'KEP adresi (yoksa boş bırakın)', 'kuka-island-core' ), 'email' ),
-					'professional_chamber' => array( __( 'Meslek odası (yoksa boş bırakın)', 'kuka-island-core' ), 'text' ),
-					'professional_rules_url' => array( __( 'Davranış kuralları bağlantısı (yoksa boş bırakın)', 'kuka-island-core' ), 'url' ),
+					'mersis_number' => array( __( 'MERSİS numarası', 'kuka-island-core' ), 'text' ),
+					'mersis_status' => array( __( 'MERSİS durumu', 'kuka-island-core' ), 'legal_status' ),
+					'kep_address'   => array( __( 'KEP adresi', 'kuka-island-core' ), 'email' ),
+					'kep_status'    => array( __( 'KEP durumu', 'kuka-island-core' ), 'legal_status' ),
+					'professional_chamber' => array( __( 'Meslek odası', 'kuka-island-core' ), 'text' ),
+					'professional_chamber_status' => array( __( 'Meslek odası durumu', 'kuka-island-core' ), 'legal_status' ),
+					'professional_rules_url' => array( __( 'Davranış kuralları bağlantısı', 'kuka-island-core' ), 'url' ),
+					'professional_rules_status' => array( __( 'Davranış kuralları durumu', 'kuka-island-core' ), 'legal_status' ),
 					'etbis_number'  => array( __( 'ETBİS numarası', 'kuka-island-core' ), 'text' ),
+					'etbis_status'  => array( __( 'ETBİS durumu', 'kuka-island-core' ), 'legal_status' ),
 					'iyzico_tax_certificate' => array( __( 'iyzico belgesi: Vergi levhası hazır', 'kuka-island-core' ), 'checkbox' ),
 					'iyzico_signature_circular' => array( __( 'iyzico belgesi: İmza sirküleri hazır', 'kuka-island-core' ), 'checkbox' ),
 					'iyzico_identity_copy' => array( __( 'iyzico belgesi: Kimlik fotokopisi hazır', 'kuka-island-core' ), 'checkbox' ),
@@ -470,12 +500,11 @@ final class Kuka_Island_Core_Site_Appearance {
 			),
 			'checkout'     => array(
 				'label'  => __( '11. Ödeme Formu Alanları', 'kuka-island-core' ),
-				'note'   => __( 'Ödeme formundaki isteğe bağlı alanların zorunluluğunu yönetir. Ad, soyad, e-posta, adres, il ve posta kodu yasal nedenle kilitlidir.', 'kuka-island-core' ),
+				'note'   => __( 'Ödeme formundaki isteğe bağlı alanların zorunluluğunu yönetir. Ad, soyad, e-posta, adres, il ve posta kodu kilitlidir.', 'kuka-island-core' ),
 				'fields' => array(
 					'require_phone'     => array( __( 'Telefon zorunlu', 'kuka-island-core' ), 'checkbox' ),
 					'require_company'   => array( __( 'Şirket adı zorunlu', 'kuka-island-core' ), 'checkbox' ),
 					'require_address_2' => array( __( 'Adres satırı 2 zorunlu', 'kuka-island-core' ), 'checkbox' ),
-					'require_city'      => array( __( 'İlçe zorunlu', 'kuka-island-core' ), 'checkbox' ),
 				),
 			),
 			'content'      => array(
@@ -570,7 +599,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		);
 		$warnings = self::operator_warnings( $content );
 		$iyzico_checks = self::iyzico_application_checks( $content );
-		$iyzico_complete = count( array_filter( $iyzico_checks, static fn( array $check ): bool => $check['complete'] ) );
+		$iyzico_totals = self::iyzico_readiness_totals( $iyzico_checks );
 		?>
 		<div class="wrap kuka-admin-home"><h1><?php esc_html_e( 'Kuka Island / Başlangıç', 'kuka-island-core' ); ?></h1>
 		<p><?php esc_html_e( 'Günlük işinize aşağıdaki kartlardan başlayın.', 'kuka-island-core' ); ?></p>
@@ -583,12 +612,30 @@ final class Kuka_Island_Core_Site_Appearance {
 		<div class="kuka-task-grid"><?php foreach ( $routes as $route ) : ?><div class="card"><h2><?php echo esc_html( $route[0] ); ?></h2><p><?php echo esc_html( $route[1] ); ?></p><a class="button button-primary" href="<?php echo esc_url( $route[2] ); ?>"><?php esc_html_e( 'Ekrana git', 'kuka-island-core' ); ?></a></div><?php endforeach; ?></div>
 		<section class="kuka-iyzico-readiness" aria-labelledby="kuka-iyzico-readiness-title">
 			<h2 id="kuka-iyzico-readiness-title"><?php esc_html_e( 'iyzico başvurusuna hazır mıyız?', 'kuka-island-core' ); ?></h2>
-			<p><strong><?php echo esc_html( sprintf( __( '%1$d / %2$d otomatik kriter tamam', 'kuka-island-core' ), $iyzico_complete, count( $iyzico_checks ) ) ); ?></strong></p>
+			<p><strong><?php echo esc_html( sprintf( __( '%1$d / %2$d otomatik kriter tamam', 'kuka-island-core' ), $iyzico_totals['complete'], $iyzico_totals['total'] ) ); ?></strong>
+			<?php if ( $iyzico_totals['not_applicable'] > 0 ) : ?>
+				<span class="description"><?php echo esc_html( sprintf( /* translators: %d: number of criteria the operator declared not applicable. */ __( '%d kriter “uygulanamaz” olarak işaretlendi ve eksik sayılmıyor.', 'kuka-island-core' ), $iyzico_totals['not_applicable'] ) ); ?></span>
+			<?php endif; ?>
+			</p>
 			<ul class="kuka-readiness-list">
-			<?php foreach ( $iyzico_checks as $check ) : ?>
-				<li class="<?php echo $check['complete'] ? 'is-complete' : 'is-missing'; ?>">
-					<span aria-hidden="true"><?php echo $check['complete'] ? '&#10003;' : '&#8212;'; ?></span>
-					<span><?php echo esc_html( $check['label'] ); ?></span>
+			<?php
+			foreach ( $iyzico_checks as $check ) :
+				$row_class = $check['complete'] ? 'is-complete' : ( empty( $check['applicable'] ) ? 'is-not-applicable' : 'is-missing' );
+				$row_mark  = $check['complete'] ? '&#10003;' : ( empty( $check['applicable'] ) ? '&#8211;' : '&#8212;' );
+				$row_note  = '';
+				if ( 'unverified' === ( $check['state'] ?? '' ) ) {
+					$row_note = __( 'Mevcut seçili ancak değer boş veya geçersiz.', 'kuka-island-core' );
+				} elseif ( empty( $check['applicable'] ) ) {
+					$row_note = __( 'Uygulanamaz — yayımlanmaz, eksik sayılmaz.', 'kuka-island-core' );
+				} elseif ( ! empty( $check['legal'] ) && self::LEGAL_STATUS_PENDING === ( $check['state'] ?? '' ) ) {
+					// Durum etiketi yalnız operatörün beyan ettiği yasal satırlara
+					// aittir; teknik kriterlerde tik/tire zaten yeterli.
+					$row_note = __( 'Bekliyor', 'kuka-island-core' );
+				}
+				?>
+				<li class="<?php echo esc_attr( $row_class ); ?>">
+					<span aria-hidden="true"><?php echo $row_mark; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
+					<span><?php echo esc_html( $check['label'] ); ?><?php echo '' === $row_note ? '' : ' <em>' . esc_html( $row_note ) . '</em>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
 					<a href="<?php echo esc_url( $check['url'] ); ?>"><?php esc_html_e( 'İlgili ekrana git', 'kuka-island-core' ); ?></a>
 				</li>
 			<?php endforeach; ?>
@@ -629,10 +676,124 @@ final class Kuka_Island_Core_Site_Appearance {
 			array( (int) ( $content['commercial']['cayma_hakki_gun'] ?? 0 ) < 14, __( 'Cayma hakkı süresi 14 günden kısa.', 'kuka-island-core' ), add_query_arg( 'tab', 'commercial', $appearance ) ),
 			array( ! empty( $content['footer']['newsletter_enabled'] ) && empty( $content['footer']['newsletter_consent'] ), __( 'Bülten açık ancak onay metni boş.', 'kuka-island-core' ), add_query_arg( 'tab', 'footer', $appearance ) ),
 			array( ! empty( $content['membership']['enabled'] ), __( 'Bakım sözleşmesindeki misafir alışveriş kararına rağmen üyelik açık.', 'kuka-island-core' ), add_query_arg( 'tab', 'membership', $appearance ) ),
-			array( empty( $content['legal']['mersis_number'] ) || ! is_email( $content['legal']['kep_address'] ?? '' ) || empty( $content['legal']['professional_chamber'] ) || empty( $content['legal']['professional_rules_url'] ), __( 'iyzico başvurusu için MERSİS / KEP / meslek odası bilgisi bekleniyor.', 'kuka-island-core' ), add_query_arg( 'tab', 'legal', $appearance ) ),
+		);
+		// Yasal kimlikler alan başına uyarılır: "bekliyor" lansman eksikliğidir,
+		// "mevcut" seçilip boş bırakılan alan veri hatasıdır, "uygulanamaz" ise
+		// hiç uyarı üretmez.
+		$labels    = self::legal_field_labels();
+		$states    = self::legal_field_states( $content );
+		$pending   = array_keys( array_filter( $states, static fn( string $state ): bool => self::LEGAL_STATUS_PENDING === $state ) );
+		$unverified = array_keys( array_filter( $states, static fn( string $state ): bool => 'unverified' === $state ) );
+		$checks[] = array(
+			(bool) $pending,
+			sprintf(
+				/* translators: %s: comma separated list of legal identifier names. */
+				__( 'Lansman için durumu “bekliyor” olan yasal alanlar var: %s', 'kuka-island-core' ),
+				implode( ', ', array_map( static fn( string $key ): string => $labels[ $key ], $pending ) )
+			),
+			add_query_arg( 'tab', 'legal', $appearance ),
+		);
+		$checks[] = array(
+			(bool) $unverified,
+			sprintf(
+				/* translators: %s: comma separated list of legal identifier names. */
+				__( '“Mevcut” işaretli ancak değeri boş veya geçersiz olan yasal alanlar var: %s', 'kuka-island-core' ),
+				implode( ', ', array_map( static fn( string $key ): string => $labels[ $key ], $unverified ) )
+			),
+			add_query_arg( 'tab', 'legal', $appearance ),
 		);
 		$warnings = array_values( array_map( static fn( array $check ): array => array( $check[1], $check[2] ), array_filter( $checks, static fn( array $check ): bool => (bool) $check[0] ) ) );
 		return apply_filters( 'kuka_island_operator_warnings', $warnings );
+	}
+
+	/**
+	 * Status key => value key for every legal identifier that may or may not
+	 * apply to this seller. The pairing is the single source both the panel,
+	 * the storefront and the readiness meter read.
+	 *
+	 * @return array<string, string>
+	 */
+	public static function legal_status_map(): array {
+		return array(
+			'mersis_status'               => 'mersis_number',
+			'kep_status'                  => 'kep_address',
+			'professional_chamber_status' => 'professional_chamber',
+			'professional_rules_status'   => 'professional_rules_url',
+			'etbis_status'                => 'etbis_number',
+		);
+	}
+
+	/** @return array<string, string> */
+	public static function legal_status_labels(): array {
+		return array(
+			self::LEGAL_STATUS_PENDING        => __( 'Bekliyor', 'kuka-island-core' ),
+			self::LEGAL_STATUS_PRESENT        => __( 'Mevcut', 'kuka-island-core' ),
+			self::LEGAL_STATUS_NOT_APPLICABLE => __( 'Uygulanamaz', 'kuka-island-core' ),
+		);
+	}
+
+	/** Criterion labels used by the readiness meter. @return array<string, string> */
+	public static function legal_field_labels(): array {
+		return array(
+			'mersis_number'          => __( 'MERSİS numarası', 'kuka-island-core' ),
+			'kep_address'            => __( 'KEP adresi', 'kuka-island-core' ),
+			'professional_chamber'   => __( 'Meslek odası', 'kuka-island-core' ),
+			'professional_rules_url' => __( 'Mesleki davranış kuralları', 'kuka-island-core' ),
+			'etbis_number'           => __( 'ETBİS numarası', 'kuka-island-core' ),
+		);
+	}
+
+	/**
+	 * A value counts as verified when the operator actually filled it in with
+	 * data of the right shape. Placeholders left in brackets are treated as
+	 * unfilled so a template string can never reach a legal page.
+	 */
+	public static function legal_value_verified( string $value_key, string $value ): bool {
+		$value = trim( $value );
+		if ( '' === $value || str_contains( $value, '[' ) ) {
+			return false;
+		}
+		if ( 'kep_address' === $value_key ) {
+			return (bool) is_email( $value );
+		}
+		if ( 'professional_rules_url' === $value_key ) {
+			return '' !== self::sanitize_url( $value );
+		}
+		return true;
+	}
+
+	/**
+	 * Resolve one legal row into the four states the rest of the code branches
+	 * on: `not_applicable`, `present` (declared and verified), `unverified`
+	 * (declared present but the value is missing or malformed) and `pending`.
+	 */
+	public static function legal_field_state( array $content, string $value_key ): string {
+		$status_key = (string) array_search( $value_key, self::legal_status_map(), true );
+		$status     = (string) ( $content['legal'][ $status_key ] ?? self::LEGAL_STATUS_PENDING );
+		if ( self::LEGAL_STATUS_NOT_APPLICABLE === $status ) {
+			return self::LEGAL_STATUS_NOT_APPLICABLE;
+		}
+		if ( self::LEGAL_STATUS_PRESENT !== $status ) {
+			return self::LEGAL_STATUS_PENDING;
+		}
+		return self::legal_value_verified( $value_key, (string) ( $content['legal'][ $value_key ] ?? '' ) )
+			? self::LEGAL_STATUS_PRESENT
+			: 'unverified';
+	}
+
+	/** Only a declared-present, verified value may be published on the site. */
+	public static function legal_field_publishable( array $content, string $value_key ): bool {
+		return self::LEGAL_STATUS_PRESENT === self::legal_field_state( $content, $value_key );
+	}
+
+	/** @return array<string, string> value key => resolved state */
+	public static function legal_field_states( ?array $content = null ): array {
+		$content ??= self::get();
+		$states    = array();
+		foreach ( self::legal_status_map() as $value_key ) {
+			$states[ $value_key ] = self::legal_field_state( $content, $value_key );
+		}
+		return $states;
 	}
 
 	/** @return array<string, string> */
@@ -677,24 +838,66 @@ final class Kuka_Island_Core_Site_Appearance {
 		$active_plugins = (array) get_option( 'active_plugins', array() );
 		$iyzico_active = (bool) array_filter( $active_plugins, static fn( string $plugin ): bool => str_contains( $plugin, 'iyzico' ) );
 		$plugin_cards = glob( WP_PLUGIN_DIR . '/*iyzico*/assets/images/cards_v2.png' ) ?: array();
-		$company_ready = ! empty( $content['legal']['mersis_number'] )
-			&& is_email( $content['legal']['kep_address'] ?? '' )
-			&& ! empty( $content['legal']['professional_chamber'] )
-			&& ! empty( $content['legal']['professional_rules_url'] );
+		// Beş yasal kimlik artık tek zorunlu kriter değil; her biri kendi
+		// satırında operatör beyanıyla ölçülür. "Uygulanamaz" satır ne tamam ne
+		// eksik sayılır, bu yüzden paydadan da düşer.
+		$legal_rows = array();
+		foreach ( self::legal_field_labels() as $value_key => $label ) {
+			$state        = self::legal_field_state( $content, $value_key );
+			$legal_rows[] = array(
+				'label'      => $label,
+				'legal'      => true,
+				'state'      => $state,
+				'complete'   => self::LEGAL_STATUS_PRESENT === $state,
+				'applicable' => self::LEGAL_STATUS_NOT_APPLICABLE !== $state,
+				'url'        => add_query_arg( 'tab', 'legal', $appearance ),
+			);
+		}
 
+		$checks = array_merge(
+			array(
+				$page_check( 'hakkimizda', __( 'Hakkımızda sayfası yayında', 'kuka-island-core' ) ),
+				$page_check( 'gizlilik-politikasi', __( 'Gizlilik Politikası yayında', 'kuka-island-core' ) ),
+				$page_check( 'mesafeli-satis-sozlesmesi', __( 'Mesafeli Satış Sözleşmesi yayında', 'kuka-island-core' ) ),
+				array( 'label' => __( 'Kargo ve İade sayfaları yayında', 'kuka-island-core' ), 'complete' => $shipping instanceof WP_Post && 'publish' === $shipping->post_status && $returns instanceof WP_Post && 'publish' === $returns->post_status, 'url' => $shipping instanceof WP_Post ? admin_url( 'post.php?post=' . $shipping->ID . '&action=edit' ) : admin_url( 'edit.php?post_type=page' ) ),
+				$page_check( 'iletisim', __( 'İletişim sayfası yayında', 'kuka-island-core' ) ),
+				array( 'label' => __( 'Site HTTPS kullanıyor', 'kuka-island-core' ), 'complete' => 'https' === wp_parse_url( home_url( '/' ), PHP_URL_SCHEME ), 'url' => admin_url( 'site-health.php' ) ),
+				array( 'label' => __( 'iyzico eklentisi etkin', 'kuka-island-core' ), 'complete' => $iyzico_active, 'url' => admin_url( 'admin.php?page=wc-settings&tab=checkout' ) ),
+				array( 'label' => __( 'Ödeme sayfasındaki iyzico kart şeridi hazır', 'kuka-island-core' ), 'complete' => ! empty( $plugin_cards ), 'url' => admin_url( 'admin.php?page=wc-settings&tab=checkout' ) ),
+			),
+			$legal_rows,
+			array(
+				array( 'label' => __( 'Pilot olmayan, fiyatlı en az bir ürün yayında', 'kuka-island-core' ), 'complete' => $real_product, 'url' => admin_url( 'edit.php?post_type=product' ) ),
+				array( 'label' => __( 'Mağaza “Çok yakında” modundan çıkarıldı', 'kuka-island-core' ), 'complete' => 'yes' !== get_option( 'woocommerce_coming_soon' ), 'url' => admin_url( 'admin.php?page=wc-settings&tab=site-visibility' ) ),
+			)
+		);
+
+		return array_map(
+			static function ( array $check ): array {
+				$check['applicable'] ??= true;
+				$check['legal']      ??= false;
+				$check['state']      ??= $check['complete'] ? 'complete' : self::LEGAL_STATUS_PENDING;
+				return $check;
+			},
+			$checks
+		);
+	}
+
+	/**
+	 * Applicable rows only. A row the operator declared "uygulanamaz" is not a
+	 * launch gap, so it leaves both the numerator and the denominator.
+	 *
+	 * @param array<int, array{complete:bool,applicable:bool}> $checks
+	 * @return array{complete:int,total:int,missing:int,not_applicable:int}
+	 */
+	public static function iyzico_readiness_totals( array $checks ): array {
+		$applicable = array_values( array_filter( $checks, static fn( array $check ): bool => ! empty( $check['applicable'] ) ) );
+		$complete   = count( array_filter( $applicable, static fn( array $check ): bool => ! empty( $check['complete'] ) ) );
 		return array(
-			$page_check( 'hakkimizda', __( 'Hakkımızda sayfası yayında', 'kuka-island-core' ) ),
-			$page_check( 'gizlilik-politikasi', __( 'Gizlilik Politikası yayında', 'kuka-island-core' ) ),
-			$page_check( 'mesafeli-satis-sozlesmesi', __( 'Mesafeli Satış Sözleşmesi yayında', 'kuka-island-core' ) ),
-			array( 'label' => __( 'Kargo ve İade sayfaları yayında', 'kuka-island-core' ), 'complete' => $shipping instanceof WP_Post && 'publish' === $shipping->post_status && $returns instanceof WP_Post && 'publish' === $returns->post_status, 'url' => $shipping instanceof WP_Post ? admin_url( 'post.php?post=' . $shipping->ID . '&action=edit' ) : admin_url( 'edit.php?post_type=page' ) ),
-			$page_check( 'iletisim', __( 'İletişim sayfası yayında', 'kuka-island-core' ) ),
-			array( 'label' => __( 'Site HTTPS kullanıyor', 'kuka-island-core' ), 'complete' => 'https' === wp_parse_url( home_url( '/' ), PHP_URL_SCHEME ), 'url' => admin_url( 'site-health.php' ) ),
-			array( 'label' => __( 'iyzico eklentisi etkin', 'kuka-island-core' ), 'complete' => $iyzico_active, 'url' => admin_url( 'admin.php?page=wc-settings&tab=checkout' ) ),
-			array( 'label' => __( 'Ödeme sayfasındaki iyzico kart şeridi hazır', 'kuka-island-core' ), 'complete' => ! empty( $plugin_cards ), 'url' => admin_url( 'admin.php?page=wc-settings&tab=checkout' ) ),
-			array( 'label' => __( 'MERSİS, KEP, meslek odası ve davranış kuralları girildi', 'kuka-island-core' ), 'complete' => $company_ready, 'url' => add_query_arg( 'tab', 'legal', $appearance ) ),
-			array( 'label' => __( 'ETBİS numarası girildi', 'kuka-island-core' ), 'complete' => ! empty( $content['legal']['etbis_number'] ), 'url' => add_query_arg( 'tab', 'legal', $appearance ) ),
-			array( 'label' => __( 'Pilot olmayan, fiyatlı en az bir ürün yayında', 'kuka-island-core' ), 'complete' => $real_product, 'url' => admin_url( 'edit.php?post_type=product' ) ),
-			array( 'label' => __( 'Mağaza “Çok yakında” modundan çıkarıldı', 'kuka-island-core' ), 'complete' => 'yes' !== get_option( 'woocommerce_coming_soon' ), 'url' => admin_url( 'admin.php?page=wc-settings&tab=site-visibility' ) ),
+			'complete'       => $complete,
+			'total'          => count( $applicable ),
+			'missing'        => count( $applicable ) - $complete,
+			'not_applicable' => count( $checks ) - count( $applicable ),
 		);
 	}
 
@@ -777,6 +980,13 @@ final class Kuka_Island_Core_Site_Appearance {
 					<option value="yes" <?php selected( 'yes', $value ); ?>><?php esc_html_e( 'İndirimden önceki tutar', 'kuka-island-core' ); ?></option>
 				</select>
 				<p class="description"><?php esc_html_e( 'Varsayılanda kupon indirimi eşiğe uygulanır. “İndirimden önce” seçilirse ücretsiz kargo uygunluğu kupon uygulanmadan önceki ara toplamla değerlendirilir.', 'kuka-island-core' ); ?></p>
+			<?php elseif ( 'legal_status' === $type ) : ?>
+				<select id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>">
+				<?php foreach ( self::legal_status_labels() as $status_value => $status_label ) : ?>
+					<option value="<?php echo esc_attr( $status_value ); ?>" <?php selected( $status_value, $value ); ?>><?php echo esc_html( $status_label ); ?></option>
+				<?php endforeach; ?>
+				</select>
+				<p class="description"><?php esc_html_e( '“Bekliyor” varsayılandır ve lansman eksikliği olarak sayılır. “Mevcut” yalnız yukarıdaki değer dolu ve doğrulanmışsa sitede yayımlanır. “Uygulanamaz” satırı sitede göstermez ve eksik saymaz; bu hukuki bir beyandır, mali müşavir veya hukuk danışmanı teyidi olmadan seçmeyin.', 'kuka-island-core' ); ?></p>
 			<?php elseif ( 'tone' === $type ) : ?>
 				<select id="<?php echo esc_attr( $group_key . '-' . $field_key ); ?>" name="<?php echo esc_attr( $name ); ?>">
 					<option value="light" <?php selected( 'light', $value ); ?>><?php esc_html_e( 'Açık metin', 'kuka-island-core' ); ?></option>
@@ -1036,6 +1246,13 @@ final class Kuka_Island_Core_Site_Appearance {
 						break;
 					case 'tone':
 						$value = in_array( $value, array( 'light', 'dark' ), true ) ? $value : 'light';
+						break;
+					case 'legal_status':
+						// Tanınmayan gönderim sessizce "uygulanamaz"a düşmemeli;
+						// güvenli varsayılan her zaman "bekliyor"dur.
+						$value = in_array( $value, array( self::LEGAL_STATUS_PENDING, self::LEGAL_STATUS_PRESENT, self::LEGAL_STATUS_NOT_APPLICABLE ), true )
+							? (string) $value
+							: self::LEGAL_STATUS_PENDING;
 						break;
 					default:
 						$value = sanitize_text_field( $value );

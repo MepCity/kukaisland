@@ -40,6 +40,8 @@ final class Kuka_Island_Core_Plugin {
 			'class-email-delivery.php',
 			'class-fulfillments.php',
 			'class-fulfillments-language.php',
+			'class-iyzico-idempotency.php',
+			'class-iyzico-refund-guard.php',
 			'class-admin-experience.php',
 		);
 
@@ -67,6 +69,8 @@ final class Kuka_Island_Core_Plugin {
 			new Kuka_Island_Core_Email_Delivery(),
 			new Kuka_Island_Core_Fulfillments(),
 			new Kuka_Island_Core_Fulfillments_Language(),
+			new Kuka_Island_Core_Iyzico_Idempotency(),
+			new Kuka_Island_Core_Iyzico_Refund_Guard(),
 			new Kuka_Island_Core_Admin_Experience(),
 		);
 

@@ -24,7 +24,7 @@ Tipler: `text` tek satır, `textarea` çok satır, `checkbox` anahtar, `number` 
 | 7. Navigasyon | Header, ana sayfa kategori indeksi ve yardım menüsü | `main: link_lines`; `main_labels_en: lines`; `categories: category_navigation`; `categories_labels_en: lines`; `help: link_lines`; `help_labels_en: lines` |
 | 8. Footer | Bülten alanı ile yardım/yasal bağlantılar | `newsletter_enabled: checkbox`; `newsletter_eyebrow: text`; `newsletter_eyebrow_en: text`; `newsletter_title: text`; `newsletter_title_en: text`; `newsletter_copy: textarea`; `newsletter_copy_en: textarea`; `newsletter_consent: textarea`; `newsletter_consent_en: textarea`; `newsletter_notification_email: email`; `help_links: link_lines`; `help_links_labels_en: lines`; `legal_links: link_lines`; `legal_links_labels_en: lines` |
 | 9. Ticari Bilgiler | Duyuru, sepet, ödeme, kargo/iade ve yasal kısa kodlar | `free_shipping_threshold: number`; `ignore_discounts: shipping_discount_basis`; `flat_shipping_fee: number`; `shipping_carrier: text`; `delivery_time: text`; `delivery_time_en: text`; `cayma_hakki_gun: number`; `return_shipping_responsibility: text`; `return_shipping_responsibility_en: text`; `shipping_copy: textarea`; `shipping_copy_en: textarea`; `free_shipping_remaining_copy: textarea`; `free_shipping_remaining_copy_en: textarea`; `free_shipping_ready_copy: textarea`; `free_shipping_ready_copy_en: textarea`; `flat_rate_copy: textarea`; `flat_rate_copy_en: textarea`; `hygiene_copy: textarea`; `hygiene_copy_en: textarea`; `hygiene_defect_copy: textarea`; `hygiene_defect_copy_en: textarea`; `hygiene_try_on_copy: textarea`; `hygiene_try_on_copy_en: textarea`; `secure_payment_copy: textarea`; `secure_payment_copy_en: textarea`; `support_hours: text`; `support_hours_en: text` |
-| 10. Şirket ve Yasal Bilgiler | İletişim ve sekiz yasal sayfanın şirket bloğu; manuel iyzico belge durumu | `company_title: text`; `brand_name: text`; `tax_number: text`; `tax_office: text`; `address_full: textarea`; `address_short: text`; `telephone: text`; `mersis_number: text`; `kep_address: email`; `professional_chamber: text`; `professional_rules_url: url`; `etbis_number: text`; `iyzico_tax_certificate: checkbox`; `iyzico_signature_circular: checkbox`; `iyzico_identity_copy: checkbox`; `iyzico_iban_document: checkbox`; `iyzico_findeks_report: checkbox` |
+| 10. Şirket ve Yasal Bilgiler | İletişim ve sekiz yasal sayfanın şirket bloğu; her yasal kimlik için mevcut/bekliyor/uygulanamaz beyanı; manuel iyzico belge durumu | `company_title: text`; `brand_name: text`; `tax_number: text`; `tax_office: text`; `address_full: textarea`; `address_short: text`; `telephone: text`; `mersis_number: text`; `mersis_status: legal_status`; `kep_address: email`; `kep_status: legal_status`; `professional_chamber: text`; `professional_chamber_status: legal_status`; `professional_rules_url: url`; `professional_rules_status: legal_status`; `etbis_number: text`; `etbis_status: legal_status`; `iyzico_tax_certificate: checkbox`; `iyzico_signature_circular: checkbox`; `iyzico_identity_copy: checkbox`; `iyzico_iban_document: checkbox`; `iyzico_findeks_report: checkbox` |
 | 11. Ödeme Formu Alanları | Checkout alan zorunlulukları | `require_phone: checkbox`; `require_company: checkbox`; `require_address_2: checkbox`; `require_city: checkbox` |
 | 12. Beden Rehberi Verileri | Beden Rehberi sayfasındaki üç tablo | `size_top_rows: size_rows`; `size_bottom_rows: size_rows`; `size_swimsuit_rows: size_rows` |
 | 13. Üyelik | Misafir ödeme ve sepet oturumu | `enabled: checkbox`; `guest_session_hours: number` |
@@ -60,3 +60,39 @@ Koda gömülü, operatörün değiştirmesi gereken açık içerik boşluğu bul
 ## Güvenlik ölçümü
 
 Site Görünümü kaydı `manage_woocommerce` + nonce kullanır; ürün/sayfa/terim/swatch ve bülten dışa aktarma yollarında ilgili yetki + nonce vardır. URL/e-posta/sayı/medya/slug/link satırı alanları tipe göre temizlenir. `upload_mimes` filtresi yoktur; SVG yükleme açılmamıştır.
+
+## Sipariş operasyonu — hepsi sipariş ekranından
+
+Bir operasyon başladığı ekranda biter. Aşağıdaki soruların tamamının cevabı
+**Siparişler → ilgili sipariş** ekranıdır; ayrı bir yönetim sayfasına gidilmez.
+Ekranda ikinci bir rehber veya veri özeti yoktur: WooCommerce'in kendi
+bölümleri kullanılır.
+
+| Soru | Nerede |
+| --- | --- |
+| Sipariş geldiğinde ne yaparım? | Sipariş durumu ve ürün satırları; hazırlık bitince **Kargo işlemlerini aç** |
+| Kargo takip numarasını nereden girerim? | Sipariş ekranında **Kargo işlemlerini aç** → Kargo bilgileri |
+| Müşteriye kargo bildirimi nasıl gider? | Aynı panelde **Kargo bildirimini müşteriye gönder** anahtarı |
+| Siparişi ne zaman tamamlandı yaparım? | Teslimat doğrulandığında; “Kargoya verildi” satıcının işlemi, “Teslim edildi” değil |
+| Kısmi gönderim nasıl yapılır? | Kargo işlemleri panelinde yalnız gönderilecek ürünleri seçip ayrı gönderim oluşturun |
+| Müşteri kim, iletişim bilgisi ne? | Sipariş ekranının **Faturalama** bölümü: ad, soyad, e-posta ve telefon |
+
+Faturalama bölümünün üstündeki “Müşteri” açılır kutusu siparişin bir kullanıcı
+hesabına bağlanmasıdır; alıcının adı fatura bilgisinden gelir ve o kutudan
+bağımsızdır. Misafir siparişte kutu boş kalır, fatura bilgisi eksiksiz durur.
+
+### Kargo terminolojisi
+
+WooCommerce'in “yerine getirme” dili sipariş ekranlarında kargo diline çevrilir
+(61 eşleme; 35'i çekmecenin React paketinden, 26'sı PHP yüzeylerinden). Eşleme
+tablosunun tamamı `wp-content/plugins/kuka-island-core/includes/class-fulfillments-language.php`
+içindedir. Çeviri yalnız sipariş listesi ve sipariş düzenleme ekranında, yalnız
+Türkçe yönetici dilinde çalışır; İngilizce yönetici arayüzü WooCommerce'in kendi
+metinlerini görür.
+
+### İleride: kargo firması entegrasyonu
+
+DHL veya başka bir kargo firması entegrasyonu geldiğinde Kargo İşlemleri
+panelindeki mevcut WooCommerce Fulfillments kaydını kullanır; kendi sipariş veri
+modelini kurmaz. Entegrasyon gerçekten bağlanana kadar çalışmayan bir düğme
+gösterilmez.

@@ -210,6 +210,9 @@ final class Kuka_Island_Core_Language {
 			'Kayıtlı olunan meslek odası' => 'Professional Chamber',
 			'Mesleki davranış kuralları' => 'Professional Code of Conduct',
 			'Uygulanan mesleki davranış kuralları' => 'Professional Code of Conduct', 'ETBİS numarası' => 'ETBIS Number',
+			'MERSİS numarası' => 'MERSIS Number',
+			// Yasal alan durumu: operatör beyanı, hukuki varsayım değil.
+			'Bekliyor' => 'Pending', 'Mevcut' => 'Present', 'Uygulanamaz' => 'Not applicable',
 			'Bikini üstü' => 'Bikini top', 'Bikini altı' => 'Bikini bottom', 'Mayo' => 'Swimsuit',
 			'Göğüs (cm)' => 'Bust (cm)', 'Göğüs altı (cm)' => 'Underbust (cm)', 'Bel (cm)' => 'Waist (cm)',
 			'Kalça (cm)' => 'Hips (cm)', 'Kupa' => 'Cup',
@@ -235,6 +238,8 @@ final class Kuka_Island_Core_Language {
 			'Renk' => 'Color', 'Beden' => 'Size', 'Temizle' => 'Clear', 'Sonuçları gör' => 'View results',
 			'Bu seçimde ürün bulunamadı.' => 'No products were found for this selection.', 'Filtrelerden birini kaldırarak yeniden deneyin.' => 'Remove a filter and try again.',
 			'Filtreleri temizle' => 'Clear filters', 'Teslimat adresi' => 'Shipping address', 'Fatura bilgileri' => 'Billing details',
+			'Adres' => 'Address', 'Adres devamı' => 'Address line 2', 'İl' => 'Province',
+			'Cadde, sokak, bina ve kapı numarası' => 'Street, building and door number', 'Site, blok, daire vb.' => 'Complex, block, apartment, etc.',
 			'Kişisel bilgiler' => 'Personal information', 'Sepet' => 'Cart', 'Bilgiler ve ödeme' => 'Details and payment', 'Onay' => 'Confirmation',
 			'Ödeme adımları' => 'Checkout steps', 'Yardım gerekiyor mu?' => 'Need help?', 'Güvenli ödeme' => 'Secure payment',
 			'Kargo ve iade' => 'Shipping and returns', 'Sepetiniz boş' => 'Your cart is empty', 'Ada seçkisini keşfedin.' => 'Explore the island selection.',

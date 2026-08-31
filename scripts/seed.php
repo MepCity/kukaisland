@@ -209,6 +209,10 @@ update_option( 'woocommerce_price_decimal_sep', ',' );
 update_option( 'woocommerce_default_country', 'TR' );
 update_option( 'woocommerce_calc_taxes', 'no' );
 update_option( 'woocommerce_enable_guest_checkout', 'yes' );
+// Müşteriye kesin adet yalnız varyasyonun kendi düşük stok eşiğine indiğinde
+// gösterilir. WooCommerce panelindeki üçlü seçim (her zaman / düşükte / asla)
+// yönetici tarafından sonradan değiştirilebilir.
+update_option( 'woocommerce_stock_format', 'low_amount' );
 // Gerçek lansman onayına kadar iki ayrı koruma birlikte kalır: WooCommerce
 // yakında ekranı ziyaretçiyi mağazadan uzak tutar, WordPress noindex işareti
 // arama motorlarının içeriği dizine eklememesini ister.
@@ -223,6 +227,9 @@ update_option( 'woocommerce_enable_signup_and_login_from_checkout', 'no' );
 update_option( 'woocommerce_checkout_privacy_policy_text', 'Kişisel verileriniz siparişinizi işlemek, site deneyiminizi desteklemek ve [privacy_policy] sayfamızda açıklanan diğer amaçlar için kullanılacaktır.' );
 update_option( 'woocommerce_custom_orders_table_enabled', 'yes' );
 update_option( 'woocommerce_custom_orders_table_data_sync_enabled', 'no' );
+// WooCommerce'in güncelleme-güvenli yerleşik gönderim/takip sistemi.
+// Tabloları WooCommerce kendisi bir sonraki init isteğinde oluşturur.
+update_option( 'woocommerce_feature_fulfillments_enabled', 'yes' );
 update_option( 'woocommerce_thumbnail_image_width', '600' );
 update_option( 'woocommerce_single_image_width', '1080' );
 update_option( 'woocommerce_thumbnail_cropping', 'custom' );
@@ -336,7 +343,27 @@ if ( class_exists( 'Kuka_Island_Core_Site_Appearance' ) ) {
 		}
 	}
 	unset( $scene );
-	$site_content['schema_version'] = 7;
+	// iyzico entegrasyon testinin fixture ürünü burada, kontrollü biçimde kurulur.
+	// Test kendi ürününü yaratmaz: yaratsaydı katalogda kalıcı bir kayıt bırakma
+	// ya da her koşuda ürün silme riski doğardı. Ürün `private` durumdadır,
+	// katalogda gizlidir ve yalnız test siparişlerinde kullanılır.
+	if ( ! wc_get_product_id_by_sku( 'KUKA-SANDBOX-IYZ-FIXTURE' ) ) {
+		$fixture = new WC_Product_Simple();
+		$fixture->set_name( 'SANDBOX TEST ÜRÜNÜ — iyzico entegrasyon testi fixture' );
+		$fixture->set_sku( 'KUKA-SANDBOX-IYZ-FIXTURE' );
+		$fixture->set_regular_price( '100' );
+		$fixture->set_catalog_visibility( 'hidden' );
+		$fixture->set_manage_stock( true );
+		$fixture->set_backorders( 'no' );
+		$fixture->set_stock_quantity( 500 );
+		$fixture->set_status( 'private' );
+		$fixture->save();
+	}
+
+	// Yasal kimlik durumları seed'de bilinçli olarak yazılmaz: Site Görünümü
+	// varsayılanı "bekliyor"dur ve operatörün önceki beyanı get() üzerinden
+	// korunur. Hiçbir alan seed tarafından "mevcut" veya "uygulanamaz" yapılmaz.
+	$site_content['schema_version'] = 14;
 	update_option( Kuka_Island_Core_Site_Appearance::OPTION_NAME, $site_content, true );
 }
 

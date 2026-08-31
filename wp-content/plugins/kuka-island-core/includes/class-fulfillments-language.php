@@ -60,15 +60,16 @@ final class Kuka_Island_Core_Fulfillments_Language {
 	/**
 	 * Scoped stylesheet for the orders screens.
 	 *
-	 * Filter-strip layout plus the narrowly scoped wheel/trackpad fix for
-	 * WooCommerce's nested fulfillment drawer scrollers. There is no script.
+	 * Filter-strip layout plus the narrowly scoped wheel/trackpad fix that makes
+	 * WooCommerce's outer fulfillment panel the only scroll container. Do not
+	 * add a document scroll-lock script here; see KARGO_SCROLL_KORUMA_NOTU.md.
 	 */
 	public function enqueue_order_screen_assets(): void {
 		wp_enqueue_style(
 			'kuka-island-admin-orders',
 			plugins_url( 'assets/admin-orders.css', KUKA_ISLAND_CORE_FILE ),
 			array(),
-			'0.3.0'
+			'0.6.0'
 		);
 	}
 

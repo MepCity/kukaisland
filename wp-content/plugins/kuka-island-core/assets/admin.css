@@ -86,6 +86,9 @@
 
 .kuka-readiness-list .is-complete { color: #008a20; }
 .kuka-readiness-list .is-missing { color: #b32d2e; }
+/* Uygulanamaz satır ne yeşil ne kırmızıdır: eksik değildir, tamam da değildir. */
+.kuka-readiness-list .is-not-applicable { color: #646970; }
+.kuka-readiness-list em { font-style: normal; opacity: 0.75; }
 .kuka-readiness-list a { color: #2271b1; }
 
 .kuka-iyzico-documents {
