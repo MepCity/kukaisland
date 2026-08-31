@@ -89,3 +89,49 @@ Bu depo çalışan yerel WooCommerce üretim pilotudur; canlı satışa geçiş 
 - Takım ürünlerde bağımsız iki beden ve ayrı paket fiyatı, ücretsiz çözümün stok/fiyat koşullarını karşılamadığı için ürün eşleştirme bağlantısı düzeyinde kalır.
 - Gerçek yedi fotoğraflı müşteri ürünü teslim edilmedi. Galeri 2–4 görselli pilot medya ve görsel sayısından bağımsız DOM sözleşmesiyle doğrulandı; yedi gerçek fotoğraflı kabul turu açıktır.
 - iyzico sandbox anahtarları bulunmadığından gerçek tahsilat/3D dönüşü test edilmedi. Ödeme yöntemleri korunmuştur; yalnız `#iyzico-bpo1[data-type="page-overlay"]` yüzen promosyonu, eklentide kapatma ayarı bulunmadığı için child CSS ile gizlenir.
+
+## Test taşınabilirliği: yerele özgü siparişler
+
+GitHub Actions `Quality` koşusu (`make install` ile temiz veritabanı, ardından `make verify`) iki kabul kontrolünde başarısız oluyordu. Kök neden üretim kodu veya EDM entegrasyonu değil, testlerin **yalnız geliştirici veritabanında bulunan sipariş numaralarını evrensel sözleşme gibi kullanmasıydı**.
+
+### 1. Billing paneli alan davranışı
+
+Eski hâl: `scripts/verify-order-experience.php`, `ORDER_BILLING_FIELDS` çıktısını sabit `#297` ve `#125` siparişlerinden üretiyordu. Temiz veritabanında bu siparişler yok, çıktı boş kalıyor ve beklenti tutmuyordu.
+
+Yeni hâl: davranış `scripts/verify-order-billing-panel.php` içinde, bu koşunun kendi oluşturup sahiplendiği ve tamamen sildiği fixture'lar üzerinde kanıtlanıyor. `verify-order-experience.php` salt-okunur sözleşmesini koruyor; hiçbir yazma işlemi içermiyor.
+
+Sözleşme:
+
+```
+ORDER_BILLING_FIELDS=full:first:set,last:set,email:set,phone:set|no_phone:first:set,last:set,email:set,phone:empty
+ORDER_BILLING_FIELD_PRESENCE=PASS|cases:2|...
+ORDER_BILLING_ROUNDTRIP=PASS|fields:12|mismatches:none
+ORDER_BILLING_FIXTURE_CLEANUP=PASS|state:succeeded|created:2|db_discoverable:2|refused:0|leftover:0|reentry_blocked:yes
+ORDER_BILLING_DB_ISOLATION=PASS|tables:12|pre_hash:...|post_hash:...|diff:none
+```
+
+İki fixture: telefonu dolu bir müşteri ve telefonu boş bir müşteri — eski `#125` / `#297` çiftinin ölçtüğü ayrımın aynısı. Değerler yazıldıktan sonra veritabanından yeniden okunup **byte-for-byte** karşılaştırılıyor, yani alanları bozan bir filtre veya store yakalanıyor. Fixture'lar `_kuka_isolation_run_id` taşıdığı için ölümcül hatadan sonra da veritabanından bulunup temizlenebiliyor; 12 tablo keyset'i öncesi/sonrası karşılaştırılıyor.
+
+### 2. Uzun ömürlü yerel sandbox siparişleri
+
+`#125`, `#189`, `#190`, `#192`, `#193` yalnız geliştirici veritabanında var. Bunların değişmediğini doğrulamak yerelde anlamlı; temiz kurulumda bulunmamaları **hata değil, farklı bir durum**.
+
+Sözleşme üç durumlu (`scripts/lib-protected-orders.php`):
+
+| Durum | Anlam |
+|---|---|
+| `verified` | Snapshot'taki her sipariş mevcut ve imzası (`status/total`) birebir aynı |
+| `not_applicable` | Hiçbiri yok — temiz veritabanı / CI |
+| `DRIFT` | Kısmen mevcut, ya da bir imza değişmiş → **FAIL** |
+
+```
+PROTECTED_ORDERS=verified|present:5/5|matching:5|drifted:0|absent:0|reason:all_snapshot_orders_present_and_unchanged
+PROTECTED_ORDERS=not_applicable|present:0/5|matching:0|drifted:0|absent:5|reason:clean_database_without_local_sandbox_orders
+PROTECTED_ORDERS=DRIFT|present:5/5|matching:4|drifted:1|absent:0|reason:partial_presence_or_signature_change|drifted_ids:190
+```
+
+`verify.sh` yalnız ilk iki satırı kabul eder; her `DRIFT` şekli FAIL üretir. Bu bir "sipariş yoksa PASS" kısayolu değildir: kısmi mevcudiyet ve imza değişimi hâlâ hata sayılır.
+
+Başka bir doğrulama scriptinin geçici fixture'ı bu ID'lerden birini tutuyorsa (temiz veritabanında mümkün), run işareti taşıdığı için o satır uzun ömürlü sipariş sayılmaz ve `absent` olarak sınıflanır — sahte `DRIFT` üretmez.
+
+Sınıflandırıcı saf bir fonksiyon olduğu için üç dalın tamamı fixture ile kanıtlanıyor; temiz veritabanı dalı geliştirici veritabanında yeniden üretilemediği hâlde ölçülebiliyor (`PROTECTED_ORDERS_VERDICT_MATRIX`, 8 vaka).

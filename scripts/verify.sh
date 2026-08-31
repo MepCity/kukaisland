@@ -32,6 +32,10 @@ printf '%s\n' "$iyzico_isolation"
 order_experience=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-order-experience.php)
 printf '%s\n' "$order_experience"
 
+# Portable, fixture-backed companion to the read-only order-screen snapshot.
+order_billing=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-order-billing-panel.php)
+printf '%s\n' "$order_billing"
+
 refund_guard=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-iyzico-refund-guard.php)
 printf '%s\n' "$refund_guard"
 
@@ -328,6 +332,36 @@ expect_order_experience_line() {
     failures=$((failures + 1))
   fi
 }
+expect_order_experience_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$order_experience" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_order_billing_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$order_billing" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_order_billing_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$order_billing" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
 expect_iyzico_line() {
   label=$1
   line=$2
@@ -545,8 +579,19 @@ expect_order_experience_line "wording never attaches outside the orders screens"
 expect_order_experience_line "wording attaches on the orders screen" "FULFILLMENT_HOOKED=orders_screen:yes"
 expect_order_experience_line "no second summary or guide on the order screen" "ORDER_OVERVIEW_REMOVED=yes|leftovers:0"
 expect_order_experience_line "the fulfillment drawer has one safe scrolling layer" "DRAWER_SCROLL_CONTRACT=drawer_rules:1|safe_body_rules:1|document_locks:0|script:removed"
-expect_order_experience_line "customer details stay in the Billing panel" "ORDER_BILLING_FIELDS=297:first:set,last:set,email:set,phone:empty|125:first:set,last:set,email:set,phone:set"
-expect_order_experience_line "long lived sandbox orders are unchanged" "PROTECTED_ORDERS=5/5"
+# Billing-panel behaviour is proved on run-owned fixtures, so the same result is
+# produced on a clean CI database and on the developer database.
+expect_order_billing_line "customer details stay in the Billing panel" "ORDER_BILLING_FIELDS=full:first:set,last:set,email:set,phone:set|no_phone:first:set,last:set,email:set,phone:empty"
+expect_order_billing_match "billing field presence contract" "^ORDER_BILLING_FIELD_PRESENCE=PASS\\|cases:2\\|"
+expect_order_billing_line "billing values survive the round trip byte for byte" "ORDER_BILLING_ROUNDTRIP=PASS|fields:12|mismatches:none"
+expect_order_billing_line "billing fixtures are owned and fully removed" "ORDER_BILLING_FIXTURE_CLEANUP=PASS|state:succeeded|created:2|db_discoverable:2|refused:0|leftover:0|reentry_blocked:yes"
+expect_order_billing_match "billing fixtures leave the database untouched" "^ORDER_BILLING_DB_ISOLATION=PASS\\|tables:12\\|pre_hash:[0-9a-f]+\\|post_hash:[0-9a-f]+\\|diff:none$"
+expect_order_billing_match "protected-order verdict covers every branch" "^PROTECTED_ORDERS_VERDICT_MATRIX=PASS\\|cases:8\\|.*\\|clean_line_shape:ok$"
+
+# The long-lived sandbox orders exist only in the developer database. Present and
+# unchanged is a pass; entirely absent on a clean install is a pass reported as
+# not_applicable. Partial presence or a changed signature is DRIFT and fails.
+expect_order_experience_match "long lived sandbox orders are unchanged or absent on a clean database" "^PROTECTED_ORDERS=(verified\\|present:5/5\\|matching:5\\|drifted:0\\|absent:0\\|reason:all_snapshot_orders_present_and_unchanged|not_applicable\\|present:0/5\\|matching:0\\|drifted:0\\|absent:5\\|reason:clean_database_without_local_sandbox_orders)$"
 expect_refund_guard_line "an unsafe automatic iyzico refund is refused on every clause" "REFUND_PREFLIGHT=valid_latest_row:PASS|payment_id_null:PASS|payment_id_empty:PASS|conversation_id_empty:PASS|status_failure:PASS|payment_status_failure:PASS|verified_id_differs:PASS|no_verified_id:PASS|order_id_mismatch:PASS|latest_row_missing:PASS"
 expect_refund_guard_line "a healthy older row cannot excuse a broken newest row" "REFUND_STALE_LATEST_ROW=older-ok-but-latest-blocked"
 expect_refund_guard_line "the refund guard runs before the record is saved" "REFUND_GUARD_SHAPE=before-save|manual-skipped|other-gateways-skipped"

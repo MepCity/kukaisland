@@ -10,7 +10,13 @@
 
 defined( 'WP_CLI' ) || exit( 1 );
 
-/** Status/total of the long-lived sandbox orders this project must preserve. */
+/**
+ * Status/total of the long-lived sandbox orders this project must preserve.
+ *
+ * These IDs exist only in the developer database. They are a local guard, not a
+ * universal contract: a clean install reports not_applicable rather than
+ * failing. See the PROTECTED_ORDERS block at the end of this file.
+ */
 const KUKA_IYZ_PROTECTED_ORDERS_SNAPSHOT = array(
 	125 => 'processing/4980',
 	189 => 'processing/3039',
@@ -100,23 +106,15 @@ foreach ( $paths as $path ) {
 }
 WP_CLI::line( 'ORDER_OVERVIEW_REMOVED=' . ( 0 === $leftovers && ! class_exists( 'Kuka_Island_Core_Order_Overview' ) ? 'yes' : 'NO' ) . '|leftovers:' . $leftovers );
 
-/* The customer's own details stay in WooCommerce's Billing panel. */
-$billing = array();
-foreach ( array( 297, 125 ) as $order_id ) {
-	$order = wc_get_order( $order_id );
-	if ( ! $order instanceof WC_Order ) {
-		continue;
-	}
-	$billing[] = sprintf(
-		'%d:first:%s,last:%s,email:%s,phone:%s',
-		$order_id,
-		'' !== $order->get_billing_first_name() ? 'set' : 'EMPTY',
-		'' !== $order->get_billing_last_name() ? 'set' : 'EMPTY',
-		'' !== $order->get_billing_email() ? 'set' : 'EMPTY',
-		'' !== $order->get_billing_phone() ? 'set' : 'empty'
-	);
-}
-WP_CLI::line( 'ORDER_BILLING_FIELDS=' . implode( '|', $billing ) );
+/*
+ * The customer's own details stay in WooCommerce's Billing panel.
+ *
+ * That behaviour is proved on run-owned fixtures by
+ * scripts/verify-order-billing-panel.php. It used to be asserted here against
+ * two hard-coded local order IDs, which could not run on a clean database. This
+ * file keeps its read-only contract, so the fixture work lives in its own
+ * script with explicit ownership and cleanup.
+ */
 
 /*
  * 6. The fulfillment drawer has one and only one scrolling layer.
@@ -175,10 +173,37 @@ WP_CLI::line(
 	. '|script:' . ( $script_gone ? 'removed' : 'PRESENT' )
 );
 
-/* 7. Long-lived sandbox orders are still present and untouched. */
-$present = 0;
+/*
+ * 7. Long-lived local sandbox orders are still present and untouched.
+ *
+ * These rows exist only in the developer database. A clean install -- CI, or a
+ * fresh `make reset` -- has none of them, and that absence is not a failure: it
+ * is a different situation, and the contract says so out loud instead of
+ * quietly passing.
+ *
+ *   verified        every snapshot order is present and its signature matches
+ *   not_applicable  none of them exist (clean database)
+ *   DRIFT           some exist and some do not, or a signature changed
+ *
+ * An ID that happens to be held by a fixture from another verification script
+ * is not one of these orders, so a run marker disqualifies the row rather than
+ * counting as drift.
+ */
+require_once __DIR__ . '/lib-protected-orders.php';
+
+$observed = array();
 foreach ( KUKA_IYZ_PROTECTED_ORDERS_SNAPSHOT as $order_id => $signature ) {
 	$order = wc_get_order( $order_id );
-	$present += $order instanceof WC_Order && ( $order->get_status() . '/' . $order->get_total() ) === $signature ? 1 : 0;
+	if ( ! $order instanceof WC_Order ) {
+		$observed[ $order_id ] = array( 'exists' => false );
+		continue;
+	}
+	$observed[ $order_id ] = array(
+		'exists'     => true,
+		'is_fixture' => '' !== (string) $order->get_meta( '_kuka_isolation_run_id', true )
+			|| '' !== (string) $order->get_meta( '_kuka_test_fixture', true ),
+		'signature'  => $order->get_status() . '/' . $order->get_total(),
+	);
 }
-WP_CLI::line( 'PROTECTED_ORDERS=' . $present . '/' . count( KUKA_IYZ_PROTECTED_ORDERS_SNAPSHOT ) );
+
+WP_CLI::line( kuka_protected_orders_verdict( KUKA_IYZ_PROTECTED_ORDERS_SNAPSHOT, $observed )['line'] );
