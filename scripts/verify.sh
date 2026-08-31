@@ -599,7 +599,7 @@ expect_refund_guard_line "the refund guard reads the row the gateway would use" 
 expect_refund_guard_line "the refund guard leaks nothing" "REFUND_GUARD_LEAKS=0"
 expect_invoice_line "Invoice SOAP ext-soap is available" "INVOICE_SOAP_EXTENSION_AVAILABLE=PASS"
 expect_invoice_line "Invoice config hides passwords and masks VKN" "INVOICE_CONFIG_SECURITY=PASS|credentials_hidden:yes|vkn_masked:yes"
-expect_invoice_line "Invoice live readiness validation" "INVOICE_LIVE_READINESS_VALIDATION=PASS|ready:no|missing_count:12"
+expect_invoice_line "Invoice live readiness validation" "INVOICE_LIVE_READINESS_VALIDATION=PASS|ready:no|missing_count:11"
 
 # Audit item 2: generic individual VKN policy defaults to false.
 expect_invoice_line "Generic individual VKN defaults to false" "INVOICE_GENERIC_VKN_DEFAULT_FALSE=PASS|constant_defined:no|default_allow:no"
@@ -607,7 +607,12 @@ expect_invoice_line "Generic individual VKN needs literal true" "INVOICE_GENERIC
 expect_invoice_line "Generic individual VKN runtime behaviour" "INVOICE_GENERIC_VKN_RUNTIME_BEHAVIOUR=PASS|default_error:missing_individual_tckn|explicit_true_vkn:11111111111"
 
 # Audit item 3: auto-send honours the whole can_send_invoice contract.
-expect_invoice_line "Auto-send honours full readiness contract" "INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS|ready_enabled:yes|fields_checked:12|leaks:none"
+expect_invoice_line "Auto-send honours full readiness contract" "INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS|ready_enabled:yes|fields_checked:11|leaks:none|postcode_optional:yes"
+
+# EDM's own sample invoices carry no supplier cbc:PostalZone and its test portal
+# has no postcode field, so the value is emitted when known and omitted when not.
+expect_invoice_line "supplier postcode is optional in the UBL" "INVOICE_SUPPLIER_POSTCODE_OPTIONAL=PASS|with_postcode:present|value_roundtrip:exact|without_postcode:omitted|empty_node_emitted:no|supplier_fields_missing:none|customer_postal_zone:unchanged"
+expect_invoice_line "the mapper accepts a missing supplier postcode" "INVOICE_MAPPER_POSTCODE_OPTIONAL=PASS|missing_postcode:accepted|postcode_value:empty|missing_city:missing_supplier_configuration"
 
 # REQUEST_HEADER matches EDM's published envelope, and a SOAP fault is reduced
 # to a fixed vocabulary before it can reach any output stream.
@@ -693,7 +698,8 @@ expect_value "credential mount is reachable only by the allow-listed script" "$e
 expect_value "allow-listed script reaches the credential gate" "$edm_runner_allowlist_ok" "yes"
 expect_sandbox_match "credential parser keeps values verbatim" "^SANDBOX_CRED_PARSER_VERBATIM=PASS\\|keys_recognised:6\\|equals_in_value_preserved:yes\\|trailing_space_preserved:yes\\|quotes_preserved:yes\\|crlf_handled:yes\\|unknown_key_ignored:yes$"
 expect_sandbox_line "sandbox verification allows PLAN only when every blocking check passes" "SANDBOX_VERIFY_ALL_PASS_ALLOWS_PLAN=PASS|checks:6|failed:none"
-expect_sandbox_match "sandbox verification negative matrix leaks nothing" "^SANDBOX_VERIFY_NEGATIVE_MATRIX=PASS\\|cases:22\\|leaked:none$"
+expect_sandbox_match "sandbox verification negative matrix leaks nothing" "^SANDBOX_VERIFY_NEGATIVE_MATRIX=PASS\\|cases:21\\|leaked:none$"
+expect_sandbox_line "a missing sender postcode does not block the sandbox" "SANDBOX_MISSING_POSTCODE_DOES_NOT_BLOCK=PASS|ok:yes|failed:none|missing_company_fields:none"
 expect_sandbox_match "LoadInvoice response parser fixtures" "^SANDBOX_LOAD_RESPONSE_PARSER=PASS\\|fixtures:12\\|"
 expect_sandbox_match "readback verdict is fail-closed" "^SANDBOX_READBACK_VERDICT_FAIL_CLOSED=PASS\\|"
 expect_sandbox_line "only one process may hold the write claim" "SANDBOX_CLAIM_SINGLE_HOLDER=PASS|first_acquire:yes|second_acquire:no"

@@ -173,7 +173,27 @@ if ( '' === $config->get_sender_vkn() ) {
 } else {
 	try {
 		$user = $client->check_user( $config->get_sender_vkn() );
-		WP_CLI::line( sprintf( 'REAL_EDM_CHECK_USER=PASS|is_einvoice_user:%s|alias_present:%s', ! empty( $user['is_einvoice_user'] ) ? 'yes' : 'no', '' !== (string) ( $user['alias'] ?? '' ) ? 'yes' : 'no' ) );
+
+		/*
+		 * When no alias comes back, the shape of the answer decides what to do
+		 * next: an empty USER list means the identifier is simply not in the
+		 * GIB e-Invoice registry, while a populated USER without ALIAS means
+		 * the registry knows it but publishes no mailbox. Only FIELD NAMES are
+		 * printed -- they are WSDL schema, not data -- and never any value.
+		 */
+		$user_fields = array_keys( (array) ( $user['raw_data'] ?? array() ) );
+		sort( $user_fields );
+
+		WP_CLI::line(
+			sprintf(
+				'REAL_EDM_CHECK_USER=PASS|is_einvoice_user:%s|alias_present:%s|alias_matches_configured:%s|user_entry:%s|response_fields:%s',
+				! empty( $user['is_einvoice_user'] ) ? 'yes' : 'no',
+				'' !== (string) ( $user['alias'] ?? '' ) ? 'yes' : 'no',
+				( '' !== $config->get_sender_alias() && (string) ( $user['alias'] ?? '' ) === $config->get_sender_alias() ) ? 'yes' : 'no',
+				empty( $user_fields ) ? 'absent' : 'present',
+				empty( $user_fields ) ? 'none' : implode( ',', $user_fields )
+			)
+		);
 	} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
 		WP_CLI::line( sprintf( 'REAL_EDM_CHECK_USER=FAIL|%s', $safe_detail( $e ) ) );
 	}

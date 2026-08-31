@@ -107,7 +107,8 @@ Sıkı sözleşmeler yerinde: `is_configured()` (kullanıcı adı + parola + gö
 1. `has_login_credentials()` — kullanıcı adı + parola. **`Login`, `CheckCounter`,
    `GetInvoiceSerial`, `Logout` bu seviyede çalışır.** `CheckUser` ayrıca gönderici VKN ister.
 2. `can_run_read_only_sandbox()` — salt-okunur sorgular için hazır.
-3. `can_send_invoice()` — 12 alanın tamamı: kullanıcı adı, parola, gönderici VKN, gönderici etiket (alias), her iki fatura serisi (`/^[A-Z0-9]{3}$/`), şirket unvanı, vergi dairesi, adres, ilçe, şehir, posta kodu.
+3. `can_send_invoice()` — 11 zorunlu alan: kullanıcı adı, parola, gönderici VKN, gönderici etiket (alias), her iki fatura serisi (`/^[A-Z0-9]{3}$/`), şirket unvanı, vergi dairesi, adres, ilçe, şehir.
+   **Posta kodu zorunlu değildir** — §5.1.
 4. `is_auto_send_enabled()` — `auto_send` açık **ve** `can_send_invoice()` tam. Eksik tek alan siparişi kuyruğa sokmaz.
 5. `check_live_readiness()` — canlıya geçiş öncesi eksik alan listesi.
 
@@ -165,6 +166,43 @@ Dört sipariş **aynı** mali belge numarasını taşıyor. Bu, kaldırılan num
 | Rastgele `AdditionalDocumentReference/ID` | `class-ubl-tr-builder.php` | Fatura UUID'i (yeniden üretimde XML aynı kalır) |
 
 `Kuka_Island_Core_UBL_TR_Builder::required()` zorunlu her alanı denetler; eksikse belge üretilmez.
+
+### 5.1 Gönderici posta kodu opsiyoneldir
+
+**Kanıt.** EDM'in kendi gönderdiği `XML ÖRNEKLERİ` paketindeki **on altı** örnek faturanın
+(`satis_temel.xml` dahil) hiçbirinde satıcının `cac:PostalAddress` bloğunda `cbc:PostalZone`
+yok. Bağımsız olarak tarandı; hepsinde alt eleman kümesi şu:
+
+```
+cbc:BuildingName, cbc:CitySubdivisionName, cbc:CityName, cbc:IdentificationCode, cbc:Name
+```
+
+EDM test portalında **Tanımlar → Firmalarım → Görüntüle/Güncelle** ekranında posta kodu alanı
+da bulunmuyor. Yani değer, uydurulmadan hiçbir kaynaktan alınamıyor ve EDM açısından zorunlu
+olduğu iddia edilemez.
+
+**Sözleşme.**
+
+| Yer | Davranış |
+|---|---|
+| `can_send_invoice()` / `get_send_readiness_gaps()` | Posta kodu **gap değil** (11 zorunlu alan kaldı) |
+| `check_live_readiness()` | `KUKA_LEGAL_POSTCODE` eksik listesinden çıkarıldı |
+| Sandbox `kuka_sandbox_verify_sender()` | `required_company` yedi alan; posta kodu yok |
+| Production order mapper `get_supplier_data()` | Posta kodu eksikse **artık reddetmiyor**; diğer altı alan hâlâ fail-closed |
+| UBL üretimi | Doluysa `cbc:PostalZone` **aynen** yazılır; boşsa eleman **tamamen atlanır** — boş düğüm şema ihlalidir, nötr boşluk değil |
+| Müşteri/fatura adresi posta kodu | **Değişmedi** |
+
+Ölçüm:
+
+```
+INVOICE_SUPPLIER_POSTCODE_OPTIONAL=PASS|with_postcode:present|value_roundtrip:exact|without_postcode:omitted|empty_node_emitted:no|supplier_fields_missing:none|customer_postal_zone:unchanged
+INVOICE_MAPPER_POSTCODE_OPTIONAL=PASS|missing_postcode:accepted|postcode_value:empty|missing_city:missing_supplier_configuration
+```
+
+Posta kodu boşken üretilen UBL'de satıcının `StreetName`, `CitySubdivisionName`, `CityName`,
+`Country/Name`, `PartyIdentification/ID`, `PartyName/Name` ve `PartyTaxScheme/TaxScheme/Name`
+alanlarının hepsi dolu kalır. Bu değişiklik yalnız posta kodu kapsamındadır; seri,
+numaralandırma ve otomatik gönderim kapıları değişmedi.
 
 ### e-Arşiv alıcı etiketi politikası
 
@@ -283,7 +321,7 @@ Aşağıdaki sonuçlar `docker compose run --rm -T wp-cli wp eval-file /project-
 | PHP ext-soap ve Docker katmanı | **PASS** | `INVOICE_SOAP_EXTENSION_AVAILABLE=PASS` |
 | Kimlik gizliliği ve VKN maskeleme | **PASS** | `INVOICE_CONFIG_SECURITY=PASS` |
 | Genel bireysel VKN varsayılanı `false` | **PASS** | `INVOICE_GENERIC_VKN_DEFAULT_FALSE`, `..._STRICT_TRUE_ONLY`, `..._RUNTIME_BEHAVIOUR` |
-| Auto-send tam hazırlık sözleşmesi | **PASS** | `INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS\|fields_checked:12\|leaks:none` |
+| Auto-send tam hazırlık sözleşmesi | **PASS** | `INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS\|fields_checked:11\|leaks:none\|postcode_optional:yes` |
 | Fixture guard — gerçek runtime yolu | **PASS** | `INVOICE_QUEUE_FIXTURE_GUARD_RUNTIME_PATH`, `INVOICE_MANAGER_FIXTURE_GUARD`, `INVOICE_FIXTURE_GUARD_NOT_OVERRIDABLE` |
 | SOAP sözleşmesi — üretim client üzerinden | **PASS** | 11 operasyon, `INVOICE_SOAP_OPS_VIA_PRODUCTION_CLIENT=PASS` |
 | UBL CONTENT tek base64 | **PASS** | `single_base64_sha256_match:yes` |
@@ -367,7 +405,7 @@ Alanlar:
 | `KUKA_EDM_SENDER_ADDRESS` | sandbox için | UBL adres |
 | `KUKA_EDM_SENDER_DISTRICT` | sandbox için | UBL ilçe |
 | `KUKA_EDM_SENDER_CITY` | sandbox için | UBL şehir |
-| `KUKA_EDM_SENDER_POSTCODE` | sandbox için | UBL posta kodu |
+| `KUKA_EDM_SENDER_POSTCODE` | **opsiyonel** | Doluysa `cbc:PostalZone` üretilir, boşsa eleman hiç yazılmaz — §5.1 |
 | `KUKA_EDM_SERIES_EARCHIVE` | **opsiyonel** | Verilirse biçimi **ve** EDM'deki tescili doğrulanır; tescil gözlemlenemezse BLOCKED. Verilmezse taslak deneyi yine koşar; numarayı EDM atar |
 | `KUKA_EDM_SERIES_EINVOICE` | opsiyonel | — |
 | `KUKA_EDM_SANDBOX_RECEIVER_VKN` | **opsiyonel override** | Boşsa resmî EDM örneğindeki örnek alıcı kimliği fixture olarak kullanılır. Verilirse biçim + güvenlik doğrulaması yapılır; hatalıysa BLOCKED (varsayılana sessizce düşmez) |

@@ -220,9 +220,12 @@ final class Kuka_Island_Core_Invoice_Config {
 		if ( '' === $this->sender_city ) {
 			$gaps[] = 'sender_city';
 		}
-		if ( '' === $this->sender_postcode ) {
-			$gaps[] = 'sender_postcode';
-		}
+		// sender_postcode is deliberately NOT a gap. Every one of the sixteen
+		// invoice samples in EDM's own XML ÖRNEKLERİ package omits
+		// cbc:PostalZone from the supplier cac:PostalAddress, and the EDM test
+		// portal (Tanımlar -> Firmalarım) has no postcode field at all, so it
+		// cannot be sourced without inventing it. It is emitted when known and
+		// omitted when not.
 
 		return $gaps;
 	}
@@ -282,9 +285,7 @@ final class Kuka_Island_Core_Invoice_Config {
 		if ( '' === $this->sender_city ) {
 			$missing[] = 'KUKA_LEGAL_CITY';
 		}
-		if ( '' === $this->sender_postcode ) {
-			$missing[] = 'KUKA_LEGAL_POSTCODE';
-		}
+		// KUKA_LEGAL_POSTCODE is optional: see get_send_readiness_gaps().
 		if ( ! preg_match( '/^[A-Z0-9]{3}$/', $this->series_einvoice ) ) {
 			$missing[] = 'KUKA_EDM_SERIES_EINVOICE (3 büyük harf/rakam)';
 		}

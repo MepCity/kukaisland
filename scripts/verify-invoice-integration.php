@@ -548,7 +548,9 @@ $auto_send_ready = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_over
 $auto_gaps       = array();
 $auto_all_closed = true;
 
-foreach ( array( 'sender_alias', 'series_einvoice', 'series_earchive', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city', 'sender_postcode', 'sender_vkn', 'username', 'password' ) as $field ) {
+// sender_postcode is deliberately absent: it is optional, and the assertion
+// right after this loop proves that clearing it keeps auto-send enabled.
+foreach ( array( 'sender_alias', 'series_einvoice', 'series_earchive', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city', 'sender_vkn', 'username', 'password' ) as $field ) {
 	$broken = new Kuka_Island_Core_Invoice_Config(
 		array_merge( $ready_overrides, array( 'auto_send' => true, $field => '' ) )
 	);
@@ -559,14 +561,24 @@ foreach ( array( 'sender_alias', 'series_einvoice', 'series_earchive', 'sender_t
 	}
 }
 
+// An empty sender postcode must NOT close any gate.
+$no_postcode_config = new Kuka_Island_Core_Invoice_Config(
+	array_merge( $ready_overrides, array( 'auto_send' => true, 'sender_postcode' => '' ) )
+);
+
 $report(
 	'INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT',
-	true === $auto_send_ready->is_auto_send_enabled() && $auto_all_closed,
+	true === $auto_send_ready->is_auto_send_enabled()
+	&& $auto_all_closed
+	&& true === $no_postcode_config->is_auto_send_enabled()
+	&& true === $no_postcode_config->can_send_invoice()
+	&& ! in_array( 'sender_postcode', $no_postcode_config->get_send_readiness_gaps(), true ),
 	sprintf(
-		'ready_enabled:%s|fields_checked:%d|leaks:%s',
+		'ready_enabled:%s|fields_checked:%d|leaks:%s|postcode_optional:%s',
 		$auto_send_ready->is_auto_send_enabled() ? 'yes' : 'no',
 		count( $auto_gaps ),
-		implode( ',', array_keys( array_filter( $auto_gaps, static fn( $v ) => 'ENABLED' === $v ) ) ) ?: 'none'
+		implode( ',', array_keys( array_filter( $auto_gaps, static fn( $v ) => 'ENABLED' === $v ) ) ) ?: 'none',
+		( $no_postcode_config->is_auto_send_enabled() && ! in_array( 'sender_postcode', $no_postcode_config->get_send_readiness_gaps(), true ) ) ? 'yes' : 'NO'
 	)
 );
 
@@ -1822,6 +1834,124 @@ $report(
 		count( $builder_results ),
 		$builder_control_ok ? 'yes' : 'no',
 		implode( ',', array_map( static fn( $k, $v ) => $k . '=' . $v, array_keys( $builder_results ), $builder_results ) )
+	)
+);
+
+/* ========================================================================== */
+/* Supplier postcode is optional: emitted when known, omitted when not         */
+/* ========================================================================== */
+
+/*
+ * Ground truth: EDM's own XML ÖRNEKLERİ package ships sixteen sample invoices
+ * (satis_temel.xml among them) and NONE of them carries cbc:PostalZone inside
+ * the supplier cac:PostalAddress. The EDM test portal
+ * (Tanımlar -> Firmalarım -> Görüntüle/Güncelle) has no postcode field either,
+ * so the value cannot be sourced without inventing it. It is therefore optional
+ * everywhere, and an absent one must omit the element rather than emit an empty
+ * node -- an empty cbc:PostalZone is a schema violation, not a neutral blank.
+ */
+$postcode_supplier_path = '/*[local-name()="Invoice"]/*[local-name()="AccountingSupplierParty"]/*[local-name()="Party"]/*[local-name()="PostalAddress"]';
+
+/**
+ * Build the UBL and return an XPath over it.
+ *
+ * @param array<string, mixed> $data Builder payload.
+ */
+$postcode_xpath = static function ( array $data ): DOMXPath {
+	$dom = new DOMDocument();
+	$dom->loadXML( ( new Kuka_Island_Core_UBL_TR_Builder( $data ) )->build_xml() );
+
+	return new DOMXPath( $dom );
+};
+
+// Case A: postcode supplied -> cbc:PostalZone present, value byte-for-byte.
+$with_postcode                          = $builder_base;
+$with_postcode['supplier']['postcode']  = '34381';
+$xp_with                                = $postcode_xpath( $with_postcode );
+$zone_with                              = $xp_with->query( $postcode_supplier_path . '/*[local-name()="PostalZone"]' );
+$zone_with_value                        = ( false !== $zone_with && $zone_with->length > 0 ) ? trim( (string) $zone_with->item( 0 )->nodeValue ) : '';
+
+// Case B: postcode empty -> the element is absent entirely, not empty.
+$without_postcode                         = $builder_base;
+$without_postcode['supplier']['postcode'] = '';
+$xp_without                               = $postcode_xpath( $without_postcode );
+$zone_without                             = $xp_without->query( $postcode_supplier_path . '/*[local-name()="PostalZone"]' );
+$zone_without_count                       = ( false !== $zone_without ) ? $zone_without->length : -1;
+
+// The rest of the supplier block must be intact in case B.
+$required_supplier_nodes = array(
+	'street'    => $postcode_supplier_path . '/*[local-name()="StreetName"]',
+	'district'  => $postcode_supplier_path . '/*[local-name()="CitySubdivisionName"]',
+	'city'      => $postcode_supplier_path . '/*[local-name()="CityName"]',
+	'country'   => $postcode_supplier_path . '/*[local-name()="Country"]/*[local-name()="Name"]',
+	'vkn'       => '/*[local-name()="Invoice"]/*[local-name()="AccountingSupplierParty"]/*[local-name()="Party"]/*[local-name()="PartyIdentification"]/*[local-name()="ID"]',
+	'name'      => '/*[local-name()="Invoice"]/*[local-name()="AccountingSupplierParty"]/*[local-name()="Party"]/*[local-name()="PartyName"]/*[local-name()="Name"]',
+	'tax_office' => '/*[local-name()="Invoice"]/*[local-name()="AccountingSupplierParty"]/*[local-name()="Party"]/*[local-name()="PartyTaxScheme"]/*[local-name()="TaxScheme"]/*[local-name()="Name"]',
+);
+$supplier_missing = array();
+foreach ( $required_supplier_nodes as $label => $query ) {
+	$found = $xp_without->query( $query );
+	if ( false === $found || 0 === $found->length || '' === trim( (string) $found->item( 0 )->nodeValue ) ) {
+		$supplier_missing[] = $label;
+	}
+}
+
+// The customer postcode contract is untouched by this change.
+$customer_zone = $xp_without->query( '/*[local-name()="Invoice"]/*[local-name()="AccountingCustomerParty"]/*[local-name()="Party"]/*[local-name()="PostalAddress"]/*[local-name()="PostalZone"]' );
+
+$report(
+	'INVOICE_SUPPLIER_POSTCODE_OPTIONAL',
+	'34381' === $zone_with_value
+	&& 0 === $zone_without_count
+	&& array() === $supplier_missing
+	// Unchanged: the customer address still emits its PostalZone element.
+	&& false !== $customer_zone && 1 === $customer_zone->length,
+	sprintf(
+		'with_postcode:present|value_roundtrip:%s|without_postcode:%s|empty_node_emitted:%s|supplier_fields_missing:%s|customer_postal_zone:%s',
+		'34381' === $zone_with_value ? 'exact' : 'MISMATCH',
+		0 === $zone_without_count ? 'omitted' : 'PRESENT',
+		0 === $zone_without_count ? 'no' : 'YES',
+		empty( $supplier_missing ) ? 'none' : implode( ',', $supplier_missing ),
+		( false !== $customer_zone && 1 === $customer_zone->length ) ? 'unchanged' : 'CHANGED'
+	)
+);
+
+// The mapper must no longer refuse a configuration whose only gap is the
+// postcode, and must still refuse one that is missing a genuinely required
+// field.
+$mapper_postcode_code = 'NO_EXCEPTION';
+$mapper_city_code     = 'NO_EXCEPTION';
+$mapper_reflection    = new ReflectionMethod( Kuka_Island_Core_Invoice_Order_Mapper::class, 'get_supplier_data' );
+$mapper_reflection->setAccessible( true );
+
+try {
+	$supplier_no_postcode = (array) $mapper_reflection->invoke(
+		new Kuka_Island_Core_Invoice_Order_Mapper( new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'sender_postcode' => '' ) ) ) )
+	);
+} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+	$mapper_postcode_code = $e->get_safe_error_code();
+	$supplier_no_postcode = array();
+}
+
+try {
+	$mapper_reflection->invoke(
+		new Kuka_Island_Core_Invoice_Order_Mapper( new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'sender_city' => '' ) ) ) )
+	);
+} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+	$mapper_city_code = $e->get_safe_error_code();
+}
+
+$report(
+	'INVOICE_MAPPER_POSTCODE_OPTIONAL',
+	'NO_EXCEPTION' === $mapper_postcode_code
+	&& '' === (string) ( $supplier_no_postcode['postcode'] ?? 'unset' )
+	&& '1234567890' === (string) ( $supplier_no_postcode['vkn'] ?? '' )
+	// A genuinely required field still fails closed.
+	&& 'missing_supplier_configuration' === $mapper_city_code,
+	sprintf(
+		'missing_postcode:%s|postcode_value:empty|missing_city:%s',
+		'NO_EXCEPTION' === $mapper_postcode_code ? 'accepted' : $mapper_postcode_code,
+		$mapper_city_code
 	)
 );
 

@@ -369,9 +369,14 @@ function kuka_sandbox_resolve_series( string $configured, array $registered, boo
  * Blocking checks cover only what cannot be invented: the connection identity
  * CheckUser proves, the mailbox alias EDM itself reports, the sender fiscal
  * block UBL requires, and a resolved recipient / profile pair. A username and a
- * password prove a connection, not a taxpayer, so every sender fiscal field --
- * postcode included -- still has to come from the EDM portal or API. A single
- * missing one is a BLOCKED reason and is named in the output.
+ * password prove a connection, not a taxpayer, so every required sender fiscal
+ * field still has to come from the EDM portal or API. A single missing one is a
+ * BLOCKED reason and is named in the output.
+ *
+ * The postcode is the one field that is NOT required. All sixteen sample
+ * invoices in EDM's own XML ÖRNEKLERİ package omit the supplier
+ * cbc:PostalZone, and the EDM test portal (Tanımlar -> Firmalarım) exposes no
+ * postcode field, so demanding it would only force an invented value.
  *
  * The serial is NOT blocking. LoadInvoice runs with GENERATEINVOICEIDONLOAD =
  * true, so an absent serial only means EDM assigns the number itself; a
@@ -388,7 +393,9 @@ function kuka_sandbox_verify_sender( array $facts ): array {
 	$defaults      = (array) ( $facts['defaults'] ?? array() );
 	$series        = (array) ( $facts['series'] ?? array() );
 
-	$required_company = array( 'sender_vkn', 'sender_alias', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city', 'sender_postcode' );
+	// sender_postcode is NOT required: EDM's sample invoices omit the supplier
+	// cbc:PostalZone and its test portal has no postcode field to read one from.
+	$required_company = array( 'sender_vkn', 'sender_alias', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city' );
 	$missing_company  = array();
 	foreach ( $required_company as $field ) {
 		if ( '' === trim( (string) ( $company[ $field ] ?? '' ) ) ) {

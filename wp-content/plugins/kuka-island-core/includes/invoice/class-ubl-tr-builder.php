@@ -192,7 +192,14 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 		$this->append_cbc( $dom, $address, 'cbc:StreetName', $this->required( $supplier['address'] ?? null, 'supplier.address' ) );
 		$this->append_cbc( $dom, $address, 'cbc:CitySubdivisionName', $this->required( $supplier['district'] ?? null, 'supplier.district' ) );
 		$this->append_cbc( $dom, $address, 'cbc:CityName', $this->required( $supplier['city'] ?? null, 'supplier.city' ) );
-		$this->append_cbc( $dom, $address, 'cbc:PostalZone', $this->required( $supplier['postcode'] ?? null, 'supplier.postcode' ) );
+		// Optional. EDM's own sample invoices carry no supplier cbc:PostalZone,
+		// so a missing postcode omits the element entirely rather than emitting
+		// an empty node -- an empty PostalZone would be a schema violation, not
+		// a neutral placeholder.
+		$supplier_postcode = trim( (string) ( $supplier['postcode'] ?? '' ) );
+		if ( '' !== $supplier_postcode ) {
+			$this->append_cbc( $dom, $address, 'cbc:PostalZone', $supplier_postcode );
+		}
 		$country = $dom->createElement( 'cac:Country' );
 		$this->append_cbc( $dom, $country, 'cbc:Name', $this->required( $supplier['country'] ?? null, 'supplier.country' ) );
 		$address->appendChild( $country );

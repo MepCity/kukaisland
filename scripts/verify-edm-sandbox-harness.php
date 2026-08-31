@@ -569,9 +569,16 @@ foreach ( $negatives as $case => $mutation ) {
 	}
 }
 
-// Each of the eight sender fiscal fields, one at a time. Every one of them is a
-// value that must come from EDM's portal or API and is named in the output.
-foreach ( array_keys( $complete_company ) as $field ) {
+/*
+ * Each REQUIRED sender fiscal field, one at a time. Every one of them is a value
+ * that must come from EDM's portal or API and is named in the output.
+ *
+ * sender_postcode is excluded on purpose: all sixteen sample invoices in EDM's
+ * XML ÖRNEKLERİ package omit the supplier cbc:PostalZone and the test portal
+ * (Tanımlar -> Firmalarım) has no postcode field, so it is optional. The
+ * assertion right after this loop proves an empty one does not block.
+ */
+foreach ( array_diff( array_keys( $complete_company ), array( 'sender_postcode' ) ) as $field ) {
 	$broken           = $complete_company;
 	$broken[ $field ] = '';
 	$result           = kuka_sandbox_verify_sender( array_merge( $good_facts, array( 'company_fields' => $broken ) ) );
@@ -583,6 +590,25 @@ foreach ( array_keys( $complete_company ) as $field ) {
 		$negatives_ok = false;
 	}
 }
+
+// An empty sender postcode must NOT block, and must not be named as missing.
+$no_postcode_company             = $complete_company;
+$no_postcode_company['sender_postcode'] = '';
+$no_postcode_verify              = kuka_sandbox_verify_sender( array_merge( $good_facts, array( 'company_fields' => $no_postcode_company ) ) );
+
+$report(
+	'SANDBOX_MISSING_POSTCODE_DOES_NOT_BLOCK',
+	true === $no_postcode_verify['ok']
+	&& array() === $no_postcode_verify['failed']
+	&& ! in_array( 'sender_postcode', $no_postcode_verify['missing_company_fields'], true )
+	&& true === $no_postcode_verify['checks']['company_fields_complete'],
+	sprintf(
+		'ok:%s|failed:%s|missing_company_fields:%s',
+		$no_postcode_verify['ok'] ? 'yes' : 'no',
+		empty( $no_postcode_verify['failed'] ) ? 'none' : implode( ',', $no_postcode_verify['failed'] ),
+		empty( $no_postcode_verify['missing_company_fields'] ) ? 'none' : implode( ',', $no_postcode_verify['missing_company_fields'] )
+	)
+);
 
 $report(
 	'SANDBOX_VERIFY_NEGATIVE_MATRIX',

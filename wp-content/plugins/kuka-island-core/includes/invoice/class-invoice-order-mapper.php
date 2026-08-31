@@ -663,11 +663,14 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 		$email      = defined( 'KUKA_SMTP_FROM_EMAIL' ) ? (string) KUKA_SMTP_FROM_EMAIL : '';
 		$phone      = defined( 'KUKA_LEGAL_PHONE' ) ? (string) KUKA_LEGAL_PHONE : '';
 
-		if ( '' === $vkn || '' === $name || '' === $tax_office || '' === $address || '' === $district || '' === $city || '' === $postcode ) {
+		// Postcode is intentionally absent from this list: EDM's own sample
+		// invoices omit the supplier cbc:PostalZone and its test portal exposes
+		// no postcode field, so requiring it would only force an invented value.
+		if ( '' === $vkn || '' === $name || '' === $tax_office || '' === $address || '' === $district || '' === $city ) {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
-				'Supplier legal configuration (VKN, Name, Tax Office, Address, District, City, Postcode) is incomplete.',
+				'Supplier legal configuration (VKN, Name, Tax Office, Address, District, City) is incomplete.',
 				'missing_supplier_configuration',
-				__( 'Satıcı kurumsal ve mali bilgileri (VKN, Unvan, Vergi Dairesi, Adres, İlçe, Şehir, Posta Kodu) eksik yapılandırılmış.', 'kuka-island-core' )
+				__( 'Satıcı kurumsal ve mali bilgileri (VKN, Unvan, Vergi Dairesi, Adres, İlçe, Şehir) eksik yapılandırılmış.', 'kuka-island-core' )
 			);
 		}
 
