@@ -44,8 +44,7 @@ KUKA_EDM_SENDER_POSTCODE
 KUKA_EDM_SERIES_EARCHIVE
 KUKA_EDM_SERIES_EINVOICE
 KUKA_EDM_SANDBOX_RECEIVER_VKN
-KUKA_EDM_SANDBOX_PROFILE_ID
-KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED'
+KUKA_EDM_SANDBOX_PROFILE_ID'
 
 show_status() {
   if [ ! -f "$cred_file" ]; then
@@ -118,18 +117,17 @@ read_secret "e-Invoice series (optional)          : " v_series_einvoice
 
 cat >&2 <<'INFO'
 
-The next two fields are required ONLY for the isolated sandbox invoice
-experiment. Do not guess them. Leave them empty unless EDM has confirmed in
-writing which receiver identity and which PROFILEID its test account accepts.
-The sandbox tool treats an empty value as BLOCKED and never invents one.
-The last field records EDM's written answer separately: the harness refuses to
-write unless the PROFILEID it would send matches that answer byte-for-byte.
+The next two fields are OPTIONAL and apply ONLY to the isolated sandbox draft
+experiment on the EDM TEST endpoint. Leave both empty to use the values EDM
+documents for its own test environment. Supply one only to deviate on purpose:
+it is then format- and safety-checked, and a bad override BLOCKS the run rather
+than falling back. Neither value is ever used outside the test endpoint and
+neither reaches production order mapping.
 
 INFO
 
-read_secret "Sandbox receiver VKN/TCKN (EDM-confirmed only) : " v_sandbox_receiver
-read_secret "Sandbox PROFILEID the harness should send      : " v_sandbox_profile
-read_secret "Sandbox PROFILEID EDM confirmed IN WRITING     : " v_sandbox_profile_confirmed
+read_secret "Sandbox PROFILEID override (optional)        : " v_sandbox_profile
+read_secret "Sandbox receiver VKN/TCKN override (optional): " v_sandbox_receiver
 
 if [ -z "$v_username" ] || [ -z "$v_password" ]; then
   echo "REFUSING: username and password are both required. Nothing written." >&2
@@ -172,7 +170,6 @@ emit KUKA_EDM_SERIES_EARCHIVE      "$v_series_earchive"
 emit KUKA_EDM_SERIES_EINVOICE      "$v_series_einvoice"
 emit KUKA_EDM_SANDBOX_RECEIVER_VKN "$v_sandbox_receiver"
 emit KUKA_EDM_SANDBOX_PROFILE_ID   "$v_sandbox_profile"
-emit KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED "$v_sandbox_profile_confirmed"
 
 # Atomic publish. Until this rename the destination is untouched.
 mv "$tmp_file" "$cred_file"
@@ -182,7 +179,7 @@ chmod 600 "$cred_file"
 unset v_username v_password v_secret v_sender_vkn v_sender_alias v_sender_title \
       v_sender_tax_office v_sender_address v_sender_district v_sender_city \
       v_sender_postcode v_series_earchive v_series_einvoice \
-      v_sandbox_receiver v_sandbox_profile v_sandbox_profile_confirmed
+      v_sandbox_receiver v_sandbox_profile
 
 echo "" >&2
 show_status

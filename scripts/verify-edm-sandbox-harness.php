@@ -67,7 +67,237 @@ $report(
 );
 
 /* ========================================================================== */
-/* Sender verification: fail-closed on every single boolean                     */
+/* Documented sandbox defaults: test endpoint only, never production            */
+/* ========================================================================== */
+
+$defaults_test = kuka_sandbox_resolve_defaults( 'test', '', '', '1234567890' );
+$defaults_live = kuka_sandbox_resolve_defaults( 'live', '', '', '1234567890' );
+// An override cannot buy its way past the environment gate either.
+$defaults_live_override = kuka_sandbox_resolve_defaults( 'live', 'EARSIVFATURA', '11223344556', '1234567890' );
+
+$report(
+	'SANDBOX_DEFAULTS_TEST_ENDPOINT_ONLY',
+	true === $defaults_test['ok']
+	&& KUKA_SANDBOX_DOCUMENTED_PROFILE_ID === $defaults_test['profile_id']
+	&& KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN === $defaults_test['receiver_vkn']
+	&& 'documented_test_default' === $defaults_test['profile_source']
+	&& 'documented_test_default' === $defaults_test['receiver_source']
+	&& false === $defaults_live['ok']
+	&& '' === $defaults_live['profile_id']
+	&& '' === $defaults_live['receiver_vkn']
+	&& false === $defaults_live_override['ok']
+	&& '' === $defaults_live_override['profile_id']
+	&& '' === $defaults_live_override['receiver_vkn'],
+	sprintf(
+		'test:resolved|live:%s|live_with_override:%s|live_profile:%s|live_receiver:%s|reason:%s',
+		$defaults_live['ok'] ? 'LEAKED' : 'refused',
+		$defaults_live_override['ok'] ? 'LEAKED' : 'refused',
+		'' === $defaults_live['profile_id'] ? 'empty' : 'LEAKED',
+		'' === $defaults_live['receiver_vkn'] ? 'empty' : 'LEAKED',
+		$defaults_live['reason']
+	)
+);
+
+/*
+ * Overrides: accepted only after a format and safety check. A bad override
+ * fails closed; it never silently falls back to the documented default.
+ */
+$override_cases = array(
+	'profile_override_ok'        => array( 'EARSIVFATURA_X', '', true, '' ),
+	'profile_lowercase'          => array( 'earsivfatura', '', false, 'profile_override_invalid_format' ),
+	'profile_too_short'          => array( 'EAR', '', false, 'profile_override_invalid_format' ),
+	'profile_with_space'         => array( 'EARSIV FATURA', '', false, 'profile_override_invalid_format' ),
+	'profile_with_punctuation'   => array( 'EARSIV;DROP', '', false, 'profile_override_invalid_format' ),
+	'receiver_override_ok'       => array( '', '11223344556', true, '' ),
+	'receiver_too_short'         => array( '', '123', false, 'receiver_override_invalid_format' ),
+	'receiver_non_numeric'       => array( '', '1122334455a', false, 'receiver_override_invalid_format' ),
+	'receiver_equals_sender'     => array( '', '1234567890', false, 'receiver_override_equals_sender' ),
+	'receiver_all_zeroes'        => array( '', '00000000000', false, 'receiver_override_not_an_identity' ),
+);
+$override_ok      = true;
+$override_details = array();
+foreach ( $override_cases as $case => $spec ) {
+	$resolved = kuka_sandbox_resolve_defaults( 'test', $spec[0], $spec[1], '1234567890' );
+	$hit      = $resolved['ok'] === $spec[2]
+		&& ( '' === $spec[3] || in_array( $spec[3], $resolved['failed'], true ) )
+		// A rejected override never leaks a usable value.
+		&& ( $spec[2] || ( '' === $resolved['profile_id'] && '' === $resolved['receiver_vkn'] ) );
+	$override_details[ $case ] = $hit ? ( $resolved['ok'] ? 'accepted' : 'refused' ) : 'WRONG';
+	if ( ! $hit ) {
+		$override_ok = false;
+	}
+}
+$report(
+	'SANDBOX_OVERRIDE_VALIDATION',
+	$override_ok,
+	sprintf(
+		'cases:%d|wrong:%s',
+		count( $override_details ),
+		implode( ',', array_keys( array_filter( $override_details, static fn( string $v ): bool => 'WRONG' === $v ) ) ) ?: 'none'
+	)
+);
+
+/*
+ * The artificial "EDM must confirm the PROFILEID in writing" gate is gone, in
+ * the library, in the credential loader and in the credential helper.
+ */
+$confirmation_sources = array(
+	__DIR__ . '/lib-edm-sandbox.php',
+	__DIR__ . '/lib-edm-test-credentials.php',
+	__DIR__ . '/edm-sandbox-invoice.php',
+	__DIR__ . '/edm-test-credentials.sh',
+);
+$confirmation_hits = array();
+foreach ( $confirmation_sources as $source ) {
+	$body = is_readable( $source ) ? (string) file_get_contents( $source ) : '';
+	if ( str_contains( $body, 'PROFILE_ID_CONFIRMED' ) || str_contains( $body, 'kuka_sandbox_profile_confirmation' ) ) {
+		$confirmation_hits[] = basename( $source );
+	}
+}
+$report(
+	'SANDBOX_PROFILE_CONFIRMATION_GATE_REMOVED',
+	! function_exists( 'kuka_sandbox_profile_confirmation' )
+	&& ! array_key_exists( 'KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED', kuka_edm_sandbox_credential_map() )
+	&& array() === $confirmation_hits
+	&& 2 === count( kuka_edm_sandbox_credential_map() ),
+	sprintf(
+		'function_exists:%s|credential_key:%s|sources_scanned:%d|hits:%s|sandbox_keys:%d',
+		function_exists( 'kuka_sandbox_profile_confirmation' ) ? 'yes' : 'no',
+		array_key_exists( 'KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED', kuka_edm_sandbox_credential_map() ) ? 'present' : 'absent',
+		count( $confirmation_sources ),
+		empty( $confirmation_hits ) ? 'none' : implode( ',', $confirmation_hits ),
+		count( kuka_edm_sandbox_credential_map() )
+	)
+);
+
+/*
+ * Sandbox isolation.
+ *
+ * PROFILEID = EARSIVFATURA is the real UBL-TR profile for an e-Arşiv document,
+ * so production legitimately uses that string; what must never happen is the
+ * plugin reaching into this sandbox library for a default. The sandbox
+ * constants are therefore required to live in exactly one place, and no plugin
+ * file may reference the library, its constants or its credential keys.
+ *
+ * The recipient default is the sharper case: 11111111111 exists in the mapper
+ * only behind the reviewed allow_generic_individual_vkn policy, which defaults
+ * to false. That gate is asserted here so the sandbox work cannot be mistaken
+ * for having relaxed it.
+ */
+$module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/';
+$module_files = (array) glob( $module_dir . '*.php' );
+$leak_hits    = array();
+foreach ( $module_files as $module_file ) {
+	$body = (string) file_get_contents( $module_file );
+	foreach ( array( 'lib-edm-sandbox', 'kuka_sandbox_', 'KUKA_SANDBOX_', 'KUKA_EDM_SANDBOX_' ) as $needle ) {
+		if ( str_contains( $body, $needle ) ) {
+			$leak_hits[] = basename( $module_file ) . ':' . $needle;
+		}
+	}
+}
+
+$mapper_src = (string) file_get_contents( $module_dir . 'class-invoice-order-mapper.php' );
+$config_src = (string) file_get_contents( $module_dir . 'class-invoice-config.php' );
+// The generic recipient identity is still reachable only through the policy
+// gate, and the policy still defaults to false.
+$generic_vkn_gated = str_contains( $mapper_src, '! $this->config->allow_generic_individual_vkn()' )
+	&& str_contains( $config_src, "defined( 'KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN' ) && true === KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN" );
+
+$report(
+	'SANDBOX_DEFAULTS_NOT_IN_PRODUCTION',
+	count( $module_files ) >= 15
+	&& array() === $leak_hits
+	&& $generic_vkn_gated,
+	sprintf(
+		'module_files:%d|sandbox_references:%s|generic_receiver_still_policy_gated:%s',
+		count( $module_files ),
+		empty( $leak_hits ) ? 'none' : implode( ',', $leak_hits ),
+		$generic_vkn_gated ? 'yes' : 'no'
+	)
+);
+
+/* ========================================================================== */
+/* Optional serial: absence is not a blocker, a bad override still is           */
+/* ========================================================================== */
+
+$series_cases = array(
+	'not_configured'      => array( '', array( 'AAA' ), true, true, false, 'not_configured_edm_assigns_the_number' ),
+	'not_configured_dark' => array( '', array(), false, true, false, 'not_configured_edm_assigns_the_number' ),
+	'registered'          => array( 'KUK', array( 'AAA', 'kuk' ), true, true, true, 'series_override_registered_at_edm' ),
+	'unregistered'        => array( 'KUK', array( 'AAA', 'BBB' ), true, false, false, 'series_override_not_registered_at_edm' ),
+	'query_failed'        => array( 'KUK', array(), false, true, true, 'series_override_registration_unverified' ),
+	'bad_format_long'     => array( 'KUKA', array( 'KUKA' ), true, false, false, 'series_override_invalid_format' ),
+	'bad_format_lower'    => array( 'kuk', array( 'kuk' ), true, false, false, 'series_override_invalid_format' ),
+	'bad_format_symbol'   => array( 'K-K', array(), false, false, false, 'series_override_invalid_format' ),
+);
+$series_ok      = true;
+$series_details = array();
+foreach ( $series_cases as $case => $spec ) {
+	$resolved = kuka_sandbox_resolve_series( $spec[0], $spec[1], $spec[2] );
+	$hit      = $resolved['ok'] === $spec[3]
+		&& $resolved['send'] === $spec[4]
+		&& $resolved['reason'] === $spec[5]
+		// A serial that is not sent must not survive as a code either.
+		&& ( $resolved['send'] || '' === $resolved['code'] );
+	$series_details[ $case ] = $hit ? ( $resolved['send'] ? 'sent' : ( $resolved['ok'] ? 'omitted' : 'blocked' ) ) : ( 'WRONG(' . $resolved['reason'] . ')' );
+	if ( ! $hit ) {
+		$series_ok = false;
+	}
+}
+$report(
+	'SANDBOX_SERIES_OPTIONAL',
+	$series_ok,
+	implode( '|', array_map( static fn( string $k, string $v ): string => $k . ':' . $v, array_keys( $series_details ), $series_details ) )
+);
+
+/* ========================================================================== */
+/* LoadInvoice request shape                                                    */
+/* ========================================================================== */
+
+$request_ctx = array(
+	'uuid'             => kuka_sandbox_uuid(),
+	'issue_date'       => '2026-01-02',
+	'action_date'      => '2026-01-02T03:04:05',
+	'session_id'       => 'SESSION',
+	'application_name' => 'ozelyazilim.kukaisland',
+	'sender_vkn'       => '1234567890',
+	'sender_alias'     => 'urn:mail:box@example.com',
+	'receiver_vkn'     => KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN,
+	'profile_id'       => KUKA_SANDBOX_DOCUMENTED_PROFILE_ID,
+	'payable'          => '120.00',
+	'content'          => '<Invoice/>',
+);
+
+$req_no_series   = kuka_sandbox_build_load_request( array_merge( $request_ctx, array( 'series_code' => '' ) ) );
+$req_with_series = kuka_sandbox_build_load_request( array_merge( $request_ctx, array( 'series_code' => 'KUK' ) ) );
+
+$header_no_series   = $req_no_series['INVOICE'][0]['HEADER'];
+$header_with_series = $req_with_series['INVOICE'][0]['HEADER'];
+
+$report(
+	'SANDBOX_LOAD_REQUEST_SHAPE',
+	true === $req_no_series['GENERATEINVOICEIDONLOAD']
+	&& true === $req_with_series['GENERATEINVOICEIDONLOAD']
+	&& ! array_key_exists( 'INVOICESERIAL_REQUESTED', $header_no_series )
+	&& 'KUK' === ( $header_with_series['INVOICESERIAL_REQUESTED'] ?? null )
+	// INVOICE/@ID is never present, with or without a serial.
+	&& ! array_key_exists( 'ID', $req_no_series['INVOICE'][0] )
+	&& ! array_key_exists( 'ID', $req_with_series['INVOICE'][0] )
+	&& KUKA_SANDBOX_DOCUMENTED_PROFILE_ID === $header_no_series['PROFILEID']
+	&& true === $header_no_series['EARCHIVE'],
+	sprintf(
+		'no_series:generate_on_load=%s,invoiceserial=%s,invoice_id=%s|with_series:generate_on_load=%s,invoiceserial=%s,invoice_id=%s',
+		$req_no_series['GENERATEINVOICEIDONLOAD'] ? 'true' : 'false',
+		array_key_exists( 'INVOICESERIAL_REQUESTED', $header_no_series ) ? 'present' : 'absent',
+		array_key_exists( 'ID', $req_no_series['INVOICE'][0] ) ? 'present' : 'absent',
+		$req_with_series['GENERATEINVOICEIDONLOAD'] ? 'true' : 'false',
+		array_key_exists( 'INVOICESERIAL_REQUESTED', $header_with_series ) ? 'present' : 'absent',
+		array_key_exists( 'ID', $req_with_series['INVOICE'][0] ) ? 'present' : 'absent'
+	)
+);
+
+/* ========================================================================== */
+/* Sender verification: fail-closed on everything that cannot be looked up      */
 /* ========================================================================== */
 
 $complete_company = array(
@@ -82,37 +312,51 @@ $complete_company = array(
 );
 
 $good_facts = array(
-	'series_code'             => 'KUK',
-	'registered_serial_codes' => array( 'AAA', 'kuk', 'ZZZ' ),
-	'check_user_ok'           => true,
-	'edm_alias'               => 'urn:mail:box@example.com',
-	'configured_alias'        => 'urn:mail:box@example.com',
-	'company_fields'          => $complete_company,
-	'sandbox_receiver_vkn'    => '11223344556',
-	'profile_id'              => 'SOME_PROFILE',
+	'defaults'         => kuka_sandbox_resolve_defaults( 'test', '', '', '1234567890' ),
+	'series'           => kuka_sandbox_resolve_series( 'KUK', array( 'AAA', 'kuk', 'ZZZ' ), true ),
+	'check_user_ok'    => true,
+	'edm_alias'        => 'urn:mail:box@example.com',
+	'configured_alias' => 'urn:mail:box@example.com',
+	'company_fields'   => $complete_company,
 );
 
 $baseline = kuka_sandbox_verify_sender( $good_facts );
 $report(
 	'SANDBOX_VERIFY_ALL_PASS_ALLOWS_PLAN',
-	true === $baseline['ok'] && array() === $baseline['failed'] && 7 === count( $baseline['checks'] ),
+	true === $baseline['ok'] && array() === $baseline['failed'] && 6 === count( $baseline['checks'] ),
 	sprintf( 'checks:%d|failed:%s', count( $baseline['checks'] ), empty( $baseline['failed'] ) ? 'none' : implode( ',', $baseline['failed'] ) )
 );
 
+// An absent serial must NOT block: EDM assigns the number instead.
+$no_series_facts  = array_merge( $good_facts, array( 'series' => kuka_sandbox_resolve_series( '', array(), true ) ) );
+$no_series_result = kuka_sandbox_verify_sender( $no_series_facts );
+$report(
+	'SANDBOX_MISSING_SERIES_DOES_NOT_BLOCK',
+	true === $no_series_result['ok']
+	&& array() === $no_series_result['failed']
+	&& 'no' === $no_series_result['info']['series_sent']
+	&& 'not_configured_edm_assigns_the_number' === $no_series_result['info']['series_mode'],
+	sprintf(
+		'ok:%s|series_sent:%s|series_mode:%s',
+		$no_series_result['ok'] ? 'yes' : 'no',
+		$no_series_result['info']['series_sent'],
+		$no_series_result['info']['series_mode']
+	)
+);
+
 $negatives = array(
-	'missing_series'        => array( 'series_code' => '', 'expect' => 'series_configured' ),
-	'malformed_series'      => array( 'series_code' => 'KUKA', 'expect' => 'series_configured' ),
-	'unregistered_series'   => array( 'registered_serial_codes' => array( 'AAA', 'BBB' ), 'expect' => 'series_registered_at_edm' ),
-	'no_registered_serials' => array( 'registered_serial_codes' => array(), 'expect' => 'series_registered_at_edm' ),
-	'check_user_failed'     => array( 'check_user_ok' => false, 'expect' => 'check_user_ok' ),
-	'alias_mismatch'        => array( 'edm_alias' => 'urn:mail:OTHER@example.com', 'expect' => 'alias_exact_match' ),
-	'alias_case_mismatch'   => array( 'edm_alias' => 'URN:MAIL:BOX@EXAMPLE.COM', 'expect' => 'alias_exact_match' ),
-	'alias_whitespace'      => array( 'edm_alias' => ' urn:mail:box@example.com', 'expect' => 'alias_exact_match' ),
+	'check_user_failed'      => array( 'check_user_ok' => false, 'expect' => 'check_user_ok' ),
+	'alias_mismatch'         => array( 'edm_alias' => 'urn:mail:OTHER@example.com', 'expect' => 'alias_exact_match' ),
+	'alias_case_mismatch'    => array( 'edm_alias' => 'URN:MAIL:BOX@EXAMPLE.COM', 'expect' => 'alias_exact_match' ),
+	'alias_whitespace'       => array( 'edm_alias' => ' urn:mail:box@example.com', 'expect' => 'alias_exact_match' ),
 	'empty_configured_alias' => array( 'configured_alias' => '', 'expect' => 'alias_exact_match' ),
-	'missing_receiver'      => array( 'sandbox_receiver_vkn' => '', 'expect' => 'sandbox_receiver_supplied' ),
-	'malformed_receiver'    => array( 'sandbox_receiver_vkn' => '123', 'expect' => 'sandbox_receiver_supplied' ),
-	'missing_profile'       => array( 'profile_id' => '', 'expect' => 'profile_id_supplied' ),
-	'whitespace_profile'    => array( 'profile_id' => '   ', 'expect' => 'profile_id_supplied' ),
+	'defaults_refused_live'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'live', '', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
+	'defaults_missing'       => array( 'defaults' => array(), 'expect' => 'receiver_identity_resolved' ),
+	'bad_receiver_override'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', '', '123', '1234567890' ), 'expect' => 'receiver_identity_resolved' ),
+	'bad_profile_override'   => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', 'bad profile', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
+	'malformed_series'       => array( 'series' => kuka_sandbox_resolve_series( 'KUKA', array(), true ), 'expect' => 'series_selection_valid' ),
+	'unregistered_series'    => array( 'series' => kuka_sandbox_resolve_series( 'KUK', array( 'AAA' ), true ), 'expect' => 'series_selection_valid' ),
+	'series_missing'         => array( 'series' => array(), 'expect' => 'series_selection_valid' ),
 );
 
 $negative_results = array();
@@ -128,12 +372,15 @@ foreach ( $negatives as $case => $mutation ) {
 	}
 }
 
-// Each of the eight company/address fields, one at a time.
+// Each of the eight sender fiscal fields, one at a time. Every one of them is a
+// value that must come from EDM's portal or API and is named in the output.
 foreach ( array_keys( $complete_company ) as $field ) {
-	$broken            = $complete_company;
-	$broken[ $field ]  = '';
-	$result            = kuka_sandbox_verify_sender( array_merge( $good_facts, array( 'company_fields' => $broken ) ) );
-	$hit               = ( false === $result['ok'] ) && in_array( 'company_fields_complete', $result['failed'], true );
+	$broken           = $complete_company;
+	$broken[ $field ] = '';
+	$result           = kuka_sandbox_verify_sender( array_merge( $good_facts, array( 'company_fields' => $broken ) ) );
+	$hit              = ( false === $result['ok'] )
+		&& in_array( 'company_fields_complete', $result['failed'], true )
+		&& in_array( $field, $result['missing_company_fields'], true );
 	$negative_results[ 'company_' . $field ] = $hit ? 'blocked' : 'LEAKED';
 	if ( ! $hit ) {
 		$negatives_ok = false;
@@ -666,7 +913,7 @@ $ok_response = static fn(): array => array(
 $driver_cases = array(
 	'success'             => array(
 		'responder' => $ok_response,
-		'expect'    => array( 'verdict' => 'PASS', 'label' => 'confirmed', 'state' => Kuka_Sandbox_Claim::S_CONFIRMED, 'exit' => 0, 'calls' => 1 ),
+		'expect'    => array( 'verdict' => 'PASS', 'label' => 'draft_uploaded', 'state' => Kuka_Sandbox_Claim::S_CONFIRMED, 'exit' => 0, 'calls' => 1 ),
 	),
 	'nonzero_code'        => array(
 		'responder' => static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 9 ) ),
@@ -702,9 +949,11 @@ foreach ( $driver_cases as $case => $spec ) {
 		&& $run['end_state'] === $expect['state']
 		&& $run['result']['exit_code'] === $expect['exit']
 		&& $run['calls'] === $expect['calls'];
+	// The label is shown alongside the record state so a successful LoadInvoice
+	// reads as an uploaded draft rather than a sent invoice.
 	$driver_details[ $case ] = $hit
-		? $expect['verdict'] . '/' . $expect['state']
-		: sprintf( 'MISMATCH(%s/%s/exit=%d/calls=%d)', $run['result']['create_verdict'], $run['end_state'], $run['result']['exit_code'], $run['calls'] );
+		? $expect['verdict'] . '/' . $expect['label'] . '/record=' . $expect['state']
+		: sprintf( 'MISMATCH(%s/%s/%s/exit=%d/calls=%d)', $run['result']['create_verdict'], $run['result']['result_label'], $run['end_state'], $run['result']['exit_code'], $run['calls'] );
 	if ( ! $hit ) {
 		$driver_ok = false;
 	}
@@ -749,6 +998,7 @@ $report(
 	&& KUKA_SANDBOX_CALL_SUCCESS === $persist_result['classification']
 	&& 'PASS' !== $persist_result['create_verdict']
 	&& 'confirmed' !== $persist_result['result_label']
+	&& 'draft_uploaded' !== $persist_result['result_label']
 	&& 'state_persist_failed_manual_reconciliation_required' === $persist_result['status_token']
 	&& false === $persist_result['state_recorded']
 	&& 1 === $persist_result['exit_code']
@@ -787,48 +1037,102 @@ $report(
 );
 
 /* ========================================================================== */
-/* PROFILEID confirmation gate                                                  */
+/* LoadInvoice is a DRAFT upload; SendInvoice is a separate, uncalled operation  */
 /* ========================================================================== */
 
-$profile_cases = array(
-	'nothing_supplied'      => array( '', '', false, 'profile_id_not_supplied' ),
-	'supplied_unconfirmed'  => array( 'EARSIVFATURA', '', false, 'profile_id_not_confirmed_by_edm_in_writing' ),
-	'random_unconfirmed'    => array( 'WHATEVER123', '', false, 'profile_id_not_confirmed_by_edm_in_writing' ),
-	'mismatch'              => array( 'TICARIFATURA', 'EARSIVFATURA', false, 'configured_profile_does_not_match_confirmed_profile' ),
-	'case_mismatch'         => array( 'earsivfatura', 'EARSIVFATURA', false, 'configured_profile_does_not_match_confirmed_profile' ),
-	'whitespace_mismatch'   => array( 'EARSIVFATURA ', 'EARSIVFATURA', false, 'configured_profile_does_not_match_confirmed_profile' ),
-	'exact_match'           => array( 'EARSIVFATURA', 'EARSIVFATURA', true, 'profile_confirmed' ),
-);
-$profile_ok      = true;
-$profile_details = array();
-foreach ( $profile_cases as $case => $spec ) {
-	$gate = kuka_sandbox_profile_confirmation( $spec[0], $spec[1] );
-	$hit  = $gate['ok'] === $spec[2] && $gate['reason'] === $spec[3];
-	$profile_details[ $case ] = $hit ? ( $gate['ok'] ? 'open' : 'blocked' ) : ( 'MISMATCH(' . $gate['reason'] . ')' );
-	if ( ! $hit ) {
-		$profile_ok = false;
+$driver_src = (string) file_get_contents( __DIR__ . '/edm-sandbox-invoice.php' );
+$lib_src    = (string) file_get_contents( __DIR__ . '/lib-edm-sandbox.php' );
+
+// The only operation name the write path may ever pass to the transport.
+$transport_ops = array();
+if ( preg_match_all( '/\$transport->call\(\s*\x27([A-Za-z]+)\x27/', $lib_src . $driver_src, $m ) ) {
+	$transport_ops = array_values( array_unique( $m[1] ) );
+}
+
+$forbidden_ops = array();
+foreach ( array( 'SendInvoice', 'CancelInvoice', 'EmailInvoice', 'CreateSerial' ) as $forbidden ) {
+	// Mentioning SendInvoice in prose is fine; calling it is not.
+	if ( preg_match( '/->\s*call\(\s*\x27' . $forbidden . '\x27/', $lib_src . $driver_src )
+		|| preg_match( '/->\s*' . strtolower( preg_replace( '/(?<!^)[A-Z]/', '_$0', $forbidden ) ) . '\(/', $driver_src ) ) {
+		$forbidden_ops[] = $forbidden;
 	}
 }
+
+// A successful upload is labelled a draft, never "sent" or "issued".
+$success_report = kuka_sandbox_resolve_report( KUKA_SANDBOX_CALL_SUCCESS, array( 'written' => true ) );
+
 $report(
-	'SANDBOX_PROFILE_CONFIRMATION_GATE',
-	$profile_ok,
-	implode( '|', array_map( static fn( string $k, string $v ): string => $k . ':' . $v, array_keys( $profile_details ), $profile_details ) )
+	'SANDBOX_LOAD_VS_SEND_SEMANTICS',
+	array( 'LoadInvoice' ) === $transport_ops
+	&& array() === $forbidden_ops
+	&& 'draft_uploaded' === $success_report['result_label']
+	&& 'PASS' === $success_report['create_verdict']
+	&& str_contains( $driver_src, 'SANDBOX_SENDINVOICE=NOT_EXECUTED' )
+	&& str_contains( $driver_src, 'SANDBOX_DRAFT_UPLOAD' )
+	&& ! str_contains( $driver_src, 'SANDBOX_CREATE' ),
+	sprintf(
+		'transport_operations:%s|forbidden_calls:%s|success_label:%s|sendinvoice_line:%s|draft_step:%s',
+		implode( ',', $transport_ops ) ?: 'none',
+		empty( $forbidden_ops ) ? 'none' : implode( ',', $forbidden_ops ),
+		$success_report['result_label'],
+		str_contains( $driver_src, 'SANDBOX_SENDINVOICE=NOT_EXECUTED' ) ? 'present' : 'absent',
+		str_contains( $driver_src, 'SANDBOX_DRAFT_UPLOAD' ) ? 'present' : 'absent'
+	)
 );
 
-// A random, unconfirmed profile must never reach the write path.
-$profile_transport = new Kuka_Sandbox_Mock_Transport( static fn(): array => array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) ) );
-$random_gate       = kuka_sandbox_profile_confirmation( 'RANDOM_PROFILE_' . bin2hex( random_bytes( 3 ) ), '' );
-if ( $random_gate['ok'] ) {
-	// Only a confirmed gate may proceed; this branch must never run.
-	$claim_p = new Kuka_Sandbox_Claim( $state_root . '/profile.json' );
-	$claim_p->acquire();
-	kuka_sandbox_execute_write( $claim_p, $profile_transport, array(), $uuid, 'LoadInvoice' );
-	$claim_p->release();
-}
+/*
+ * With no serial configured the write path still runs, and the request it hands
+ * the transport carries GENERATEINVOICEIDONLOAD = true, no
+ * INVOICESERIAL_REQUESTED and no INVOICE/@ID. Proved against the mocked
+ * transport, so the exact payload EDM would receive is inspected.
+ */
+$captured        = null;
+$noseries_series = kuka_sandbox_resolve_series( '', array(), true );
+$noseries_req    = kuka_sandbox_build_load_request(
+	array_merge(
+		$request_ctx,
+		array( 'series_code' => $noseries_series['send'] ? $noseries_series['code'] : '' )
+	)
+);
+$noseries_transport = new Kuka_Sandbox_Mock_Transport(
+	static function ( string $op, array $payload ) use ( &$captured ): array {
+		$captured = array( 'operation' => $op, 'payload' => $payload );
+
+		return array(
+			'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+			'INVOICE'        => array( array( 'UUID' => $payload['INVOICE'][0]['UUID'], 'ID' => 'EDM2026000000001' ) ),
+		);
+	}
+);
+$noseries_claim = new Kuka_Sandbox_Claim( $state_root . '/noseries.json' );
+$noseries_claim->acquire();
+$noseries_write = kuka_sandbox_execute_write( $noseries_claim, $noseries_transport, $noseries_req, $request_ctx['uuid'], 'LoadInvoice' );
+$noseries_claim->release();
+
+$captured_invoice = (array) ( $captured['payload']['INVOICE'][0] ?? array() );
+$captured_header  = (array) ( $captured_invoice['HEADER'] ?? array() );
+
 $report(
-	'SANDBOX_RANDOM_PROFILE_NO_WRITE',
-	false === $random_gate['ok'] && 0 === $profile_transport->calls,
-	sprintf( 'gate_open:%s|write_calls:%d|reason:%s', $random_gate['ok'] ? 'yes' : 'no', $profile_transport->calls, $random_gate['reason'] )
+	'SANDBOX_NO_SERIES_LOAD_REQUEST',
+	1 === $noseries_transport->calls
+	&& 'LoadInvoice' === ( $captured['operation'] ?? '' )
+	&& true === ( $captured['payload']['GENERATEINVOICEIDONLOAD'] ?? null )
+	&& ! array_key_exists( 'INVOICESERIAL_REQUESTED', $captured_header )
+	&& ! array_key_exists( 'ID', $captured_invoice )
+	&& 'PASS' === $noseries_write['create_verdict']
+	&& 'draft_uploaded' === $noseries_write['result_label']
+	&& 'EDM2026000000001' === $noseries_write['assigned_number'],
+	sprintf(
+		'calls:%d|operation:%s|generate_invoice_id_on_load:%s|invoiceserial_requested:%s|invoice_id_attribute:%s|verdict:%s|label:%s|edm_assigned_number:%s',
+		$noseries_transport->calls,
+		(string) ( $captured['operation'] ?? 'none' ),
+		true === ( $captured['payload']['GENERATEINVOICEIDONLOAD'] ?? null ) ? 'true' : 'false',
+		array_key_exists( 'INVOICESERIAL_REQUESTED', $captured_header ) ? 'present' : 'absent',
+		array_key_exists( 'ID', $captured_invoice ) ? 'present' : 'absent',
+		$noseries_write['create_verdict'],
+		$noseries_write['result_label'],
+		'' !== (string) $noseries_write['assigned_number'] ? 'read_back' : 'missing'
+	)
 );
 
 // Clean up the state fixtures.

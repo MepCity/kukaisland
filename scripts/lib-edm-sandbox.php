@@ -24,6 +24,26 @@ const KUKA_SANDBOX_UUID_SEED = 'kuka-island-edm-sandbox-e2e-v1';
 /** Host-side state directory (read-write mount). Never the database. */
 const KUKA_SANDBOX_STATE_DIR = '/run/edm/state';
 
+/** EDM environment token the sandbox gates accept. */
+const KUKA_SANDBOX_TEST_ENVIRONMENT = 'test';
+
+/**
+ * Documented EDM sandbox values.
+ *
+ * EDM's own e-Fatura SOAP envelope reference publishes a complete e-Arşiv
+ * example whose header carries PROFILEID = EARSIVFATURA and whose recipient is
+ * the generic individual identifier 11111111111:
+ * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/efatura-soap-envelopes.html
+ *
+ * They are documented TEST values, so the harness does not have to invent them
+ * and does not have to wait for a separate written confirmation. They remain
+ * sandbox-only: kuka_sandbox_resolve_defaults() hands them out for the EDM test
+ * endpoint and for nothing else, and no plugin file includes this library, so
+ * they cannot reach a WooCommerce order mapping or the production config.
+ */
+const KUKA_SANDBOX_DOCUMENTED_PROFILE_ID   = 'EARSIVFATURA';
+const KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN = '11111111111';
+
 /** Outcome classes for a write attempt. */
 const KUKA_SANDBOX_CALL_SUCCESS    = 'success';
 const KUKA_SANDBOX_CALL_DEFINITIVE = 'definitive_rejection';
@@ -46,52 +66,190 @@ function kuka_sandbox_uuid(): string {
 }
 
 /**
- * Fail-closed sender / recipient verification.
+ * Resolve the sandbox PROFILEID and recipient identity.
  *
- * Every check must be true before the driver is allowed to reach even the PLAN
- * stage. Nothing is inferred and nothing is defaulted.
+ * Outside the EDM test endpoint nothing is resolved at all: the documented
+ * defaults describe EDM's test account, so they are refused for a live
+ * environment whether or not an override was supplied. An override is accepted
+ * only after a format and safety check; a bad override fails closed instead of
+ * silently falling back to the default.
  *
- * @param array<string, mixed> $facts Observed facts.
- * @return array{ok: bool, checks: array<string, bool>, failed: array<int, string>}
+ * @param string $environment       Resolved config environment.
+ * @param string $profile_override  KUKA_EDM_SANDBOX_PROFILE_ID, may be empty.
+ * @param string $receiver_override KUKA_EDM_SANDBOX_RECEIVER_VKN, may be empty.
+ * @param string $sender_vkn        Configured sender identity.
+ * @return array{ok: bool, profile_id: string, receiver_vkn: string, profile_source: string, receiver_source: string, failed: array<int, string>, reason: string}
  */
-function kuka_sandbox_verify_sender( array $facts ): array {
-	$series          = (string) ( $facts['series_code'] ?? '' );
-	$registered      = array_map( 'strval', (array) ( $facts['registered_serial_codes'] ?? array() ) );
-	$edm_alias       = (string) ( $facts['edm_alias'] ?? '' );
-	$config_alias    = (string) ( $facts['configured_alias'] ?? '' );
-	$company         = (array) ( $facts['company_fields'] ?? array() );
-	$receiver_vkn    = (string) ( $facts['sandbox_receiver_vkn'] ?? '' );
-	$profile_id      = (string) ( $facts['profile_id'] ?? '' );
-	$check_user_ok   = true === ( $facts['check_user_ok'] ?? false );
+function kuka_sandbox_resolve_defaults( string $environment, string $profile_override, string $receiver_override, string $sender_vkn = '' ): array {
+	$blocked = static function ( array $failed, string $reason ): array {
+		return array(
+			'ok'              => false,
+			'profile_id'      => '',
+			'receiver_vkn'    => '',
+			'profile_source'  => 'none',
+			'receiver_source' => 'none',
+			'failed'          => $failed,
+			'reason'          => $reason,
+		);
+	};
 
-	$series_registered = false;
-	if ( '' !== $series ) {
-		foreach ( $registered as $code ) {
-			if ( 0 === strcasecmp( trim( $code ), trim( $series ) ) ) {
-				$series_registered = true;
-				break;
-			}
-		}
+	if ( KUKA_SANDBOX_TEST_ENVIRONMENT !== strtolower( trim( $environment ) ) ) {
+		return $blocked( array( 'environment_not_test' ), 'documented_defaults_refused_outside_test_endpoint' );
 	}
 
-	$required_company = array( 'sender_vkn', 'sender_alias', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city', 'sender_postcode' );
-	$company_complete = true;
-	foreach ( $required_company as $field ) {
-		if ( '' === trim( (string) ( $company[ $field ] ?? '' ) ) ) {
-			$company_complete = false;
+	$failed = array();
+
+	$profile        = trim( $profile_override );
+	$profile_source = 'documented_test_default';
+	if ( '' !== $profile ) {
+		$profile_source = 'operator_override';
+		if ( 1 !== preg_match( '/^[A-Z][A-Z0-9_]{3,31}$/', $profile ) ) {
+			$failed[] = 'profile_override_invalid_format';
+		}
+	} else {
+		$profile = KUKA_SANDBOX_DOCUMENTED_PROFILE_ID;
+	}
+
+	$receiver        = trim( $receiver_override );
+	$receiver_source = 'documented_test_default';
+	if ( '' !== $receiver ) {
+		$receiver_source = 'operator_override';
+		if ( 1 !== preg_match( '/^\d{10,11}$/', $receiver ) ) {
+			$failed[] = 'receiver_override_invalid_format';
+		} elseif ( '' !== trim( $sender_vkn ) && trim( $sender_vkn ) === $receiver ) {
+			// Addressing the sender's own identity is never a valid experiment.
+			$failed[] = 'receiver_override_equals_sender';
+		} elseif ( 1 === preg_match( '/^0+$/', $receiver ) ) {
+			$failed[] = 'receiver_override_not_an_identity';
+		}
+	} else {
+		$receiver = KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN;
+	}
+
+	if ( array() !== $failed ) {
+		return $blocked( $failed, 'override_rejected' );
+	}
+
+	return array(
+		'ok'              => true,
+		'profile_id'      => $profile,
+		'receiver_vkn'    => $receiver,
+		'profile_source'  => $profile_source,
+		'receiver_source' => $receiver_source,
+		'failed'          => array(),
+		'reason'          => 'resolved',
+	);
+}
+
+/**
+ * Decide whether the LoadInvoice request may bind a registered serial.
+ *
+ * The serial is OPTIONAL. LoadInvoice always carries
+ * GENERATEINVOICEIDONLOAD = true, so with no serial configured EDM assigns the
+ * document number from its own system serial and the experiment still runs.
+ * A configured serial is bound only when it is genuinely usable: correct shape,
+ * and -- when GetInvoiceSerial could actually be read -- registered at EDM. A
+ * malformed or provably unregistered override is an operator error, so it fails
+ * closed rather than being dropped silently.
+ *
+ * @param string            $configured Configured e-Archive series code.
+ * @param array<int, mixed> $registered Codes GetInvoiceSerial returned.
+ * @param bool              $query_ok   Whether GetInvoiceSerial succeeded.
+ * @return array{ok: bool, send: bool, code: string, reason: string, registered: bool}
+ */
+function kuka_sandbox_resolve_series( string $configured, array $registered, bool $query_ok ): array {
+	$code = trim( $configured );
+
+	if ( '' === $code ) {
+		return array(
+			'ok'         => true,
+			'send'       => false,
+			'code'       => '',
+			'reason'     => 'not_configured_edm_assigns_the_number',
+			'registered' => false,
+		);
+	}
+
+	if ( 1 !== preg_match( '/^[A-Z0-9]{3}$/', $code ) ) {
+		return array(
+			'ok'         => false,
+			'send'       => false,
+			'code'       => '',
+			'reason'     => 'series_override_invalid_format',
+			'registered' => false,
+		);
+	}
+
+	$is_registered = false;
+	foreach ( $registered as $known ) {
+		if ( 0 === strcasecmp( trim( (string) $known ), $code ) ) {
+			$is_registered = true;
 			break;
 		}
 	}
 
+	if ( $query_ok && ! $is_registered ) {
+		return array(
+			'ok'         => false,
+			'send'       => false,
+			'code'       => '',
+			'reason'     => 'series_override_not_registered_at_edm',
+			'registered' => false,
+		);
+	}
+
+	return array(
+		'ok'         => true,
+		'send'       => true,
+		'code'       => $code,
+		'reason'     => $query_ok ? 'series_override_registered_at_edm' : 'series_override_registration_unverified',
+		'registered' => $is_registered,
+	);
+}
+
+/**
+ * Fail-closed sender / recipient verification.
+ *
+ * Blocking checks cover only what cannot be invented: the connection identity
+ * CheckUser proves, the mailbox alias EDM itself reports, the sender fiscal
+ * block UBL requires, and a resolved recipient / profile pair. A username and a
+ * password prove a connection, not a taxpayer, so every sender fiscal field --
+ * postcode included -- still has to come from the EDM portal or API. A single
+ * missing one is a BLOCKED reason and is named in the output.
+ *
+ * The serial is NOT blocking. LoadInvoice runs with GENERATEINVOICEIDONLOAD =
+ * true, so an absent serial only means EDM assigns the number itself; a
+ * supplied-but-unusable serial still blocks, via series_selection_valid.
+ *
+ * @param array<string, mixed> $facts Observed facts.
+ * @return array{ok: bool, checks: array<string, bool>, info: array<string, string>, failed: array<int, string>, missing_company_fields: array<int, string>}
+ */
+function kuka_sandbox_verify_sender( array $facts ): array {
+	$edm_alias     = (string) ( $facts['edm_alias'] ?? '' );
+	$config_alias  = (string) ( $facts['configured_alias'] ?? '' );
+	$company       = (array) ( $facts['company_fields'] ?? array() );
+	$check_user_ok = true === ( $facts['check_user_ok'] ?? false );
+	$defaults      = (array) ( $facts['defaults'] ?? array() );
+	$series        = (array) ( $facts['series'] ?? array() );
+
+	$required_company = array( 'sender_vkn', 'sender_alias', 'sender_title', 'sender_tax_office', 'sender_address', 'sender_district', 'sender_city', 'sender_postcode' );
+	$missing_company  = array();
+	foreach ( $required_company as $field ) {
+		if ( '' === trim( (string) ( $company[ $field ] ?? '' ) ) ) {
+			$missing_company[] = $field;
+		}
+	}
+
+	$defaults_ok = true === ( $defaults['ok'] ?? false );
+
 	$checks = array(
-		'series_configured'         => 1 === preg_match( '/^[A-Z0-9]{3}$/', $series ),
-		'series_registered_at_edm'  => $series_registered,
-		'check_user_ok'             => $check_user_ok,
-		// Byte-for-byte match. A near-miss alias is a refusal, not a warning.
-		'alias_exact_match'         => '' !== $config_alias && $edm_alias === $config_alias,
-		'company_fields_complete'   => $company_complete,
-		'sandbox_receiver_supplied' => 1 === preg_match( '/^\d{10,11}$/', $receiver_vkn ),
-		'profile_id_supplied'       => '' !== trim( $profile_id ),
+		'check_user_ok'              => $check_user_ok,
+		// Byte-for-byte. A near-miss alias is a refusal, not a warning.
+		'alias_exact_match'          => '' !== $config_alias && $edm_alias === $config_alias,
+		'company_fields_complete'    => array() === $missing_company,
+		'profile_id_resolved'        => $defaults_ok && '' !== (string) ( $defaults['profile_id'] ?? '' ),
+		'receiver_identity_resolved' => $defaults_ok && 1 === preg_match( '/^\d{10,11}$/', (string) ( $defaults['receiver_vkn'] ?? '' ) ),
+		'series_selection_valid'     => true === ( $series['ok'] ?? false ),
 	);
 
 	$failed = array_keys(
@@ -101,10 +259,20 @@ function kuka_sandbox_verify_sender( array $facts ): array {
 		)
 	);
 
+	// Reported, never blocking. Sources are labels, not values.
+	$info = array(
+		'profile_source'  => (string) ( $defaults['profile_source'] ?? 'none' ),
+		'receiver_source' => (string) ( $defaults['receiver_source'] ?? 'none' ),
+		'series_mode'     => (string) ( $series['reason'] ?? 'unknown' ),
+		'series_sent'     => true === ( $series['send'] ?? false ) ? 'yes' : 'no',
+	);
+
 	return array(
-		'ok'     => array() === $failed,
-		'checks' => $checks,
-		'failed' => $failed,
+		'ok'                     => array() === $failed,
+		'checks'                 => $checks,
+		'info'                   => $info,
+		'failed'                 => $failed,
+		'missing_company_fields' => $missing_company,
 	);
 }
 
@@ -714,46 +882,6 @@ final class Kuka_Sandbox_Claim {
 }
 
 /**
- * PROFILEID confirmation gate.
- *
- * Supplying a value is not the same as EDM having confirmed it. The write stage
- * therefore requires a second, separately recorded value -- the exact PROFILEID
- * EDM confirmed in writing -- and demands a byte-for-byte match with the one the
- * harness would send. Until that written answer exists the operator has nothing
- * to record, so the gate stays closed and no value is ever guessed.
- *
- * @param string $configured PROFILEID the harness would send.
- * @param string $confirmed  PROFILEID EDM confirmed in writing.
- * @return array{ok: bool, reason: string}
- */
-function kuka_sandbox_profile_confirmation( string $configured, string $confirmed ): array {
-	if ( '' === trim( $configured ) ) {
-		return array(
-			'ok'     => false,
-			'reason' => 'profile_id_not_supplied',
-		);
-	}
-	if ( '' === trim( $confirmed ) ) {
-		return array(
-			'ok'     => false,
-			'reason' => 'profile_id_not_confirmed_by_edm_in_writing',
-		);
-	}
-	// Byte-for-byte. A near-miss is a refusal, not a warning.
-	if ( $configured !== $confirmed ) {
-		return array(
-			'ok'     => false,
-			'reason' => 'configured_profile_does_not_match_confirmed_profile',
-		);
-	}
-
-	return array(
-		'ok'     => true,
-		'reason' => 'profile_confirmed',
-	);
-}
-
-/**
  * Classify a write attempt.
  *
  * @param array<string, mixed>|null $parsed Parser output, or null when the call threw.
@@ -775,6 +903,10 @@ function kuka_sandbox_classify_call( ?array $parsed, bool $threw ): string {
 /**
  * Turn a classification plus the settle result into the reported verdict.
  *
+ * A success here means LoadInvoice stored a DRAFT at EDM. It never means an
+ * invoice was sent or issued: SendInvoice is a separate operation and this
+ * harness does not call it.
+ *
  * A successful external call whose confirmed state could not be persisted is
  * NEVER reported as PASS or as confirmed: the on-disk record still says
  * in_flight, so a second write stays refused and the operator must reconcile.
@@ -787,10 +919,11 @@ function kuka_sandbox_resolve_report( string $classification, array $settle ): a
 	$written = true === ( $settle['written'] ?? false );
 
 	if ( KUKA_SANDBOX_CALL_SUCCESS === $classification && $written ) {
+		// LoadInvoice stored a DRAFT at EDM. Nothing was sent to a recipient.
 		return array(
 			'create_verdict' => 'PASS',
-			'result_label'   => 'confirmed',
-			'status_token'   => 'confirmed',
+			'result_label'   => 'draft_uploaded',
+			'status_token'   => 'draft_uploaded',
 			'exit_code'      => 0,
 			'state_recorded' => true,
 		);
@@ -822,6 +955,76 @@ function kuka_sandbox_resolve_report( string $classification, array $settle ): a
 		'status_token'   => $written ? 'uncertain_manual_reconciliation_required' : 'state_persist_failed_manual_reconciliation_required',
 		'exit_code'      => 1,
 		'state_recorded' => $written,
+	);
+}
+
+/**
+ * Assemble the LoadInvoice request.
+ *
+ * LoadInvoice UPLOADS A DRAFT: EDM stores the document so that it can be sent
+ * later. It is not SendInvoice, it delivers nothing to a recipient and it is
+ * not an issued invoice.
+ * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.LoadInvoiceRequest.html
+ *
+ * Two shape rules are the whole point of the experiment and are enforced here:
+ *   - INVOICE/@ID is never set, so EDM has to assign the document number.
+ *   - GENERATEINVOICEIDONLOAD is always true (WSDL: xs:boolean, required, and
+ *     present only on LoadInvoiceRequest -- SendInvoiceRequest has no
+ *     equivalent).
+ * INVOICESERIAL_REQUESTED appears only when a usable serial was resolved by
+ * kuka_sandbox_resolve_series(); with no serial EDM uses its system serial.
+ *
+ * @param array<string, mixed> $ctx Prepared, already verified context.
+ * @return array<string, mixed>
+ */
+function kuka_sandbox_build_load_request( array $ctx ): array {
+	$uuid        = (string) ( $ctx['uuid'] ?? '' );
+	$issue_date  = (string) ( $ctx['issue_date'] ?? '' );
+	$series_code = (string) ( $ctx['series_code'] ?? '' );
+
+	$header = array(
+		'SENDER'                          => (string) ( $ctx['sender_vkn'] ?? '' ),
+		'RECEIVER'                        => (string) ( $ctx['receiver_vkn'] ?? '' ),
+		'FROM'                            => (string) ( $ctx['sender_alias'] ?? '' ),
+		'PROFILEID'                       => (string) ( $ctx['profile_id'] ?? '' ),
+		'INVOICE_TYPE'                    => 'SATIS',
+		'ISSUE_DATE'                      => $issue_date,
+		'PAYABLE_AMOUNT'                  => (string) ( $ctx['payable'] ?? '' ),
+		'INTERNETSALES'                   => false,
+		'EARCHIVE'                        => true,
+		'EARCHIVE_REPORT_SENDDATE'        => $issue_date,
+		'CANCEL_EARCHIVE_REPORT_SENDDATE' => $issue_date,
+		'ISACTIVE'                        => true,
+		'MARKED'                          => false,
+	);
+
+	if ( '' !== $series_code ) {
+		$header['INVOICESERIAL_REQUESTED'] = $series_code;
+	}
+
+	return array(
+		'REQUEST_HEADER'          => array(
+			'SESSION_ID'       => (string) ( $ctx['session_id'] ?? '' ),
+			'ACTION_DATE'      => (string) ( $ctx['action_date'] ?? '' ),
+			'CLIENT_TXN_ID'    => $uuid,
+			'APPLICATION_NAME' => (string) ( $ctx['application_name'] ?? '' ),
+		),
+		'SENDER'                  => array(
+			'vkn'   => (string) ( $ctx['sender_vkn'] ?? '' ),
+			'alias' => (string) ( $ctx['sender_alias'] ?? '' ),
+		),
+		'RECEIVER'                => array( 'vkn' => (string) ( $ctx['receiver_vkn'] ?? '' ) ),
+		'INVOICE'                 => array(
+			array(
+				// INVOICE/@ID deliberately absent: the experiment observes
+				// whether EDM assigns it.
+				'TRXID'   => (int) hexdec( substr( hash( 'sha256', $uuid ), 0, 8 ) ),
+				'UUID'    => $uuid,
+				'HEADER'  => $header,
+				'CONTENT' => (string) ( $ctx['content'] ?? '' ),
+			),
+		),
+		'GENERATEINVOICEIDONLOAD' => true,
 	);
 }
 

@@ -59,21 +59,21 @@ function kuka_edm_test_credential_map(): array {
 }
 
 /**
- * Sandbox-only keys. These are NOT config overrides: they exist so the isolated
- * sandbox experiment can refuse to invent a receiver identity or a document
- * profile that EDM has not confirmed in writing.
+ * Sandbox-only keys. These are NOT config overrides.
+ *
+ * Both are OPTIONAL overrides. When absent, the isolated sandbox experiment
+ * falls back to the values EDM itself documents for its test environment (see
+ * KUKA_SANDBOX_DOCUMENTED_PROFILE_ID / KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN in
+ * scripts/lib-edm-sandbox.php). A supplied override is format- and
+ * safety-checked before it is used, and neither key has any effect outside the
+ * EDM test endpoint.
  *
  * @return array<string, string>
  */
 function kuka_edm_sandbox_credential_map(): array {
 	return array(
-		'KUKA_EDM_SANDBOX_RECEIVER_VKN'      => 'receiver_vkn',
-		'KUKA_EDM_SANDBOX_PROFILE_ID'        => 'profile_id',
-		// The PROFILEID EDM confirmed in writing. Recorded separately from the
-		// value the harness would send so the two can be matched byte-for-byte.
-		// Until EDM answers there is nothing to record and the write gate stays
-		// shut.
-		'KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED' => 'profile_id_confirmed',
+		'KUKA_EDM_SANDBOX_RECEIVER_VKN' => 'receiver_vkn',
+		'KUKA_EDM_SANDBOX_PROFILE_ID'   => 'profile_id',
 	);
 }
 

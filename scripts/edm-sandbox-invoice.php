@@ -1,6 +1,14 @@
 <?php
 /**
- * Isolated EDM sandbox end-to-end invoice experiment (driver).
+ * Isolated EDM sandbox DRAFT-UPLOAD experiment (driver).
+ *
+ * What this actually does: it calls LoadInvoice, which uploads the document to
+ * EDM as a DRAFT so that it can be sent later. It is NOT SendInvoice, it issues
+ * nothing and it delivers nothing to a recipient. SendInvoice is a separate
+ * operation, it is out of scope for this round, and the report says so
+ * explicitly on every path.
+ * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.LoadInvoiceRequest.html
+ * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.SendInvoiceRequest.html
  *
  * All decision logic lives in scripts/lib-edm-sandbox.php so it can be proved
  * with fixtures and a mocked transport by
@@ -10,13 +18,13 @@
  * Questions measured, on the EDM TEST endpoint only:
  *   Q1 Does EDM assign the document number when INVOICE/@ID is omitted and
  *      LoadInvoice carries GENERATEINVOICEIDONLOAD = true?
- *   Q2 Does the assigned number reach the UBL cbc:ID of the stored document?
+ *   Q2 Does the assigned number reach the UBL cbc:ID of the stored draft?
  *   Q3 Do UUID, payable amount and VAT survive the round trip unchanged?
  *
  * Refusals, all unconditional:
  *   - live environment
  *   - APPLICATION_NAME other than ozelyazilim.kukaisland
- *   - any of the seven sender/recipient verifications failing
+ *   - any blocking sender/recipient verification failing
  *   - no exclusive claim lock (another run in progress)
  *   - state in_flight, uncertain, confirmed or failed_definitive
  *   - KUKA_EDM_ALLOW_SANDBOX_WRITE not the literal string "true"
@@ -44,7 +52,7 @@ $all_steps = array(
 	'SANDBOX_PLAN',
 	'SANDBOX_CLAIM',
 	'SANDBOX_DUPLICATE_GUARD',
-	'SANDBOX_CREATE',
+	'SANDBOX_DRAFT_UPLOAD',
 	'SANDBOX_NUMBER_ASSIGNED',
 	'SANDBOX_STATUS_READBACK',
 	'SANDBOX_XML_READBACK',
@@ -63,6 +71,22 @@ $block_from = static function ( array $steps, string $reason ) use ( $block ): v
 };
 
 $cli_args = (array) ( $args ?? array() );
+
+/*
+ * SendInvoice is never called by this tool. The fact is reported exactly once,
+ * on every exit path, so a successful LoadInvoice can never be mistaken for a
+ * sent or issued invoice.
+ */
+$sendinvoice_reported = false;
+register_shutdown_function(
+	static function () use ( &$sendinvoice_reported ): void {
+		if ( $sendinvoice_reported ) {
+			return;
+		}
+		$sendinvoice_reported = true;
+		WP_CLI::line( 'SANDBOX_SENDINVOICE=NOT_EXECUTED|reason:out_of_scope_this_round|documents_sent:0|recipient_delivery:none' );
+	}
+);
 
 /* ========================================================================== */
 /* Gate: credentials                                                           */
@@ -97,8 +121,33 @@ WP_CLI::line(
 	)
 );
 
-$sandbox_receiver = (string) ( $loaded['sandbox']['receiver_vkn'] ?? '' );
-$sandbox_profile  = (string) ( $loaded['sandbox']['profile_id'] ?? '' );
+/*
+ * PROFILEID and the recipient identity come from EDM's own documented e-Arşiv
+ * SOAP example unless the operator deliberately overrides them. The resolver
+ * refuses to hand anything out outside the test endpoint, and a malformed or
+ * unsafe override blocks instead of falling back.
+ * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/efatura-soap-envelopes.html
+ */
+$defaults = kuka_sandbox_resolve_defaults(
+	$config->get_environment(),
+	(string) ( $loaded['sandbox']['profile_id'] ?? '' ),
+	(string) ( $loaded['sandbox']['receiver_vkn'] ?? '' ),
+	$config->get_sender_vkn()
+);
+
+$sandbox_receiver = (string) $defaults['receiver_vkn'];
+$sandbox_profile  = (string) $defaults['profile_id'];
+
+WP_CLI::line(
+	sprintf(
+		'SANDBOX_DEFAULTS=%s|profile_source:%s|receiver_source:%s|reason:%s%s',
+		$defaults['ok'] ? 'PASS' : 'BLOCKED',
+		$defaults['profile_source'],
+		$defaults['receiver_source'],
+		$defaults['reason'],
+		empty( $defaults['failed'] ) ? '' : '|failed:' . implode( ',', $defaults['failed'] )
+	)
+);
 
 /* ========================================================================== */
 /* Read-only fact gathering for the fail-closed sender verification             */
@@ -142,10 +191,18 @@ if ( '' !== $config->get_sender_vkn() ) {
 	}
 }
 
+/*
+ * The serial is optional: LoadInvoice always carries
+ * GENERATEINVOICEIDONLOAD = true, so with no serial configured EDM assigns the
+ * number from its own system serial. GetInvoiceSerial above stays pure
+ * read-only discovery and is not a write gate.
+ */
+$series = kuka_sandbox_resolve_series( $config->get_series_earchive(), $registered_codes, $serial_query_ok );
+
 $verification = kuka_sandbox_verify_sender(
 	array(
-		'series_code'             => $config->get_series_earchive(),
-		'registered_serial_codes' => $registered_codes,
+		'defaults'                => $defaults,
+		'series'                  => $series,
 		'check_user_ok'           => $check_user_ok,
 		'edm_alias'               => $edm_alias,
 		'configured_alias'        => $config->get_sender_alias(),
@@ -159,8 +216,6 @@ $verification = kuka_sandbox_verify_sender(
 			'sender_city'       => $config->get_sender_city(),
 			'sender_postcode'   => $config->get_sender_postcode(),
 		),
-		'sandbox_receiver_vkn'    => $sandbox_receiver,
-		'profile_id'              => $sandbox_profile,
 	)
 );
 
@@ -173,26 +228,40 @@ $check_summary = implode(
 	)
 );
 
+// Labels only, never values. Sender fiscal fields are named so a BLOCKED run
+// says exactly which field still has to come from the EDM portal or API.
+$info_summary = implode(
+	'|',
+	array_map(
+		static fn( string $k, string $v ): string => $k . ':' . $v,
+		array_keys( $verification['info'] ),
+		$verification['info']
+	)
+);
+
 if ( ! $verification['ok'] ) {
 	WP_CLI::line(
 		sprintf(
-			'SANDBOX_SENDER_IDENTITY=BLOCKED|failed:%s|%s|serial_query_ok:%s|registered_serials:%d',
+			'SANDBOX_SENDER_IDENTITY=BLOCKED|failed:%s|missing_sender_fields:%s|%s|%s|serial_query_ok:%s|registered_serials:%d',
 			implode( ',', $verification['failed'] ),
+			empty( $verification['missing_company_fields'] ) ? 'none' : implode( ',', $verification['missing_company_fields'] ),
 			$check_summary,
+			$info_summary,
 			$serial_query_ok ? 'yes' : 'no',
 			count( $registered_codes )
 		)
 	);
 	$block_from( array_slice( $all_steps, 2 ), 'sender_verification_failed' );
 	$client->logout();
-	WP_CLI::log( 'Nothing was invented and nothing was created. Supply the listed fields, then re-run.' );
+	WP_CLI::log( 'Nothing was invented and no draft was uploaded. Every listed sender field must come from the EDM portal or API; supply them, then re-run.' );
 	exit( 0 );
 }
 
 WP_CLI::line(
 	sprintf(
-		'SANDBOX_SENDER_IDENTITY=PASS|%s|registered_serials:%d',
+		'SANDBOX_SENDER_IDENTITY=PASS|%s|%s|registered_serials:%d',
 		$check_summary,
+		$info_summary,
 		count( $registered_codes )
 	)
 );
@@ -233,24 +302,16 @@ try {
 // operation for this experiment is therefore LoadInvoice.
 $planned_operation = 'LoadInvoice';
 
-// Supplying a PROFILEID is not the same as EDM having confirmed it. PLAN reports
-// the confirmation state without echoing any value; the write gate below is what
-// the confirmation actually controls.
-$profile_gate = kuka_sandbox_profile_confirmation(
-	$sandbox_profile,
-	(string) ( $loaded['sandbox']['profile_id_confirmed'] ?? '' )
-);
-
 WP_CLI::line(
 	sprintf(
-		'SANDBOX_PLAN=PASS|operation:%s|generate_invoice_id_on_load:true|invoice_id_attribute:omitted|ubl_cbc_id_sent:%s|vat_percent:%s|net:%s|tax:%s|payable:%s|uuid_deterministic:yes|profile_confirmed:%s',
+		'SANDBOX_PLAN=PASS|operation:%s|effect:draft_upload_only|generate_invoice_id_on_load:true|invoice_id_attribute:omitted|invoiceserial_requested:%s|ubl_cbc_id_sent:%s|vat_percent:%s|net:%s|tax:%s|payable:%s|uuid_deterministic:yes',
 		$planned_operation,
+		$series['send'] ? 'sent' : 'omitted',
 		$built['cbc_id_sent'] ? 'present' : 'absent',
 		$built['totals']['percent'],
 		$built['totals']['net'],
 		$built['totals']['tax'],
-		$built['totals']['payable'],
-		$profile_gate['ok'] ? 'yes' : 'no'
+		$built['totals']['payable']
 	)
 );
 
@@ -274,7 +335,7 @@ $state_now = $status['state'];
  * Read-only reconciliation. Never a write, never a PASS for a failed query.
  */
 $reconcile_only = static function ( string $reason, string $recorded_number ) use ( $client, $uuid, $block ): void {
-	$block( 'SANDBOX_CREATE', $reason );
+	$block( 'SANDBOX_DRAFT_UPLOAD', $reason );
 	$block( 'SANDBOX_NUMBER_ASSIGNED', 'no_new_document' );
 
 	$status_ok = false;
@@ -317,19 +378,8 @@ if ( Kuka_Sandbox_Claim::S_IDLE !== $state_now ) {
 WP_CLI::line( 'SANDBOX_DUPLICATE_GUARD=PASS|state:idle|uuid_deterministic:yes|edm_duplicate_detection:second_layer' );
 
 /* ========================================================================== */
-/* Gates: PROFILEID confirmation, explicit env opt-in, operation confirmation   */
+/* Gates: explicit env opt-in and operation confirmation                        */
 /* ========================================================================== */
-
-if ( ! $profile_gate['ok'] ) {
-	WP_CLI::line( sprintf( 'SANDBOX_PROFILE_GATE=BLOCKED|profile_confirmed:no|reason:%s', $profile_gate['reason'] ) );
-	$block( 'SANDBOX_CREATE', 'profileid_not_confirmed_by_edm' );
-	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
-	WP_CLI::log( 'EDM has not confirmed a PROFILEID in writing. No value is guessed and no document is created.' );
-	$claim->release();
-	$client->logout();
-	exit( 0 );
-}
-WP_CLI::line( 'SANDBOX_PROFILE_GATE=PASS|profile_confirmed:yes|byte_for_byte_match:yes' );
 
 $allow_write = 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' );
 
@@ -344,12 +394,13 @@ if ( ! $allow_write || $planned_operation !== $confirmed_operation ) {
 	WP_CLI::line( '' );
 	WP_CLI::line( '>>> A WRITE OPERATION IS REQUIRED TO CONTINUE <<<' );
 	WP_CLI::line( sprintf( '>>> Operation that would be called: %s (EDM test endpoint)', $planned_operation ) );
-	WP_CLI::line( '>>> Effect: a persistent test document is created in the EDM test account.' );
+	WP_CLI::line( '>>> Effect: a persistent DRAFT is uploaded to the EDM test account.' );
+	WP_CLI::line( '>>> Nothing is sent to a recipient: SendInvoice is not called.' );
 	WP_CLI::line( '>>> Nothing has been created. Both gates are required:' );
 	WP_CLI::line( '>>>   1) KUKA_EDM_ALLOW_SANDBOX_WRITE=true  (literal)' );
 	WP_CLI::line( sprintf( '>>>   2) --confirm=%s', $planned_operation ) );
 	WP_CLI::line( '' );
-	$block( 'SANDBOX_CREATE', $allow_write ? 'operation_not_confirmed' : 'sandbox_write_not_enabled' );
+	$block( 'SANDBOX_DRAFT_UPLOAD', $allow_write ? 'operation_not_confirmed' : 'sandbox_write_not_enabled' );
 	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
 	$claim->release();
 	$client->logout();
@@ -361,60 +412,32 @@ if ( ! $allow_write || $planned_operation !== $confirmed_operation ) {
 /* ========================================================================== */
 
 $issue_date = gmdate( 'Y-m-d' );
-$header     = array(
-	'SENDER'                          => $config->get_sender_vkn(),
-	'RECEIVER'                        => $sandbox_receiver,
-	'FROM'                            => $config->get_sender_alias(),
-	'PROFILEID'                       => $sandbox_profile,
-	'INVOICE_TYPE'                    => 'SATIS',
-	'ISSUE_DATE'                      => $issue_date,
-	'PAYABLE_AMOUNT'                  => $built['totals']['payable'],
-	'INTERNETSALES'                   => false,
-	'EARCHIVE'                        => true,
-	'EARCHIVE_REPORT_SENDDATE'        => $issue_date,
-	'CANCEL_EARCHIVE_REPORT_SENDDATE' => $issue_date,
-	'ISACTIVE'                        => true,
-	'MARKED'                          => false,
+
+// Assembled by the shared builder so verify-edm-sandbox-harness.php can prove
+// the request shape -- serial present or absent -- without any network call.
+$load_request = kuka_sandbox_build_load_request(
+	array(
+		'uuid'             => $uuid,
+		'issue_date'       => $issue_date,
+		'action_date'      => gmdate( 'Y-m-d\TH:i:s' ),
+		'session_id'       => (string) $client->get_session_id(),
+		'application_name' => $config->get_application_name(),
+		'sender_vkn'       => $config->get_sender_vkn(),
+		'sender_alias'     => $config->get_sender_alias(),
+		'receiver_vkn'     => $sandbox_receiver,
+		'profile_id'       => $sandbox_profile,
+		'series_code'      => $series['send'] ? $series['code'] : '',
+		'payable'          => $built['totals']['payable'],
+		'content'          => $built['xml'],
+	)
 );
 
-// Only bind a serial when one is actually configured. Verification already
-// guarantees this; the guard is defensive.
-$series_code = $config->get_series_earchive();
-if ( '' !== $series_code ) {
-	$header['INVOICESERIAL_REQUESTED'] = $series_code;
-}
-
-$load_request = array(
-	'REQUEST_HEADER'          => array(
-		'SESSION_ID'       => (string) $client->get_session_id(),
-		'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-		'CLIENT_TXN_ID'    => $uuid,
-		'APPLICATION_NAME' => $config->get_application_name(),
-	),
-	'SENDER'                  => array(
-		'vkn'   => $config->get_sender_vkn(),
-		'alias' => $config->get_sender_alias(),
-	),
-	'RECEIVER'                => array( 'vkn' => $sandbox_receiver ),
-	'INVOICE'                 => array(
-		array(
-			// INVOICE/@ID deliberately omitted: the experiment observes whether
-			// EDM assigns it.
-			'TRXID'   => (int) hexdec( substr( hash( 'sha256', $uuid ), 0, 8 ) ),
-			'UUID'    => $uuid,
-			'HEADER'  => $header,
-			'CONTENT' => $built['xml'],
-		),
-	),
-	'GENERATEINVOICEIDONLOAD' => true,
-);
-
-WP_CLI::line( sprintf( 'SANDBOX_CREATE=RUNNING|operation:%s|state:in_flight|state_recorded:yes', $planned_operation ) );
+WP_CLI::line( sprintf( 'SANDBOX_DRAFT_UPLOAD=RUNNING|operation:%s|effect:draft_upload_only|state:in_flight|state_recorded:yes', $planned_operation ) );
 
 $write = kuka_sandbox_execute_write( $claim, $client->get_transport(), $load_request, $uuid, $planned_operation );
 
 if ( ! $write['claimed'] ) {
-	$block( 'SANDBOX_CREATE', 'claim_failed:' . $write['claim_reason'] );
+	$block( 'SANDBOX_DRAFT_UPLOAD', 'claim_failed:' . $write['claim_reason'] );
 	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
 	$claim->release();
 	$client->logout();
@@ -423,7 +446,7 @@ if ( ! $write['claimed'] ) {
 
 WP_CLI::line(
 	sprintf(
-		'SANDBOX_CREATE=%s|operation:%s|classification:%s|state:%s|state_recorded:%s|status:%s',
+		'SANDBOX_DRAFT_UPLOAD=%s|operation:%s|effect:draft_upload_only|classification:%s|state:%s|state_recorded:%s|status:%s',
 		$write['create_verdict'],
 		$planned_operation,
 		$write['classification'],
@@ -449,8 +472,9 @@ if ( KUKA_SANDBOX_CALL_SUCCESS !== $write['classification'] ) {
 	exit( $write['exit_code'] );
 }
 
-// The call succeeded. Measurements still run even when the confirmed state could
-// not be persisted, but the run is not reported as PASS or confirmed.
+// LoadInvoice stored the DRAFT. Nothing was sent. Measurements still run even
+// when the confirmed state could not be persisted, but the run is not reported
+// as PASS or confirmed in that case.
 WP_CLI::line(
 	sprintf(
 		'SANDBOX_NUMBER_ASSIGNED=PASS|edm_returned_number:yes|number_length:%d|return_code:%d|uuid_echoed_by_edm:yes',
@@ -548,10 +572,10 @@ $client->logout();
 if ( 0 !== $write['exit_code'] ) {
 	WP_CLI::error(
 		sprintf(
-			'LoadInvoice succeeded at EDM but the confirmed state could not be persisted (%s). The on-disk record still says in_flight, a second write stays refused, and manual reconciliation is required.',
+			'LoadInvoice stored the draft at EDM but the confirmed state could not be persisted (%s). The on-disk record still says in_flight, a second write stays refused, and manual reconciliation is required.',
 			$write['status_token']
 		)
 	);
 }
 
-WP_CLI::success( 'EDM sandbox experiment finished.' );
+WP_CLI::success( 'EDM sandbox draft-upload experiment finished. LoadInvoice only; SendInvoice was not called.' );

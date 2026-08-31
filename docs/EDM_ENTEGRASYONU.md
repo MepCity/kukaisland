@@ -368,11 +368,10 @@ Alanlar:
 | `KUKA_EDM_SENDER_DISTRICT` | sandbox için | UBL ilçe |
 | `KUKA_EDM_SENDER_CITY` | sandbox için | UBL şehir |
 | `KUKA_EDM_SENDER_POSTCODE` | sandbox için | UBL posta kodu |
-| `KUKA_EDM_SERIES_EARCHIVE` | sandbox için | Seri kodu; EDM'de tescilli olduğu doğrulanır |
+| `KUKA_EDM_SERIES_EARCHIVE` | **opsiyonel** | Verilirse biçimi ve EDM'deki tescili doğrulanır. Verilmezse taslak deneyi yine koşar; numarayı EDM atar |
 | `KUKA_EDM_SERIES_EINVOICE` | opsiyonel | — |
-| `KUKA_EDM_SANDBOX_RECEIVER_VKN` | sandbox için | **Uydurulmaz.** EDM yazılı teyit etmediyse boş bırakılır ve sandbox BLOCKED olur |
-| `KUKA_EDM_SANDBOX_PROFILE_ID` | sandbox için | **Sabitlenmez.** EDM teyidi olmadan boş bırakılır |
-| `KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED` | sandbox yazma için | EDM'in **yazılı olarak teyit ettiği** profil değeri. Gönderilecek değerle byte-for-byte eşleşmezse yazma BLOCKED |
+| `KUKA_EDM_SANDBOX_RECEIVER_VKN` | **opsiyonel override** | Boşsa EDM'in dokümante ettiği test alıcısı kullanılır. Verilirse biçim + güvenlik doğrulaması yapılır; hatalıysa BLOCKED (varsayılana sessizce düşmez) |
+| `KUKA_EDM_SANDBOX_PROFILE_ID` | **opsiyonel override** | Boşsa EDM'in dokümante ettiği `PROFILEID` kullanılır. Verilirse biçim doğrulaması yapılır; hatalıysa BLOCKED |
 
 `--status` çıktısı yalnız `supplied` / `absent` gösterir; hiçbir değer, uzunluk veya parça yazılmaz.
 
@@ -388,10 +387,61 @@ Kurulum ve çalıştırma:
 
 ---
 
-## 13. İzole sandbox fatura deneyi
+## 13. İzole sandbox TASLAK YÜKLEME deneyi
 
 `scripts/edm-sandbox-invoice.php` + `scripts/edm-sandbox-run.sh`, §4'teki numaralandırma
 sorularını EDM **test** ortamında ölçmek için kurulmuş ayrı bir araçtır.
+
+### 13.0 `LoadInvoice` ile `SendInvoice` aynı şey değildir
+
+| Operasyon | Ne yapar | Bu araç çağırır mı |
+|---|---|---|
+| `LoadInvoice` | Belgeyi EDM'ye **taslak** olarak yükler; daha sonra gönderilmek üzere saklanır. Alıcıya hiçbir şey iletilmez, fatura kesilmez | **Evet** — tek yazma çağrısı budur |
+| `SendInvoice` | Daha önce yüklenmiş taslağı UUID ile **gerçekten gönderir** | **Hayır** — bu turun kapsamı dışında |
+
+Kaynaklar:
+[LoadInvoiceRequest](https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.LoadInvoiceRequest.html) ·
+[SendInvoiceRequest](https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.SendInvoiceRequest.html) ·
+[e-Fatura SOAP zarfları](https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/efatura-soap-envelopes.html)
+
+Bu ayrım çıktıda da tutulur: başarılı bir koşu `SANDBOX_DRAFT_UPLOAD=PASS|effect:draft_upload_only`
+ve `result:draft_uploaded` yazar — **"gönderildi" veya "kesildi" değil**. Her çıkış yolunda
+tam olarak bir kez `SANDBOX_SENDINVOICE=NOT_EXECUTED|reason:out_of_scope_this_round|documents_sent:0|recipient_delivery:none`
+basılır. Harness (`SANDBOX_LOAD_VS_SEND_SEMANTICS`) transport'a geçen operasyon adlarını tarar ve
+`LoadInvoice` dışında bir ada izin vermez.
+
+### 13.1 Dokümante edilmiş test varsayılanları
+
+EDM'in kendi e-Arşiv SOAP örneği `PROFILEID=EARSIVFATURA` ve genel bireysel alıcı kimliği
+`11111111111` ile yayımlanmıştır. Bunlar tahmin değil, **dokümante edilmiş test değerleridir**;
+bu yüzden ayrıca e-posta ile byte-for-byte teyit beklenmez. Yine de sandbox'a hapsedilmiştir:
+
+- `kuka_sandbox_resolve_defaults()` bu değerleri **yalnız test endpoint'inde** çözer.
+  `live` ortamında — override verilse bile — `documented_defaults_refused_outside_test_endpoint`
+  ile boş döner.
+- Eklenti tarafında hiçbir dosya `lib-edm-sandbox`, `kuka_sandbox_`, `KUKA_SANDBOX_` veya
+  `KUKA_EDM_SANDBOX_` referansı içermez (`SANDBOX_DEFAULTS_NOT_IN_PRODUCTION` ölçer).
+- Üretim mapper'ındaki `11111111111`, değişmeden `allow_generic_individual_vkn` politika
+  kapısının arkasındadır ve politika **varsayılan olarak kapalıdır**; aynı test bunu da doğrular.
+
+Override verilirse doğrulanır: `PROFILEID` için `/^[A-Z][A-Z0-9_]{3,31}$/`, alıcı için
+`/^\d{10,11}$/` **ve** gönderici VKN'sine eşit olmama, salt sıfır olmama. Hatalı override
+varsayılana düşmez; `SANDBOX_DEFAULTS=BLOCKED` verir.
+
+### 13.2 Seri artık zorunlu değil
+
+`LoadInvoice` her koşulda `GENERATEINVOICEIDONLOAD=true` ile çağrılır.
+
+| `KUKA_EDM_SERIES_EARCHIVE` | Davranış |
+|---|---|
+| Yok | `INVOICESERIAL_REQUESTED` gönderilmez; numarayı EDM sistem serisinden atar. **BLOCKED değil** |
+| Var, biçim geçersiz | BLOCKED (`series_override_invalid_format`) — sessizce atlanmaz |
+| Var, `GetInvoiceSerial` okunabildi ve tescilli değil | BLOCKED (`series_override_not_registered_at_edm`) |
+| Var, tescilli | `INVOICESERIAL_REQUESTED` gönderilir |
+| Var, `GetInvoiceSerial` okunamadı | Gönderilir, `series_override_registration_unverified` etiketiyle |
+
+`GetInvoiceSerial` salt-okunur keşif olarak kalır; yazma kapısı değildir. Her durumda EDM'in
+atadığı numara `SANDBOX_NUMBER_ASSIGNED` + `SANDBOX_CBC_ID_READBACK` ile geri okunup doğrulanır.
 
 Ölçtüğü sorular:
 
@@ -404,21 +454,29 @@ Karar mantığının tamamı `scripts/lib-edm-sandbox.php` içindedir; böylece
 `scripts/verify-edm-sandbox-harness.php` her reddetme yolunu fixture ve mock ile, **ağa çıkmadan
 ve belge oluşturmadan** kanıtlar. Bu harness `make verify` kapsamındadır.
 
-**Fail-closed gönderici/alıcı doğrulaması — yedi kontrolün tamamı geçmeden PLAN aşamasına
-dahi geçilmez:**
+**Fail-closed gönderici/alıcı doğrulaması — altı bloklayıcı kontrolün tamamı geçmeden PLAN
+aşamasına dahi geçilmez:**
 
 | Kontrol | Kural |
 |---|---|
-| `series_configured` | e-Arşiv seri kodu `/^[A-Z0-9]{3}$/` |
-| `series_registered_at_edm` | Seri, `GetInvoiceSerial` (filtresiz) yanıtında gerçekten bulunmuş |
 | `check_user_ok` | `CheckUser` başarılı |
 | `alias_exact_match` | EDM'in döndürdüğü alias, yapılandırılan alias ile **birebir** (büyük/küçük harf ve boşluk dahil) aynı |
-| `company_fields_complete` | Sekiz şirket/adres alanının hepsi dolu |
-| `sandbox_receiver_supplied` | `KUKA_EDM_SANDBOX_RECEIVER_VKN` sağlanmış ve 10–11 hane |
-| `profile_id_supplied` | `KUKA_EDM_SANDBOX_PROFILE_ID` sağlanmış |
+| `company_fields_complete` | Sekiz gönderici mali alanının hepsi dolu |
+| `profile_id_resolved` | `PROFILEID` test endpoint'inde çözülmüş (varsayılan veya geçerli override) |
+| `receiver_identity_resolved` | Alıcı kimliği çözülmüş ve 10–11 hane |
+| `series_selection_valid` | Seri ya yok (EDM atar) ya da gerçekten kullanılabilir |
 
-Herhangi biri `false` ise `SANDBOX_SENDER_IDENTITY=BLOCKED` yazılır ve başarısız kontrol adları
-listelenir. Negatif matris 21 vakayla ölçülür (`leaked:none`).
+Bloklamayan bilgi alanları ayrıca yazılır: `profile_source`, `receiver_source`, `series_mode`,
+`series_sent` — hepsi **etiket**, hiçbiri değer değil.
+
+**Gönderici mali alanlarında tahmin yok.** Kullanıcı adı ve parola yalnız bağlantı kimliğidir;
+mükellef kimliği değildir. VKN, alias, unvan, vergi dairesi, adres, ilçe, şehir **ve posta kodu**
+UBL için hâlâ zorunludur ve EDM portalı/API'sinden gelmelidir. Tek bir alan bile eksikse çıktı
+`SANDBOX_SENDER_IDENTITY=BLOCKED|failed:company_fields_complete|missing_sender_fields:<alan adları>`
+biçiminde **hangi alanın eksik olduğunu adıyla** raporlar. Bu test şirketi değerleri üretim
+Kuka Island şirket bilgisi olarak kullanılmaz.
+
+Negatif matris 20 vakayla ölçülür (`leaked:none`).
 
 **Yazma öncesi kilitli idempotency durum makinesi** (`Kuka_Sandbox_Claim`):
 
@@ -474,7 +532,7 @@ salt-okunur uzlaştırma yapılmalı.
 uzlaştırma yapılır.
 
 **Settle persist hatası.** Dış çağrı başarılı olsa bile `confirmed` durumu diske yazılamazsa:
-`SANDBOX_CREATE=PASS` **yazılmaz**, `result:confirmed` **yazılmaz**, durum
+`SANDBOX_DRAFT_UPLOAD=PASS` **yazılmaz**, `result:draft_uploaded` **yazılmaz**, durum
 `state_persist_failed_manual_reconciliation_required` olur, disk kaydı `in_flight` kalır, ikinci
 yazma reddedilir ve komut **non-zero** çıkar. Numara ve readback ölçümleri yine de yapılır.
 
@@ -508,9 +566,10 @@ Diğer kapılar:
 | Yazma kapısı 2 | `--confirm=LoadInvoice` — planın çözdüğü operasyon adıyla birebir eşleşmeli |
 | DB | WooCommerce siparişi oluşturmaz; hiçbir tabloya yazmaz. Durum yalnız host tarafındaki JSON dosyasında |
 | KDV | Bu dosyada sabit `KUKA_SANDBOX_VAT_PERCENT = 20`, `cbc:Note` içinde açıkça TEST etiketiyle belirtilir. Mağazanın vergi ayarları okunmaz ve değiştirilmez |
-| Alıcı kimliği | Yalnız `KUKA_EDM_SANDBOX_RECEIVER_VKN`. Kodda hiçbir sabit alıcı numarası yok |
-| PROFILEID | Yalnız `KUKA_EDM_SANDBOX_PROFILE_ID`. Kodda sabitlenmiş profil değeri yok. **Ayrıca** yazma kapısı `KUKA_EDM_SANDBOX_PROFILE_ID_CONFIRMED` (EDM'in yazılı teyidi) ile **byte-for-byte** eşleşme ister; teyit yoksa `PROFILEID_CONFIRMED=false` nedeniyle BLOCKED. Rastgele/nonempty bir profil yazma aşamasını açamaz. PLAN yalnız `profile_confirmed:no` raporlar, değeri basmaz |
-| `INVOICESERIAL_REQUESTED` | Seri boşsa gönderilmez ve yazma aşamasına geçilmez |
+| Alıcı kimliği | EDM'in dokümante ettiği test alıcısı; `KUKA_EDM_SANDBOX_RECEIVER_VKN` ile override edilebilir. Live ortamında hiçbir değer çözülmez |
+| PROFILEID | EDM'in dokümante ettiği `EARSIVFATURA`; `KUKA_EDM_SANDBOX_PROFILE_ID` ile override edilebilir. Live ortamında hiçbir değer çözülmez. Yazılı teyit kapısı kaldırıldı (§13.1) |
+| `INVOICESERIAL_REQUESTED` | Yalnız gerçekten kullanılabilir bir seri override'ı varsa gönderilir; yokluğu yazma kapısı **değildir** (§13.2) |
+| `SendInvoice` | Çağrılmaz. Her çıkış yolunda `SANDBOX_SENDINVOICE=NOT_EXECUTED` raporlanır |
 | Belge | Sentetik ve açıkça TEST işaretli (`cbc:Note`: "TEST BELGESI … GERCEK SATIS DEGILDIR", kalem adı "SANDBOX TEST KALEMI") |
 | Mükerrerlik | UUID sabit tohumdan deterministik; durum makinesi ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |
 | Üretim koruması | `Kuka_Island_Core_Invoice_Manager` ve `invoice_numbering_unconfirmed` guard'ı **kullanılmaz ve gevşetilmez**. `LoadInvoice` isteği tamamen test harness'ında kurulur; eklentide `LoadInvoice`/`CreateSerial`/`CancelInvoice` yazma metodu **yok** (harness bunu da ölçer) |
@@ -524,7 +583,7 @@ DOM üzerinden **çıkarılır**, yani hiçbir numara gönderilmez ve çıktıda
 KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh --confirm=LoadInvoice
 ```
 
-İkinci komut EDM test hesabında **kalıcı bir test kaydı** oluşturur; bu yüzden yazma çağrısından
+İkinci komut EDM test hesabında **kalıcı bir taslak kaydı** oluşturur (gönderim değil); bu yüzden yazma çağrısından
 hemen önce hangi operasyonun çağrılacağı açıkça yazdırılır ve iki kapı birlikte sağlanmadan
 işlem yapılmaz.
 
@@ -542,7 +601,7 @@ docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-k
 # Gerçek EDM salt-okunur sonda (kimlik yoksa BLOCKED yazar, ağa çıkmaz)
 ./scripts/edm-test-run.sh test-edm-sandbox.php
 
-# İzole sandbox fatura deneyi (varsayılan PLAN; hiçbir belge oluşturmaz)
+# İzole sandbox taslak yükleme deneyi (varsayılan PLAN; hiçbir belge oluşturmaz)
 ./scripts/edm-sandbox-run.sh
 
 # Sandbox harness kanıtları (fixture/mock; ağa çıkmaz, belge oluşturmaz)
