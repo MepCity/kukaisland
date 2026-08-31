@@ -10,11 +10,6 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_EDM_Client {
-	/** REQUEST_HEADER/CHANNEL_NAME. Fixed integration channel label. */
-	private const CHANNEL_NAME = 'WEB';
-	/** REQUEST_HEADER/HOSTNAME. Fixed label, never a real machine name. */
-	private const HOSTNAME = 'kukaisland';
-
 	private Kuka_Island_Core_Invoice_Config $config;
 	private Kuka_Island_Core_SOAP_Transport_Interface $transport;
 	private ?string $session_id = null;
@@ -45,21 +40,12 @@ final class Kuka_Island_Core_EDM_Client {
 	}
 
 	/**
-	 * Build a REQUEST_HEADER that matches EDM's published SOAP envelope.
+	 * Build a REQUEST_HEADER.
 	 *
-	 * WSDL (tns:REQUEST_HEADERType) declares, in this order and all optional:
-	 * SESSION_ID, CLIENT_TXN_ID, INTL_TXN_ID, INTL_PARENT_TXN_ID, ACTION_DATE,
-	 * CHANGE_INFO, REASON, APPLICATION_NAME, HOSTNAME, CHANNEL_NAME,
-	 * SIMULATION_FLAG, COMPRESSED, ATTRIBUTES.
-	 *
-	 * EDM's own reference envelope populates SESSION_ID, CLIENT_TXN_ID,
-	 * ACTION_DATE, REASON, APPLICATION_NAME, HOSTNAME, CHANNEL_NAME and
-	 * COMPRESSED. Sending only three of those was the deviation this method
-	 * removes: on Login the reference envelope carries SESSION_ID = 0, because
-	 * there is no session yet.
-	 *
-	 * APPLICATION_NAME is always the contracted value and is never derived from
-	 * the request, the host or any user input.
+	 * Delegates to Kuka_Island_Core_EDM_Request_Header, which is the single
+	 * generator this client and the isolated sandbox experiment share. They
+	 * drifted apart once; routing both through one pure builder is what stops
+	 * that happening again.
 	 *
 	 * @param string $session_id    Session identifier, or '0' for Login.
 	 * @param string $reason        Operation name recorded as REASON.
@@ -69,29 +55,12 @@ final class Kuka_Island_Core_EDM_Client {
 	 * @return array<string, string>
 	 */
 	private function build_request_header( string $session_id, string $reason, string $client_txn_id = '' ): array {
-		return array(
-			'SESSION_ID'       => $session_id,
-			'CLIENT_TXN_ID'    => '' !== $client_txn_id ? $client_txn_id : wp_generate_uuid4(),
-			'ACTION_DATE'      => gmdate( 'Y-m-d\TH:i:s' ),
-			'REASON'           => $reason,
-			'APPLICATION_NAME' => $this->config->get_application_name(),
-			'HOSTNAME'         => self::request_hostname(),
-			'CHANNEL_NAME'     => self::CHANNEL_NAME,
-			// EDM's reference envelope sends the literal 'N': the payload is
-			// not gzip-compressed.
-			'COMPRESSED'       => 'N',
+		return Kuka_Island_Core_EDM_Request_Header::build(
+			$session_id,
+			$reason,
+			$this->config->get_application_name(),
+			$client_txn_id
 		);
-	}
-
-	/**
-	 * Stable, non-identifying host label for REQUEST_HEADER/HOSTNAME.
-	 *
-	 * A real machine name can leak internal infrastructure, and a
-	 * request-derived Host header is attacker-controlled, so neither is used.
-	 * The value is a fixed application label.
-	 */
-	private static function request_hostname(): string {
-		return self::HOSTNAME;
 	}
 
 	/**
@@ -203,7 +172,7 @@ final class Kuka_Island_Core_EDM_Client {
 		}
 
 		$request = array(
-			'REQUEST_HEADER' => self::build_request_header( '0', 'Login' ),
+			'REQUEST_HEADER' => self::build_request_header( Kuka_Island_Core_EDM_Request_Header::NO_SESSION, 'Login' ),
 			'USER_NAME'      => $this->config->get_username(),
 			'PASSWORD'       => $this->config->get_password(),
 		);

@@ -742,6 +742,13 @@ expect_sandbox_line "the PROFILEID written-confirmation gate is gone" "SANDBOX_P
 expect_sandbox_match "sandbox defaults never reach production" "^SANDBOX_DEFAULTS_NOT_IN_PRODUCTION=PASS\\|module_files:[0-9]{2,}\\|sandbox_references:none\\|generic_receiver_still_policy_gated:yes$"
 expect_sandbox_line "serial selection is optional but never sloppy" "SANDBOX_SERIES_OPTIONAL=PASS|not_configured:omitted|not_configured_dark:omitted|registered:sent|unregistered:blocked|query_failed:blocked|bad_format_long:blocked|bad_format_lower:blocked|bad_format_symbol:blocked"
 expect_sandbox_line "LoadInvoice request shape is fixed" "SANDBOX_LOAD_REQUEST_SHAPE=PASS|no_series:generate_on_load=true,invoiceserial=absent,invoice_id=absent|with_series:generate_on_load=true,invoiceserial=present,invoice_id=absent"
+
+# One shared REQUEST_HEADER generator for production and sandbox, and a UBL that
+# carries EDM's portal-serial placeholder instead of having cbc:ID stripped out.
+expect_sandbox_line "the LoadInvoice header carries all eight contract fields" "SANDBOX_LOAD_REQUEST_HEADER_CONTRACT=PASS|fields:8|order_matches_contract:yes|duplicates:none|wrong_values:none|reason:LoadInvoice|hostname:kukaisland|channel:WEB|compressed:N|client_txn_id_is_uuid:yes"
+expect_sandbox_line "production and sandbox share one header generator" "SANDBOX_HEADER_GENERATOR_IS_SHARED=PASS|sandbox_uses_shared_builder:yes|sandbox_own_header_literals:none|builder_is_pure_static:yes"
+expect_sandbox_line "the UBL carries EDM's portal-serial placeholder" "SANDBOX_UBL_CBC_ID_PLACEHOLDER=PASS|cbc_id_count:1|cbc_id:ABC2009123456789|matches_literal:yes|dom_removal_code:removed|old_placeholder:gone"
+expect_sandbox_line "the UBL id and the SOAP invoice id are independent" "SANDBOX_REQUEST_KEEPS_UBL_ID_AND_OMITS_SOAP_ID=PASS|soap_invoice_id_attribute:absent|ubl_cbc_id_in_content:present|generate_invoice_id_on_load:true"
 expect_sandbox_line "with no serial the request lets EDM assign the number" "SANDBOX_NO_SERIES_LOAD_REQUEST=PASS|calls:1|operation:LoadInvoice|generate_invoice_id_on_load:true|invoiceserial_requested:absent|invoice_id_attribute:absent|verdict:PASS|label:draft_uploaded|edm_assigned_number:read_back"
 expect_sandbox_line "LoadInvoice uploads a draft and SendInvoice is never called" "SANDBOX_LOAD_VS_SEND_SEMANTICS=PASS|transport_operations:LoadInvoice|forbidden_calls:none|success_label:draft_uploaded|sendinvoice_line:present|draft_step:present"
 expect_sandbox_line "an uncertain write carries a safe fault classification" "SANDBOX_UNCERTAIN_WRITE_CARRIES_SAFE_FAULT=PASS|calls:1|classification:uncertain|fault_line_shape:ok|remote_text_leaked:none"

@@ -351,10 +351,11 @@ $planned_operation = 'LoadInvoice';
 
 WP_CLI::line(
 	sprintf(
-		'SANDBOX_PLAN=PASS|operation:%s|effect:draft_upload_only|generate_invoice_id_on_load:true|invoice_id_attribute:omitted|invoiceserial_requested:%s|ubl_cbc_id_sent:%s|vat_percent:%s|net:%s|tax:%s|payable:%s|uuid_deterministic:yes',
+		'SANDBOX_PLAN=PASS|operation:%s|effect:draft_upload_only|generate_invoice_id_on_load:true|invoice_id_attribute:omitted|invoiceserial_requested:%s|ubl_cbc_id:%s|ubl_cbc_id_count:%d|vat_percent:%s|net:%s|tax:%s|payable:%s|uuid_deterministic:yes',
 		$planned_operation,
 		$series['send'] ? 'sent' : 'omitted',
-		$built['cbc_id_sent'] ? 'present' : 'absent',
+		$built['cbc_id'],
+		$built['cbc_id_count'],
 		$built['totals']['percent'],
 		$built['totals']['net'],
 		$built['totals']['tax'],
@@ -414,6 +415,53 @@ if ( Kuka_Sandbox_Claim::S_CORRUPT === $state_now ) {
 
 WP_CLI::line( sprintf( 'SANDBOX_CLAIM=PASS|lock:acquired|state:%s|record:%s', $state_now, $status['reason'] ) );
 
+/* ========================================================================== */
+/* Operator-driven reconciliation reset: uncertain -> idle. No EDM call.       */
+/* ========================================================================== */
+
+/*
+ * Only reachable with an explicit positional argument naming the evidence, and
+ * only from 'uncertain'. It makes no external call at all: the operator has
+ * already established, out of band, that the document is absent at EDM. The
+ * on-disk history is appended to, never rewritten or deleted.
+ *
+ *   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
+ */
+$reset_evidence = '';
+$reset_audit    = '';
+foreach ( $cli_args as $arg ) {
+	if ( ! is_string( $arg ) ) {
+		continue;
+	}
+	if ( str_starts_with( $arg, 'reset=' ) ) {
+		$reset_evidence = substr( $arg, strlen( 'reset=' ) );
+	}
+	if ( str_starts_with( $arg, 'audit=' ) ) {
+		$reset_audit = substr( $arg, strlen( 'audit=' ) );
+	}
+}
+
+if ( '' !== $reset_evidence ) {
+	$reset = $claim->reset_after_reconcile( $reset_evidence, $reset_audit );
+
+	WP_CLI::line(
+		sprintf(
+			'SANDBOX_CLAIM_RESET=%s|from:%s|to:%s|reason:%s|audit:%s|written:%s',
+			$reset['ok'] ? 'PASS' : 'BLOCKED',
+			$state_now,
+			$reset['state'],
+			$reset['reason'],
+			'' === trim( $reset_audit ) ? 'none' : trim( $reset_audit ),
+			$reset['written'] ? 'yes' : 'no'
+		)
+	);
+
+	$block_from( array_slice( $all_steps, 4 ), 'reconciliation_reset_only' );
+	$claim->release();
+	$client->logout();
+	exit( $reset['ok'] ? 0 : 1 );
+}
+
 if ( Kuka_Sandbox_Claim::S_IDLE !== $state_now ) {
 	WP_CLI::line( sprintf( 'SANDBOX_DUPLICATE_GUARD=PASS|state:%s|second_write_refused:yes', $state_now ) );
 	$reconcile_only( 'state_' . $state_now, (string) ( $status['record']['assigned_number'] ?? '' ) );
@@ -427,6 +475,31 @@ WP_CLI::line( 'SANDBOX_DUPLICATE_GUARD=PASS|state:idle|uuid_deterministic:yes|ed
 /* ========================================================================== */
 /* Gates: explicit env opt-in and operation confirmation                        */
 /* ========================================================================== */
+
+/*
+ * Unresolved contract, and the last gate before any write.
+ *
+ * For EARSIVFATURA addressed to the final-consumer identifier 11111111111, no
+ * official EDM source establishes what LoadInvoiceRequest.RECEIVER.alias and
+ * INVOICE.HEADER.TO must carry. Nothing is guessed here: not 'defaultpk', not
+ * an e-mail address, and not an empty string presented as if it were correct.
+ *
+ * Flip this to true ONLY against a written EDM answer, and record that answer
+ * in docs/EDM_ENTEGRASYONU.md at the same time.
+ */
+$receiver_alias_established = false;
+
+if ( ! $receiver_alias_established ) {
+	WP_CLI::line( 'SANDBOX_RECEIVER_ALIAS=BLOCKED|reason:official_earchive_alias_not_established' );
+	$block( 'SANDBOX_DRAFT_UPLOAD', 'receiver_alias_contract_unresolved' );
+	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
+	WP_CLI::log( 'No LoadInvoice was attempted: the e-Archive recipient alias contract is not established by any official EDM source, and it will not be guessed.' );
+	$claim->release();
+	$client->logout();
+	exit( 0 );
+}
+
+WP_CLI::line( 'SANDBOX_RECEIVER_ALIAS=PASS|reason:official_earchive_alias_established' );
 
 $allow_write = 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' );
 

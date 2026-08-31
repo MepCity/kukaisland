@@ -646,6 +646,20 @@ uyuşmayan alan adlarını (değerleri değil) bildiriyor; e-Fatura tarafında b
 "GİB e-Fatura kaydı meselesi" olarak açıklanıyor; e-Arşiv tarafında boş sonuç hata olarak
 gösterilmiyor.
 
+### 13.1.3 Mutabakat sonrası sıfırlama
+
+`uncertain` durumu ikinci yazmayı yapısal olarak reddeder. Operatör belgenin EDM'de
+bulunmadığını dışarıdan saptadıysa geçiş desteklenen yoldan yapılır — **hiçbir EDM çağrısı
+yapılmaz**, JSON elle düzenlenmez, geçmiş korunur ve yalnızca eklenir:
+
+```bash
+./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<etiket>
+```
+
+Kapı değişmedi: `reset_after_reconcile()` hâlâ literal `document_absent_at_edm` kanıtını ve
+`uncertain` durumunu şart koşar. `audit` yalnızca operatörün kendi etiketini geçmişe yazar,
+kanıtın yerine geçmez.
+
 ### 13.1.2 Onay kapısının çağrı biçimi
 
 `wp eval-file` **yalnız çıplak positional** argüman aktarır; `--confirm=LoadInvoice` WP-CLI
@@ -838,9 +852,55 @@ Diğer kapılar:
 | Mükerrerlik | UUID sabit tohumdan deterministik; durum makinesi ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |
 | Üretim koruması | `Kuka_Island_Core_Invoice_Manager` ve `invoice_numbering_unconfirmed` guard'ı **kullanılmaz ve gevşetilmez**. `LoadInvoice` isteği tamamen test harness'ında kurulur; eklentide `LoadInvoice`/`CreateSerial`/`CancelInvoice` yazma metodu **yok** (harness bunu da ölçer) |
 
-`cbc:ID` deneyin çekirdeği: belge üretim builder'ı ile kurulur, ardından `cbc:ID` elemanı
-DOM üzerinden **çıkarılır**, yani hiçbir numara gönderilmez ve çıktıda
-`ubl_cbc_id_sent:absent` olarak raporlanır.
+### `cbc:ID` ile `INVOICE/@ID` ayrı alanlardır
+
+Önceki sürüm UBL'den `cbc:ID` elemanını DOM ile **siliyordu**. UBL-TR bu alanı zorunlu tutar,
+dolayısıyla gönderilen belge yapısal olarak geçersizdi.
+
+| Alan | Değer | Neden |
+|---|---|---|
+| UBL `cbc:ID` | **`ABC2009123456789`** | EDM'in resmî portal-seri placeholder'ı. Mali fatura numarası **değildir**, saklanmaz, numara diye sunulmaz |
+| SOAP `INVOICE/@ID` | **gönderilmez** | `GENERATEINVOICEIDONLOAD=true` ile numarayı EDM atasın diye |
+
+EDM yanıtındaki gerçek `INVOICE.ID` / `UUID` ayrıştırması değişmedi.
+
+```
+SANDBOX_UBL_CBC_ID_PLACEHOLDER=PASS|cbc_id_count:1|cbc_id:ABC2009123456789|matches_literal:yes|dom_removal_code:removed|old_placeholder:gone
+SANDBOX_REQUEST_KEEPS_UBL_ID_AND_OMITS_SOAP_ID=PASS|soap_invoice_id_attribute:absent|ubl_cbc_id_in_content:present|generate_invoice_id_on_load:true
+```
+
+### Tek ortak REQUEST_HEADER üreticisi
+
+Sandbox dört alan gönderiyordu, production client sekiz. Sözleşmenin ikinci kez ayrışmaması
+için tek saf üretici çıkarıldı: `Kuka_Island_Core_EDM_Request_Header::build()`. Hem
+`class-edm-client.php` hem `lib-edm-sandbox.php` onu çağırır; sandbox'ın kendi header literal'i
+kalmadı.
+
+Zarf sırasıyla sekiz alan: `SESSION_ID`, `CLIENT_TXN_ID`, `ACTION_DATE`, `REASON`,
+`APPLICATION_NAME`, `HOSTNAME`, `CHANNEL_NAME`, `COMPRESSED`. LoadInvoice değerleri:
+`REASON=LoadInvoice`, `APPLICATION_NAME=ozelyazilim.kukaisland`, `HOSTNAME=kukaisland`,
+`CHANNEL_NAME=WEB`, `COMPRESSED=N`, `CLIENT_TXN_ID=belge UUID'si`.
+
+```
+SANDBOX_LOAD_REQUEST_HEADER_CONTRACT=PASS|fields:8|order_matches_contract:yes|duplicates:none|wrong_values:none|reason:LoadInvoice|hostname:kukaisland|channel:WEB|compressed:N|client_txn_id_is_uuid:yes
+SANDBOX_HEADER_GENERATOR_IS_SHARED=PASS|sandbox_uses_shared_builder:yes|sandbox_own_header_literals:none|builder_is_pure_static:yes
+```
+
+### Çözülmemiş kapı: e-Arşiv alıcı alias'ı
+
+`EARSIVFATURA` + nihai tüketici `11111111111` için `LoadInvoiceRequest.RECEIVER.alias` /
+`INVOICE.HEADER.TO` değerinin ne olması gerektiği **hiçbir resmî EDM kaynağıyla
+kesinleşmedi**. Tahmin yürütülmüyor: `defaultpk` kullanılmıyor, e-posta alias sanılmıyor, boş
+dize doğruymuş gibi sunulmuyor.
+
+```
+SANDBOX_RECEIVER_ALIAS=BLOCKED|reason:official_earchive_alias_not_established
+SANDBOX_DRAFT_UPLOAD=BLOCKED|reason:receiver_alias_contract_unresolved
+```
+
+Bu kapı **iki yazma kapısının da açık** olduğu koşulda bile bloklar; ölçüldü. EDM'den yazılı
+yanıt geldiğinde `edm-sandbox-invoice.php` içindeki `$receiver_alias_established` bayrağı
+açılır ve yanıt aynı anda bu dokümana işlenir.
 
 ```bash
 ./scripts/edm-sandbox-run.sh                                    # PLAN, hiçbir şey oluşturmaz

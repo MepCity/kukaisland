@@ -14,6 +14,9 @@
 #   ./scripts/edm-sandbox-run.sh                                            # PLAN
 #   KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
 #
+# Reconciliation reset (no EDM call, uncertain -> idle only):
+#   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
+#
 # Mounts:
 #   credential file  -> /run/edm/edm-test.env      read-only
 #   state directory  -> /run/edm/state             read-write (JSON only, no DB)

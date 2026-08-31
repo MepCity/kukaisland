@@ -19,6 +19,16 @@ defined( 'WP_CLI' ) || exit( 1 );
 const KUKA_SANDBOX_VAT_PERCENT = 20;
 /** Synthetic net line amount in kuruş (100.00 TRY). */
 const KUKA_SANDBOX_NET_CENTS = 10000;
+/**
+ * EDM's documented portal-serial placeholder for UBL cbc:ID.
+ *
+ * With GENERATEINVOICEIDONLOAD = true the document number is assigned by EDM,
+ * but the UBL still has to carry a syntactically valid cbc:ID. This is the
+ * placeholder EDM's own portal uses; it is NOT a fiscal invoice number and is
+ * never persisted or presented as one.
+ */
+const KUKA_SANDBOX_UBL_ID_PLACEHOLDER = 'ABC2009123456789';
+
 /** Deterministic seed so a repeat run reuses the same UUID. */
 const KUKA_SANDBOX_UUID_SEED = 'kuka-island-edm-sandbox-e2e-v1';
 /** Host-side state directory (read-write mount). Never the database. */
@@ -735,15 +745,19 @@ function kuka_sandbox_evaluate_readback( array $checks ): array {
 /**
  * Build the synthetic, clearly-marked TEST UBL document.
  *
- * cbc:ID is removed after building: the experiment sends NO document number so
- * that EDM's assignment behaviour can be observed. The production builder is
- * used, so its own validation still applies.
+ * The UBL carries EDM's documented portal-serial placeholder in cbc:ID
+ * (KUKA_SANDBOX_UBL_ID_PLACEHOLDER). It is not a fiscal number: with
+ * GENERATEINVOICEIDONLOAD = true EDM assigns the real one, and the SOAP-side
+ * INVOICE/@ID is still omitted so that assignment can be observed. Stripping
+ * cbc:ID out of the document, as this function used to do, produced UBL that
+ * does not satisfy the schema. The production builder is used, so its own
+ * validation still applies.
  *
  * @param array<string, string> $supplier   Supplier block (already verified complete).
  * @param string                $receiver_vkn Explicitly supplied sandbox receiver identity.
  * @param string                $profile_id EDM-confirmed profile identifier.
  * @param string                $uuid       Deterministic UUID.
- * @return array{xml: string, cbc_id_sent: bool, totals: array<string, string>}
+ * @return array{xml: string, cbc_id: string, cbc_id_count: int, totals: array<string, string>}
  * @throws Kuka_Island_Core_Invoice_Permanent_Exception When a mandatory field is missing.
  */
 function kuka_sandbox_build_ubl( array $supplier, string $receiver_vkn, string $profile_id, string $uuid ): array {
@@ -756,9 +770,9 @@ function kuka_sandbox_build_ubl( array $supplier, string $receiver_vkn, string $
 
 	$data = array(
 		'uuid'              => $uuid,
-		// Placeholder only. Stripped from the emitted XML below, never persisted
-		// and never presented as a fiscal number.
-		'invoice_number'    => 'SANDBOXPLACEHOLDER',
+		// EDM's documented portal-serial placeholder. Never persisted and never
+		// presented as a fiscal number: EDM assigns the real one on load.
+		'invoice_number'    => KUKA_SANDBOX_UBL_ID_PLACEHOLDER,
 		'series'            => '',
 		'profile_id'        => $profile_id,
 		'document_type'     => Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE,
@@ -833,23 +847,19 @@ function kuka_sandbox_build_ubl( array $supplier, string $receiver_vkn, string $
 
 	$xml = ( new Kuka_Island_Core_UBL_TR_Builder( $data ) )->build_xml();
 
+	// Read back what was actually emitted rather than trusting the input: the
+	// placeholder has to be present exactly once for the document to be valid.
 	$dom = new DOMDocument();
 	$dom->loadXML( $xml );
-	$xpath   = new DOMXPath( $dom );
-	$id_node = $xpath->query( '/*[local-name()="Invoice"]/*[local-name()="ID"]' )->item( 0 );
-	if ( null !== $id_node && null !== $id_node->parentNode ) {
-		$id_node->parentNode->removeChild( $id_node );
-	}
-	$stripped = (string) $dom->saveXML();
-
-	$recheck = new DOMDocument();
-	$recheck->loadXML( $stripped );
-	$still = ( new DOMXPath( $recheck ) )->query( '/*[local-name()="Invoice"]/*[local-name()="ID"]' )->length;
+	$id_nodes = ( new DOMXPath( $dom ) )->query( '/*[local-name()="Invoice"]/*[local-name()="ID"]' );
+	$id_count = ( false !== $id_nodes ) ? $id_nodes->length : 0;
+	$id_value = ( $id_count > 0 ) ? trim( (string) $id_nodes->item( 0 )->nodeValue ) : '';
 
 	return array(
-		'xml'         => $stripped,
-		'cbc_id_sent' => $still > 0,
-		'totals'      => array(
+		'xml'          => $xml,
+		'cbc_id'       => $id_value,
+		'cbc_id_count' => $id_count,
+		'totals'       => array(
 			'net'     => $a( $net ),
 			'tax'     => $a( $tax ),
 			'payable' => $a( $gross ),
@@ -1167,7 +1177,7 @@ final class Kuka_Sandbox_Claim {
 	 *
 	 * @return array{ok: bool, reason: string, written: bool, state: string}
 	 */
-	public function reset_after_reconcile( string $evidence ): array {
+	public function reset_after_reconcile( string $evidence, string $audit_note = '' ): array {
 		if ( null === $this->lock_handle ) {
 			return array(
 				'ok'      => false,
@@ -1196,11 +1206,18 @@ final class Kuka_Sandbox_Claim {
 
 		$state     = $this->read();
 		$history   = (array) ( $state['history'] ?? array() );
-		$history[] = array(
+		$entry = array(
 			'at_utc'   => gmdate( 'c' ),
 			'to'       => self::S_IDLE,
 			'evidence' => $evidence,
 		);
+		// The operator's own audit label, recorded alongside the required
+		// evidence token. It is a note, never a substitute: the gate above
+		// still demands the literal 'document_absent_at_edm'.
+		if ( '' !== trim( $audit_note ) ) {
+			$entry['audit'] = trim( $audit_note );
+		}
+		$history[] = $entry;
 
 		$written = $this->persist(
 			array(
@@ -1306,7 +1323,9 @@ function kuka_sandbox_resolve_report( string $classification, array $settle ): a
  * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.LoadInvoiceRequest.html
  *
  * Two shape rules are the whole point of the experiment and are enforced here:
- *   - INVOICE/@ID is never set, so EDM has to assign the document number.
+ *   - INVOICE/@ID is never set, so EDM has to assign the document number. The
+ *     UBL's own cbc:ID carries EDM's portal-serial placeholder instead; the two
+ *     are different fields and only the SOAP-side one is omitted.
  *   - GENERATEINVOICEIDONLOAD is always true (WSDL: xs:boolean, required, and
  *     present only on LoadInvoiceRequest -- SendInvoiceRequest has no
  *     equivalent).
@@ -1342,11 +1361,15 @@ function kuka_sandbox_build_load_request( array $ctx ): array {
 	}
 
 	return array(
-		'REQUEST_HEADER'          => array(
-			'SESSION_ID'       => (string) ( $ctx['session_id'] ?? '' ),
-			'ACTION_DATE'      => (string) ( $ctx['action_date'] ?? '' ),
-			'CLIENT_TXN_ID'    => $uuid,
-			'APPLICATION_NAME' => (string) ( $ctx['application_name'] ?? '' ),
+		// The one shared generator, so this request cannot drift away from the
+		// production client's header again. CLIENT_TXN_ID is the document UUID:
+		// it is the idempotency key EDM sees.
+		'REQUEST_HEADER'          => Kuka_Island_Core_EDM_Request_Header::build(
+			(string) ( $ctx['session_id'] ?? '' ),
+			'LoadInvoice',
+			(string) ( $ctx['application_name'] ?? '' ),
+			$uuid,
+			(string) ( $ctx['action_date'] ?? '' )
 		),
 		'SENDER'                  => array(
 			'vkn'   => (string) ( $ctx['sender_vkn'] ?? '' ),

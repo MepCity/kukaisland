@@ -382,8 +382,34 @@ $report(
 $module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/';
 $module_files = (array) glob( $module_dir . '*.php' );
 $leak_hits    = array();
+
+/**
+ * Strip comments so the scan measures CODE, not prose.
+ *
+ * A docblock may legitimately point at the sandbox library to explain why a
+ * shared contract exists; what must never happen is executable code depending
+ * on it.
+ *
+ * @param string $php Source.
+ */
+$executable_only = static function ( string $php ): string {
+	$out = '';
+	foreach ( token_get_all( $php ) as $token ) {
+		if ( is_array( $token ) ) {
+			if ( in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) {
+				continue;
+			}
+			$out .= $token[1];
+			continue;
+		}
+		$out .= $token;
+	}
+
+	return $out;
+};
+
 foreach ( $module_files as $module_file ) {
-	$body = (string) file_get_contents( $module_file );
+	$body = $executable_only( (string) file_get_contents( $module_file ) );
 	foreach ( array( 'lib-edm-sandbox', 'kuka_sandbox_', 'KUKA_SANDBOX_', 'KUKA_EDM_SANDBOX_' ) as $needle ) {
 		if ( str_contains( $body, $needle ) ) {
 			$leak_hits[] = basename( $module_file ) . ':' . $needle;
@@ -488,6 +514,155 @@ $report(
 		$req_with_series['GENERATEINVOICEIDONLOAD'] ? 'true' : 'false',
 		array_key_exists( 'INVOICESERIAL_REQUESTED', $header_with_series ) ? 'present' : 'absent',
 		array_key_exists( 'ID', $req_with_series['INVOICE'][0] ) ? 'present' : 'absent'
+	)
+);
+
+/* ========================================================================== */
+/* REQUEST_HEADER: one shared generator, eight fields, exact values             */
+/* ========================================================================== */
+
+/*
+ * The sandbox once sent four header fields while the production client sent
+ * eight. Both now go through Kuka_Island_Core_EDM_Request_Header, and this is
+ * asserted against the real LoadInvoice request the driver would hand the
+ * transport -- not against a copy of the expectation.
+ */
+$load_header = (array) ( $req_no_series['REQUEST_HEADER'] ?? array() );
+
+$header_expected = array(
+	'REASON'           => 'LoadInvoice',
+	'APPLICATION_NAME' => 'ozelyazilim.kukaisland',
+	'HOSTNAME'         => 'kukaisland',
+	'CHANNEL_NAME'     => 'WEB',
+	'COMPRESSED'       => 'N',
+	'SESSION_ID'       => 'SESSION',
+	'ACTION_DATE'      => '2026-01-02T03:04:05',
+	'CLIENT_TXN_ID'    => $request_ctx['uuid'],
+);
+$header_wrong = array();
+foreach ( $header_expected as $field => $value ) {
+	if ( ( $load_header[ $field ] ?? null ) !== $value ) {
+		$header_wrong[] = $field;
+	}
+}
+
+// Exactly the eight contract fields, each exactly once, in envelope order.
+$header_keys = array_keys( $load_header );
+
+$report(
+	'SANDBOX_LOAD_REQUEST_HEADER_CONTRACT',
+	Kuka_Island_Core_EDM_Request_Header::FIELDS === $header_keys
+	&& 8 === count( $header_keys )
+	&& count( $header_keys ) === count( array_unique( $header_keys ) )
+	&& array() === $header_wrong,
+	sprintf(
+		'fields:%d|order_matches_contract:%s|duplicates:%s|wrong_values:%s|reason:%s|hostname:%s|channel:%s|compressed:%s|client_txn_id_is_uuid:%s',
+		count( $header_keys ),
+		Kuka_Island_Core_EDM_Request_Header::FIELDS === $header_keys ? 'yes' : 'no',
+		count( $header_keys ) === count( array_unique( $header_keys ) ) ? 'none' : 'YES',
+		empty( $header_wrong ) ? 'none' : implode( ',', $header_wrong ),
+		(string) ( $load_header['REASON'] ?? 'absent' ),
+		(string) ( $load_header['HOSTNAME'] ?? 'absent' ),
+		(string) ( $load_header['CHANNEL_NAME'] ?? 'absent' ),
+		(string) ( $load_header['COMPRESSED'] ?? 'absent' ),
+		( $load_header['CLIENT_TXN_ID'] ?? null ) === $request_ctx['uuid'] ? 'yes' : 'no'
+	)
+);
+
+// The sandbox must not hold its own copy of the header contract.
+$sandbox_lib_body = (string) file_get_contents( __DIR__ . '/lib-edm-sandbox.php' );
+$own_header_literals = array();
+foreach ( array( "'CHANNEL_NAME'", "'HOSTNAME'", "'COMPRESSED'", "'REASON'" ) as $literal ) {
+	if ( str_contains( $sandbox_lib_body, $literal . ' =>' ) ) {
+		$own_header_literals[] = $literal;
+	}
+}
+$report(
+	'SANDBOX_HEADER_GENERATOR_IS_SHARED',
+	str_contains( $sandbox_lib_body, 'Kuka_Island_Core_EDM_Request_Header::build(' )
+	&& array() === $own_header_literals
+	&& method_exists( 'Kuka_Island_Core_EDM_Request_Header', 'build' )
+	&& ( new ReflectionMethod( 'Kuka_Island_Core_EDM_Request_Header', 'build' ) )->isStatic(),
+	sprintf(
+		'sandbox_uses_shared_builder:%s|sandbox_own_header_literals:%s|builder_is_pure_static:%s',
+		str_contains( $sandbox_lib_body, 'Kuka_Island_Core_EDM_Request_Header::build(' ) ? 'yes' : 'no',
+		empty( $own_header_literals ) ? 'none' : implode( ',', $own_header_literals ),
+		( new ReflectionMethod( 'Kuka_Island_Core_EDM_Request_Header', 'build' ) )->isStatic() ? 'yes' : 'no'
+	)
+);
+
+/* ========================================================================== */
+/* UBL cbc:ID carries EDM's portal-serial placeholder                          */
+/* ========================================================================== */
+
+/*
+ * The old code stripped cbc:ID out of the document. UBL-TR requires it, so what
+ * was sent was structurally invalid. With GENERATEINVOICEIDONLOAD = true the
+ * real number is assigned by EDM; the document still has to carry the portal
+ * placeholder, and the SOAP-side INVOICE/@ID stays omitted. Two different
+ * fields.
+ */
+$ubl_built = kuka_sandbox_build_ubl(
+	array(
+		'vkn'        => '3230512384',
+		'name'       => 'EDM TEST',
+		'tax_office' => 'SELÇUK',
+		'address'    => 'BOMONTİ BUSİNESS CENTER',
+		'district'   => 'Esenler',
+		'city'       => 'İstanbul',
+		'postcode'   => '',
+		'country'    => 'Türkiye',
+		'email'      => '',
+		'phone'      => '',
+	),
+	KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN,
+	KUKA_SANDBOX_DOCUMENTED_PROFILE_ID,
+	kuka_sandbox_uuid()
+);
+
+$ubl_dom = new DOMDocument();
+$ubl_dom->loadXML( $ubl_built['xml'] );
+$ubl_xp     = new DOMXPath( $ubl_dom );
+$ubl_ids    = $ubl_xp->query( '/*[local-name()="Invoice"]/*[local-name()="ID"]' );
+$ubl_id_num = ( false !== $ubl_ids ) ? $ubl_ids->length : 0;
+$ubl_id_val = $ubl_id_num > 0 ? trim( (string) $ubl_ids->item( 0 )->nodeValue ) : '';
+
+$report(
+	'SANDBOX_UBL_CBC_ID_PLACEHOLDER',
+	1 === $ubl_id_num
+	&& KUKA_SANDBOX_UBL_ID_PLACEHOLDER === $ubl_id_val
+	&& 'ABC2009123456789' === $ubl_id_val
+	&& 1 === $ubl_built['cbc_id_count']
+	&& KUKA_SANDBOX_UBL_ID_PLACEHOLDER === $ubl_built['cbc_id']
+	// The old placeholder string must be gone entirely.
+	&& ! str_contains( $ubl_built['xml'], 'SANDBOXPLACEHOLDER' )
+	&& ! str_contains( $sandbox_lib_body, 'removeChild' ),
+	sprintf(
+		'cbc_id_count:%d|cbc_id:%s|matches_literal:%s|dom_removal_code:%s|old_placeholder:%s',
+		$ubl_id_num,
+		$ubl_id_val,
+		'ABC2009123456789' === $ubl_id_val ? 'yes' : 'no',
+		str_contains( $sandbox_lib_body, 'removeChild' ) ? 'PRESENT' : 'removed',
+		str_contains( $ubl_built['xml'], 'SANDBOXPLACEHOLDER' ) ? 'PRESENT' : 'gone'
+	)
+);
+
+// The UBL placeholder and the omitted SOAP INVOICE/@ID are independent.
+$ubl_request = kuka_sandbox_build_load_request(
+	array_merge( $request_ctx, array( 'series_code' => '', 'content' => $ubl_built['xml'] ) )
+);
+$ubl_content = (string) ( $ubl_request['INVOICE'][0]['CONTENT'] ?? '' );
+
+$report(
+	'SANDBOX_REQUEST_KEEPS_UBL_ID_AND_OMITS_SOAP_ID',
+	! array_key_exists( 'ID', $ubl_request['INVOICE'][0] )
+	&& str_contains( $ubl_content, '>' . KUKA_SANDBOX_UBL_ID_PLACEHOLDER . '<' )
+	&& true === $ubl_request['GENERATEINVOICEIDONLOAD'],
+	sprintf(
+		'soap_invoice_id_attribute:%s|ubl_cbc_id_in_content:%s|generate_invoice_id_on_load:%s',
+		array_key_exists( 'ID', $ubl_request['INVOICE'][0] ) ? 'PRESENT' : 'absent',
+		str_contains( $ubl_content, '>' . KUKA_SANDBOX_UBL_ID_PLACEHOLDER . '<' ) ? 'present' : 'ABSENT',
+		$ubl_request['GENERATEINVOICEIDONLOAD'] ? 'true' : 'false'
 	)
 );
 
