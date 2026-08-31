@@ -341,6 +341,40 @@ scriptleri tarafından kullanılır ve değerleri `Kuka_Island_Core_Invoice_Conf
 override'ı olarak geçirir. Yükleyici hiçbir değeri yazdırmaz; yalnız boolean **varlık** haritası
 döndürür.
 
+**Çalıştırıcı allow-list.** `scripts/edm-test-run.sh` kimlik dosyasını **yalnız tek bir**
+salt-okunur scripte mount eder: `test-edm-sandbox.php`. Script adı kullanıcı/typo kontrollü bir
+girdi olduğu için mutlak yol, `..`, `/` içeren isim, beklenmeyen karakter ve allow-list dışındaki
+her değer **kimlik kapısına ulaşmadan** reddedilir. Sandbox yazma aracı buradan çalıştırılamaz;
+kendi ayrı `scripts/edm-sandbox-run.sh` wrapper'ı vardır. Ölçüm: `EDM_RUNNER_ALLOWLIST=leaks:0`.
+
+**Değerler birebir saklanır.** Dosya formatı `KEY=value`; değer, **ilk** `=` işaretinden sonraki
+her şeydir. Trim edilmez, tırnak soyulmaz, içindeki `=` karakterleri korunur. Yalnız CRLF
+dosyalarındaki sondaki CR atılır. Böylece boşluk veya `=` içeren bir parola bozulmadan geçer.
+Yazıcı script `stty -echo` ile okur, `trap` ile her çıkış yolunda terminal echo'sunu geri açar ve
+dosyayı temp + `rename` ile atomik yayımlar — kesilen bir koşu yarım kimlik dosyası bırakmaz.
+
+Alanlar:
+
+| Anahtar | Zorunlu | Kullanım |
+|---|---|---|
+| `KUKA_EDM_USERNAME` | evet | Login |
+| `KUKA_EDM_PASSWORD` | evet | Login |
+| `KUKA_EDM_SECRET_KEY` | opsiyonel | Login |
+| `KUKA_EDM_SENDER_VKN` | CheckUser için | CheckUser, gönderici kimliği |
+| `KUKA_EDM_SENDER_ALIAS` | sandbox için | Alias birebir eşleşme kontrolü |
+| `KUKA_EDM_SENDER_TITLE` | sandbox için | UBL gönderici unvanı |
+| `KUKA_EDM_SENDER_TAX_OFFICE` | sandbox için | UBL vergi dairesi |
+| `KUKA_EDM_SENDER_ADDRESS` | sandbox için | UBL adres |
+| `KUKA_EDM_SENDER_DISTRICT` | sandbox için | UBL ilçe |
+| `KUKA_EDM_SENDER_CITY` | sandbox için | UBL şehir |
+| `KUKA_EDM_SENDER_POSTCODE` | sandbox için | UBL posta kodu |
+| `KUKA_EDM_SERIES_EARCHIVE` | sandbox için | Seri kodu; EDM'de tescilli olduğu doğrulanır |
+| `KUKA_EDM_SERIES_EINVOICE` | opsiyonel | — |
+| `KUKA_EDM_SANDBOX_RECEIVER_VKN` | sandbox için | **Uydurulmaz.** EDM yazılı teyit etmediyse boş bırakılır ve sandbox BLOCKED olur |
+| `KUKA_EDM_SANDBOX_PROFILE_ID` | sandbox için | **Sabitlenmez.** EDM teyidi olmadan boş bırakılır |
+
+`--status` çıktısı yalnız `supplied` / `absent` gösterir; hiçbir değer, uzunluk veya parça yazılmaz.
+
 Kurulum ve çalıştırma:
 
 ```bash
@@ -365,21 +399,78 @@ sorularını EDM **test** ortamında ölçmek için kurulmuş ayrı bir araçtı
 2. Atanan numara, `GetInvoice` (XML) ile geri okunan belgenin UBL `cbc:ID` alanına yazılmış mı?
 3. UUID, ödenecek tutar ve KDV tur dönüşünde birebir korunuyor mu?
 
-Güvenlik sözleşmesi — hepsi sağlanmazsa araç reddeder:
+Karar mantığının tamamı `scripts/lib-edm-sandbox.php` içindedir; böylece
+`scripts/verify-edm-sandbox-harness.php` her reddetme yolunu fixture ve mock ile, **ağa çıkmadan
+ve belge oluşturmadan** kanıtlar. Bu harness `make verify` kapsamındadır.
+
+**Fail-closed gönderici/alıcı doğrulaması — yedi kontrolün tamamı geçmeden PLAN aşamasına
+dahi geçilmez:**
+
+| Kontrol | Kural |
+|---|---|
+| `series_configured` | e-Arşiv seri kodu `/^[A-Z0-9]{3}$/` |
+| `series_registered_at_edm` | Seri, `GetInvoiceSerial` (filtresiz) yanıtında gerçekten bulunmuş |
+| `check_user_ok` | `CheckUser` başarılı |
+| `alias_exact_match` | EDM'in döndürdüğü alias, yapılandırılan alias ile **birebir** (büyük/küçük harf ve boşluk dahil) aynı |
+| `company_fields_complete` | Sekiz şirket/adres alanının hepsi dolu |
+| `sandbox_receiver_supplied` | `KUKA_EDM_SANDBOX_RECEIVER_VKN` sağlanmış ve 10–11 hane |
+| `profile_id_supplied` | `KUKA_EDM_SANDBOX_PROFILE_ID` sağlanmış |
+
+Herhangi biri `false` ise `SANDBOX_SENDER_IDENTITY=BLOCKED` yazılır ve başarısız kontrol adları
+listelenir. Negatif matris 21 vakayla ölçülür (`leaked:none`).
+
+**Yazma öncesi kilitli idempotency durum makinesi** (`Kuka_Sandbox_Claim`):
+
+```
+idle -> in_flight -> confirmed
+                  -> failed_definitive
+                  -> uncertain
+```
+
+| Kural | Uygulama |
+|---|---|
+| Eşzamanlılık | `flock(LOCK_EX\|LOCK_NB)`; kilit alınamazsa BLOCKED. İki süreçten yalnız biri sahip olur |
+| Claim | Yalnız `idle`'dan. `in_flight`, `uncertain`, `confirmed`, `failed_definitive` → ikinci yazma **koşulsuz reddedilir** |
+| Timeout / bağlantı kopması | Çağrı EDM'de başarılı olmuş olabileceği için `uncertain`. **Otomatik tekrar yok** |
+| `uncertain` çıkışı | Yalnız UUID ile `GetInvoiceStatus` / `GetInvoice` uzlaştırması sonrası, belgenin **yok olduğu kesin kanıtlanırsa** ve operatör istediğinde `reset_after_reconcile('document_absent_at_edm')` |
+| Kalıcılık | temp dosya + `rename`, mod **600**. Yazma başarısızsa `state_recorded:yes` **yazılmaz** |
+
+**LoadInvoice yanıtı kesin doğrulanır.** Hiçbir yanıt varsayılan olarak başarı sayılmaz:
+
+- `REQUEST_RETURN.RETURN_CODE` kesin yolundan okunur; sayısal değilse `malformed`.
+- `RETURN_CODE != 0` → `business_error`, `create_ok=false`, durum `failed_definitive`.
+- Atanan numara **yalnız** `LoadInvoiceResponse/INVOICE[0]/@ID` alanından okunur. **Recursive arama
+  yapılmaz**, bu yüzden `HEADER/ID` gibi ilgisiz bir nested ID asla mali belge numarası sanılmaz.
+- Dönen `UUID`, gönderilen deterministik UUID ile eşleşmezse `uuid_mismatch`.
+- Numara boş/boşluksa `empty_id` → `NUMBER_ASSIGNED=FAIL` ve `confirmed` durumuna **geçilmez**.
+
+Parser 12 fixture ile ölçülür: başarı (dizi ve tek nesne), iş hatası, boş ID, boşluk ID, yanlış
+UUID, ilgisiz nested ID, string/null malformed, eksik `REQUEST_RETURN`, sayısal olmayan kod,
+eksik `INVOICE`.
+
+**Readback verdictleri ayrı ayrı raporlanır.** `SANDBOX_STATUS_READBACK` yalnız `GetInvoiceStatus`
+sorgusu başarılıysa PASS; tekrar koşuda `query_failed` **PASS etiketi altında gösterilmez**.
+`SANDBOX_XML_READBACK` yalnız beş zorunlu kontrolün (`xml_retrieved`, `xml_parsed`, `uuid_match`,
+`payable_match`, `tax_match`) tamamı geçtiğinde PASS. `SANDBOX_CBC_ID_READBACK` ayrı bir ölçümdür:
+atanan numaranın saklanan UBL `cbc:ID` alanına yansıyıp yansımadığı.
+
+Diğer kapılar:
 
 | Kapı | Kural |
 |---|---|
 | Ortam | Yalnız test endpoint'i. `is_live()` → koşulsuz BLOCKED |
+| `application_name` | `ozelyazilim.kukaisland` değilse BLOCKED |
 | Varsayılan mod | **PLAN**. Hiçbir belge oluşturulmaz |
 | Yazma kapısı 1 | `KUKA_EDM_ALLOW_SANDBOX_WRITE` **literal** `true` |
 | Yazma kapısı 2 | `--confirm=LoadInvoice` — planın çözdüğü operasyon adıyla birebir eşleşmeli |
-| DB | WooCommerce siparişi oluşturmaz; hiçbir tabloya yazmaz. Durum yalnız host tarafındaki JSON dosyasında (`~/.config/kuka-island/edm-sandbox-state/`) |
-| Gönderici kimliği | VKN, alias, unvan, vergi dairesi, adres, ilçe, şehir, posta kodu **sağlanmış** olmalı; eksikse alan adları listelenerek BLOCKED. Hiçbir değer uydurulmaz |
-| Gönderici doğrulaması | `GetInvoiceSerial` (filtresiz) ve `CheckUser` ile salt-okunur teyit |
-| KDV | Bu dosyada sabit `KUKA_SANDBOX_VAT_PERCENT = 20`. Mağazanın vergi ayarları okunmaz ve değiştirilmez |
+| DB | WooCommerce siparişi oluşturmaz; hiçbir tabloya yazmaz. Durum yalnız host tarafındaki JSON dosyasında |
+| KDV | Bu dosyada sabit `KUKA_SANDBOX_VAT_PERCENT = 20`, `cbc:Note` içinde açıkça TEST etiketiyle belirtilir. Mağazanın vergi ayarları okunmaz ve değiştirilmez |
+| Alıcı kimliği | Yalnız `KUKA_EDM_SANDBOX_RECEIVER_VKN`. Kodda hiçbir sabit alıcı numarası yok |
+| PROFILEID | Yalnız `KUKA_EDM_SANDBOX_PROFILE_ID`. Kodda sabitlenmiş profil değeri yok |
+| `INVOICESERIAL_REQUESTED` | Seri boşsa gönderilmez ve yazma aşamasına geçilmez |
 | Belge | Sentetik ve açıkça TEST işaretli (`cbc:Note`: "TEST BELGESI … GERCEK SATIS DEGILDIR", kalem adı "SANDBOX TEST KALEMI") |
-| Mükerrerlik | UUID sabit bir tohumdan deterministik üretilir; kayıtlı önceki koşu ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |
-| Üretim koruması | `Kuka_Island_Core_Invoice_Manager` ve `invoice_numbering_unconfirmed` guard'ı **kullanılmaz ve gevşetilmez**. `LoadInvoice` isteği tamamen test harness'ında kurulur; eklentiye yeni bir yazma yeteneği eklenmez |
+| Mükerrerlik | UUID sabit tohumdan deterministik; durum makinesi ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |
+| Üretim koruması | `Kuka_Island_Core_Invoice_Manager` ve `invoice_numbering_unconfirmed` guard'ı **kullanılmaz ve gevşetilmez**. `LoadInvoice` isteği tamamen test harness'ında kurulur; eklentide `LoadInvoice`/`CreateSerial`/`CancelInvoice` yazma metodu **yok** (harness bunu da ölçer) |
 
 `cbc:ID` deneyin çekirdeği: belge üretim builder'ı ile kurulur, ardından `cbc:ID` elemanı
 DOM üzerinden **çıkarılır**, yani hiçbir numara gönderilmez ve çıktıda
@@ -410,6 +501,9 @@ docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-k
 
 # İzole sandbox fatura deneyi (varsayılan PLAN; hiçbir belge oluşturmaz)
 ./scripts/edm-sandbox-run.sh
+
+# Sandbox harness kanıtları (fixture/mock; ağa çıkmaz, belge oluşturmaz)
+docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-edm-sandbox-harness.php
 
 # Tüm kabul ölçümleri
 make verify

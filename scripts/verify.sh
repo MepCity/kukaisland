@@ -50,6 +50,30 @@ printf 'INVOICE_DB_KEYSET_PRE=%s\n' "${invoice_pre_keyset#INVOICE_DB_KEYSET=}"
 invoice_integration=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-integration.php)
 printf '%s\n' "$invoice_integration"
 
+# Sandbox harness: fixtures and mocks only. No network call, no EDM operation,
+# no document, no database write.
+edm_sandbox_harness=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-edm-sandbox-harness.php)
+printf '%s\n' "$edm_sandbox_harness"
+
+# The credential mount must be reachable only by the single allow-listed
+# read-only script. Every other value must be refused BEFORE the credential gate,
+# so a refusal reason of credentials_file_absent counts as a leak here.
+edm_runner_leaks=0
+for edm_bad_script in 'edm-sandbox-invoice.php' '../scripts/test-edm-sandbox.php' '/etc/passwd' 'sub/test-edm-sandbox.php' 'test-edm-sandbox.php;id' 'verify.php' 'TEST-EDM-SANDBOX.PHP' ''; do
+  edm_runner_out=$(./scripts/edm-test-run.sh "$edm_bad_script" 2>&1 | head -n 1 || true)
+  case "$edm_runner_out" in
+    EDM_TEST_RUN=BLOCKED*credentials_file_absent*) edm_runner_leaks=$((edm_runner_leaks + 1)) ;;
+    EDM_TEST_RUN=BLOCKED*) ;;
+    *) edm_runner_leaks=$((edm_runner_leaks + 1)) ;;
+  esac
+done
+edm_runner_allowlisted=$(./scripts/edm-test-run.sh 'test-edm-sandbox.php' 2>&1 | head -n 1 || true)
+case "$edm_runner_allowlisted" in
+  EDM_TEST_RUN=STARTING*|EDM_TEST_RUN=BLOCKED*credentials_file_absent*) edm_runner_allowlist_ok=yes ;;
+  *) edm_runner_allowlist_ok=no ;;
+esac
+printf 'EDM_RUNNER_ALLOWLIST=leaks:%s|allowlisted_reaches_credential_gate:%s\n' "$edm_runner_leaks" "$edm_runner_allowlist_ok"
+
 invoice_post_keyset=$(invoice_keyset_line)
 printf 'INVOICE_DB_KEYSET_POST=%s\n' "${invoice_post_keyset#INVOICE_DB_KEYSET=}"
 
@@ -261,6 +285,26 @@ expect_invoice_line() {
     echo "PASS $label"
   else
     echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_sandbox_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$edm_sandbox_harness" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_sandbox_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$edm_sandbox_harness" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
     failures=$((failures + 1))
   fi
 }
@@ -589,6 +633,27 @@ expect_invoice_line "Cleanup state machine reaches succeeded for the probe run" 
 expect_invoice_line "Cleanup state machine reaches succeeded for the main run" "INVOICE_CLEANUP_STATE_MACHINE_MAIN=PASS|state:succeeded|considered:0|refused:0|leftover:0|reentry_blocked:yes|registry_remaining:0"
 expect_invoice_match "Invoice test database keyset internal isolation" "^INVOICE_TEST_DATABASE_ISOLATION=PASS\|tables:12\|missing:none\|pre_hash:[0-9a-f]+\|post_hash:[0-9a-f]+\|diff:none$"
 expect_invoice_line "Invoice test database keyset external isolation" "INVOICE_EXTERNAL_ISOLATION=keyset_match:yes"
+
+# EDM sandbox harness: fixture and mock proofs, no network and no document.
+expect_value "credential mount is reachable only by the allow-listed script" "$edm_runner_leaks" "0"
+expect_value "allow-listed script reaches the credential gate" "$edm_runner_allowlist_ok" "yes"
+expect_sandbox_match "credential parser keeps values verbatim" "^SANDBOX_CRED_PARSER_VERBATIM=PASS\\|keys_recognised:6\\|equals_in_value_preserved:yes\\|trailing_space_preserved:yes\\|quotes_preserved:yes\\|crlf_handled:yes\\|unknown_key_ignored:yes$"
+expect_sandbox_line "sandbox verification allows PLAN only when all seven checks pass" "SANDBOX_VERIFY_ALL_PASS_ALLOWS_PLAN=PASS|checks:7|failed:none"
+expect_sandbox_match "sandbox verification negative matrix leaks nothing" "^SANDBOX_VERIFY_NEGATIVE_MATRIX=PASS\\|cases:21\\|leaked:none$"
+expect_sandbox_match "LoadInvoice response parser fixtures" "^SANDBOX_LOAD_RESPONSE_PARSER=PASS\\|fixtures:12\\|"
+expect_sandbox_match "readback verdict is fail-closed" "^SANDBOX_READBACK_VERDICT_FAIL_CLOSED=PASS\\|"
+expect_sandbox_line "only one process may hold the write claim" "SANDBOX_CLAIM_SINGLE_HOLDER=PASS|first_acquire:yes|second_acquire:no"
+expect_sandbox_line "claiming requires the lock" "SANDBOX_CLAIM_REQUIRES_LOCK=PASS|reason:lock_not_held"
+expect_sandbox_line "claim moves idle to in_flight and refuses a second claim" "SANDBOX_CLAIM_IDLE_TO_IN_FLIGHT=PASS|first:in_flight/written|second_refused:claim_refused_from_state_in_flight"
+expect_sandbox_line "claim state file is mode 600" "SANDBOX_CLAIM_STATE_FILE_MODE_600=PASS|mode:600"
+expect_sandbox_line "transport uncertainty blocks a second write" "SANDBOX_CLAIM_TIMEOUT_UNCERTAIN_NO_SECOND_WRITE=PASS|settled:uncertain|second_write:claim_refused_from_state_uncertain"
+expect_sandbox_line "reconciliation reset needs absence evidence" "SANDBOX_CLAIM_RECONCILE_REQUIRES_EVIDENCE=PASS|weak_evidence:reset_requires_document_absent_evidence|strong_evidence:idle"
+expect_sandbox_line "terminal claim states refuse a further write" "SANDBOX_CLAIM_TERMINAL_STATES_REFUSE=PASS|confirmed:refused|failed_definitive:refused"
+expect_sandbox_line "settle transitions are guarded" "SANDBOX_CLAIM_SETTLE_GUARDS=PASS|from_idle:settle_refused_from_state_idle|bad_target:invalid_target_state"
+expect_sandbox_line "state write failure is never reported as recorded" "SANDBOX_CLAIM_STATE_WRITE_FAILURE_REPORTED=PASS|lock:yes|written:no|reason:state_persist_failed"
+expect_sandbox_line "sandbox harness leaves no temporary files" "SANDBOX_HARNESS_TEMP_CLEANED=PASS|temp_root_removed:yes"
+expect_sandbox_match "plugin gained no document-creating capability" "^SANDBOX_PLUGIN_HAS_NO_WRITE_CAPABILITY=PASS\\|module_files:[0-9]{2,}\\|hits:none$"
+expect_sandbox_line "production numbering guard untouched" "SANDBOX_NUMBERING_GUARD_UNTOUCHED=PASS|invoice_numbering_unconfirmed:present|provenance_required:present"
 expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
 expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"
 expect_line "unknown legal values stay hidden" "APPLICATION_LEGAL_ROWS=mersis:0|kep:0|chamber:0|rules:0|etbis:0"
