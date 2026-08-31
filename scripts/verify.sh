@@ -521,6 +521,11 @@ expect_invoice_line "Generic individual VKN runtime behaviour" "INVOICE_GENERIC_
 expect_invoice_line "Auto-send honours full readiness contract" "INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS|ready_enabled:yes|fields_checked:12|leaks:none"
 expect_invoice_line "Auto-send still requires explicit opt-in" "INVOICE_AUTO_SEND_REQUIRES_OPT_IN=PASS|auto_send_off_enabled:no"
 
+# Login contract: authentication must not require fiscal configuration.
+expect_invoice_line "Login works without fiscal configuration" "INVOICE_LOGIN_WITHOUT_FISCAL_CONFIG=PASS|transport_Login_calls:1|session_obtained:yes|has_login_credentials:yes|is_configured:no|can_send_invoice:no|auto_send:no|error:none"
+expect_invoice_line "Login SECRET_KEY stays optional" "INVOICE_LOGIN_SECRET_KEY_OPTIONAL=PASS|transport_Login_calls:1|session_obtained:yes"
+expect_invoice_line "Login rejects missing credentials before any transport call" "INVOICE_LOGIN_REJECTS_WITHOUT_TRANSPORT_CALL=PASS|no_username:edm_not_configured/calls=0|no_password:edm_not_configured/calls=0|neither:edm_not_configured/calls=0|whitespace_user:edm_not_configured/calls=0"
+
 # Audit items 1 and 10: fixture guard on the real automatic-send path.
 expect_invoice_line "Queue fixture guard on real runtime path" "INVOICE_QUEUE_FIXTURE_GUARD_RUNTIME_PATH=PASS|throwable:none|fixture_status:none|control_status:queued|auto_send:on|settled:yes"
 expect_invoice_match "Queue scheduling leaves no residue" "^INVOICE_QUEUE_SCHEDULING_RESIDUE_ZERO=PASS\|purged:[0-9]+\|residual_rows:0$"

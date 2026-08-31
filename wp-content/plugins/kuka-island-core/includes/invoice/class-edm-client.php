@@ -46,9 +46,21 @@ final class Kuka_Island_Core_EDM_Client {
 	 * @throws Kuka_Island_Core_Invoice_Exception On failure.
 	 */
 	public function login(): string {
-		if ( ! $this->config->is_configured() ) {
+		// Login is an authentication call. Its only precondition is a username
+		// and a password. Fiscal configuration (sender VKN, mailbox alias,
+		// invoice series, company title/tax office/address) is NOT required to
+		// authenticate, so it must not gate this call -- otherwise read-only
+		// diagnostics such as CheckCounter and GetInvoiceSerial become
+		// unreachable on an account that is perfectly able to log in.
+		//
+		// The strict contracts stay where they belong:
+		// - Kuka_Island_Core_Invoice_Config::is_configured()     -> username + password + sender VKN
+		// - Kuka_Island_Core_Invoice_Config::can_send_invoice()  -> all 12 fiscal readiness fields
+		// - Kuka_Island_Core_Invoice_Config::is_auto_send_enabled() -> can_send_invoice() + opt-in
+		// SECRET_KEY remains optional and is only sent when configured.
+		if ( ! $this->config->has_login_credentials() ) {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
-				'EDM credentials are not configured.',
+				'EDM login credentials are not configured.',
 				'edm_not_configured',
 				__( 'EDM kullanıcı adı ve şifre yapılandırması eksik.', 'kuka-island-core' )
 			);

@@ -39,3 +39,15 @@ wp-content/uploads/
 *.sql
 *.sql.gz
 .DS_Store
+
+# EDM test credentials must never be committed. The canonical location is
+# ~/.config/kuka-island/edm-test.env, which is outside this work tree and
+# therefore unreachable by `git add`. These patterns only defend against an
+# accidental in-repository copy, and are placed after the scripts/ allow-list
+# so the last matching rule wins.
+edm-test.env
+.edm-test.env
+*.edm-test.env
+scripts/edm-test.env
+scripts/*.edm-test.env
+*edm-credentials*

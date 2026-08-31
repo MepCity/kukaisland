@@ -97,7 +97,15 @@ Tüm isteklerde `REQUEST_HEADER/APPLICATION_NAME = ozelyazilim.kukaisland`.
 
 ### Kademeli kimlik ve yetki seviyeleri
 
-1. `has_login_credentials()` — kullanıcı adı + parola (`Login`, `CheckCounter`, `GetInvoiceSerial`).
+**Login ön koşulu yalnız `has_login_credentials()`'tır.** `Kuka_Island_Core_EDM_Client::login()`
+önceden `is_configured()` istiyordu; bu, kullanıcı adı ve parola tam olsa bile gönderici VKN
+boşken `edm_not_configured` üretiyor ve `CheckCounter` / `GetInvoiceSerial` gibi salt-okunur
+teşhis çağrılarını erişilemez kılıyordu. Kimlik doğrulama artık mali yapılandırmaya bağlı değil.
+Sıkı sözleşmeler yerinde: `is_configured()` (kullanıcı adı + parola + gönderici VKN),
+`can_send_invoice()` (12 mali alan) ve `is_auto_send_enabled()` değişmedi. `SECRET_KEY` opsiyonel.
+
+1. `has_login_credentials()` — kullanıcı adı + parola. **`Login`, `CheckCounter`,
+   `GetInvoiceSerial`, `Logout` bu seviyede çalışır.** `CheckUser` ayrıca gönderici VKN ister.
 2. `can_run_read_only_sandbox()` — salt-okunur sorgular için hazır.
 3. `can_send_invoice()` — 12 alanın tamamı: kullanıcı adı, parola, gönderici VKN, gönderici etiket (alias), her iki fatura serisi (`/^[A-Z0-9]{3}$/`), şirket unvanı, vergi dairesi, adres, ilçe, şehir, posta kodu.
 4. `is_auto_send_enabled()` — `auto_send` açık **ve** `can_send_invoice()` tam. Eksik tek alan siparişi kuyruğa sokmaz.
@@ -305,7 +313,90 @@ Bu iki maddeye karar verilmeden Aşama 2 gönderimi açılmamalıdır.
 
 ---
 
-## 12. Çalıştırma
+## 12. Kimlik bilgilerinin yerel aktarımı
+
+Kimlikler kaynak koda, Git'e, `.env`/`.env.example`'a veya komut satırı argümanına **yazılmaz**.
+
+Kanonik konum: `~/.config/kuka-island/edm-test.env`, mod **600**, **git çalışma ağacının dışında**.
+Dosya depo içinde olmadığı için `git add` ona hiçbir şekilde erişemez — bu, kural tabanlı bir
+filtreden değil, konumdan gelen kesin bir garantidir.
+
+Katmanlı savunma (depo içine yanlışlıkla kopyalanma senaryosu için):
+
+| Katman | Ne yapar |
+|---|---|
+| `~/.config/kuka-island/edm-test.env` | Çalışma ağacı dışında → `git add` erişemez |
+| `.gitignore` | `edm-test.env`, `*.edm-test.env`, `*edm-credentials*` desenleri (`scripts/` allow-list'inden **sonra**, son eşleşen kural kazanır) |
+| `.git/info/exclude` | Aynı desenler, yalnız yerel, commit edilmez, pull ile ezilmez |
+| `.git/hooks/pre-commit` | Kimlik dosyası veya literal `KUKA_EDM_(USERNAME\|PASSWORD\|SECRET_KEY)=<değer>` staged ise commit'i reddeder. Yerel, push edilmez. |
+
+**Konteynere aktarım: bind mount, ortam değişkeni değil.**
+`docker compose run -e VAR` ile geçirilen değerler, konteyner nesnesi var olduğu sürece
+`docker inspect` çıktısından **okunabilir**. Bu yüzden kimlik dosyası salt-okunur bind mount ile
+`/run/edm/edm-test.env` yoluna bağlanır; değerler konteyner ortamına hiç girmez.
+
+Üretim kodu değişmedi: eklenti kimlikleri hâlâ yalnız `wp-config` sabitlerinden veya süreç
+ortamından okur. Kimlik dosyasını okuyan `scripts/lib-edm-test-credentials.php` yalnız test
+scriptleri tarafından kullanılır ve değerleri `Kuka_Island_Core_Invoice_Config` yapıcı
+override'ı olarak geçirir. Yükleyici hiçbir değeri yazdırmaz; yalnız boolean **varlık** haritası
+döndürür.
+
+Kurulum ve çalıştırma:
+
+```bash
+./scripts/edm-test-credentials.sh            # gizli giriş, ekrana/history'ye yazmaz
+./scripts/edm-test-credentials.sh --status   # yalnız varlık/izin bilgisi
+./scripts/edm-test-run.sh test-edm-sandbox.php
+```
+
+`application_name` her istekte `ozelyazilim.kukaisland`; probe bunu ayrıca doğrular.
+
+---
+
+## 13. İzole sandbox fatura deneyi
+
+`scripts/edm-sandbox-invoice.php` + `scripts/edm-sandbox-run.sh`, §4'teki numaralandırma
+sorularını EDM **test** ortamında ölçmek için kurulmuş ayrı bir araçtır.
+
+Ölçtüğü sorular:
+
+1. `INVOICE/@ID` gönderilmez ve `LoadInvoice` `GENERATEINVOICEIDONLOAD=true` ile çağrılırsa
+   EDM numarayı atıyor mu?
+2. Atanan numara, `GetInvoice` (XML) ile geri okunan belgenin UBL `cbc:ID` alanına yazılmış mı?
+3. UUID, ödenecek tutar ve KDV tur dönüşünde birebir korunuyor mu?
+
+Güvenlik sözleşmesi — hepsi sağlanmazsa araç reddeder:
+
+| Kapı | Kural |
+|---|---|
+| Ortam | Yalnız test endpoint'i. `is_live()` → koşulsuz BLOCKED |
+| Varsayılan mod | **PLAN**. Hiçbir belge oluşturulmaz |
+| Yazma kapısı 1 | `KUKA_EDM_ALLOW_SANDBOX_WRITE` **literal** `true` |
+| Yazma kapısı 2 | `--confirm=LoadInvoice` — planın çözdüğü operasyon adıyla birebir eşleşmeli |
+| DB | WooCommerce siparişi oluşturmaz; hiçbir tabloya yazmaz. Durum yalnız host tarafındaki JSON dosyasında (`~/.config/kuka-island/edm-sandbox-state/`) |
+| Gönderici kimliği | VKN, alias, unvan, vergi dairesi, adres, ilçe, şehir, posta kodu **sağlanmış** olmalı; eksikse alan adları listelenerek BLOCKED. Hiçbir değer uydurulmaz |
+| Gönderici doğrulaması | `GetInvoiceSerial` (filtresiz) ve `CheckUser` ile salt-okunur teyit |
+| KDV | Bu dosyada sabit `KUKA_SANDBOX_VAT_PERCENT = 20`. Mağazanın vergi ayarları okunmaz ve değiştirilmez |
+| Belge | Sentetik ve açıkça TEST işaretli (`cbc:Note`: "TEST BELGESI … GERCEK SATIS DEGILDIR", kalem adı "SANDBOX TEST KALEMI") |
+| Mükerrerlik | UUID sabit bir tohumdan deterministik üretilir; kayıtlı önceki koşu ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |
+| Üretim koruması | `Kuka_Island_Core_Invoice_Manager` ve `invoice_numbering_unconfirmed` guard'ı **kullanılmaz ve gevşetilmez**. `LoadInvoice` isteği tamamen test harness'ında kurulur; eklentiye yeni bir yazma yeteneği eklenmez |
+
+`cbc:ID` deneyin çekirdeği: belge üretim builder'ı ile kurulur, ardından `cbc:ID` elemanı
+DOM üzerinden **çıkarılır**, yani hiçbir numara gönderilmez ve çıktıda
+`ubl_cbc_id_sent:absent` olarak raporlanır.
+
+```bash
+./scripts/edm-sandbox-run.sh                                    # PLAN, hiçbir şey oluşturmaz
+KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh --confirm=LoadInvoice
+```
+
+İkinci komut EDM test hesabında **kalıcı bir test kaydı** oluşturur; bu yüzden yazma çağrısından
+hemen önce hangi operasyonun çağrılacağı açıkça yazdırılır ve iki kapı birlikte sağlanmadan
+işlem yapılmaz.
+
+---
+
+## 14. Çalıştırma
 
 ```bash
 # Hedefli fatura doğrulaması
@@ -315,7 +406,10 @@ docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-i
 docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-keyset.php
 
 # Gerçek EDM salt-okunur sonda (kimlik yoksa BLOCKED yazar, ağa çıkmaz)
-docker compose run --rm -T wp-cli wp eval-file /project-scripts/test-edm-sandbox.php
+./scripts/edm-test-run.sh test-edm-sandbox.php
+
+# İzole sandbox fatura deneyi (varsayılan PLAN; hiçbir belge oluşturmaz)
+./scripts/edm-sandbox-run.sh
 
 # Tüm kabul ölçümleri
 make verify

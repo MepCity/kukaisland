@@ -650,6 +650,105 @@ final class Kuka_Island_Test_Tracking_Transport implements Kuka_Island_Core_SOAP
 	}
 }
 
+/* ========================================================================== */
+/* TEST 5B - Login contract: authentication must not require fiscal config     */
+/* ========================================================================== */
+
+// Username + password present, sender VKN absent: Login must actually reach the
+// transport. Fiscal configuration is not an authentication precondition.
+$login_only_config = new Kuka_Island_Core_Invoice_Config(
+	array(
+		'username'   => 'login_only_user',
+		'password'   => 'login_only_pass',
+		'sender_vkn' => '',
+	)
+);
+$login_only_transport = new Kuka_Island_Test_Tracking_Transport();
+$login_only_client    = new Kuka_Island_Core_EDM_Client( $login_only_config, $login_only_transport );
+
+$login_only_session = '';
+$login_only_error   = '';
+try {
+	$login_only_session = $login_only_client->login();
+} catch ( Throwable $t ) {
+	$login_only_error = get_class( $t ) . ':' . ( method_exists( $t, 'get_safe_error_code' ) ? $t->get_safe_error_code() : $t->getMessage() );
+}
+
+$report(
+	'INVOICE_LOGIN_WITHOUT_FISCAL_CONFIG',
+	'test-session-uuid' === $login_only_session
+	&& 1 === ( $login_only_transport->calls['Login'] ?? 0 )
+	&& true === $login_only_config->has_login_credentials()
+	&& false === $login_only_config->is_configured()
+	&& false === $login_only_config->can_send_invoice()
+	&& false === $login_only_config->is_auto_send_enabled(),
+	sprintf(
+		'transport_Login_calls:%d|session_obtained:%s|has_login_credentials:%s|is_configured:%s|can_send_invoice:%s|auto_send:%s|error:%s',
+		$login_only_transport->calls['Login'] ?? 0,
+		'' !== $login_only_session ? 'yes' : 'no',
+		$login_only_config->has_login_credentials() ? 'yes' : 'no',
+		$login_only_config->is_configured() ? 'yes' : 'no',
+		$login_only_config->can_send_invoice() ? 'yes' : 'no',
+		$login_only_config->is_auto_send_enabled() ? 'yes' : 'no',
+		'' === $login_only_error ? 'none' : $login_only_error
+	)
+);
+
+// SECRET_KEY stays optional: Login works without it and the element is omitted.
+$no_secret_login_transport = new Kuka_Island_Test_Tracking_Transport();
+$no_secret_login_client    = new Kuka_Island_Core_EDM_Client(
+	new Kuka_Island_Core_Invoice_Config(
+		array(
+			'username'   => 'login_only_user',
+			'password'   => 'login_only_pass',
+			'secret_key' => '',
+			'sender_vkn' => '',
+		)
+	),
+	$no_secret_login_transport
+);
+$no_secret_session = '';
+try {
+	$no_secret_session = $no_secret_login_client->login();
+} catch ( Throwable $t ) {
+	$no_secret_session = '';
+}
+$report(
+	'INVOICE_LOGIN_SECRET_KEY_OPTIONAL',
+	'test-session-uuid' === $no_secret_session && 1 === ( $no_secret_login_transport->calls['Login'] ?? 0 ),
+	sprintf( 'transport_Login_calls:%d|session_obtained:%s', $no_secret_login_transport->calls['Login'] ?? 0, '' !== $no_secret_session ? 'yes' : 'no' )
+);
+
+// Missing username or password: rejected BEFORE any transport call.
+$login_reject_cases = array(
+	'no_username'      => array( 'username' => '', 'password' => 'p' ),
+	'no_password'      => array( 'username' => 'u', 'password' => '' ),
+	'neither'          => array( 'username' => '', 'password' => '' ),
+	'whitespace_user'  => array( 'username' => '   ', 'password' => 'p' ),
+);
+$login_reject_results = array();
+$login_reject_ok      = true;
+foreach ( $login_reject_cases as $case => $overrides ) {
+	$transport = new Kuka_Island_Test_Tracking_Transport();
+	$client    = new Kuka_Island_Core_EDM_Client( new Kuka_Island_Core_Invoice_Config( $overrides ), $transport );
+	$code      = 'NO_EXCEPTION';
+	try {
+		$client->login();
+	} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+		$code = $e->get_safe_error_code();
+	}
+	$calls = array_sum( $transport->calls );
+	$login_reject_results[ $case ] = $code . '/calls=' . $calls;
+	if ( 'edm_not_configured' !== $code || 0 !== $calls ) {
+		$login_reject_ok = false;
+	}
+}
+$report(
+	'INVOICE_LOGIN_REJECTS_WITHOUT_TRANSPORT_CALL',
+	$login_reject_ok,
+	implode( '|', array_map( static fn( $k, $v ) => $k . ':' . $v, array_keys( $login_reject_results ), $login_reject_results ) )
+);
+
 $guard_transport = new Kuka_Island_Test_Tracking_Transport();
 $guard_provider  = new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $guard_transport );
 $guard_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, $guard_provider );
