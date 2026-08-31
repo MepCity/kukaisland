@@ -10,6 +10,8 @@ final class Kuka_Island_Core_Activator {
 		update_option( 'kuka_island_core_version', '0.1.0', false );
 		require_once KUKA_ISLAND_CORE_PATH . 'includes/class-newsletter.php';
 		Kuka_Island_Core_Newsletter::install_schema();
+		require_once KUKA_ISLAND_CORE_PATH . 'includes/class-fulfillments.php';
+		Kuka_Island_Core_Fulfillments::install();
 		flush_rewrite_rules();
 	}
 

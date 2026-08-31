@@ -1,0 +1,142 @@
+/*
+ * Sipariş listesi filtre şeridi.
+ *
+ * Kapsam bilerek dardır: her kural sipariş listesinin kendi `.tablenav` filtre
+ * şeridindedir. Genel `body`, `.components-*` veya wp-admin geneli seçici
+ * kullanılmaz.
+ *
+ * Kargo İşlemleri çekmecesinde yalnız WooCommerce 11.0.1'in iç içe scroll
+ * konteyneri düzeltilir. Çekirdekte panel ve gövde birlikte `overflow-y:auto`
+ * olur; gövdenin ayrıca `overscroll-behavior:none` taşıması, gövdenin kendi
+ * scroll aralığı olmadığı masaüstünde wheel/trackpad olayını kayabilen üst
+ * panele aktarmadan yutar. Panel tek scroll konteyneri olarak bırakılır.
+ */
+
+/* --------------------------------------------------------------------- */
+/* Kargo çekmecesi: wheel/trackpad dış panele ulaşsın                     */
+/* --------------------------------------------------------------------- */
+
+/*
+ * Seçici bilerek yalnız gerçek iç gövde sınıfıdır. Eski
+ * `[class*="fulfillment-drawer"]` yaklaşımı paneli de eşleyip kaydırmayı
+ * tamamen kapatıyordu. `height:auto` mobildeki ikinci sabit scroll alanını,
+ * `overflow:visible` ve `overscroll-behavior:auto` ise wheel tuzağını kaldırır.
+ * Dış `.woocommerce-fulfillment-drawer__panel` WooCommerce'in kendi
+ * `overflow-y:auto` kuralıyla tek dikey scroll alanı olarak çalışır.
+ */
+.woocommerce_page_wc-orders .woocommerce-fulfillment-drawer__body {
+	height: auto;
+	overflow: visible;
+	overscroll-behavior: auto;
+}
+
+/* --------------------------------------------------------------------- */
+/* Sipariş listesi filtreleri kırpılmasın                                  */
+/* --------------------------------------------------------------------- */
+
+/*
+ * Kesme (ellipsis) bilerek kullanılmaz: kabul kriteri metnin tamamının
+ * görünmesi. Genişlikler sabit piksel değil, etiketin kendi karakter sayısına
+ * bağlı `ch` tabanlıdır; yazı tipi değişse de metin sığmaya devam eder.
+ * Seçiciler WooCommerce'in gerçek id/name değerleridir.
+ */
+
+.woocommerce_page_wc-orders .tablenav .actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	max-width: 100%;
+}
+
+/*
+ * “Toplu işlemler” satırı ile filtre satırı arasındaki dikey nefes.
+ *
+ * Üst tablenav'da iki kardeş grup vardır: WordPress'in `.actions.bulkactions`
+ * kutusu ve WooCommerce'in `extra_tablenav()` ile bastığı `.actions` filtre
+ * kutusu. İkisi de `alignleft` ile float'tır; dar ekranda alt alta düşünce
+ * birbirine yapışıyorlardı.
+ *
+ * Boşluk ikinci gruba `margin-top` ile değil, birinci gruba `margin-bottom`
+ * ile verilir: float'lar yan yana sığdığında bir üst boşluk ikinci kutuyu
+ * aşağı kaydırıp hizayı bozardı; alt boşluk ise yatay konumlara ve buton
+ * hizalarına hiç dokunmaz, yalnız alt satıra düşen grubu aşağıdan başlatır.
+ * 10 px, istenen 8–12 px aralığının ortasıdır ve her iki kırılımda aynıdır.
+ */
+.woocommerce_page_wc-orders .tablenav.top .actions.bulkactions {
+	margin-bottom: 10px;
+}
+
+/* Ortak taban: tarayıcı en geniş seçeneğe göre boyutlasın, ok için sağda pay
+   kalsın, metin hiçbir koşulda üç noktayla kesilmesin. */
+.woocommerce_page_wc-orders .tablenav .actions select {
+	width: auto;
+	max-width: 100%;
+	height: auto;
+	min-height: 30px;
+	padding-right: 2rem;
+	text-overflow: clip;
+}
+
+/* Uzun etiketli filtrelere kendi metin uzunluklarına göre taban genişlik. */
+/* "Kargo durumuna göre filtrele" — 28 karakter */
+.woocommerce_page_wc-orders .tablenav .actions #fulfillment-status-filter {
+	min-inline-size: calc( 28ch + 2rem );
+}
+
+/* "Kargo firmasına göre filtrele" — 29 karakter */
+.woocommerce_page_wc-orders .tablenav .actions #shipping-provider-filter {
+	min-inline-size: calc( 29ch + 2rem );
+}
+
+/*
+ * "Kayıtlı kullanıcıya göre filtrele" — 33 karakter. select2 kendi kabını
+ * orijinal select'in hemen ardına ekler; kural bu yüzden genel
+ * `.select2-container` yerine yalnız müşteri filtresinin kabına bağlanır.
+ */
+.woocommerce_page_wc-orders .tablenav .actions select[name="_customer_user"],
+.woocommerce_page_wc-orders .tablenav .actions select[name="_customer_user"] + .select2-container {
+	min-inline-size: calc( 33ch + 2rem );
+	max-width: 100%;
+}
+
+/* "Tarihe göre filtrele" — 20 karakter */
+.woocommerce_page_wc-orders .tablenav .actions #filter-by-date {
+	min-inline-size: calc( 20ch + 2rem );
+}
+
+/* Satış kanalı filtresi */
+.woocommerce_page_wc-orders .tablenav .actions #filter-by-created-via {
+	min-inline-size: calc( 22ch + 2rem );
+}
+
+/* "Toplu işlemler" — 14 karakter */
+.woocommerce_page_wc-orders .tablenav .actions select[name="action"],
+.woocommerce_page_wc-orders .tablenav .actions select[name="action2"] {
+	min-inline-size: calc( 16ch + 2rem );
+}
+
+.woocommerce_page_wc-orders .tablenav .actions .button {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+/*
+ * Satırda yer kalmadığında kutular kırpılmaz, alt satıra iner. Taban genişlik
+ * kalan alandan büyükse `max-width` devreye girer ve taşma oluşmaz.
+ */
+@media screen and ( max-width: 782px ) {
+	.woocommerce_page_wc-orders .tablenav .actions select,
+	.woocommerce_page_wc-orders .tablenav .actions select[name="_customer_user"] + .select2-container {
+		flex: 1 1 100%;
+		min-inline-size: 0;
+		width: 100%;
+	}
+}
+
+/* Yönetim çubuğu yatay taşma üretmesin. */
+.woocommerce_page_wc-orders .tablenav,
+.woocommerce_page_wc-orders .tablenav .tablenav-pages {
+	max-width: 100%;
+	overflow-x: visible;
+}

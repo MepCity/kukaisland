@@ -38,6 +38,8 @@ final class Kuka_Island_Core_Plugin {
 			'class-corporate-billing.php',
 			'class-swatch-meta.php',
 			'class-email-delivery.php',
+			'class-fulfillments.php',
+			'class-fulfillments-language.php',
 			'class-admin-experience.php',
 		);
 
@@ -63,6 +65,8 @@ final class Kuka_Island_Core_Plugin {
 			new Kuka_Island_Core_Corporate_Billing(),
 			new Kuka_Island_Core_Swatch_Meta(),
 			new Kuka_Island_Core_Email_Delivery(),
+			new Kuka_Island_Core_Fulfillments(),
+			new Kuka_Island_Core_Fulfillments_Language(),
 			new Kuka_Island_Core_Admin_Experience(),
 		);
 
