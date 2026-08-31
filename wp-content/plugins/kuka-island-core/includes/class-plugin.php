@@ -43,6 +43,7 @@ final class Kuka_Island_Core_Plugin {
 			'class-iyzico-idempotency.php',
 			'class-iyzico-refund-guard.php',
 			'class-admin-experience.php',
+			'class-invoice.php',
 		);
 
 		foreach ( $files as $file ) {
@@ -72,6 +73,7 @@ final class Kuka_Island_Core_Plugin {
 			new Kuka_Island_Core_Iyzico_Idempotency(),
 			new Kuka_Island_Core_Iyzico_Refund_Guard(),
 			new Kuka_Island_Core_Admin_Experience(),
+			new Kuka_Island_Core_Invoice(),
 		);
 
 		foreach ( $this->modules as $module ) {

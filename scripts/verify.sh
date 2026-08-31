@@ -35,6 +35,31 @@ printf '%s\n' "$order_experience"
 refund_guard=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-iyzico-refund-guard.php)
 printf '%s\n' "$refund_guard"
 
+# Cross-process DB keyset fingerprint. Covers wc_orders, wc_orders_meta,
+# wc_order_addresses, wc_order_operational_data, woocommerce_order_items,
+# woocommerce_order_itemmeta, order notes, wc_order_stats, wc_customer_lookup,
+# wc_order_product_lookup, wc_order_tax_lookup and wc_order_coupon_lookup.
+invoice_keyset_line() {
+  docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-keyset.php 2>/dev/null \
+    | grep -E '^INVOICE_DB_KEYSET=' | tail -n 1 | tr -d '\r\n'
+}
+
+invoice_pre_keyset=$(invoice_keyset_line)
+printf 'INVOICE_DB_KEYSET_PRE=%s\n' "${invoice_pre_keyset#INVOICE_DB_KEYSET=}"
+
+invoice_integration=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-integration.php)
+printf '%s\n' "$invoice_integration"
+
+invoice_post_keyset=$(invoice_keyset_line)
+printf 'INVOICE_DB_KEYSET_POST=%s\n' "${invoice_post_keyset#INVOICE_DB_KEYSET=}"
+
+if [ -n "$invoice_pre_keyset" ] && [ "$invoice_pre_keyset" = "$invoice_post_keyset" ]; then
+  invoice_external_isolation="INVOICE_EXTERNAL_ISOLATION=keyset_match:yes"
+else
+  invoice_external_isolation="INVOICE_EXTERNAL_ISOLATION=keyset_match:no"
+fi
+printf '%s\n' "$invoice_external_isolation"
+
 email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
 email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
@@ -226,6 +251,26 @@ expect_refund_guard_line() {
     echo "PASS $label"
   else
     echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_invoice_line() {
+  label=$1
+  line=$2
+  if printf '%s\n%s\n' "$invoice_integration" "$invoice_external_isolation" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_invoice_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n%s\n' "$invoice_integration" "$invoice_external_isolation" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
     failures=$((failures + 1))
   fi
 }
@@ -463,6 +508,82 @@ expect_refund_guard_line "a healthy older row cannot excuse a broken newest row"
 expect_refund_guard_line "the refund guard runs before the record is saved" "REFUND_GUARD_SHAPE=before-save|manual-skipped|other-gateways-skipped"
 expect_refund_guard_line "the refund guard reads the row the gateway would use" "REFUND_ROW_SELECTION=matches-vendor"
 expect_refund_guard_line "the refund guard leaks nothing" "REFUND_GUARD_LEAKS=0"
+expect_invoice_line "Invoice SOAP ext-soap is available" "INVOICE_SOAP_EXTENSION_AVAILABLE=PASS"
+expect_invoice_line "Invoice config hides passwords and masks VKN" "INVOICE_CONFIG_SECURITY=PASS|credentials_hidden:yes|vkn_masked:yes"
+expect_invoice_line "Invoice live readiness validation" "INVOICE_LIVE_READINESS_VALIDATION=PASS|ready:no|missing_count:12"
+
+# Audit item 2: generic individual VKN policy defaults to false.
+expect_invoice_line "Generic individual VKN defaults to false" "INVOICE_GENERIC_VKN_DEFAULT_FALSE=PASS|constant_defined:no|default_allow:no"
+expect_invoice_line "Generic individual VKN needs literal true" "INVOICE_GENERIC_VKN_STRICT_TRUE_ONLY=PASS|explicit_true:allow|truthy_string:deny|explicit_false:deny"
+expect_invoice_line "Generic individual VKN runtime behaviour" "INVOICE_GENERIC_VKN_RUNTIME_BEHAVIOUR=PASS|default_error:missing_individual_tckn|explicit_true_vkn:11111111111"
+
+# Audit item 3: auto-send honours the whole can_send_invoice contract.
+expect_invoice_line "Auto-send honours full readiness contract" "INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS|ready_enabled:yes|fields_checked:12|leaks:none"
+expect_invoice_line "Auto-send still requires explicit opt-in" "INVOICE_AUTO_SEND_REQUIRES_OPT_IN=PASS|auto_send_off_enabled:no"
+
+# Audit items 1 and 10: fixture guard on the real automatic-send path.
+expect_invoice_line "Queue fixture guard on real runtime path" "INVOICE_QUEUE_FIXTURE_GUARD_RUNTIME_PATH=PASS|throwable:none|fixture_status:none|control_status:queued|auto_send:on|settled:yes"
+expect_invoice_match "Queue scheduling leaves no residue" "^INVOICE_QUEUE_SCHEDULING_RESIDUE_ZERO=PASS\|purged:[0-9]+\|residual_rows:0$"
+expect_invoice_line "Manager rejects fixture orders" "INVOICE_MANAGER_FIXTURE_GUARD=PASS|code:test_fixture_rejected|SendInvoice:0"
+expect_invoice_match "Fixture guard is structurally not overridable" "^INVOICE_FIXTURE_GUARD_NOT_OVERRIDABLE=PASS\|module_files_scanned:[0-9]{2,}\|guard_final:yes\|guard_static:yes\|manager_accessor_final:yes\|toggles:none$"
+
+# Audit item 7: every SOAP contract assertion runs through the production client.
+expect_invoice_line "Invoice WSDL interceptor loads successfully" "INVOICE_WSDL_INTERCEPTOR_INIT=PASS|wsdl_loaded:yes"
+expect_invoice_line "Login with secret key DOMXPath" "INVOICE_SOAP_XPATH_LOGIN_WITH_SECRET=PASS|assertions:5|session_parsed:yes|failed:none"
+expect_invoice_line "Login without secret key DOMXPath" "INVOICE_SOAP_XPATH_LOGIN_NO_SECRET=PASS|assertions:4|failed:none"
+expect_invoice_line "CheckCounter DOMXPath and counter_left" "INVOICE_SOAP_XPATH_CHECK_COUNTER=PASS|assertions:3|counter_left:1250|failed:none"
+expect_invoice_line "CheckUser DOMXPath" "INVOICE_SOAP_XPATH_CHECK_USER=PASS|assertions:5|alias_parsed:urn:mail:defaultgb@acme.com|failed:none"
+expect_invoice_line "GetInvoiceSerial DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_SERIAL=PASS|assertions:6|serial_code:KUK|last_serial_used:42|failed:none"
+expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:15|single_base64_sha256_match:yes|error:none|failed:none"
+expect_invoice_line "SendInvoice e-Invoice DOMXPath" "INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=PASS|assertions:6|failed:none"
+expect_invoice_line "GetInvoiceStatus DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_STATUS=PASS|assertions:7|parsed_status:completed|failed:none"
+expect_invoice_line "GetInvoice DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE=PASS|assertions:6|error:none|failed:none"
+expect_invoice_line "EmailInvoice DOMXPath" "INVOICE_SOAP_XPATH_EMAIL_INVOICE=PASS|assertions:6|error:none|failed:none"
+expect_invoice_line "Logout DOMXPath" "INVOICE_SOAP_XPATH_LOGOUT=PASS|assertions:3|session_cleared:yes|failed:none"
+expect_invoice_line "All SOAP ops went through the production client" "INVOICE_SOAP_OPS_VIA_PRODUCTION_CLIENT=PASS|observed:Login,Login,CheckCounter,CheckUser,GetInvoiceSerial,SendInvoice,SendInvoice,GetInvoiceStatus,GetInvoice,EmailInvoice,Logout"
+
+# Audit item 4: no locally invented fiscal document numbers.
+expect_invoice_match "Local invoice numbering removed" "^INVOICE_NUMBER_LOCAL_GENERATION_REMOVED=PASS\|module_files_scanned:[0-9]{2,}\|mapper_generator_exists:no\|source_hits:none$"
+expect_invoice_line "Numbering is fail-closed BLOCKED" "INVOICE_NUMBERING_FAIL_CLOSED_BLOCKED=PASS|code:invoice_numbering_unconfirmed|status:blocked|SendInvoice:0"
+expect_invoice_line "Queue worker preserves the blocked status" "INVOICE_NUMBERING_BLOCKED_STATUS_PRESERVED=PASS|status_after_queue_worker:blocked"
+expect_invoice_line "Mapper rejects an empty invoice number" "INVOICE_MAPPER_REJECTS_EMPTY_NUMBER=PASS|code:invoice_numbering_unconfirmed"
+expect_invoice_line "Legacy numbers without EDM provenance are rejected" "INVOICE_NUMBERING_REJECTS_LEGACY_NUMBER=PASS|code:invoice_numbering_unconfirmed|status:blocked|SendInvoice:0|seeded_number_without_provenance:yes"
+expect_invoice_line "A real send records the EDM number provenance" "INVOICE_SEND_RECORDS_EDM_PROVENANCE=PASS|SendInvoice:1|status:completed|number:KUK2026000000042|number_source:edm|error:none"
+
+# Audit item 5: fiscal fallbacks removed, fail-closed instead.
+expect_invoice_match "Fiscal fallbacks removed from production path" "^INVOICE_FISCAL_FALLBACKS_REMOVED=PASS\|module_files_scanned:[0-9]{2,}\|fallback_hits:none\|generic_vkn_occurrences:class-invoice-order-mapper\.php\(1\)$"
+expect_invoice_line "e-Archive recipient alias is not invented" "INVOICE_EARCHIVE_ALIAS_NOT_INVENTED=PASS|receiver_alias:<empty>|document_type:earchive|profile:EARSIVFATURA"
+expect_invoice_match "UBL builder fails closed on missing fiscal fields" "^INVOICE_UBL_BUILDER_FAIL_CLOSED=PASS\|cases:8\|control_builds:yes\|"
+
+# Audit item 6: coupon and VAT arithmetic in kuruş.
+expect_invoice_line "Kuruş fixture precision is in force" "INVOICE_MONETARY_FIXTURE_PRECISION=PASS|filtered_decimals:2|granularity_cents:1|stored_shop_decimals:0"
+expect_invoice_match "Coupon and VAT kuruş invariants hold" "^INVOICE_COUPON_VAT_KURUS_INVARIANTS=PASS\|scenarios:7\|tax_subtotals_checked:[0-9]+\|"
+expect_invoice_match "Coupon and VAT hold at the shop's own precision" "^INVOICE_COUPON_VAT_NATIVE_SHOP_PRECISION=PASS\|shop_decimals:0\|granularity_cents:100\|"
+expect_invoice_line "Inconsistent fiscal data fails closed" "INVOICE_MONETARY_NEGATIVE_TESTS=PASS|codes:payable_total_mismatch=payable_total_mismatch,discount_allocation_mismatch=discount_allocation_mismatch,missing_tax_rate=missing_tax_rate|percent_normaliser:ok"
+
+# Duplicate-send state machine through the production manager.
+expect_invoice_line "Invoice lock for sent status" "INVOICE_LOCK_SENT_RECONCILE=PASS|SendInvoice:0|GetInvoiceStatus:1|error:none"
+expect_invoice_line "Invoice lock for pending approval status" "INVOICE_LOCK_PENDING_RECONCILE=PASS|SendInvoice:0|GetInvoiceStatus:1|error:none"
+expect_invoice_line "Invoice lock for sending status" "INVOICE_LOCK_SENDING_RECONCILE=PASS|SendInvoice:0|GetInvoiceStatus:1|error:none"
+expect_invoice_line "Invoice network drop uncertain lock and reconciliation" "INVOICE_NETWORK_DROP_UNCERTAIN_LOCK=PASS|SendInvoice:1|GetInvoiceStatus:1|uncertain_status:send_uncertain|retry_error:none"
+expect_invoice_line "Invoice reconciliation timeout lock" "INVOICE_RECONCILIATION_TIMEOUT_LOCK=PASS|SendInvoice:0|code:edm_soap_fault"
+expect_invoice_line "Invoice terminal completed lock" "INVOICE_TERMINAL_COMPLETED_LOCK=PASS|SendInvoice:0|code:already_terminal_invoice"
+expect_invoice_line "Order refund hook adds informative audit note" "INVOICE_REFUND_HANDLING=PASS|refund_note_added:yes"
+
+# Audit item 8: the real read-only probe is PASS or explicitly BLOCKED, and it never sends.
+expect_invoice_match "Real EDM login is PASS or explicitly BLOCKED" "^REAL_EDM_LOGIN=(PASS|BLOCKED)\|"
+expect_invoice_match "Real EDM CheckCounter is PASS or explicitly BLOCKED" "^REAL_EDM_CHECK_COUNTER=(PASS|BLOCKED)\|"
+expect_invoice_match "Real EDM logout is PASS or explicitly BLOCKED" "^REAL_EDM_LOGOUT=(PASS|BLOCKED)\|"
+expect_invoice_line "Real EDM verification never calls SendInvoice" "REAL_EDM_SEND_INVOICE=SKIPPED|reason:read_only_verification_never_sends"
+
+# Audit item 9: cleanup state machine and database keyset isolation.
+expect_invoice_match "Every fixture is discoverable from the database" "^INVOICE_FIXTURE_DB_DISCOVERABLE=PASS\|run_meta:_kuka_isolation_run_id\|"
+expect_invoice_line "Cleanup refuses unowned fixtures with a non-zero code" "INVOICE_CLEANUP_OWNERSHIP_REFUSAL=PASS|state:failed|refused:1|exit_code:1|record_preserved:yes"
+expect_invoice_line "Cleanup coordinator blocks re-entry" "INVOICE_CLEANUP_REENTRY_GUARD=PASS|reentry_blocked:yes|state:failed"
+expect_invoice_line "Cleanup state machine reaches succeeded for the probe run" "INVOICE_CLEANUP_STATE_MACHINE_PROBE=PASS|state:succeeded|considered:1|refused:0|leftover:0|exit_code:0"
+expect_invoice_line "Cleanup state machine reaches succeeded for the main run" "INVOICE_CLEANUP_STATE_MACHINE_MAIN=PASS|state:succeeded|considered:0|refused:0|leftover:0|reentry_blocked:yes|registry_remaining:0"
+expect_invoice_match "Invoice test database keyset internal isolation" "^INVOICE_TEST_DATABASE_ISOLATION=PASS\|tables:12\|missing:none\|pre_hash:[0-9a-f]+\|post_hash:[0-9a-f]+\|diff:none$"
+expect_invoice_line "Invoice test database keyset external isolation" "INVOICE_EXTERNAL_ISOLATION=keyset_match:yes"
 expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
 expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"
 expect_line "unknown legal values stay hidden" "APPLICATION_LEGAL_ROWS=mersis:0|kep:0|chamber:0|rules:0|etbis:0"

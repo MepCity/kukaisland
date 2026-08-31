@@ -1925,6 +1925,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [ ] `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı cevabı beklenecek
 - [x] Dil seçici URL-kaynaklı Türkçe/İngilizce karşılıklara bağlandı; çerez ve çeviri eklentisi kullanılmıyor
 - [x] Veridyen test yayını için deploy arşiv betiği ve sağlayıcıya özgü runbook hazırlandı; fiili deploy yapılmadı
+- [x] EDM Bilişim e-Fatura / e-Arşiv entegrasyonu Aşama 1 sözleşme ve güvenlik hazırlığı tamamlandı: PHP ext-soap Docker katmanı (SHA-pinned WP-CLI), gerçek WSDL veri eşleşmesi, UBL-TR 2.1 kuruş hassasiyetli para matematiği, fail-closed yönlendirme, terminal mükerrerlik kilidi, sıfır sır sızıntısı ve sıfır artık DB keyset izolasyonu (`docs/EDM_ENTEGRASYONU.md`)
 - [ ] iyzico ve satış akışı bağlanacak
 - [ ] Test ve canlıya alma tamamlanacak
 

@@ -20,7 +20,10 @@ services:
       retries: 30
 
   wordpress:
-    image: wordpress:php8.3-apache@sha256:7f1f307f9b651246d4084ff8978ecf4515ebcc9106c62e2fa364c76f8ab7ee56
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: kukaisland-wordpress:php8.3-soap
     restart: unless-stopped
     cpus: 2.0
     mem_limit: 1g
@@ -56,12 +59,10 @@ services:
       retries: 40
 
   wp-cli:
-    image: wordpress:cli-php8.3@sha256:2b5e9d4d3e51909dca1aaa4732e9f5e5bf0377c2114dbd8ff39f060bff202586
-    # İmajın entrypoint'i "wp help <ilk-argüman>" çalıştırıp başarılıysa komutun
-    # başına bir "wp" daha ekliyor. İlk argümanımız zaten "wp" olduğu için bu
-    # tahmin, eklenti sayısına göre bazen tutup komutu "wp wp ..." yapıyor ve
-    # kurulum "'wp' is not a registered wp command" ile düşüyordu. Entrypoint
-    # kaldırılınca komut ne yazıldıysa o çalışır.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: kukaisland-wordpress:php8.3-soap
     entrypoint: []
     cpus: 1.0
     mem_limit: 512m
@@ -91,7 +92,10 @@ services:
     working_dir: /var/www/html
 
   wp-cron:
-    image: wordpress:cli-php8.3@sha256:2b5e9d4d3e51909dca1aaa4732e9f5e5bf0377c2114dbd8ff39f060bff202586
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: kukaisland-wordpress:php8.3-soap
     restart: unless-stopped
     entrypoint: []
     cpus: 0.5
