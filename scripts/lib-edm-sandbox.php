@@ -92,6 +92,12 @@ function kuka_sandbox_uuid(): string {
  * An explicit port is refused even when it is 443: the canonical endpoint has
  * none, and accepting one only widens the parsing surface.
  *
+ * The value is checked as the exact byte string the config holds. It is never
+ * trimmed or normalised first: a leading or trailing space, tab, newline, CR or
+ * control byte is a refusal, not something to clean up. Silently repairing the
+ * input would mean the string that passes validation is not the string a SOAP
+ * client would be handed.
+ *
  * The URL is never echoed. A custom WSDL can carry user information, so only
  * the reason token leaves this function.
  *
@@ -110,7 +116,8 @@ function kuka_sandbox_verify_test_endpoint( string $wsdl ): array {
 		);
 	};
 
-	$raw = trim( $wsdl );
+	// Deliberately NOT trimmed: the raw bytes are what gets validated.
+	$raw = $wsdl;
 
 	if ( '' === $raw ) {
 		return $deny( 'wsdl_empty' );
@@ -118,7 +125,8 @@ function kuka_sandbox_verify_test_endpoint( string $wsdl ): array {
 	if ( strlen( $raw ) > 512 ) {
 		return $deny( 'wsdl_too_long' );
 	}
-	// Whitespace or control characters mean the string was never a plain URL.
+	// Whitespace or control characters ANYWHERE -- leading and trailing
+	// included -- mean the string was never a plain URL.
 	if ( 1 === preg_match( '/[\x00-\x20\x7F]/', $raw ) ) {
 		return $deny( 'wsdl_contains_whitespace_or_control' );
 	}
@@ -231,7 +239,7 @@ function kuka_sandbox_resolve_defaults( string $environment, array $endpoint, st
 	$failed = array();
 
 	$profile        = trim( $profile_override );
-	$profile_source = 'documented_test_default';
+	$profile_source = 'documented_example_fixture';
 	if ( '' !== $profile ) {
 		$profile_source = 'operator_override';
 		if ( 1 !== preg_match( '/^[A-Z][A-Z0-9_]{3,31}$/', $profile ) ) {
@@ -242,7 +250,7 @@ function kuka_sandbox_resolve_defaults( string $environment, array $endpoint, st
 	}
 
 	$receiver        = trim( $receiver_override );
-	$receiver_source = 'documented_test_default';
+	$receiver_source = 'documented_example_fixture';
 	if ( '' !== $receiver ) {
 		$receiver_source = 'operator_override';
 		if ( 1 !== preg_match( '/^\d{10,11}$/', $receiver ) ) {

@@ -713,6 +713,8 @@ expect_sandbox_line "an uncertain record makes no second call" "SANDBOX_UNCERTAI
 # The real get_wsdl() value is allow-listed before Login. The environment label
 # alone never unlocks the sandbox fixture identities.
 expect_sandbox_match "only the EDM test WSDL is accepted" "^SANDBOX_ENDPOINT_ALLOWLIST=PASS\\|cases:[0-9]{2,}\\|accepted:2\\|refused:[0-9]{2,}\\|wrong:none\\|config_default_test:accepted\\|config_default_live:refused$"
+expect_sandbox_line "a padded canonical WSDL is refused, not trimmed" "SANDBOX_ENDPOINT_REJECTS_PADDING=PASS|pad_bytes:9|variants:18|leaked:none|unpadded_canonical:accepted"
+expect_sandbox_line "the endpoint verifier never normalises its input" "SANDBOX_ENDPOINT_DOES_NOT_NORMALISE=PASS|verifier_located:yes|trim_calls:none|raw_bytes_validated:yes"
 expect_sandbox_line "the endpoint is proved before Login" "SANDBOX_ENDPOINT_CHECKED_BEFORE_LOGIN=PASS|verifier_present:yes|reads_real_get_wsdl:yes|before_login:yes|blocked_line_states_no_login:yes"
 expect_sandbox_line "sandbox fixture identities need the proved endpoint, not the label" "SANDBOX_DEFAULTS_TEST_ENDPOINT_ONLY=PASS|test_label_and_verified_url:resolved|live_both:refused|test_label_live_url:refused|live_label_test_url:refused|live_with_override:refused|values_leaked:none|reason:sandbox_values_refused_without_verified_test_endpoint"
 expect_sandbox_line "sandbox overrides are format and safety checked" "SANDBOX_OVERRIDE_VALIDATION=PASS|cases:10|wrong:none"

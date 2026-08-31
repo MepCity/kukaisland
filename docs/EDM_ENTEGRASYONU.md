@@ -429,16 +429,28 @@ https://test.edmbilisim.com.tr/EFaturaEDM21ea/EFaturaEDM.svc[?singleWsdl]
 | query | ya yok ya da birebir `singleWsdl` |
 | userinfo | yasak (ham dizgede `@` bile ret) |
 | port | **hiçbir açık port kabul edilmez**, `:443` dahil — kanonik adreste port yoktur |
-| fragment / `\` / boşluk / kontrol karakteri | yasak |
+| fragment / `\` | yasak |
+| boşluk / kontrol karakteri | **hiçbir yerde** kabul edilmez — baştaki/sondaki dahil |
+
+Değer **trim edilmez ve normalize edilmez**; config'te ne varsa o byte dizisi doğrulanır.
+Kanonik URL'in başına veya sonuna eklenen tek bir boşluk, tab, `\n`, `\r`, NUL, dikey tab,
+form feed veya DEL karakteri `wsdl_contains_whitespace_or_control` ile **reddedilir**, sessizce
+kanonik değere dönüştürülmez. Doğrulamayı geçen dizgi, SOAP istemcisine verilecek dizginin
+aynısı olmalıdır.
 
 Reddedilenler arasında: canlı WSDL, `test.edmbilisim.com.tr.evil.example`, gerçek adı yalnız
-path'inde taşıyan host, `localhost`, IP literal, düz HTTP, farklı servis path'i, bozuk URL.
+path'inde taşıyan host, `localhost`, IP literal, düz HTTP, farklı servis path'i, bozuk URL,
+başında/sonunda dolgu karakteri bulunan kanonik URL.
 
 Doğrulama başarısızsa `SANDBOX_ENDPOINT=BLOCKED|reason:<token>|login_attempted:no` yazılır,
 tüm adımlar BLOCKED olur ve **Login denenmez**. URL hiçbir zaman basılmaz: özel bir WSDL
 userinfo taşıyabilir, bu yüzden yalnız neden token'ı dışarı çıkar.
 
 ### 13.2 Sandbox fixture kimlikleri
+
+Bu bölümdeki iki değer için raporlanan kaynak etiketi `documented_example_fixture`'dır —
+"bu hesaba atanmış varsayılan" değil, resmî örnekten alınmış fixture. Operatör override
+verdiğinde etiket `operator_override` olur.
 
 EDM'in resmî e-Arşiv SOAP örneğinde `PROFILEID=EARSIVFATURA` ve örnek alıcı kimliği
 `11111111111` kullanılır. Bunlar **yalnız izole sandbox fixture'ında yararlanılan örnek

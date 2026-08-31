@@ -102,6 +102,22 @@ $endpoint_cases = array(
 	'unexpected_query'           => array( $official_test_wsdl . '?wsdl=0', false, 'wsdl_query_not_allowed' ),
 	'backslash'                  => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . '\\@evil.example' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_contains_backslash' ),
 	'whitespace'                 => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . ' /x', false, 'wsdl_contains_whitespace_or_control' ),
+	// A padded canonical URL is refused, never trimmed back into the allow-list.
+	'leading_space'              => array( ' ' . $official_test_wsdl, false, 'wsdl_contains_whitespace_or_control' ),
+	'trailing_space'             => array( $official_test_wsdl . ' ', false, 'wsdl_contains_whitespace_or_control' ),
+	'leading_tab'                => array( "\t" . $official_test_wsdl, false, 'wsdl_contains_whitespace_or_control' ),
+	'trailing_tab'               => array( $official_test_wsdl . "\t", false, 'wsdl_contains_whitespace_or_control' ),
+	'leading_newline'            => array( "\n" . $official_test_wsdl, false, 'wsdl_contains_whitespace_or_control' ),
+	'trailing_newline'           => array( $official_test_wsdl . "\n", false, 'wsdl_contains_whitespace_or_control' ),
+	'trailing_crlf'              => array( $official_test_wsdl . "\r\n", false, 'wsdl_contains_whitespace_or_control' ),
+	'leading_cr'                 => array( "\r" . $official_test_wsdl, false, 'wsdl_contains_whitespace_or_control' ),
+	'leading_nul'                => array( "\0" . $official_test_wsdl, false, 'wsdl_contains_whitespace_or_control' ),
+	'trailing_nul'               => array( $official_test_wsdl . "\0", false, 'wsdl_contains_whitespace_or_control' ),
+	'trailing_del'               => array( $official_test_wsdl . "\x7F", false, 'wsdl_contains_whitespace_or_control' ),
+	'vertical_tab'               => array( "\x0B" . $official_test_wsdl, false, 'wsdl_contains_whitespace_or_control' ),
+	'form_feed'                  => array( $official_test_wsdl . "\x0C", false, 'wsdl_contains_whitespace_or_control' ),
+	'whitespace_only'            => array( '   ', false, 'wsdl_contains_whitespace_or_control' ),
+	'padded_single_wsdl'         => array( ' ' . $official_test_wsdl . '?singleWsdl ', false, 'wsdl_contains_whitespace_or_control' ),
 	'empty'                      => array( '', false, 'wsdl_empty' ),
 	'malformed'                  => array( 'https://', false, 'wsdl_malformed' ),
 	'not_a_url'                  => array( 'EFaturaEDM.svc', false, 'wsdl_scheme_not_https' ),
@@ -137,6 +153,73 @@ $report(
 		implode( ',', array_keys( array_filter( $endpoint_details, static fn( string $v ): bool => str_starts_with( $v, 'WRONG' ) ) ) ) ?: 'none',
 		$config_default_test['ok'] ? 'accepted' : 'REFUSED',
 		$config_default_live['ok'] ? 'ACCEPTED' : 'refused'
+	)
+);
+
+/*
+ * Padding is a refusal, not something to clean up. Asserted by calling the
+ * verifier directly with every pad character around the otherwise canonical
+ * URL: an implementation that trims first would accept all of these.
+ */
+$pad_bytes = array(
+	'space'         => ' ',
+	'tab'           => "\t",
+	'newline'       => "\n",
+	'carriage'      => "\r",
+	'crlf'          => "\r\n",
+	'nul'           => "\0",
+	'vertical_tab'  => "\x0B",
+	'form_feed'     => "\x0C",
+	'del'           => "\x7F",
+);
+$padding_ok      = true;
+$padding_details = array();
+foreach ( $pad_bytes as $pad_name => $pad ) {
+	foreach ( array( 'leading' => $pad . $official_test_wsdl, 'trailing' => $official_test_wsdl . $pad ) as $side => $candidate ) {
+		$verdict = kuka_sandbox_verify_test_endpoint( $candidate );
+		$hit     = false === $verdict['ok'] && 'wsdl_contains_whitespace_or_control' === $verdict['reason'];
+		if ( ! $hit ) {
+			$padding_ok = false;
+			$padding_details[] = $side . '_' . $pad_name . '=' . ( $verdict['ok'] ? 'ACCEPTED' : $verdict['reason'] );
+		}
+	}
+}
+// The unpadded value must still be accepted, so the rule rejects padding rather
+// than the endpoint itself.
+$unpadded_still_ok = kuka_sandbox_verify_test_endpoint( $official_test_wsdl );
+
+$report(
+	'SANDBOX_ENDPOINT_REJECTS_PADDING',
+	$padding_ok && true === $unpadded_still_ok['ok'],
+	sprintf(
+		'pad_bytes:%d|variants:%d|leaked:%s|unpadded_canonical:%s',
+		count( $pad_bytes ),
+		count( $pad_bytes ) * 2,
+		empty( $padding_details ) ? 'none' : implode( ',', $padding_details ),
+		$unpadded_still_ok['ok'] ? 'accepted' : 'REFUSED'
+	)
+);
+
+// The verifier must not trim, and the source must not reintroduce it.
+$lib_body = (string) file_get_contents( __DIR__ . '/lib-edm-sandbox.php' );
+$verifier_body = '';
+$verifier_start = strpos( $lib_body, 'function kuka_sandbox_verify_test_endpoint(' );
+if ( false !== $verifier_start ) {
+	$verifier_end  = strpos( $lib_body, "\n}\n", $verifier_start );
+	$verifier_body = false !== $verifier_end ? substr( $lib_body, $verifier_start, $verifier_end - $verifier_start ) : '';
+}
+$report(
+	'SANDBOX_ENDPOINT_DOES_NOT_NORMALISE',
+	'' !== $verifier_body
+	&& ! str_contains( $verifier_body, 'trim( $wsdl )' )
+	&& ! str_contains( $verifier_body, 'ltrim(' )
+	&& ! str_contains( $verifier_body, 'rtrim(' )
+	&& str_contains( $verifier_body, '$raw = $wsdl;' ),
+	sprintf(
+		'verifier_located:%s|trim_calls:%s|raw_bytes_validated:%s',
+		'' !== $verifier_body ? 'yes' : 'no',
+		( str_contains( $verifier_body, 'trim(' ) ) ? 'PRESENT' : 'none',
+		str_contains( $verifier_body, '$raw = $wsdl;' ) ? 'yes' : 'no'
 	)
 );
 
@@ -194,8 +277,8 @@ $report(
 	true === $defaults_test['ok']
 	&& KUKA_SANDBOX_DOCUMENTED_PROFILE_ID === $defaults_test['profile_id']
 	&& KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN === $defaults_test['receiver_vkn']
-	&& 'documented_test_default' === $defaults_test['profile_source']
-	&& 'documented_test_default' === $defaults_test['receiver_source']
+	&& 'documented_example_fixture' === $defaults_test['profile_source']
+	&& 'documented_example_fixture' === $defaults_test['receiver_source']
 	&& $refusals_clean
 	&& in_array( 'wsdl_endpoint_not_verified', $defaults_test_label_live_url['failed'], true )
 	&& in_array( 'environment_not_test', $defaults_live_label_test_url['failed'], true ),
