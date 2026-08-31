@@ -2839,41 +2839,143 @@ $fault_cases = array(
 	'no_code_no_marker' => array( '', 'something entirely unmodelled', Kuka_Island_Core_EDM_Fault_Classifier::CAT_UNCLASSIFIED, true ),
 );
 
-$classifier_ok      = true;
-$classifier_wrong   = array();
-$classifier_digests = array();
+/*
+ * The safe line must be built ENTIRELY from the fixed vocabulary. Matching a
+ * strict grammar of allow-listed alternatives is what proves no remote text can
+ * appear -- searching for message words would not, because a category name
+ * legitimately shares ordinary English words such as "server" or "session" with
+ * fault text.
+ */
+$safe_line_grammar = sprintf(
+	'/^category:(%s)\|fault_kind:(%s)\|marker:(%s)\|retryable:(yes|no)$/',
+	implode( '|', array_map( 'preg_quote', Kuka_Island_Core_EDM_Fault_Classifier::categories() ) ),
+	implode( '|', array_map( 'preg_quote', Kuka_Island_Core_EDM_Fault_Classifier::fault_kinds() ) ),
+	implode( '|', array_map( 'preg_quote', Kuka_Island_Core_EDM_Fault_Classifier::marker_names() ) )
+);
+
+$classifier_ok    = true;
+$classifier_wrong = array();
 foreach ( $fault_cases as $case => $spec ) {
 	$verdict = Kuka_Island_Core_EDM_Fault_Classifier::classify( $spec[0], $spec[1] );
-	$hit     = $verdict['category'] === $spec[2] && $verdict['retryable'] === $spec[3];
-	/*
-	 * The safe line must be built ENTIRELY from the fixed vocabulary. Matching
-	 * a strict grammar is what proves no remote text can appear -- searching
-	 * for message words would not, because a category name legitimately shares
-	 * ordinary English words such as "server" or "session" with fault text.
-	 */
-	$line = Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( $verdict );
-	if ( 1 !== preg_match( '/^category:[a-z_]+\|fault_kind:[a-z]+\|marker:[a-z_]+\|retryable:(yes|no)\|digest:[0-9a-f]{8}$/', $line ) ) {
+	$hit     = $verdict['category'] === $spec[2]
+		&& $verdict['retryable'] === $spec[3]
+		// Exactly four fields. A digest of remote text would be a password
+		// verification oracle, so none is produced.
+		&& array( 'category', 'fault_kind', 'marker', 'retryable' ) === array_keys( $verdict )
+		&& is_bool( $verdict['retryable'] );
+
+	if ( 1 !== preg_match( $safe_line_grammar, Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( $verdict ) ) ) {
 		$hit = false;
 	}
-	$classifier_digests[] = $verdict['digest'];
 	if ( ! $hit ) {
 		$classifier_ok      = false;
 		$classifier_wrong[] = $case . '(' . $verdict['category'] . ')';
 	}
 }
-// The digest must be stable for the same message and differ across messages.
-$digest_stable = Kuka_Island_Core_EDM_Fault_Classifier::classify( 'HTTP', 'same text' )['digest']
-	=== Kuka_Island_Core_EDM_Fault_Classifier::classify( 'HTTP', 'same text' )['digest'];
 
 $report(
 	'INVOICE_FAULT_CLASSIFIER_MATRIX',
-	$classifier_ok && $digest_stable && count( array_unique( $classifier_digests ) ) >= 10,
+	$classifier_ok,
 	sprintf(
-		'cases:%d|wrong:%s|digest_stable:%s|distinct_digests:%d',
+		'cases:%d|wrong:%s|fields:4|digest_field:absent',
 		count( $fault_cases ),
-		empty( $classifier_wrong ) ? 'none' : implode( ',', $classifier_wrong ),
-		$digest_stable ? 'yes' : 'no',
-		count( array_unique( $classifier_digests ) )
+		empty( $classifier_wrong ) ? 'none' : implode( ',', $classifier_wrong )
+	)
+);
+
+/*
+ * Adversarial injection. Every diagnostic field is filled with a credential in
+ * turn, plus a whole-array fill and a truthy-but-not-boolean retryable, and the
+ * result is pushed through the real exception surface. Nothing may survive.
+ */
+$injection_secrets = array(
+	'user'     => 'test_user',
+	'password' => 'secret_password_123',
+	'session'  => 'sess-abc-999',
+	'vkn'      => '1234567890',
+	'secret'   => 'secret_key_456',
+);
+$injection_fields = array( 'category', 'fault_kind', 'marker', 'retryable' );
+
+$injection_cases = array();
+foreach ( $injection_fields as $field ) {
+	foreach ( $injection_secrets as $label => $value ) {
+		$injection_cases[ $field . '_' . $label ] = array( $field => $value );
+	}
+}
+// Every field poisoned at once, and an unlisted extra key.
+$injection_cases['all_fields'] = array(
+	'category'   => 'secret_password_123',
+	'fault_kind' => 'test_user',
+	'marker'     => 'sess-abc-999',
+	'retryable'  => '1234567890',
+	'extra_key'  => 'secret_key_456',
+);
+// Shapes that a lax implementation would pass straight through.
+$injection_cases['nested_array']   = array( 'category' => array( 'secret_password_123' ) );
+$injection_cases['object_value']   = array( 'marker' => (object) array( 'x' => 'sess-abc-999' ) );
+$injection_cases['truthy_retry']   = array( 'category' => 'network_timeout', 'retryable' => 'yes' );
+$injection_cases['numeric_retry']  = array( 'category' => 'network_timeout', 'retryable' => 1 );
+$injection_cases['case_variant']   = array( 'category' => 'CREDENTIALS_REJECTED' );
+$injection_cases['padded_valid']   = array( 'category' => ' network_timeout ' );
+
+$injection_leaks       = array();
+$injection_shape_bad   = array();
+$injection_retry_leaks = array();
+foreach ( $injection_cases as $case => $payload ) {
+	$exception = ( new Kuka_Island_Core_Invoice_Transient_Exception(
+		'EDM SOAP Fault.',
+		'edm_soap_fault'
+	) )->set_diagnostic( $payload );
+
+	$surface = implode(
+		"\n",
+		array(
+			$exception->getMessage(),
+			$exception->get_safe_error_code(),
+			$exception->get_user_message(),
+			(string) wp_json_encode( $exception->get_diagnostic() ),
+			$exception->get_safe_diagnostic_line(),
+		)
+	);
+
+	foreach ( $injection_secrets as $secret ) {
+		if ( str_contains( $surface, $secret ) ) {
+			$injection_leaks[] = $case;
+			break;
+		}
+	}
+
+	$stored = $exception->get_diagnostic();
+	if ( array( 'category', 'fault_kind', 'marker', 'retryable' ) !== array_keys( $stored )
+		|| ! is_bool( $stored['retryable'] )
+		|| 1 !== preg_match( $safe_line_grammar, $exception->get_safe_diagnostic_line() ) ) {
+		$injection_shape_bad[] = $case;
+	}
+	// A non-boolean retryable must fail closed, never become true.
+	if ( in_array( $case, array( 'truthy_retry', 'numeric_retry', 'retryable_user', 'retryable_password', 'retryable_session', 'retryable_vkn', 'retryable_secret', 'all_fields' ), true )
+		&& true === $stored['retryable'] ) {
+		$injection_retry_leaks[] = $case;
+	}
+}
+
+// An exception that never had a diagnostic must still print nothing.
+$no_diagnostic_line = ( new Kuka_Island_Core_Invoice_Transient_Exception( 'x', 'edm_soap_fault' ) )->get_safe_diagnostic_line();
+
+$report(
+	'INVOICE_DIAGNOSTIC_INJECTION_REFUSED',
+	array() === $injection_leaks
+	&& array() === $injection_shape_bad
+	&& array() === $injection_retry_leaks
+	&& '' === $no_diagnostic_line,
+	sprintf(
+		'cases:%d|secrets:%d|leaked:%s|bad_shape:%s|retry_forced_open:%s|unset_diagnostic_prints:%s',
+		count( $injection_cases ),
+		count( $injection_secrets ),
+		empty( $injection_leaks ) ? 'none' : implode( ',', array_unique( $injection_leaks ) ),
+		empty( $injection_shape_bad ) ? 'none' : implode( ',', array_unique( $injection_shape_bad ) ),
+		empty( $injection_retry_leaks ) ? 'none' : implode( ',', $injection_retry_leaks ),
+		'' === $no_diagnostic_line ? 'nothing' : 'SOMETHING'
 	)
 );
 
@@ -2925,12 +3027,14 @@ try {
 	}
 	$leak_code       = $e->get_safe_error_code();
 	$leak_diagnostic = $e->get_safe_diagnostic_line();
+	$leak_shape_ok   = 1 === preg_match( $safe_line_grammar, $leak_diagnostic );
 }
 
 $report(
 	'INVOICE_FAULT_MESSAGE_NEVER_LEAKS',
 	array() === $leak_found
 	&& 'edm_auth_failed' === ( $leak_code ?? '' )
+	&& true === ( $leak_shape_ok ?? false )
 	&& str_contains( (string) ( $leak_diagnostic ?? '' ), 'category:credentials_rejected' )
 	&& str_contains( (string) ( $leak_diagnostic ?? '' ), 'marker:authentication' ),
 	sprintf(

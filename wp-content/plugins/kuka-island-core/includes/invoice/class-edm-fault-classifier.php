@@ -8,8 +8,14 @@
  *
  * This classifier turns a fault into a small, fixed vocabulary that is safe to
  * print: a category, whether a retry could plausibly help, a normalised fault
- * kind and the NAME of the marker that matched. It also returns a short digest
- * of the message so two runs can be compared without anyone reading the text.
+ * kind and the NAME of the marker that matched. Every one of those four values
+ * comes from a closed allow-list, so no byte of remote text can reach an output
+ * surface even if a caller hands in a hand-built array.
+ *
+ * No digest of the message is produced. A hash of text that may contain a
+ * reflected password is a verification oracle: an attacker who can read it can
+ * confirm password guesses offline. The gain -- telling "same fault as last
+ * run" apart from a new one -- does not justify that.
  *
  * Nothing here returns, stores or logs the message itself.
  *
@@ -38,6 +44,89 @@ final class Kuka_Island_Core_EDM_Fault_Classifier {
 	public const CAT_TRANSPORT = 'http_transport_failure';
 	/** Nothing matched. Deliberately never guessed into another category. */
 	public const CAT_UNCLASSIFIED = 'unclassified_fault';
+
+	/** Marker value used when no group matched. */
+	public const MARKER_NONE = 'none';
+
+	/**
+	 * Every category a diagnostic may carry.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function categories(): array {
+		return array(
+			self::CAT_CREDENTIALS,
+			self::CAT_SESSION,
+			self::CAT_NOT_FOUND,
+			self::CAT_CONTRACT,
+			self::CAT_SERVER,
+			self::CAT_TIMEOUT,
+			self::CAT_TLS,
+			self::CAT_TRANSPORT,
+			self::CAT_UNCLASSIFIED,
+		);
+	}
+
+	/**
+	 * Every folded fault kind a diagnostic may carry.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function fault_kinds(): array {
+		return array( 'http', 'client', 'server', 'wsdl', 'protocol', 'none', 'other' );
+	}
+
+	/**
+	 * Every marker name a diagnostic may carry.
+	 *
+	 * Derived from the marker table itself, so a new group cannot be added
+	 * without also becoming allow-listed -- and nothing else can.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function marker_names(): array {
+		$names = array( self::MARKER_NONE );
+		foreach ( self::marker_groups() as $group ) {
+			$names[] = $group['marker'];
+		}
+
+		return $names;
+	}
+
+	/**
+	 * Force any array into the four-field diagnostic contract.
+	 *
+	 * This is the single choke point. Anything missing, of the wrong type or
+	 * outside its allow-list collapses to a fixed safe default, so a value that
+	 * originated in remote text or user input can never survive into an output
+	 * surface. Extra keys are dropped rather than carried.
+	 *
+	 * The safe default for `retryable` is false: an unknown verdict must not be
+	 * able to argue for retrying an operation whose outcome nobody established.
+	 *
+	 * @param array<string, mixed> $diagnostic Untrusted candidate.
+	 * @return array{category: string, fault_kind: string, marker: string, retryable: bool}
+	 */
+	public static function normalize( array $diagnostic ): array {
+		$category = $diagnostic['category'] ?? null;
+		$kind     = $diagnostic['fault_kind'] ?? null;
+		$marker   = $diagnostic['marker'] ?? null;
+
+		return array(
+			'category'   => is_string( $category ) && in_array( $category, self::categories(), true )
+				? $category
+				: self::CAT_UNCLASSIFIED,
+			'fault_kind' => is_string( $kind ) && in_array( $kind, self::fault_kinds(), true )
+				? $kind
+				: 'other',
+			'marker'     => is_string( $marker ) && in_array( $marker, self::marker_names(), true )
+				? $marker
+				: self::MARKER_NONE,
+			// Strictly boolean true. A truthy string, 1 or 'yes' is not a
+			// verdict, so it fails closed.
+			'retryable'  => true === ( $diagnostic['retryable'] ?? null ),
+		);
+	}
 
 	/**
 	 * Marker groups, in evaluation order.
@@ -169,8 +258,9 @@ final class Kuka_Island_Core_EDM_Fault_Classifier {
 	 * Classify a fault without exposing its message.
 	 *
 	 * @param string $fault_code    Raw SoapFault::faultcode.
-	 * @param string $fault_message Raw SoapFault::getMessage(). Never returned.
-	 * @return array{category: string, retryable: bool, fault_kind: string, marker: string, digest: string}
+	 * @param string $fault_message Raw SoapFault::getMessage(). Never returned,
+	 *                              never stored and never hashed.
+	 * @return array{category: string, fault_kind: string, marker: string, retryable: bool}
 	 */
 	public static function classify( string $fault_code, string $fault_message ): array {
 		$kind = self::fault_kind( $fault_code );
@@ -181,7 +271,7 @@ final class Kuka_Island_Core_EDM_Fault_Classifier {
 		foreach ( self::marker_groups() as $group ) {
 			foreach ( $group['needles'] as $needle ) {
 				if ( '' !== $needle && str_contains( $haystack, $needle ) ) {
-					return self::result( $group['category'], $group['retryable'], $kind, $group['marker'], $fault_message );
+					return self::result( $group['category'], $group['retryable'], $kind, $group['marker'] );
 				}
 			}
 		}
@@ -190,56 +280,63 @@ final class Kuka_Island_Core_EDM_Fault_Classifier {
 		// and never invent an authentication verdict from silence.
 		switch ( $kind ) {
 			case 'http':
-				return self::result( self::CAT_TRANSPORT, true, $kind, 'none', $fault_message );
+				return self::result( self::CAT_TRANSPORT, true, $kind, self::MARKER_NONE );
 			case 'server':
-				return self::result( self::CAT_SERVER, true, $kind, 'none', $fault_message );
+				return self::result( self::CAT_SERVER, true, $kind, self::MARKER_NONE );
 			case 'client':
 			case 'protocol':
-				return self::result( self::CAT_CONTRACT, false, $kind, 'none', $fault_message );
+				return self::result( self::CAT_CONTRACT, false, $kind, self::MARKER_NONE );
 			case 'wsdl':
-				return self::result( self::CAT_TRANSPORT, true, $kind, 'none', $fault_message );
+				return self::result( self::CAT_TRANSPORT, true, $kind, self::MARKER_NONE );
 			default:
-				return self::result( self::CAT_UNCLASSIFIED, true, $kind, 'none', $fault_message );
+				return self::result( self::CAT_UNCLASSIFIED, true, $kind, self::MARKER_NONE );
 		}
 	}
 
 	/**
-	 * Build the verdict, including a non-reversible digest of the message.
+	 * Build the verdict. Routed through normalize() so even an internal typo
+	 * cannot put an unlisted value into a diagnostic.
 	 *
-	 * The digest exists so an operator can tell "same fault as last run" from
-	 * "a different fault" without anyone reading remote text. It is truncated,
-	 * so it identifies nothing on its own.
-	 *
-	 * @param string $category      Category constant.
-	 * @param bool   $retryable     Whether a retry could plausibly help.
-	 * @param string $kind          Folded fault kind.
-	 * @param string $marker        Name of the matched marker group, or 'none'.
-	 * @param string $fault_message Raw message. Hashed, never stored.
-	 * @return array{category: string, retryable: bool, fault_kind: string, marker: string, digest: string}
+	 * @param string $category  Category constant.
+	 * @param bool   $retryable Whether a retry could plausibly help.
+	 * @param string $kind      Folded fault kind.
+	 * @param string $marker    Name of the matched marker group, or 'none'.
+	 * @return array{category: string, fault_kind: string, marker: string, retryable: bool}
 	 */
-	private static function result( string $category, bool $retryable, string $kind, string $marker, string $fault_message ): array {
-		return array(
-			'category'   => $category,
-			'retryable'  => $retryable,
-			'fault_kind' => $kind,
-			'marker'     => $marker,
-			'digest'     => substr( hash( 'sha256', $fault_message ), 0, 8 ),
+	private static function result( string $category, bool $retryable, string $kind, string $marker ): array {
+		return self::normalize(
+			array(
+				'category'   => $category,
+				'fault_kind' => $kind,
+				'marker'     => $marker,
+				'retryable'  => $retryable,
+			)
 		);
 	}
 
 	/**
-	 * One-line, printable form of a verdict. Contains no remote text.
+	 * One-line, printable form of a verdict.
 	 *
-	 * @param array<string, mixed> $verdict Output of classify().
+	 * Normalises again before printing. The exception already normalises on the
+	 * way in, so this is deliberate double validation: this method is public and
+	 * may be handed an array that never passed through set_diagnostic().
+	 *
+	 * The result is assembled ONLY from allow-listed tokens, so the output shape
+	 * is fixed and no caller-supplied byte can appear in it:
+	 *
+	 *   category:<allow-listed>|fault_kind:<allow-listed>|marker:<allow-listed>|retryable:yes|no
+	 *
+	 * @param array<string, mixed> $verdict Candidate verdict.
 	 */
 	public static function to_safe_line( array $verdict ): string {
+		$safe = self::normalize( $verdict );
+
 		return sprintf(
-			'category:%s|fault_kind:%s|marker:%s|retryable:%s|digest:%s',
-			(string) ( $verdict['category'] ?? self::CAT_UNCLASSIFIED ),
-			(string) ( $verdict['fault_kind'] ?? 'other' ),
-			(string) ( $verdict['marker'] ?? 'none' ),
-			true === ( $verdict['retryable'] ?? false ) ? 'yes' : 'no',
-			(string) ( $verdict['digest'] ?? '' )
+			'category:%s|fault_kind:%s|marker:%s|retryable:%s',
+			$safe['category'],
+			$safe['fault_kind'],
+			$safe['marker'],
+			$safe['retryable'] ? 'yes' : 'no'
 		);
 	}
 }

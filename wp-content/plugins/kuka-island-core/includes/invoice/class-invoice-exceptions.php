@@ -17,10 +17,12 @@ class Kuka_Island_Core_Invoice_Exception extends Exception {
 	/**
 	 * Printable classification of the underlying failure.
 	 *
-	 * Only ever holds the fixed vocabulary produced by
-	 * Kuka_Island_Core_EDM_Fault_Classifier: a category, a folded fault kind,
-	 * the name of the matched marker, a retryable flag and a truncated digest.
-	 * Remote fault text is never placed here.
+	 * Holds either the empty array (no diagnostic attached) or exactly the four
+	 * allow-listed fields Kuka_Island_Core_EDM_Fault_Classifier::normalize()
+	 * produces: category, fault_kind, marker and a real boolean retryable.
+	 * Remote fault text can never be placed here -- set_diagnostic() normalises
+	 * whatever it is handed, so an unlisted value collapses to a safe default
+	 * rather than being stored.
 	 *
 	 * @var array<string, mixed>
 	 */
@@ -41,32 +43,55 @@ class Kuka_Island_Core_Invoice_Exception extends Exception {
 	}
 
 	/**
-	 * Attach a safe classification.
+	 * Attach a classification, forced through the allow-list on the way in.
 	 *
-	 * @param array<string, mixed> $diagnostic Verdict from the fault classifier.
+	 * The argument is treated as untrusted: callers outside this package can
+	 * reach this method, and a fault verdict is itself derived from remote text.
+	 * Normalising here -- rather than trusting the caller -- is what makes the
+	 * "no remote byte reaches an output surface" contract structural instead of
+	 * conventional.
+	 *
+	 * @param array<string, mixed> $diagnostic Candidate verdict.
 	 */
 	public function set_diagnostic( array $diagnostic ): self {
-		$this->diagnostic = $diagnostic;
+		$this->diagnostic = class_exists( 'Kuka_Island_Core_EDM_Fault_Classifier' )
+			? Kuka_Island_Core_EDM_Fault_Classifier::normalize( $diagnostic )
+			// Without the classifier there is no allow-list to check against, so
+			// nothing is stored at all.
+			: array();
 
 		return $this;
 	}
 
 	/**
+	 * Normalised diagnostic, or the empty array when none was attached.
+	 *
+	 * Normalised again on the way out: the property is protected, so a subclass
+	 * could otherwise assign to it directly.
+	 *
 	 * @return array<string, mixed>
 	 */
 	public function get_diagnostic(): array {
-		return $this->diagnostic;
+		if ( array() === $this->diagnostic || ! class_exists( 'Kuka_Island_Core_EDM_Fault_Classifier' ) ) {
+			return array();
+		}
+
+		return Kuka_Island_Core_EDM_Fault_Classifier::normalize( $this->diagnostic );
 	}
 
 	/**
 	 * One-line diagnostic that is safe to print. Empty when none was attached.
+	 *
+	 * Shape is fixed and built only from allow-listed tokens:
+	 * category:<x>|fault_kind:<x>|marker:<x>|retryable:yes|no
 	 */
 	public function get_safe_diagnostic_line(): string {
-		if ( array() === $this->diagnostic ) {
+		$diagnostic = $this->get_diagnostic();
+		if ( array() === $diagnostic ) {
 			return '';
 		}
 
-		return Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( $this->diagnostic );
+		return Kuka_Island_Core_EDM_Fault_Classifier::to_safe_line( $diagnostic );
 	}
 }
 

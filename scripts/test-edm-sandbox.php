@@ -19,7 +19,8 @@
  *
  * A failure additionally prints the classification produced by
  * Kuka_Island_Core_EDM_Fault_Classifier: a category, a folded fault kind, the
- * NAME of the matched marker and a truncated digest. The SOAP fault message
+ * NAME of the matched marker. Every one of those comes from a closed
+ * allow-list, and no digest of the message is produced. The SOAP fault message
  * itself is never printed -- it is untrusted remote text that may quote the
  * request back.
  *

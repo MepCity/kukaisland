@@ -434,20 +434,48 @@ notuna veya veritabanına yazılmaz.
 | `category` | `credentials_rejected`, `session_invalid`, `endpoint_not_found`, `request_contract_rejected`, `remote_server_error`, `network_timeout`, `tls_failure`, `http_transport_failure`, `unclassified_fault` |
 | `fault_kind` | Faultcode katlanmış hâli: `http`, `client`, `server`, `wsdl`, `protocol`, `none`, `other` |
 | `marker` | **Eşleşen grubun adı** (`authentication`, `timeout`, `http_not_found`, …) — eşleşen metin değil |
-| `retryable` | Yeniden denemenin makul olup olmadığı |
-| `digest` | Mesajın sha256'sının ilk 8 hane'si — "geçen koşuyla aynı hata mı" sorusunu metin okumadan yanıtlar |
+| `retryable` | Yeniden denemenin makul olup olmadığı. **Yalnız gerçek boolean** kabul edilir |
+
+Alan sayısı tam olarak dörttür. **Mesajın digest'i üretilmez:** geri yansıtılmış parola
+içerebilen bir metnin hash'i, parola tahminini çevrimdışı doğrulamaya yarayan bir oracle olur;
+"geçen koşuyla aynı hata mı" kolaylığı bunu karşılamaz.
 
 Sınıflandırma sırası önce taşıma katmanı kanıtına bakar (404, timeout, TLS, 5xx), çünkü bunlar
 kimlik doğrulama gibi görünen kelimeler taşıyabilir. Hiçbir işaretçi eşleşmezse **sessizlikten
 kimlik doğrulama sonucu uydurulmaz**; yalnız faultcode'a göre karar verilir.
 
 Sonuç `Kuka_Island_Core_Invoice_Exception::set_diagnostic()` ile istisnaya iliştirilir ve
-`get_safe_diagnostic_line()` ile basılır. Satır yapısı katı bir dilbilgisine uyar, bu yüzden
-uzak metnin içine sızması yapısal olarak mümkün değildir:
+`get_safe_diagnostic_line()` ile basılır.
+
+**Kapalı allow-list.** Dört alanın her biri kapalı bir listeden gelir; liste dışı, eksik veya
+yanlış tipteki her değer sabit güvenli varsayılana çöker ve fazladan anahtarlar düşürülür:
+
+| Alan | Kabul edilen | Güvensiz girdide |
+|---|---|---|
+| `category` | dokuz `CAT_*` sabitinden biri | `unclassified_fault` |
+| `fault_kind` | `http`, `client`, `server`, `wsdl`, `protocol`, `none`, `other` | `other` |
+| `marker` | marker tablosundaki adlar veya `none` | `none` |
+| `retryable` | yalnız `true`/`false` (katı) | `false` |
+
+`retryable` için güvenli varsayılan `false`'tur: bilinmeyen bir karar, sonucu kimsenin
+saptamadığı bir işlemin yeniden denenmesini savunamamalıdır.
+
+Normalizasyon üç yerde birden uygulanır — `normalize()` tek boğaz noktasıdır ve
+`set_diagnostic()` (girişte), `get_diagnostic()` (çıkışta, alt sınıf property'ye doğrudan
+yazabileceği için) ve `to_safe_line()` (public olduğu için `set_diagnostic()`'ten geçmemiş
+dizi alabilir) hepsi onu çağırır. Bu yüzden çıktı satırı **yalnız allow-list token'larından**
+kurulur ve uzak metnin sızması yapısal olarak mümkün değildir:
 
 ```
-category:<a-z_>|fault_kind:<a-z>|marker:<a-z_>|retryable:yes|no|digest:<8 hex>
+category:<allow-listed>|fault_kind:<allow-listed>|marker:<allow-listed>|retryable:yes|no
 ```
+
+Adversarial test (`INVOICE_DIAGNOSTIC_INJECTION_REFUSED`) dört alanın her birine sırayla
+kullanıcı adı, parola, session ID, VKN ve secret key enjekte eder; ayrıca tüm alanları birden,
+iç içe dizi, nesne, truthy-string ve sayısal `retryable`, büyük harf ve dolgulu varyant dener.
+27 vakanın hiçbirinde bu değerler `getMessage()`, `get_safe_error_code()`,
+`get_user_message()`, `get_diagnostic()` veya `get_safe_diagnostic_line()` yüzeyinde
+görünmez.
 
 Kategoriden istisna tipine eşleme: `credentials_rejected`, `request_contract_rejected`,
 `endpoint_not_found`, `session_invalid` → **kalıcı**; `network_timeout`, `tls_failure`,

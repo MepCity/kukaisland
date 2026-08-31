@@ -614,7 +614,8 @@ expect_invoice_line "Auto-send honours full readiness contract" "INVOICE_AUTO_SE
 expect_invoice_line "Login REQUEST_HEADER matches the EDM reference envelope" "INVOICE_LOGIN_REQUEST_HEADER_CONTRACT=PASS|fields:8|missing:none|session_id:0|reason:Login|compressed:N|application_name_ok:yes|action_date_shape:ok|client_txn_id_uuid:yes"
 expect_invoice_line "session operations carry the same complete header" "INVOICE_SESSION_REQUEST_HEADER_CONTRACT=PASS|operations:4|complete:yes|problems:none"
 expect_invoice_line "SendInvoice keeps its idempotency key" "INVOICE_SENDINVOICE_HEADER_KEEPS_UUID=PASS|client_txn_id_bound:yes|reason:SendInvoice|compressed:N"
-expect_invoice_match "SOAP faults reduce to a fixed safe vocabulary" "^INVOICE_FAULT_CLASSIFIER_MATRIX=PASS\\|cases:1[0-9]\\|wrong:none\\|digest_stable:yes\\|distinct_digests:[0-9]{2,}$"
+expect_invoice_line "SOAP faults reduce to a fixed safe vocabulary" "INVOICE_FAULT_CLASSIFIER_MATRIX=PASS|cases:15|wrong:none|fields:4|digest_field:absent"
+expect_invoice_line "a poisoned diagnostic never reaches an output surface" "INVOICE_DIAGNOSTIC_INJECTION_REFUSED=PASS|cases:27|secrets:5|leaked:none|bad_shape:none|retry_forced_open:none|unset_diagnostic_prints:nothing"
 expect_invoice_match "a fault message never reaches the exception surface" "^INVOICE_FAULT_MESSAGE_NEVER_LEAKS=PASS\\|needles_checked:5\\|leaked:none\\|safe_code:edm_auth_failed\\|diagnostic:category:credentials_rejected\\|"
 expect_invoice_line "Auto-send still requires explicit opt-in" "INVOICE_AUTO_SEND_REQUIRES_OPT_IN=PASS|auto_send_off_enabled:no"
 
