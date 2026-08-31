@@ -67,13 +67,127 @@ $report(
 );
 
 /* ========================================================================== */
-/* Documented sandbox defaults: test endpoint only, never production            */
+/* The real WSDL endpoint, not the environment label                            */
 /* ========================================================================== */
 
-$defaults_test = kuka_sandbox_resolve_defaults( 'test', '', '', '1234567890' );
-$defaults_live = kuka_sandbox_resolve_defaults( 'live', '', '', '1234567890' );
-// An override cannot buy its way past the environment gate either.
-$defaults_live_override = kuka_sandbox_resolve_defaults( 'live', 'EARSIVFATURA', '11223344556', '1234567890' );
+$official_test_wsdl = 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . KUKA_SANDBOX_TEST_WSDL_PATH;
+
+$endpoint_cases = array(
+	// Accepted: exactly the EDM test service, with or without ?singleWsdl.
+	'official_test_no_query'     => array( $official_test_wsdl, true, 'edm_test_service_verified' ),
+	'official_test_single_wsdl'  => array( $official_test_wsdl . '?singleWsdl', true, 'edm_test_service_verified' ),
+	// Refused: the live service.
+	'live_wsdl'                  => array( Kuka_Island_Core_Invoice_Config::DEFAULT_LIVE_WSDL, false, 'wsdl_host_not_edm_test' ),
+	'live_host_bare'             => array( 'https://portal2.edmbilisim.com.tr' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	// Refused: look-alike hosts.
+	'suffix_lookalike'           => array( 'https://test.edmbilisim.com.tr.evil.example' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	'prefix_lookalike'           => array( 'https://eviltest.edmbilisim.com.tr' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	'subdomain_lookalike'        => array( 'https://a.test.edmbilisim.com.tr' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	'host_only_in_path'          => array( 'https://evil.example/test.edmbilisim.com.tr' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	'trailing_dot_host'          => array( 'https://test.edmbilisim.com.tr.' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	// Refused: transport and locality.
+	'plain_http'                 => array( 'http://' . KUKA_SANDBOX_TEST_WSDL_HOST . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_scheme_not_https' ),
+	'localhost'                  => array( 'https://localhost' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	'ip_literal'                 => array( 'https://93.184.216.34' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_host_not_edm_test' ),
+	// Refused: wrong service on the right host.
+	'other_service_path'         => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . '/EFaturaEDM/EFaturaEDM.svc', false, 'wsdl_path_not_test_service' ),
+	'host_omitted'               => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_malformed' ),
+	'root_path'                  => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . '/', false, 'wsdl_path_not_test_service' ),
+	// Refused: URL features the canonical endpoint does not have.
+	'userinfo'                   => array( 'https://user:pass@' . KUKA_SANDBOX_TEST_WSDL_HOST . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_contains_userinfo' ),
+	'userinfo_lookalike'         => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . '@evil.example' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_contains_userinfo' ),
+	'custom_port'                => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . ':8443' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_explicit_port_refused' ),
+	'default_port_spelled_out'   => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . ':443' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_explicit_port_refused' ),
+	'fragment'                   => array( $official_test_wsdl . '#x', false, 'wsdl_contains_fragment' ),
+	'unexpected_query'           => array( $official_test_wsdl . '?wsdl=0', false, 'wsdl_query_not_allowed' ),
+	'backslash'                  => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . '\\@evil.example' . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_contains_backslash' ),
+	'whitespace'                 => array( 'https://' . KUKA_SANDBOX_TEST_WSDL_HOST . ' /x', false, 'wsdl_contains_whitespace_or_control' ),
+	'empty'                      => array( '', false, 'wsdl_empty' ),
+	'malformed'                  => array( 'https://', false, 'wsdl_malformed' ),
+	'not_a_url'                  => array( 'EFaturaEDM.svc', false, 'wsdl_scheme_not_https' ),
+	'scheme_relative'            => array( '//' . KUKA_SANDBOX_TEST_WSDL_HOST . KUKA_SANDBOX_TEST_WSDL_PATH, false, 'wsdl_scheme_not_https' ),
+);
+
+$endpoint_ok      = true;
+$endpoint_details = array();
+foreach ( $endpoint_cases as $case => $spec ) {
+	$verdict = kuka_sandbox_verify_test_endpoint( $spec[0] );
+	$hit     = $verdict['ok'] === $spec[1] && $verdict['reason'] === $spec[2];
+	$endpoint_details[ $case ] = $hit ? ( $verdict['ok'] ? 'accepted' : 'refused' ) : ( 'WRONG(' . ( $verdict['ok'] ? 'accepted' : 'refused' ) . '/' . $verdict['reason'] . ')' );
+	if ( ! $hit ) {
+		$endpoint_ok = false;
+	}
+}
+
+// The config default for the test environment must itself pass, and the config
+// default for live must not.
+$config_default_test = kuka_sandbox_verify_test_endpoint( Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL );
+$config_default_live = kuka_sandbox_verify_test_endpoint( Kuka_Island_Core_Invoice_Config::DEFAULT_LIVE_WSDL );
+
+$report(
+	'SANDBOX_ENDPOINT_ALLOWLIST',
+	$endpoint_ok
+	&& true === $config_default_test['ok']
+	&& false === $config_default_live['ok'],
+	sprintf(
+		'cases:%d|accepted:%d|refused:%d|wrong:%s|config_default_test:%s|config_default_live:%s',
+		count( $endpoint_details ),
+		count( array_filter( $endpoint_details, static fn( string $v ): bool => 'accepted' === $v ) ),
+		count( array_filter( $endpoint_details, static fn( string $v ): bool => 'refused' === $v ) ),
+		implode( ',', array_keys( array_filter( $endpoint_details, static fn( string $v ): bool => str_starts_with( $v, 'WRONG' ) ) ) ) ?: 'none',
+		$config_default_test['ok'] ? 'accepted' : 'REFUSED',
+		$config_default_live['ok'] ? 'ACCEPTED' : 'refused'
+	)
+);
+
+// The driver must prove the endpoint before it logs in, not after.
+$driver_body     = (string) file_get_contents( __DIR__ . '/edm-sandbox-invoice.php' );
+$verify_position = strpos( $driver_body, 'kuka_sandbox_verify_test_endpoint(' );
+$login_position  = strpos( $driver_body, '$client->login()' );
+$report(
+	'SANDBOX_ENDPOINT_CHECKED_BEFORE_LOGIN',
+	false !== $verify_position
+	&& false !== $login_position
+	&& $verify_position < $login_position
+	&& str_contains( $driver_body, "SANDBOX_ENDPOINT=BLOCKED|reason:%s|login_attempted:no" )
+	&& str_contains( $driver_body, '$config->get_wsdl()' ),
+	sprintf(
+		'verifier_present:%s|reads_real_get_wsdl:%s|before_login:%s|blocked_line_states_no_login:%s',
+		false !== $verify_position ? 'yes' : 'no',
+		str_contains( $driver_body, '$config->get_wsdl()' ) ? 'yes' : 'no',
+		( false !== $verify_position && false !== $login_position && $verify_position < $login_position ) ? 'yes' : 'no',
+		str_contains( $driver_body, 'login_attempted:no' ) ? 'yes' : 'no'
+	)
+);
+
+/* ========================================================================== */
+/* Sandbox values need BOTH the test label and the proved endpoint              */
+/* ========================================================================== */
+
+$good_endpoint = kuka_sandbox_verify_test_endpoint( $official_test_wsdl . '?singleWsdl' );
+$bad_endpoint  = kuka_sandbox_verify_test_endpoint( Kuka_Island_Core_Invoice_Config::DEFAULT_LIVE_WSDL );
+
+$defaults_test = kuka_sandbox_resolve_defaults( 'test', $good_endpoint, '', '', '1234567890' );
+$defaults_live = kuka_sandbox_resolve_defaults( 'live', $bad_endpoint, '', '', '1234567890' );
+// The two dangerous mixed cases: a test label over a live URL, and a live label
+// over the test URL. Neither may resolve anything.
+$defaults_test_label_live_url = kuka_sandbox_resolve_defaults( 'test', $bad_endpoint, '', '', '1234567890' );
+$defaults_live_label_test_url = kuka_sandbox_resolve_defaults( 'live', $good_endpoint, '', '', '1234567890' );
+// An override cannot buy its way past either gate.
+$defaults_live_override = kuka_sandbox_resolve_defaults( 'live', $bad_endpoint, 'EARSIVFATURA', '11223344556', '1234567890' );
+
+$refusals = array(
+	'live_both'            => $defaults_live,
+	'test_label_live_url'  => $defaults_test_label_live_url,
+	'live_label_test_url'  => $defaults_live_label_test_url,
+	'live_with_override'   => $defaults_live_override,
+);
+$refusals_clean = true;
+foreach ( $refusals as $refused ) {
+	if ( false !== $refused['ok'] || '' !== $refused['profile_id'] || '' !== $refused['receiver_vkn'] ) {
+		$refusals_clean = false;
+	}
+}
 
 $report(
 	'SANDBOX_DEFAULTS_TEST_ENDPOINT_ONLY',
@@ -82,19 +196,17 @@ $report(
 	&& KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN === $defaults_test['receiver_vkn']
 	&& 'documented_test_default' === $defaults_test['profile_source']
 	&& 'documented_test_default' === $defaults_test['receiver_source']
-	&& false === $defaults_live['ok']
-	&& '' === $defaults_live['profile_id']
-	&& '' === $defaults_live['receiver_vkn']
-	&& false === $defaults_live_override['ok']
-	&& '' === $defaults_live_override['profile_id']
-	&& '' === $defaults_live_override['receiver_vkn'],
+	&& $refusals_clean
+	&& in_array( 'wsdl_endpoint_not_verified', $defaults_test_label_live_url['failed'], true )
+	&& in_array( 'environment_not_test', $defaults_live_label_test_url['failed'], true ),
 	sprintf(
-		'test:resolved|live:%s|live_with_override:%s|live_profile:%s|live_receiver:%s|reason:%s',
+		'test_label_and_verified_url:resolved|live_both:%s|test_label_live_url:%s|live_label_test_url:%s|live_with_override:%s|values_leaked:%s|reason:%s',
 		$defaults_live['ok'] ? 'LEAKED' : 'refused',
+		$defaults_test_label_live_url['ok'] ? 'LEAKED' : 'refused',
+		$defaults_live_label_test_url['ok'] ? 'LEAKED' : 'refused',
 		$defaults_live_override['ok'] ? 'LEAKED' : 'refused',
-		'' === $defaults_live['profile_id'] ? 'empty' : 'LEAKED',
-		'' === $defaults_live['receiver_vkn'] ? 'empty' : 'LEAKED',
-		$defaults_live['reason']
+		$refusals_clean ? 'none' : 'YES',
+		$defaults_test_label_live_url['reason']
 	)
 );
 
@@ -117,7 +229,7 @@ $override_cases = array(
 $override_ok      = true;
 $override_details = array();
 foreach ( $override_cases as $case => $spec ) {
-	$resolved = kuka_sandbox_resolve_defaults( 'test', $spec[0], $spec[1], '1234567890' );
+	$resolved = kuka_sandbox_resolve_defaults( 'test', $good_endpoint, $spec[0], $spec[1], '1234567890' );
 	$hit      = $resolved['ok'] === $spec[2]
 		&& ( '' === $spec[3] || in_array( $spec[3], $resolved['failed'], true ) )
 		// A rejected override never leaks a usable value.
@@ -225,7 +337,7 @@ $series_cases = array(
 	'not_configured_dark' => array( '', array(), false, true, false, 'not_configured_edm_assigns_the_number' ),
 	'registered'          => array( 'KUK', array( 'AAA', 'kuk' ), true, true, true, 'series_override_registered_at_edm' ),
 	'unregistered'        => array( 'KUK', array( 'AAA', 'BBB' ), true, false, false, 'series_override_not_registered_at_edm' ),
-	'query_failed'        => array( 'KUK', array(), false, true, true, 'series_override_registration_unverified' ),
+	'query_failed'        => array( 'KUK', array(), false, false, false, 'series_override_registration_unverified' ),
 	'bad_format_long'     => array( 'KUKA', array( 'KUKA' ), true, false, false, 'series_override_invalid_format' ),
 	'bad_format_lower'    => array( 'kuk', array( 'kuk' ), true, false, false, 'series_override_invalid_format' ),
 	'bad_format_symbol'   => array( 'K-K', array(), false, false, false, 'series_override_invalid_format' ),
@@ -312,7 +424,7 @@ $complete_company = array(
 );
 
 $good_facts = array(
-	'defaults'         => kuka_sandbox_resolve_defaults( 'test', '', '', '1234567890' ),
+	'defaults'         => kuka_sandbox_resolve_defaults( 'test', $good_endpoint, '', '', '1234567890' ),
 	'series'           => kuka_sandbox_resolve_series( 'KUK', array( 'AAA', 'kuk', 'ZZZ' ), true ),
 	'check_user_ok'    => true,
 	'edm_alias'        => 'urn:mail:box@example.com',
@@ -350,12 +462,14 @@ $negatives = array(
 	'alias_case_mismatch'    => array( 'edm_alias' => 'URN:MAIL:BOX@EXAMPLE.COM', 'expect' => 'alias_exact_match' ),
 	'alias_whitespace'       => array( 'edm_alias' => ' urn:mail:box@example.com', 'expect' => 'alias_exact_match' ),
 	'empty_configured_alias' => array( 'configured_alias' => '', 'expect' => 'alias_exact_match' ),
-	'defaults_refused_live'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'live', '', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
+	'defaults_refused_live'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'live', $bad_endpoint, '', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
 	'defaults_missing'       => array( 'defaults' => array(), 'expect' => 'receiver_identity_resolved' ),
-	'bad_receiver_override'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', '', '123', '1234567890' ), 'expect' => 'receiver_identity_resolved' ),
-	'bad_profile_override'   => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', 'bad profile', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
+	'defaults_unproved_wsdl' => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', $bad_endpoint, '', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
+	'bad_receiver_override'  => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', $good_endpoint, '', '123', '1234567890' ), 'expect' => 'receiver_identity_resolved' ),
+	'bad_profile_override'   => array( 'defaults' => kuka_sandbox_resolve_defaults( 'test', $good_endpoint, 'bad profile', '', '1234567890' ), 'expect' => 'profile_id_resolved' ),
 	'malformed_series'       => array( 'series' => kuka_sandbox_resolve_series( 'KUKA', array(), true ), 'expect' => 'series_selection_valid' ),
 	'unregistered_series'    => array( 'series' => kuka_sandbox_resolve_series( 'KUK', array( 'AAA' ), true ), 'expect' => 'series_selection_valid' ),
+	'unverifiable_series'    => array( 'series' => kuka_sandbox_resolve_series( 'KUK', array(), false ), 'expect' => 'series_selection_valid' ),
 	'series_missing'         => array( 'series' => array(), 'expect' => 'series_selection_valid' ),
 );
 

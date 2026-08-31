@@ -28,21 +28,31 @@ const KUKA_SANDBOX_STATE_DIR = '/run/edm/state';
 const KUKA_SANDBOX_TEST_ENVIRONMENT = 'test';
 
 /**
- * Documented EDM sandbox values.
+ * Values taken from EDM's published e-Arşiv SOAP example.
  *
- * EDM's own e-Fatura SOAP envelope reference publishes a complete e-Arşiv
- * example whose header carries PROFILEID = EARSIVFATURA and whose recipient is
- * the generic individual identifier 11111111111:
+ * EDM's own e-Fatura SOAP envelope reference prints a complete e-Arşiv envelope
+ * whose header carries PROFILEID = EARSIVFATURA and whose recipient is the
+ * example individual identifier 11111111111:
  * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/efatura-soap-envelopes.html
  *
- * They are documented TEST values, so the harness does not have to invent them
- * and does not have to wait for a separate written confirmation. They remain
- * sandbox-only: kuka_sandbox_resolve_defaults() hands them out for the EDM test
- * endpoint and for nothing else, and no plugin file includes this library, so
- * they cannot reach a WooCommerce order mapping or the production config.
+ * They are used ONLY as the fixture identity of this isolated sandbox
+ * experiment. Nothing here claims EDM assigned either value to our test
+ * account: they are the identifiers EDM's public example uses, nothing more,
+ * and the recipient in particular is an example consumer identity rather than a
+ * provisioned test counterparty.
+ *
+ * They stay sandbox-only. kuka_sandbox_resolve_defaults() releases them only
+ * after the real WSDL endpoint has been proved to be EDM's test service, and no
+ * plugin file includes this library, so they cannot reach a WooCommerce order
+ * mapping or the production config.
  */
 const KUKA_SANDBOX_DOCUMENTED_PROFILE_ID   = 'EARSIVFATURA';
 const KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN = '11111111111';
+
+/** The one WSDL host the sandbox may ever talk to. */
+const KUKA_SANDBOX_TEST_WSDL_HOST = 'test.edmbilisim.com.tr';
+/** The one WSDL service path the sandbox may ever talk to. */
+const KUKA_SANDBOX_TEST_WSDL_PATH = '/EFaturaEDM21ea/EFaturaEDM.svc';
 
 /** Outcome classes for a write attempt. */
 const KUKA_SANDBOX_CALL_SUCCESS    = 'success';
@@ -66,21 +76,131 @@ function kuka_sandbox_uuid(): string {
 }
 
 /**
+ * Prove that the configured WSDL really is EDM's test service.
+ *
+ * The environment token is a label the operator sets; KUKA_EDM_WSDL overrides
+ * the URL independently of it, so a config can read "test" while pointing at
+ * production. This function looks at the real Kuka_Island_Core_Invoice_Config
+ * ::get_wsdl() value and accepts exactly one endpoint:
+ *
+ *     https://test.edmbilisim.com.tr/EFaturaEDM21ea/EFaturaEDM.svc[?singleWsdl]
+ *
+ * Everything else is refused, including a live URL, a look-alike host
+ * (test.edmbilisim.com.tr.evil.example), a host that only contains the real one
+ * in its path, plain HTTP, an IP literal, a different service path, embedded
+ * user information, any explicit port, any fragment and any malformed string.
+ * An explicit port is refused even when it is 443: the canonical endpoint has
+ * none, and accepting one only widens the parsing surface.
+ *
+ * The URL is never echoed. A custom WSDL can carry user information, so only
+ * the reason token leaves this function.
+ *
+ * @param string $wsdl Value of Kuka_Island_Core_Invoice_Config::get_wsdl().
+ * @return array{ok: bool, reason: string, scheme_ok: bool, host_ok: bool, path_ok: bool, query_ok: bool}
+ */
+function kuka_sandbox_verify_test_endpoint( string $wsdl ): array {
+	$deny = static function ( string $reason, bool $scheme = false, bool $host = false, bool $path = false, bool $query = false ): array {
+		return array(
+			'ok'        => false,
+			'reason'    => $reason,
+			'scheme_ok' => $scheme,
+			'host_ok'   => $host,
+			'path_ok'   => $path,
+			'query_ok'  => $query,
+		);
+	};
+
+	$raw = trim( $wsdl );
+
+	if ( '' === $raw ) {
+		return $deny( 'wsdl_empty' );
+	}
+	if ( strlen( $raw ) > 512 ) {
+		return $deny( 'wsdl_too_long' );
+	}
+	// Whitespace or control characters mean the string was never a plain URL.
+	if ( 1 === preg_match( '/[\x00-\x20\x7F]/', $raw ) ) {
+		return $deny( 'wsdl_contains_whitespace_or_control' );
+	}
+	// Some parsers treat a backslash as a separator; refuse it outright.
+	if ( str_contains( $raw, '\\' ) ) {
+		return $deny( 'wsdl_contains_backslash' );
+	}
+	if ( str_contains( $raw, '#' ) ) {
+		return $deny( 'wsdl_contains_fragment' );
+	}
+	// Checked on the raw string as well, so a parser quirk cannot hide it.
+	if ( str_contains( $raw, '@' ) ) {
+		return $deny( 'wsdl_contains_userinfo' );
+	}
+
+	$parts = wp_parse_url( $raw );
+	if ( ! is_array( $parts ) || array() === $parts ) {
+		return $deny( 'wsdl_malformed' );
+	}
+	if ( isset( $parts['user'] ) || isset( $parts['pass'] ) ) {
+		return $deny( 'wsdl_contains_userinfo' );
+	}
+	if ( isset( $parts['fragment'] ) ) {
+		return $deny( 'wsdl_contains_fragment' );
+	}
+	if ( isset( $parts['port'] ) ) {
+		return $deny( 'wsdl_explicit_port_refused' );
+	}
+
+	$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+	if ( 'https' !== $scheme ) {
+		return $deny( 'wsdl_scheme_not_https' );
+	}
+
+	// DNS is case-insensitive, so the comparison is; it is still exact, so a
+	// trailing dot, a prefix, a suffix or a subdomain never matches.
+	$host = strtolower( (string) ( $parts['host'] ?? '' ) );
+	if ( KUKA_SANDBOX_TEST_WSDL_HOST !== $host ) {
+		return $deny( 'wsdl_host_not_edm_test', true );
+	}
+
+	$path = (string) ( $parts['path'] ?? '' );
+	if ( KUKA_SANDBOX_TEST_WSDL_PATH !== $path ) {
+		return $deny( 'wsdl_path_not_test_service', true, true );
+	}
+
+	$query = (string) ( $parts['query'] ?? '' );
+	if ( '' !== $query && 'singleWsdl' !== $query ) {
+		return $deny( 'wsdl_query_not_allowed', true, true, true );
+	}
+
+	return array(
+		'ok'        => true,
+		'reason'    => 'edm_test_service_verified',
+		'scheme_ok' => true,
+		'host_ok'   => true,
+		'path_ok'   => true,
+		'query_ok'  => true,
+	);
+}
+
+/**
  * Resolve the sandbox PROFILEID and recipient identity.
  *
- * Outside the EDM test endpoint nothing is resolved at all: the documented
- * defaults describe EDM's test account, so they are refused for a live
- * environment whether or not an override was supplied. An override is accepted
- * only after a format and safety check; a bad override fails closed instead of
- * silently falling back to the default.
+ * Two independent facts are required and the environment token alone is never
+ * enough: the config must say "test" AND kuka_sandbox_verify_test_endpoint()
+ * must already have proved that the real get_wsdl() value is EDM's test
+ * service. The endpoint verdict is passed in as evidence rather than recomputed
+ * here, so this function cannot claim "test endpoint" on the strength of a
+ * label. If either fact is missing nothing is resolved, override or not.
  *
- * @param string $environment       Resolved config environment.
- * @param string $profile_override  KUKA_EDM_SANDBOX_PROFILE_ID, may be empty.
- * @param string $receiver_override KUKA_EDM_SANDBOX_RECEIVER_VKN, may be empty.
- * @param string $sender_vkn        Configured sender identity.
+ * An override is accepted only after a format and safety check; a bad override
+ * fails closed instead of silently falling back to the example value.
+ *
+ * @param string               $environment       Resolved config environment.
+ * @param array<string, mixed> $endpoint          Verdict of kuka_sandbox_verify_test_endpoint().
+ * @param string               $profile_override  KUKA_EDM_SANDBOX_PROFILE_ID, may be empty.
+ * @param string               $receiver_override KUKA_EDM_SANDBOX_RECEIVER_VKN, may be empty.
+ * @param string               $sender_vkn        Configured sender identity.
  * @return array{ok: bool, profile_id: string, receiver_vkn: string, profile_source: string, receiver_source: string, failed: array<int, string>, reason: string}
  */
-function kuka_sandbox_resolve_defaults( string $environment, string $profile_override, string $receiver_override, string $sender_vkn = '' ): array {
+function kuka_sandbox_resolve_defaults( string $environment, array $endpoint, string $profile_override, string $receiver_override, string $sender_vkn = '' ): array {
 	$blocked = static function ( array $failed, string $reason ): array {
 		return array(
 			'ok'              => false,
@@ -93,8 +213,19 @@ function kuka_sandbox_resolve_defaults( string $environment, string $profile_ove
 		);
 	};
 
-	if ( KUKA_SANDBOX_TEST_ENVIRONMENT !== strtolower( trim( $environment ) ) ) {
-		return $blocked( array( 'environment_not_test' ), 'documented_defaults_refused_outside_test_endpoint' );
+	$environment_ok = KUKA_SANDBOX_TEST_ENVIRONMENT === strtolower( trim( $environment ) );
+	$endpoint_ok    = true === ( $endpoint['ok'] ?? false );
+
+	if ( ! $environment_ok || ! $endpoint_ok ) {
+		$why = array();
+		if ( ! $environment_ok ) {
+			$why[] = 'environment_not_test';
+		}
+		if ( ! $endpoint_ok ) {
+			$why[] = 'wsdl_endpoint_not_verified';
+		}
+
+		return $blocked( $why, 'sandbox_values_refused_without_verified_test_endpoint' );
 	}
 
 	$failed = array();
@@ -147,10 +278,16 @@ function kuka_sandbox_resolve_defaults( string $environment, string $profile_ove
  * The serial is OPTIONAL. LoadInvoice always carries
  * GENERATEINVOICEIDONLOAD = true, so with no serial configured EDM assigns the
  * document number from its own system serial and the experiment still runs.
- * A configured serial is bound only when it is genuinely usable: correct shape,
- * and -- when GetInvoiceSerial could actually be read -- registered at EDM. A
- * malformed or provably unregistered override is an operator error, so it fails
- * closed rather than being dropped silently.
+ * A configured serial is bound only when its registration at EDM was actually
+ * observed. If GetInvoiceSerial could not be read, the registration is
+ * unverified, so the serial is NOT sent and the run blocks: sending a serial
+ * whose registration nobody could confirm is exactly the guess this harness
+ * refuses to make. A malformed or provably unregistered override blocks the
+ * same way rather than being dropped silently.
+ *
+ * A serial that was never configured is a different case: nothing is asserted
+ * about it, EDM picks its own system serial, and the run proceeds even when
+ * GetInvoiceSerial is unreadable.
  *
  * @param string            $configured Configured e-Archive series code.
  * @param array<int, mixed> $registered Codes GetInvoiceSerial returned.
@@ -188,7 +325,18 @@ function kuka_sandbox_resolve_series( string $configured, array $registered, boo
 		}
 	}
 
-	if ( $query_ok && ! $is_registered ) {
+	if ( ! $query_ok ) {
+		// Registration could not be observed, so it is not asserted.
+		return array(
+			'ok'         => false,
+			'send'       => false,
+			'code'       => '',
+			'reason'     => 'series_override_registration_unverified',
+			'registered' => false,
+		);
+	}
+
+	if ( ! $is_registered ) {
 		return array(
 			'ok'         => false,
 			'send'       => false,
@@ -202,8 +350,8 @@ function kuka_sandbox_resolve_series( string $configured, array $registered, boo
 		'ok'         => true,
 		'send'       => true,
 		'code'       => $code,
-		'reason'     => $query_ok ? 'series_override_registered_at_edm' : 'series_override_registration_unverified',
-		'registered' => $is_registered,
+		'reason'     => 'series_override_registered_at_edm',
+		'registered' => true,
 	);
 }
 

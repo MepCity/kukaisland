@@ -684,7 +684,7 @@ expect_value "credential mount is reachable only by the allow-listed script" "$e
 expect_value "allow-listed script reaches the credential gate" "$edm_runner_allowlist_ok" "yes"
 expect_sandbox_match "credential parser keeps values verbatim" "^SANDBOX_CRED_PARSER_VERBATIM=PASS\\|keys_recognised:6\\|equals_in_value_preserved:yes\\|trailing_space_preserved:yes\\|quotes_preserved:yes\\|crlf_handled:yes\\|unknown_key_ignored:yes$"
 expect_sandbox_line "sandbox verification allows PLAN only when every blocking check passes" "SANDBOX_VERIFY_ALL_PASS_ALLOWS_PLAN=PASS|checks:6|failed:none"
-expect_sandbox_match "sandbox verification negative matrix leaks nothing" "^SANDBOX_VERIFY_NEGATIVE_MATRIX=PASS\\|cases:20\\|leaked:none$"
+expect_sandbox_match "sandbox verification negative matrix leaks nothing" "^SANDBOX_VERIFY_NEGATIVE_MATRIX=PASS\\|cases:22\\|leaked:none$"
 expect_sandbox_match "LoadInvoice response parser fixtures" "^SANDBOX_LOAD_RESPONSE_PARSER=PASS\\|fixtures:12\\|"
 expect_sandbox_match "readback verdict is fail-closed" "^SANDBOX_READBACK_VERDICT_FAIL_CLOSED=PASS\\|"
 expect_sandbox_line "only one process may hold the write claim" "SANDBOX_CLAIM_SINGLE_HOLDER=PASS|first_acquire:yes|second_acquire:no"
@@ -710,12 +710,16 @@ expect_sandbox_line "an uncertain record makes no second call" "SANDBOX_UNCERTAI
 # The documented EDM test values (PROFILEID and the generic individual
 # recipient) are usable on the test endpoint only, the artificial "EDM must
 # confirm it in writing" gate is gone, and neither value reaches production.
-expect_sandbox_line "documented sandbox defaults apply to the test endpoint only" "SANDBOX_DEFAULTS_TEST_ENDPOINT_ONLY=PASS|test:resolved|live:refused|live_with_override:refused|live_profile:empty|live_receiver:empty|reason:documented_defaults_refused_outside_test_endpoint"
+# The real get_wsdl() value is allow-listed before Login. The environment label
+# alone never unlocks the sandbox fixture identities.
+expect_sandbox_match "only the EDM test WSDL is accepted" "^SANDBOX_ENDPOINT_ALLOWLIST=PASS\\|cases:[0-9]{2,}\\|accepted:2\\|refused:[0-9]{2,}\\|wrong:none\\|config_default_test:accepted\\|config_default_live:refused$"
+expect_sandbox_line "the endpoint is proved before Login" "SANDBOX_ENDPOINT_CHECKED_BEFORE_LOGIN=PASS|verifier_present:yes|reads_real_get_wsdl:yes|before_login:yes|blocked_line_states_no_login:yes"
+expect_sandbox_line "sandbox fixture identities need the proved endpoint, not the label" "SANDBOX_DEFAULTS_TEST_ENDPOINT_ONLY=PASS|test_label_and_verified_url:resolved|live_both:refused|test_label_live_url:refused|live_label_test_url:refused|live_with_override:refused|values_leaked:none|reason:sandbox_values_refused_without_verified_test_endpoint"
 expect_sandbox_line "sandbox overrides are format and safety checked" "SANDBOX_OVERRIDE_VALIDATION=PASS|cases:10|wrong:none"
 expect_sandbox_line "the PROFILEID written-confirmation gate is gone" "SANDBOX_PROFILE_CONFIRMATION_GATE_REMOVED=PASS|function_exists:no|credential_key:absent|sources_scanned:4|hits:none|sandbox_keys:2"
 expect_sandbox_match "sandbox defaults never reach production" "^SANDBOX_DEFAULTS_NOT_IN_PRODUCTION=PASS\\|module_files:[0-9]{2,}\\|sandbox_references:none\\|generic_receiver_still_policy_gated:yes$"
 expect_sandbox_line "a missing serial does not block the draft experiment" "SANDBOX_MISSING_SERIES_DOES_NOT_BLOCK=PASS|ok:yes|series_sent:no|series_mode:not_configured_edm_assigns_the_number"
-expect_sandbox_line "serial selection is optional but never sloppy" "SANDBOX_SERIES_OPTIONAL=PASS|not_configured:omitted|not_configured_dark:omitted|registered:sent|unregistered:blocked|query_failed:sent|bad_format_long:blocked|bad_format_lower:blocked|bad_format_symbol:blocked"
+expect_sandbox_line "serial selection is optional but never sloppy" "SANDBOX_SERIES_OPTIONAL=PASS|not_configured:omitted|not_configured_dark:omitted|registered:sent|unregistered:blocked|query_failed:blocked|bad_format_long:blocked|bad_format_lower:blocked|bad_format_symbol:blocked"
 expect_sandbox_line "LoadInvoice request shape is fixed" "SANDBOX_LOAD_REQUEST_SHAPE=PASS|no_series:generate_on_load=true,invoiceserial=absent,invoice_id=absent|with_series:generate_on_load=true,invoiceserial=present,invoice_id=absent"
 expect_sandbox_line "with no serial the request lets EDM assign the number" "SANDBOX_NO_SERIES_LOAD_REQUEST=PASS|calls:1|operation:LoadInvoice|generate_invoice_id_on_load:true|invoiceserial_requested:absent|invoice_id_attribute:absent|verdict:PASS|label:draft_uploaded|edm_assigned_number:read_back"
 expect_sandbox_line "LoadInvoice uploads a draft and SendInvoice is never called" "SANDBOX_LOAD_VS_SEND_SEMANTICS=PASS|transport_operations:LoadInvoice|forbidden_calls:none|success_label:draft_uploaded|sendinvoice_line:present|draft_step:present"

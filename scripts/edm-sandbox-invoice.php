@@ -113,6 +113,27 @@ if ( 'ozelyazilim.kukaisland' !== $config->get_application_name() ) {
 	WP_CLI::error( 'APPLICATION_NAME contract violated.' );
 }
 
+/*
+ * is_live() only reads the environment label, and KUKA_EDM_WSDL overrides the
+ * URL independently of it. The real endpoint is therefore proved here, against
+ * the actual get_wsdl() value, BEFORE Login and before anything else runs. The
+ * URL itself is never printed: a custom WSDL can carry user information.
+ */
+$endpoint = kuka_sandbox_verify_test_endpoint( $config->get_wsdl() );
+
+if ( ! $endpoint['ok'] ) {
+	WP_CLI::line( sprintf( 'SANDBOX_ENDPOINT=BLOCKED|reason:%s|login_attempted:no', $endpoint['reason'] ) );
+	$block_from( $all_steps, 'wsdl_endpoint_not_verified' );
+	WP_CLI::error( 'The configured WSDL is not the EDM test service. Nothing was contacted.' );
+}
+
+WP_CLI::line(
+	sprintf(
+		'SANDBOX_ENDPOINT=PASS|reason:%s|scheme:https|host:matched|path:matched|query:allowed|userinfo:absent|port:absent|fragment:absent',
+		$endpoint['reason']
+	)
+);
+
 WP_CLI::line(
 	sprintf(
 		'SANDBOX_PRECHECK=PASS|environment:%s|application_name_ok:yes|credentials:%s',
@@ -122,14 +143,17 @@ WP_CLI::line(
 );
 
 /*
- * PROFILEID and the recipient identity come from EDM's own documented e-Arşiv
- * SOAP example unless the operator deliberately overrides them. The resolver
- * refuses to hand anything out outside the test endpoint, and a malformed or
- * unsafe override blocks instead of falling back.
+ * PROFILEID and the recipient identity are the ones EDM's published e-Arşiv
+ * SOAP example uses, unless the operator deliberately overrides them. They are
+ * fixture identities for this isolated experiment, not values EDM assigned to
+ * this account. The resolver needs the verified endpoint as evidence -- the
+ * environment label alone never unlocks them -- and a malformed or unsafe
+ * override blocks instead of falling back.
  * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/efatura-soap-envelopes.html
  */
 $defaults = kuka_sandbox_resolve_defaults(
 	$config->get_environment(),
+	$endpoint,
 	(string) ( $loaded['sandbox']['profile_id'] ?? '' ),
 	(string) ( $loaded['sandbox']['receiver_vkn'] ?? '' ),
 	$config->get_sender_vkn()

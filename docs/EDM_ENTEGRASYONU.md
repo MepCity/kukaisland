@@ -368,10 +368,10 @@ Alanlar:
 | `KUKA_EDM_SENDER_DISTRICT` | sandbox için | UBL ilçe |
 | `KUKA_EDM_SENDER_CITY` | sandbox için | UBL şehir |
 | `KUKA_EDM_SENDER_POSTCODE` | sandbox için | UBL posta kodu |
-| `KUKA_EDM_SERIES_EARCHIVE` | **opsiyonel** | Verilirse biçimi ve EDM'deki tescili doğrulanır. Verilmezse taslak deneyi yine koşar; numarayı EDM atar |
+| `KUKA_EDM_SERIES_EARCHIVE` | **opsiyonel** | Verilirse biçimi **ve** EDM'deki tescili doğrulanır; tescil gözlemlenemezse BLOCKED. Verilmezse taslak deneyi yine koşar; numarayı EDM atar |
 | `KUKA_EDM_SERIES_EINVOICE` | opsiyonel | — |
-| `KUKA_EDM_SANDBOX_RECEIVER_VKN` | **opsiyonel override** | Boşsa EDM'in dokümante ettiği test alıcısı kullanılır. Verilirse biçim + güvenlik doğrulaması yapılır; hatalıysa BLOCKED (varsayılana sessizce düşmez) |
-| `KUKA_EDM_SANDBOX_PROFILE_ID` | **opsiyonel override** | Boşsa EDM'in dokümante ettiği `PROFILEID` kullanılır. Verilirse biçim doğrulaması yapılır; hatalıysa BLOCKED |
+| `KUKA_EDM_SANDBOX_RECEIVER_VKN` | **opsiyonel override** | Boşsa resmî EDM örneğindeki örnek alıcı kimliği fixture olarak kullanılır. Verilirse biçim + güvenlik doğrulaması yapılır; hatalıysa BLOCKED (varsayılana sessizce düşmez) |
+| `KUKA_EDM_SANDBOX_PROFILE_ID` | **opsiyonel override** | Boşsa resmî EDM örneğindeki `PROFILEID` kullanılır. Verilirse biçim doğrulaması yapılır; hatalıysa BLOCKED |
 
 `--status` çıktısı yalnız `supplied` / `absent` gösterir; hiçbir değer, uzunluk veya parça yazılmaz.
 
@@ -410,15 +410,48 @@ tam olarak bir kez `SANDBOX_SENDINVOICE=NOT_EXECUTED|reason:out_of_scope_this_ro
 basılır. Harness (`SANDBOX_LOAD_VS_SEND_SEMANTICS`) transport'a geçen operasyon adlarını tarar ve
 `LoadInvoice` dışında bir ada izin vermez.
 
-### 13.1 Dokümante edilmiş test varsayılanları
+### 13.1 Gerçek endpoint doğrulaması
 
-EDM'in kendi e-Arşiv SOAP örneği `PROFILEID=EARSIVFATURA` ve genel bireysel alıcı kimliği
-`11111111111` ile yayımlanmıştır. Bunlar tahmin değil, **dokümante edilmiş test değerleridir**;
-bu yüzden ayrıca e-posta ile byte-for-byte teyit beklenmez. Yine de sandbox'a hapsedilmiştir:
+`is_live()` yalnız ortam **etiketini** okur; `KUKA_EDM_WSDL` ise URL'i bu etiketten bağımsız
+olarak ezebilir. Yani `environment=test` iken WSDL canlıyı gösterebilir. Bu yüzden sandbox,
+gerçek `Kuka_Island_Core_Invoice_Config::get_wsdl()` değerini `kuka_sandbox_verify_test_endpoint()`
+ile **Login'den önce** doğrular ve tek bir endpoint'i kabul eder:
 
-- `kuka_sandbox_resolve_defaults()` bu değerleri **yalnız test endpoint'inde** çözer.
-  `live` ortamında — override verilse bile — `documented_defaults_refused_outside_test_endpoint`
-  ile boş döner.
+```
+https://test.edmbilisim.com.tr/EFaturaEDM21ea/EFaturaEDM.svc[?singleWsdl]
+```
+
+| Kural | Değer |
+|---|---|
+| scheme | kesinlikle `https` |
+| host | kesinlikle `test.edmbilisim.com.tr` (birebir; önek/sonek/alt alan/sondaki nokta ret) |
+| path | kesinlikle `/EFaturaEDM21ea/EFaturaEDM.svc` |
+| query | ya yok ya da birebir `singleWsdl` |
+| userinfo | yasak (ham dizgede `@` bile ret) |
+| port | **hiçbir açık port kabul edilmez**, `:443` dahil — kanonik adreste port yoktur |
+| fragment / `\` / boşluk / kontrol karakteri | yasak |
+
+Reddedilenler arasında: canlı WSDL, `test.edmbilisim.com.tr.evil.example`, gerçek adı yalnız
+path'inde taşıyan host, `localhost`, IP literal, düz HTTP, farklı servis path'i, bozuk URL.
+
+Doğrulama başarısızsa `SANDBOX_ENDPOINT=BLOCKED|reason:<token>|login_attempted:no` yazılır,
+tüm adımlar BLOCKED olur ve **Login denenmez**. URL hiçbir zaman basılmaz: özel bir WSDL
+userinfo taşıyabilir, bu yüzden yalnız neden token'ı dışarı çıkar.
+
+### 13.2 Sandbox fixture kimlikleri
+
+EDM'in resmî e-Arşiv SOAP örneğinde `PROFILEID=EARSIVFATURA` ve örnek alıcı kimliği
+`11111111111` kullanılır. Bunlar **yalnız izole sandbox fixture'ında yararlanılan örnek
+değerlerdir**. EDM'nin bu değerleri bizim test hesabımıza atadığı iddia edilmemektedir; alıcı
+kimliği tahsis edilmiş bir test karşı tarafı değil, resmî örnekteki genel bireysel tüketici
+kimliğidir.
+
+Sandbox'a hapsedilmişlerdir:
+
+- `kuka_sandbox_resolve_defaults()` **iki bağımsız koşul** ister: ortam etiketi `test` **ve**
+  §13.1'deki endpoint doğrulaması geçmiş olmalı. Endpoint verdict'i fonksiyona **kanıt olarak**
+  geçirilir; fonksiyon kendi başına "test endpoint" iddiasında bulunamaz. Herhangi biri eksikse —
+  override verilse bile — `sandbox_values_refused_without_verified_test_endpoint` ile boş döner.
 - Eklenti tarafında hiçbir dosya `lib-edm-sandbox`, `kuka_sandbox_`, `KUKA_SANDBOX_` veya
   `KUKA_EDM_SANDBOX_` referansı içermez (`SANDBOX_DEFAULTS_NOT_IN_PRODUCTION` ölçer).
 - Üretim mapper'ındaki `11111111111`, değişmeden `allow_generic_individual_vkn` politika
@@ -428,7 +461,7 @@ Override verilirse doğrulanır: `PROFILEID` için `/^[A-Z][A-Z0-9_]{3,31}$/`, a
 `/^\d{10,11}$/` **ve** gönderici VKN'sine eşit olmama, salt sıfır olmama. Hatalı override
 varsayılana düşmez; `SANDBOX_DEFAULTS=BLOCKED` verir.
 
-### 13.2 Seri artık zorunlu değil
+### 13.3 Seri artık zorunlu değil
 
 `LoadInvoice` her koşulda `GENERATEINVOICEIDONLOAD=true` ile çağrılır.
 
@@ -438,10 +471,16 @@ varsayılana düşmez; `SANDBOX_DEFAULTS=BLOCKED` verir.
 | Var, biçim geçersiz | BLOCKED (`series_override_invalid_format`) — sessizce atlanmaz |
 | Var, `GetInvoiceSerial` okunabildi ve tescilli değil | BLOCKED (`series_override_not_registered_at_edm`) |
 | Var, tescilli | `INVOICESERIAL_REQUESTED` gönderilir |
-| Var, `GetInvoiceSerial` okunamadı | Gönderilir, `series_override_registration_unverified` etiketiyle |
+| Var, `GetInvoiceSerial` **okunamadı** | **BLOCKED** (`series_override_registration_unverified`) — tescil gözlemlenemediği için iddia edilmez, seri gönderilmez |
+| Yok, `GetInvoiceSerial` okunamadı | Geçer; seri hakkında hiçbir iddia yok, EDM sistem serisini seçer |
 
-`GetInvoiceSerial` salt-okunur keşif olarak kalır; yazma kapısı değildir. Her durumda EDM'in
-atadığı numara `SANDBOX_NUMBER_ASSIGNED` + `SANDBOX_CBC_ID_READBACK` ile geri okunup doğrulanır.
+Seri **hiç verilmemesi** ile **verilip doğrulanamaması** farklı durumlardır: birincisinde
+hiçbir şey iddia edilmez, ikincisinde operatörün iddiası doğrulanamamıştır ve fail-closed
+davranılır.
+
+`GetInvoiceSerial` salt-okunur keşif olarak kalır; yokluğu tek başına yazma kapısı değildir.
+Her durumda EDM'in atadığı numara `SANDBOX_NUMBER_ASSIGNED` + `SANDBOX_CBC_ID_READBACK` ile
+geri okunup doğrulanır.
 
 Ölçtüğü sorular:
 
@@ -559,16 +598,17 @@ Diğer kapılar:
 
 | Kapı | Kural |
 |---|---|
-| Ortam | Yalnız test endpoint'i. `is_live()` → koşulsuz BLOCKED |
+| Ortam | `is_live()` → koşulsuz BLOCKED |
+| Endpoint | Gerçek `get_wsdl()` değeri allow-list'ten geçmeli. Geçmezse Login denenmeden BLOCKED (§13.1) |
 | `application_name` | `ozelyazilim.kukaisland` değilse BLOCKED |
 | Varsayılan mod | **PLAN**. Hiçbir belge oluşturulmaz |
 | Yazma kapısı 1 | `KUKA_EDM_ALLOW_SANDBOX_WRITE` **literal** `true` |
 | Yazma kapısı 2 | `--confirm=LoadInvoice` — planın çözdüğü operasyon adıyla birebir eşleşmeli |
 | DB | WooCommerce siparişi oluşturmaz; hiçbir tabloya yazmaz. Durum yalnız host tarafındaki JSON dosyasında |
 | KDV | Bu dosyada sabit `KUKA_SANDBOX_VAT_PERCENT = 20`, `cbc:Note` içinde açıkça TEST etiketiyle belirtilir. Mağazanın vergi ayarları okunmaz ve değiştirilmez |
-| Alıcı kimliği | EDM'in dokümante ettiği test alıcısı; `KUKA_EDM_SANDBOX_RECEIVER_VKN` ile override edilebilir. Live ortamında hiçbir değer çözülmez |
-| PROFILEID | EDM'in dokümante ettiği `EARSIVFATURA`; `KUKA_EDM_SANDBOX_PROFILE_ID` ile override edilebilir. Live ortamında hiçbir değer çözülmez. Yazılı teyit kapısı kaldırıldı (§13.1) |
-| `INVOICESERIAL_REQUESTED` | Yalnız gerçekten kullanılabilir bir seri override'ı varsa gönderilir; yokluğu yazma kapısı **değildir** (§13.2) |
+| Alıcı kimliği | Resmî EDM örneğindeki örnek bireysel kimlik; `KUKA_EDM_SANDBOX_RECEIVER_VKN` ile override edilebilir. Doğrulanmamış endpoint'te hiçbir değer çözülmez |
+| PROFILEID | Resmî EDM örneğindeki `EARSIVFATURA`; `KUKA_EDM_SANDBOX_PROFILE_ID` ile override edilebilir. Doğrulanmamış endpoint'te hiçbir değer çözülmez. Yazılı teyit kapısı kaldırıldı (§13.2) |
+| `INVOICESERIAL_REQUESTED` | Yalnız tescili **gözlemlenmiş** bir seri override'ı varsa gönderilir; serinin hiç verilmemesi yazma kapısı **değildir** (§13.3) |
 | `SendInvoice` | Çağrılmaz. Her çıkış yolunda `SANDBOX_SENDINVOICE=NOT_EXECUTED` raporlanır |
 | Belge | Sentetik ve açıkça TEST işaretli (`cbc:Note`: "TEST BELGESI … GERCEK SATIS DEGILDIR", kalem adı "SANDBOX TEST KALEMI") |
 | Mükerrerlik | UUID sabit tohumdan deterministik; durum makinesi ikinci belgeyi reddeder. EDM'in kendi mükerrer denetimi ikinci katman |
