@@ -752,6 +752,12 @@ expect_sandbox_line "the UBL id and the SOAP invoice id are independent" "SANDBO
 expect_sandbox_line "with no serial the request lets EDM assign the number" "SANDBOX_NO_SERIES_LOAD_REQUEST=PASS|calls:1|operation:LoadInvoice|generate_invoice_id_on_load:true|invoiceserial_requested:absent|invoice_id_attribute:absent|verdict:PASS|label:draft_uploaded|edm_assigned_number:read_back"
 expect_sandbox_line "LoadInvoice uploads a draft and SendInvoice is never called" "SANDBOX_LOAD_VS_SEND_SEMANTICS=PASS|transport_operations:LoadInvoice|forbidden_calls:none|success_label:draft_uploaded|sendinvoice_line:present|draft_step:present"
 expect_sandbox_line "an uncertain write carries a safe fault classification" "SANDBOX_UNCERTAIN_WRITE_CARRIES_SAFE_FAULT=PASS|calls:1|classification:uncertain|fault_line_shape:ok|remote_text_leaked:none"
+# The reconciliation reset claims to make no EDM call. It used to run after
+# Login, GetInvoiceSerial and CheckUser, so the claim was false; it is now
+# measured rather than asserted.
+expect_sandbox_line "the reconciliation reset is fully offline" "SANDBOX_RECONCILIATION_RESET_IS_OFFLINE=PASS|credentials_loaded:no|client_created:no|soap_calls:0|from:uncertain|to:idle|history:append_only|uuid_unchanged:yes|reset_precedes_credentials:yes|second_reset:refused|wrong_evidence_state_unchanged:yes"
+expect_sandbox_line "the reset calls no EDM operation at all" "SANDBOX_RESET_CALLS_NO_EDM_OPERATION=PASS|Login=0|Logout=0|GetInvoiceSerial=0|CheckUser=0|LoadInvoice=0|SendInvoice=0|total=0"
+expect_sandbox_line "the reset wrapper mounts no credentials" "SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS=PASS|reset_branch_found:yes|credential_mount:absent|write_env_forwarded:absent|state_mount:present|normal_path_protections:intact"
 expect_sandbox_line "state fixtures are cleaned up" "SANDBOX_STATE_FIXTURES_CLEANED=PASS|temp_root_removed:yes"
 expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
 expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"

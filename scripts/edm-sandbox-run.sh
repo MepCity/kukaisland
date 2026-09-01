@@ -14,7 +14,8 @@
 #   ./scripts/edm-sandbox-run.sh                                            # PLAN
 #   KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
 #
-# Reconciliation reset (no EDM call, uncertain -> idle only):
+# Reconciliation reset (uncertain -> idle only). Fully offline: no credential
+# file is required and none is mounted, so no EDM call is reachable:
 #   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
 #
 # Mounts:
@@ -32,12 +33,35 @@ cred_dir="${XDG_CONFIG_HOME:-$HOME/.config}/kuka-island"
 cred_file="$cred_dir/edm-test.env"
 state_dir="$cred_dir/edm-sandbox-state"
 
+# The reconciliation reset touches the state file and nothing else. It gets no
+# credential mount at all, so the offline claim in the PHP driver is enforced
+# here too rather than merely asserted: with no file at /run/edm/edm-test.env
+# the credential loader has nothing to read even if the code path changed.
+reset_mode=no
+for arg in "$@"; do
+  case "$arg" in
+    reset=*) reset_mode=yes ;;
+  esac
+done
+
 case "$cred_file" in
   "$project_dir"/*)
     echo "EDM_SANDBOX_RUN=BLOCKED|reason:credential_path_inside_repository" >&2
     exit 1
     ;;
 esac
+
+umask 077
+mkdir -p "$state_dir"
+chmod 700 "$state_dir"
+
+if [ "$reset_mode" = "yes" ]; then
+  # No credential file requirement, no credential mount, no write env var.
+  echo "EDM_SANDBOX_RUN=RECONCILIATION_RESET|credentials_mounted:no|write_env_forwarded:no|state_only:yes"
+  exec docker compose run --rm -T \
+    -v "$state_dir":/run/edm/state \
+    wp-cli wp eval-file /project-scripts/edm-sandbox-invoice.php "$@"
+fi
 
 if [ ! -f "$cred_file" ]; then
   echo "EDM_SANDBOX_RUN=BLOCKED|reason:credentials_file_absent"
@@ -50,10 +74,6 @@ if [ "$mode" != "600" ]; then
   echo "EDM_SANDBOX_RUN=BLOCKED|reason:credentials_file_mode_not_600|mode:$mode" >&2
   exit 1
 fi
-
-umask 077
-mkdir -p "$state_dir"
-chmod 700 "$state_dir"
 
 allow="${KUKA_EDM_ALLOW_SANDBOX_WRITE:-}"
 if [ "$allow" = "true" ]; then

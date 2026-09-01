@@ -39,6 +39,10 @@
  * Run only through ./scripts/edm-sandbox-run.sh:
  *   KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
  *
+ * The reconciliation reset is a separate, entirely OFFLINE branch that returns
+ * before any credential, config, endpoint check or client exists:
+ *   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
+ *
  * @package Kuka_Island_Core
  */
 
@@ -88,6 +92,120 @@ register_shutdown_function(
 		WP_CLI::line( 'SANDBOX_SENDINVOICE=NOT_EXECUTED|reason:out_of_scope_this_round|documents_sent:0|recipient_delivery:none' );
 	}
 );
+
+/* ========================================================================== */
+/* Offline branch: reconciliation reset. Runs before anything can touch EDM.   */
+/* ========================================================================== */
+
+/*
+ * uncertain -> idle, for the case where the operator established out of band
+ * that the document never reached EDM.
+ *
+ * This branch is placed HERE, ahead of the credential load, the config, the
+ * endpoint check and the client, because it claims to make no EDM call. It used
+ * to sit after Login, GetInvoiceSerial and CheckUser had already run, so the
+ * claim was simply false. Reaching the reset now requires nothing but the state
+ * file: no credentials are read, no Kuka_Island_Core_Invoice_Config is built,
+ * no transport or client is constructed, and no SOAP operation is reachable
+ * from this code path at all.
+ *
+ *   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
+ *
+ * Input handling is fail-closed: an unknown control argument, a duplicate
+ * reset=, a reset combined with confirm=, or a reset combined with an open
+ * write gate all refuse rather than guess what was meant.
+ */
+$reset_requested = false;
+$reset_evidence  = '';
+$reset_audit     = '';
+$reset_refusals  = array();
+$reset_seen      = array();
+
+foreach ( $cli_args as $arg ) {
+	if ( ! is_string( $arg ) ) {
+		$reset_refusals[] = 'non_string_argument';
+		continue;
+	}
+	$pos = strpos( $arg, '=' );
+	$key = false !== $pos ? substr( $arg, 0, $pos ) : $arg;
+	$val = false !== $pos ? substr( $arg, $pos + 1 ) : '';
+
+	if ( isset( $reset_seen[ $key ] ) ) {
+		$reset_refusals[] = 'duplicate_parameter_' . $key;
+	}
+	$reset_seen[ $key ] = true;
+
+	switch ( $key ) {
+		case 'reset':
+			$reset_requested = true;
+			$reset_evidence  = $val;
+			break;
+		case 'audit':
+			$reset_audit = $val;
+			break;
+		case 'confirm':
+		case '--confirm':
+			break;
+		default:
+			$reset_refusals[] = 'unknown_parameter_' . preg_replace( '/[^A-Za-z0-9_.-]/', '', $key );
+			break;
+	}
+}
+
+if ( $reset_requested ) {
+	// A reset never coexists with a write instruction. Both together mean the
+	// operator's intent is ambiguous, so neither is carried out.
+	if ( isset( $reset_seen['confirm'] ) || isset( $reset_seen['--confirm'] ) ) {
+		$reset_refusals[] = 'confirm_combined_with_reset';
+	}
+	if ( 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' ) ) {
+		$reset_refusals[] = 'write_gate_open_during_reset';
+	}
+	if ( 'document_absent_at_edm' !== $reset_evidence ) {
+		$reset_refusals[] = 'reset_requires_document_absent_evidence';
+	}
+	if ( 1 === preg_match( '/[^A-Za-z0-9 _.:-]/', $reset_audit ) ) {
+		$reset_refusals[] = 'audit_label_has_unexpected_characters';
+	}
+
+	if ( array() !== $reset_refusals ) {
+		WP_CLI::line(
+			sprintf(
+				'SANDBOX_CLAIM_RESET=BLOCKED|reason:%s|credentials_loaded:no|client_created:no|soap_calls:0|state_unchanged:yes',
+				implode( ',', array_unique( $reset_refusals ) )
+			)
+		);
+		WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+		exit( 1 );
+	}
+
+	$reset_claim = new Kuka_Sandbox_Claim( KUKA_SANDBOX_STATE_DIR . '/sandbox-e2e.json' );
+
+	if ( ! $reset_claim->acquire() ) {
+		WP_CLI::line( 'SANDBOX_CLAIM_RESET=BLOCKED|reason:exclusive_lock_unavailable_another_run_in_progress|credentials_loaded:no|client_created:no|soap_calls:0|state_unchanged:yes' );
+		WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+		exit( 1 );
+	}
+
+	$reset_before = $reset_claim->status()['state'];
+	$reset_result = $reset_claim->reset_after_reconcile( $reset_evidence, $reset_audit );
+
+	WP_CLI::line(
+		sprintf(
+			'SANDBOX_CLAIM_RESET=%s|from:%s|to:%s|reason:%s|audit:%s|written:%s|credentials_loaded:no|client_created:no|soap_calls:0',
+			$reset_result['ok'] ? 'PASS' : 'BLOCKED',
+			$reset_before,
+			$reset_result['state'],
+			$reset_result['reason'],
+			'' === trim( $reset_audit ) ? 'none' : trim( $reset_audit ),
+			$reset_result['written'] ? 'yes' : 'no'
+		)
+	);
+	WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+
+	$reset_claim->release();
+	exit( $reset_result['ok'] ? 0 : 1 );
+}
 
 /* ========================================================================== */
 /* Gate: credentials                                                           */
@@ -414,53 +532,6 @@ if ( Kuka_Sandbox_Claim::S_CORRUPT === $state_now ) {
 }
 
 WP_CLI::line( sprintf( 'SANDBOX_CLAIM=PASS|lock:acquired|state:%s|record:%s', $state_now, $status['reason'] ) );
-
-/* ========================================================================== */
-/* Operator-driven reconciliation reset: uncertain -> idle. No EDM call.       */
-/* ========================================================================== */
-
-/*
- * Only reachable with an explicit positional argument naming the evidence, and
- * only from 'uncertain'. It makes no external call at all: the operator has
- * already established, out of band, that the document is absent at EDM. The
- * on-disk history is appended to, never rewritten or deleted.
- *
- *   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
- */
-$reset_evidence = '';
-$reset_audit    = '';
-foreach ( $cli_args as $arg ) {
-	if ( ! is_string( $arg ) ) {
-		continue;
-	}
-	if ( str_starts_with( $arg, 'reset=' ) ) {
-		$reset_evidence = substr( $arg, strlen( 'reset=' ) );
-	}
-	if ( str_starts_with( $arg, 'audit=' ) ) {
-		$reset_audit = substr( $arg, strlen( 'audit=' ) );
-	}
-}
-
-if ( '' !== $reset_evidence ) {
-	$reset = $claim->reset_after_reconcile( $reset_evidence, $reset_audit );
-
-	WP_CLI::line(
-		sprintf(
-			'SANDBOX_CLAIM_RESET=%s|from:%s|to:%s|reason:%s|audit:%s|written:%s',
-			$reset['ok'] ? 'PASS' : 'BLOCKED',
-			$state_now,
-			$reset['state'],
-			$reset['reason'],
-			'' === trim( $reset_audit ) ? 'none' : trim( $reset_audit ),
-			$reset['written'] ? 'yes' : 'no'
-		)
-	);
-
-	$block_from( array_slice( $all_steps, 4 ), 'reconciliation_reset_only' );
-	$claim->release();
-	$client->logout();
-	exit( $reset['ok'] ? 0 : 1 );
-}
 
 if ( Kuka_Sandbox_Claim::S_IDLE !== $state_now ) {
 	WP_CLI::line( sprintf( 'SANDBOX_DUPLICATE_GUARD=PASS|state:%s|second_write_refused:yes', $state_now ) );

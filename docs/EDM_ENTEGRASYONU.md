@@ -656,6 +656,36 @@ yapılmaz**, JSON elle düzenlenmez, geçmiş korunur ve yalnızca eklenir:
 ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<etiket>
 ```
 
+**Bu akış tamamen çevrimdışıdır** ve bu artık ölçülüyor. Önceki sürümde reset kontrolü
+`Login`, `GetInvoiceSerial` ve `CheckUser` çalıştıktan **sonra** yer alıyordu; "hiçbir EDM
+çağrısı yapmaz" ifadesi o hâliyle doğru değildi.
+
+Şimdi CLI argümanları dosyanın en başında ayrıştırılıyor ve reset dalı; kimlik dosyası
+okunmadan, `Invoice_Config` kurulmadan, endpoint doğrulanmadan, client/transport
+oluşturulmadan çalışıp çıkıyor. Sarmalayıcı da reset modunda kimlik dosyası **istemiyor** ve
+**mount etmiyor**, `KUKA_EDM_ALLOW_SANDBOX_WRITE` değişkenini iletmiyor — yani kod yolu
+değişse bile konteynerde okunacak bir kimlik dosyası yok. Normal PLAN/LoadInvoice
+yollarındaki kimlik korumaları değişmedi.
+
+```
+SANDBOX_RECONCILIATION_RESET_IS_OFFLINE=PASS|credentials_loaded:no|client_created:no|soap_calls:0|from:uncertain|to:idle|history:append_only|uuid_unchanged:yes|reset_precedes_credentials:yes|second_reset:refused|wrong_evidence_state_unchanged:yes
+SANDBOX_RESET_CALLS_NO_EDM_OPERATION=PASS|Login=0|Logout=0|GetInvoiceSerial=0|CheckUser=0|LoadInvoice=0|SendInvoice=0|total=0
+SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS=PASS|reset_branch_found:yes|credential_mount:absent|write_env_forwarded:absent|state_mount:present|normal_path_protections:intact
+```
+
+Reset girdileri fail-closed reddedilir:
+
+| Girdi | Ret nedeni |
+|---|---|
+| Yanlış kanıt | `reset_requires_document_absent_evidence` |
+| İki kez `reset=` | `duplicate_parameter_reset` |
+| `reset=` + `confirm=` | `confirm_combined_with_reset` |
+| `reset=` + `KUKA_EDM_ALLOW_SANDBOX_WRITE=true` | `write_gate_open_during_reset` |
+| Bilinmeyen parametre | `unknown_parameter_<ad>` |
+| Beklenmedik karakterli `audit=` | `audit_label_has_unexpected_characters` |
+
+Her ret `soap_calls:0|state_unchanged:yes` ile raporlanır.
+
 Kapı değişmedi: `reset_after_reconcile()` hâlâ literal `document_absent_at_edm` kanıtını ve
 `uncertain` durumunu şart koşar. `audit` yalnızca operatörün kendi etiketini geçmişe yazar,
 kanıtın yerine geçmez.
