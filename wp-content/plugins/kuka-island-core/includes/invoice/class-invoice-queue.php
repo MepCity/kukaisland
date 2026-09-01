@@ -64,6 +64,13 @@ final class Kuka_Island_Core_Invoice_Queue {
 			return;
 		}
 
+		// Any persistent evidence of a previous SendInvoice makes the manager
+		// reconcile-only, so queueing the order would only spend a worker on a
+		// status query the poller already owns.
+		if ( array() !== Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order ) ) {
+			return;
+		}
+
 		// Prevent duplicate scheduled actions.
 		if ( $this->is_action_scheduled( $order_id ) ) {
 			return;
@@ -100,32 +107,48 @@ final class Kuka_Island_Core_Invoice_Queue {
 				$delay = (int) ( 120 * pow( 4, max( 0, $attempts - 1 ) ) );
 				$this->schedule_action( $order_id, time() + $delay );
 			} else {
-				// Exhausted max retry attempts -> transition to manual review.
-				Kuka_Island_Core_Invoice_Order_Store::set_status(
+				// Exhausted max retry attempts -> transition to manual review,
+				// unless the manager already recorded a protected state.
+				$this->escalate_to_manual_review(
 					$order,
-					Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
 					__( 'Otomatik deneme limiti aşıldı. Fatura manuel inceleme gerektiriyor.', 'kuka-island-core' )
 				);
 			}
 		} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $perm_e ) {
-			// Permanent error: no auto-retry. A status the manager already
-			// persisted as a deliberate fail-closed block (e.g. unconfirmed EDM
-			// numbering) is preserved instead of being flattened into
-			// needs_manual_review.
-			if ( Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED !== Kuka_Island_Core_Invoice_Order_Store::get_status( $order ) ) {
-				Kuka_Island_Core_Invoice_Order_Store::set_status(
-					$order,
-					Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
-					$perm_e->get_user_message()
-				);
-			}
+			// Permanent error: no auto-retry.
+			$this->escalate_to_manual_review( $order, $perm_e->get_user_message() );
 		} catch ( Exception $e ) {
-			Kuka_Island_Core_Invoice_Order_Store::set_status(
+			$this->escalate_to_manual_review(
 				$order,
-				Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
 				__( 'Beklenmeyen hata sebebiyle işlem durduruldu.', 'kuka-island-core' )
 			);
 		}
+	}
+
+	/**
+	 * Move an order to manual review, unless its current status must not be
+	 * overwritten.
+	 *
+	 * needs_manual_review is in Kuka_Island_Core_Invoice_Status::can_retry(), so
+	 * writing it over a status that records a transmitted document -- or a
+	 * deliberate fail-closed block -- hands that document back to the send path.
+	 * That is how a reconciliation failure used to turn into a second fiscal
+	 * document, and it is why the decision now goes through
+	 * is_escalation_protected() rather than a single blocked-status check.
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param string   $message Operator-facing message.
+	 */
+	private function escalate_to_manual_review( WC_Order $order, string $message ): void {
+		if ( Kuka_Island_Core_Invoice_Status::is_escalation_protected( Kuka_Island_Core_Invoice_Order_Store::get_status( $order ) ) ) {
+			return;
+		}
+
+		Kuka_Island_Core_Invoice_Order_Store::set_status(
+			$order,
+			Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
+			$message
+		);
 	}
 
 	/**

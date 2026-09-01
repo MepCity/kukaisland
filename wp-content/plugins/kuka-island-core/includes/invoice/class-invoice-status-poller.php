@@ -91,6 +91,10 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	public const ERROR_SCHEDULE_FAILED = 'status_poll_schedule_failed';
 	/** The booking lock was held and no pending query could be found after it. */
 	public const ERROR_LOCK_WITHOUT_PENDING = 'status_poll_lock_contended_without_pending';
+	/** The per-document query cap was reached without a definite answer. */
+	public const ERROR_MAX_ATTEMPTS = 'status_polling_max_attempts_reached';
+	/** The elapsed-time cap was reached without a definite answer. */
+	public const ERROR_MAX_ELAPSED = 'status_polling_max_elapsed_reached';
 
 	/**
 	 * Advisory lock name prefix for the booking decision.
@@ -292,6 +296,17 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	}
 
 	/**
+	 * The safe error code for giving up on a document.
+	 *
+	 * @param string $reason decide()'s reason for the give_up.
+	 */
+	public static function give_up_error_code( string $reason ): string {
+		return 'max_elapsed_reached' === $reason
+			? self::ERROR_MAX_ELAPSED
+			: self::ERROR_MAX_ATTEMPTS;
+	}
+
+	/**
 	 * Book a query for a document and report the outcome, visibly.
 	 *
 	 * The single entry point for both the send path and the poll chain, so the
@@ -389,22 +404,9 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 			return;
 		}
 
-		try {
-			// Visible in the order screen's own note list, where somebody
-			// working the order will actually read it.
-			$order->add_order_note(
-				sprintf(
-					/* translators: 1: warning sentence, 2: safe error code */
-					__( '%1$s (%2$s)', 'kuka-island-core' ),
-					self::unbooked_message(),
-					$error_code
-				),
-				0,
-				false
-			);
-		} catch ( Throwable $note_error ) {
-			unset( $note_error );
-		}
+		// Visible in the order screen's own note list, where somebody working
+		// the order will actually read it.
+		Kuka_Island_Core_Invoice_Order_Store::add_operator_note( $order, self::unbooked_message(), $error_code );
 	}
 
 	/**
@@ -553,11 +555,20 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 		}
 
 		if ( 'give_up' === $decision['action'] ) {
-			// The document is still unresolved and we have asked enough. A
-			// person decides from here; nothing is resent.
-			$order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW );
-			$order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, 'status_polling_' . $decision['reason'] );
-			$order->save_meta_data();
+			/*
+			 * We have asked enough and EDM has still not said anything usable.
+			 * The document was transmitted, so it may exist: the order goes into
+			 * the fail-closed manual-query lock, which sits outside can_retry().
+			 *
+			 * It used to go to needs_manual_review, and that status IS in
+			 * can_retry() -- so the next send attempt could transmit the same
+			 * document a second time as soon as a reconciliation failed.
+			 */
+			$give_up_code = self::give_up_error_code( (string) $decision['reason'] );
+
+			if ( Kuka_Island_Core_Invoice_Order_Store::save_reconciliation_required( $order, $give_up_code, Kuka_Island_Core_Invoice_Manager::manual_query_message() ) ) {
+				Kuka_Island_Core_Invoice_Order_Store::add_operator_note( $order, Kuka_Island_Core_Invoice_Manager::manual_query_message(), $give_up_code );
+			}
 		}
 
 		self::unschedule( (int) $order->get_id() );

@@ -137,7 +137,17 @@ final class Kuka_Island_Core_Invoice_Admin {
 					</form>
 				<?php endif; ?>
 
-				<?php if ( $config->can_send_invoice() && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) : ?>
+				<?php
+				/*
+				 * The re-send button is offered only for a document that has
+				 * never been transmitted. Any persistent evidence of a previous
+				 * SendInvoice makes the order reconcile-only in the manager, so
+				 * offering "Faturayı Gönder" would be offering something that
+				 * cannot happen -- the requery button above is the real action.
+				 */
+				$never_transmitted = array() === Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order );
+				?>
+				<?php if ( $config->can_send_invoice() && $never_transmitted && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) : ?>
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline;">
 						<?php wp_nonce_field( 'kuka_invoice_manual_send_' . $order_id, '_kuka_inv_nonce' ); ?>
 						<input type="hidden" name="action" value="kuka_invoice_manual_send">
@@ -186,7 +196,10 @@ final class Kuka_Island_Core_Invoice_Admin {
 		$order = wc_get_order( $order_id );
 		if ( $order instanceof WC_Order ) {
 			$status = Kuka_Island_Core_Invoice_Order_Store::get_status( $order );
-			if ( ! Kuka_Island_Core_Invoice_Status::is_terminal( $status ) && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) {
+			// The manager refuses a transmitted document anyway; this keeps the
+			// admin from even asking.
+			$never_transmitted = array() === Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order );
+			if ( ! Kuka_Island_Core_Invoice_Status::is_terminal( $status ) && $never_transmitted && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) {
 				try {
 					$this->manager->process_order( $order, true );
 				} catch ( Exception $e ) {

@@ -672,6 +672,21 @@ expect_invoice_match "a failed first booking keeps the in-flight status" "^INVOI
 expect_invoice_match "already_pending is a silent success" "^INVOICE_POLL_FIRST_SCHEDULE_FAILURE_VISIBLE=PASS\\|.*already_pending:created/already_pending\\|already_pending_error:none\\|already_pending_notes:0\\|already_pending_pending:1$"
 expect_invoice_match "a failed follow-up booking is visible" "^INVOICE_POLL_FOLLOWUP_SCHEDULE_FAILURE_VISIBLE=PASS\\|measured:action_scheduler_runner\\+pre_as_schedule_single_action=0\\|first_booking:created\\|action_status:complete\\|GetInvoiceStatus=1\\|SendInvoice=0\\|LoadInvoice=0\\|pending:0\\|"
 expect_invoice_match "a failed follow-up keeps the in-flight status" "^INVOICE_POLL_FOLLOWUP_SCHEDULE_FAILURE_VISIBLE=PASS\\|.*outcome:schedule_failed\\|error_code:status_poll_schedule_failed\\|status:pending_approval\\|retryable:no\\|attempts:1\\|note_added:1\\|leaks:none$"
+# CENTRAL POST-TRANSMISSION GUARD. Once anything on the order says SendInvoice
+# was already called -- a UUID, a post-transmission status, sent_at, or an
+# advanced attempt counter -- process_order() may only reconcile, and force
+# does not lift it. Measured through the production manager, not by reading
+# the source.
+expect_invoice_match "the poll give-up is not retryable" "^INVOICE_POLL_GIVE_UP_IS_NOT_RETRYABLE=PASS\\|measured:action_scheduler_runner\\|cases:2\\|attempt_cap=reconciliation_required/status_polling_max_attempts_reached/pending0 elapsed_cap=reconciliation_required/status_polling_max_elapsed_reached/pending0\\|retryable:no\\|SendInvoice=0\\|LoadInvoice=0$"
+expect_invoice_match "no transmitted document is ever resent" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|measured:manager_process_order\\|cases:9\\|"
+expect_invoice_match "every evidence fact locks the send path alone" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|.*evidence_uuid_only=reconciliation_required/send0 evidence_status_only=reconciliation_required/send0 evidence_sent_at_only=reconciliation_required/send0 evidence_attempts_only=reconciliation_required/send0 "
+expect_invoice_match "force and the queue worker are both guarded" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|.*give_up_locked=reconciliation_required/send0 unrecognised_status=reconciliation_required/send0 package_fail=failed/send0 schedule_failed=reconciliation_required/send0 .*unforced_queue_worker=reconciliation_required/send0\\|SendInvoice=0\\|LoadInvoice=0\\|identifiers_preserved:yes$"
+expect_invoice_line "an unrecognised EDM status never produces a second document" "INVOICE_UNRECOGNISED_STATUS_NEVER_RESENDS=PASS|measured:manager_process_order|SendInvoice_after_first:1|SendInvoice_after_two_retries:1|LoadInvoice=0|first_status:needs_manual_review|first_retryable:yes|evidence:uuid+sent_at+send_attempts|admin_offers_send:no|final_status:reconciliation_required|final_retryable:no|uuid_stable:yes"
+
+# The other side of the guard: an order that was never transmitted keeps its
+# ordinary retry behaviour, so the guard cannot quietly stop the shop invoicing.
+expect_invoice_line "an unsent order still sends normally" "INVOICE_PRE_TRANSMISSION_STILL_SENDS=PASS|measured:manager_process_order|cases:4|never_sent_none=sent/send1 never_sent_manual_review=sent/send1 never_sent_failed=sent/send1 never_sent_blocked=sent/send1|evidence:none|SendInvoice=4"
+
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 
 # odemeSekli is a fiscal enumeration. Only ODEMEARACISI is confirmed, iyzico is
@@ -754,7 +769,10 @@ expect_invoice_line "Invoice lock for sent status" "INVOICE_LOCK_SENT_RECONCILE=
 expect_invoice_line "Invoice lock for pending approval status" "INVOICE_LOCK_PENDING_RECONCILE=PASS|SendInvoice:0|GetInvoiceStatus:1|error:none"
 expect_invoice_line "Invoice lock for sending status" "INVOICE_LOCK_SENDING_RECONCILE=PASS|SendInvoice:0|GetInvoiceStatus:1|error:none"
 expect_invoice_line "Invoice network drop uncertain lock and reconciliation" "INVOICE_NETWORK_DROP_UNCERTAIN_LOCK=PASS|SendInvoice:1|GetInvoiceStatus:1|uncertain_status:send_uncertain|retry_error:none"
-expect_invoice_line "Invoice reconciliation timeout lock" "INVOICE_RECONCILIATION_TIMEOUT_LOCK=PASS|SendInvoice:0|code:edm_soap_fault"
+# The classification is now the manager's own, not the transport's: a failed
+# reconciliation of a transmitted document is reconciliation_required, and the
+# order is locked out of the send path rather than left retryable.
+expect_invoice_line "Invoice reconciliation timeout lock" "INVOICE_RECONCILIATION_TIMEOUT_LOCK=PASS|SendInvoice:0|code:reconciliation_required"
 expect_invoice_line "Invoice terminal completed lock" "INVOICE_TERMINAL_COMPLETED_LOCK=PASS|SendInvoice:0|code:already_terminal_invoice"
 expect_invoice_line "Order refund hook adds informative audit note" "INVOICE_REFUND_HANDLING=PASS|refund_note_added:yes"
 

@@ -34,6 +34,101 @@ class Kuka_Island_Core_Invoice_Manager {
 	}
 
 	/**
+	 * Statuses that only ever exist after a transmission was attempted.
+	 *
+	 * needs_manual_review and failed are deliberately absent: a pre-transmission
+	 * validation error also lands in them, and those orders keep their ordinary
+	 * retry behaviour. What separates the two cases is the persistent evidence
+	 * listed in transmission_evidence(), not the status alone.
+	 */
+	private const POST_TRANSMISSION_STATUSES = array(
+		Kuka_Island_Core_Invoice_Status::STATUS_SENDING,
+		Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+		Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL,
+		Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN,
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	);
+
+	/** Reconciliation could not be performed at all. */
+	public const ERROR_RECONCILE_UNAVAILABLE = 'reconciliation_required';
+	/** EDM answered, but with nothing the closed status list recognises. */
+	public const ERROR_RECONCILE_INDEFINITE = 'post_transmission_status_indefinite';
+	/** A transmission was attempted and there is no UUID left to ask about. */
+	public const ERROR_RECONCILE_NO_UUID = 'post_transmission_uuid_missing';
+
+	/**
+	 * Persistent evidence that this order has already been through SendInvoice.
+	 *
+	 * Read from what is durably on the order, so it survives a crash, a new
+	 * process, a cron run and an operator pressing a button twice. Any single
+	 * fact is enough: the question is not "did it arrive?" but "might it have?".
+	 *
+	 * The document number is deliberately NOT evidence. Numbering resolves an
+	 * EDM-assigned number BEFORE transmission, so a number with no UUID and no
+	 * attempt behind it belongs to an order that has never been sent.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return array<int, string> Evidence names, empty when nothing was sent.
+	 */
+	public static function transmission_evidence( WC_Order $order ): array {
+		$evidence = array();
+
+		if ( '' !== trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true ) ) ) {
+			$evidence[] = 'uuid';
+		}
+
+		if ( in_array( Kuka_Island_Core_Invoice_Order_Store::get_status( $order ), self::POST_TRANSMISSION_STATUSES, true ) ) {
+			$evidence[] = 'status';
+		}
+
+		if ( (int) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_SENT_AT, true ) > 0 ) {
+			$evidence[] = 'sent_at';
+		}
+
+		// Advanced only by save_invoice_sent(), save_invoice_error() and
+		// save_send_uncertain(), each of which runs after the SendInvoice call.
+		// save_blocked() -- the pre-transmission fail-closed path -- does not
+		// touch it.
+		if ( (int) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true ) > 0 ) {
+			$evidence[] = 'send_attempts';
+		}
+
+		return $evidence;
+	}
+
+	/**
+	 * Is this a reconciliation answer definite enough to act on?
+	 *
+	 * completed, rejected and cancelled are settled. sent and pending_approval
+	 * are EDM's own official "still with us". failed is PACKAGE - FAIL or
+	 * SEND - FAILED, which is a real answer about a real document.
+	 *
+	 * Everything else -- above all the unrecognised literal that maps to
+	 * needs_manual_review -- is not an answer, and is never treated as one.
+	 *
+	 * @param string $lifecycle Lifecycle status the reconciliation produced.
+	 */
+	public static function is_definite_reconcile_status( string $lifecycle ): bool {
+		return Kuka_Island_Core_Invoice_Status::is_terminal( $lifecycle )
+			|| in_array(
+				$lifecycle,
+				array(
+					Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+					Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL,
+					Kuka_Island_Core_Invoice_Status::STATUS_FAILED,
+				),
+				true
+			);
+	}
+
+	/**
+	 * What the shop is told when a transmitted document cannot be resolved.
+	 */
+	public static function manual_query_message(): string {
+		return __( 'Fatura EDM sistemine gönderilmiş olabilir ve durumu doğrulanamadı. Mükerrer gönderim engellendi; lütfen EDM üzerinden fatura durumunu manuel olarak sorgulayın.', 'kuka-island-core' );
+	}
+
+	/**
 	 * Process invoice generation and transmission for a paid order.
 	 *
 	 * Rules:
@@ -45,6 +140,10 @@ class Kuka_Island_Core_Invoice_Manager {
 	 * - A document left in flight (sent, pending_approval, send_uncertain) gets exactly one
 	 *   GetInvoiceStatus query booked on the poller's own Action Scheduler action. The poller
 	 *   cannot reach SendInvoice, so this never becomes a second transmission.
+	 * - CENTRAL GUARD: any persistent evidence of a previous transmission attempt (UUID,
+	 *   a post-transmission status, sent_at, or an advanced attempt counter) makes this
+	 *   method reconcile-only. $force does not lift it, and no caller can bypass it,
+	 *   because every caller comes through here.
 	 *
 	 * @param WC_Order $order WooCommerce Order.
 	 * @param bool     $force Force retry for failed states only.
@@ -78,13 +177,19 @@ class Kuka_Island_Core_Invoice_Manager {
 			);
 		}
 
-		// In-flight or uncertain statuses must reconcile via GetInvoiceStatus, never SendInvoice.
-		if ( in_array( $current_status, array( Kuka_Island_Core_Invoice_Status::STATUS_SENT, Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, Kuka_Island_Core_Invoice_Status::STATUS_SENDING, Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN ), true ) ) {
-			return $this->reconcile_in_flight_order( $order );
-		}
+		/*
+		 * Central post-transmission guard. Once there is persistent evidence
+		 * that SendInvoice was already called for this order, this method may
+		 * only reconcile. $force does not lift it: what it guards against is a
+		 * second fiscal document, not a stuck status, and no caller -- admin
+		 * button, queue worker, cron or a direct call -- has a reason to want
+		 * one. The authoritative check runs again inside the lock below.
+		 */
+		$reconcile_only = array() !== self::transmission_evidence( $order );
 
-		// Non-force calls refuse non-retryable states.
-		if ( ! $force && ! Kuka_Island_Core_Invoice_Status::can_retry( $current_status ) ) {
+		// Non-force calls refuse non-retryable states. A reconcile-only order is
+		// not being retried, so this gate does not apply to it.
+		if ( ! $reconcile_only && ! $force && ! Kuka_Island_Core_Invoice_Status::can_retry( $current_status ) ) {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Invoice status cannot be retried automatically.',
 				'invalid_invoice_status_transition',
@@ -119,33 +224,22 @@ class Kuka_Island_Core_Invoice_Manager {
 				);
 			}
 
-			// 5. Network loss / in-flight status reconciliation:
-			// If UUID already exists on order (e.g. earlier interrupted attempt or sending/sent/uncertain status),
-			// query EDM first to avoid blind duplicate sends.
-			$existing_uuid   = (string) $fresh_order->get_meta( '_kuka_invoice_uuid', true );
-			$existing_number = (string) $fresh_order->get_meta( '_kuka_invoice_number', true );
+			/*
+			 * 5. The post-transmission guard, decided on the record read inside
+			 * the lock. This is the only place that matters: past here lies
+			 * SendInvoice, and an order with any evidence of a previous
+			 * transmission attempt never reaches it. Reconciliation returns or
+			 * throws; it cannot fall through.
+			 */
+			$locked_evidence = self::transmission_evidence( $fresh_order );
+			if ( array() !== $locked_evidence ) {
+				$recon_result = $this->reconcile_only( $fresh_order, $locked_evidence );
 
-			if ( '' !== $existing_uuid && '' !== $locked_status && Kuka_Island_Core_Invoice_Status::STATUS_NONE !== $locked_status && Kuka_Island_Core_Invoice_Status::STATUS_QUEUED !== $locked_status ) {
-				try {
-					$recon_result = $this->provider->get_invoice_status( $existing_uuid, $existing_number );
-					if ( $recon_result->is_success() ) {
-						Kuka_Island_Core_Invoice_Order_Store::save_status_query( $fresh_order, $recon_result );
-						if ( Kuka_Island_Core_Invoice_Status::is_terminal( $recon_result->get_status() ) || Kuka_Island_Core_Invoice_Status::STATUS_SENT === $recon_result->get_status() || Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL === $recon_result->get_status() ) {
-							if ( $order !== $fresh_order ) {
-								$order->read_meta_data( true );
-							}
-							return $recon_result;
-						}
-					}
-				} catch ( Exception $recon_e ) {
-					if ( in_array( $locked_status, array( Kuka_Island_Core_Invoice_Status::STATUS_SENDING, Kuka_Island_Core_Invoice_Status::STATUS_SENT, Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN ), true ) ) {
-						throw new Kuka_Island_Core_Invoice_Transient_Exception(
-							'Invoice in-flight or status uncertain. Reconciliation required before retry.',
-							'reconciliation_required',
-							__( 'Fatura durumu uzlaştırılamadı. Mükerrer gönderimi önlemek için durum sorgulaması bekleniyor.', 'kuka-island-core' )
-						);
-					}
+				if ( $order !== $fresh_order ) {
+					$order->read_meta_data( true );
 				}
+
+				return $recon_result;
 			}
 
 			// 6. Determine document type and profile (e-Fatura vs e-Arşiv).
@@ -293,6 +387,95 @@ class Kuka_Island_Core_Invoice_Manager {
 			unset( $scheduling_error );
 
 			return Kuka_Island_Core_Invoice_Status_Poller::record_scheduling_exception( $order );
+		}
+	}
+
+	/**
+	 * Resolve an order that has already been through SendInvoice.
+	 *
+	 * GetInvoiceStatus is the only EDM operation this method can reach, and it
+	 * has exactly three ways out, none of which is a transmission:
+	 *
+	 * - EDM gives a definite answer -> record it and return.
+	 * - EDM cannot be asked -> lock the order into reconciliation_required and
+	 *   throw a transient error. Failing to ask is not permission to send.
+	 * - EDM answers with something the closed status list does not recognise ->
+	 *   record what it said, then lock the order into reconciliation_required.
+	 *   An unrecognised literal is not a licence to send the document again.
+	 *
+	 * reconciliation_required sits outside can_retry(), so the order screen's
+	 * re-send button disappears and the queue will not pick the order up.
+	 *
+	 * @param WC_Order          $order    Order with transmission evidence.
+	 * @param array<int, string> $evidence Which facts established that.
+	 * @return Kuka_Island_Core_Invoice_Result Reconciliation result.
+	 * @throws Kuka_Island_Core_Invoice_Exception When the document cannot be resolved.
+	 */
+	private function reconcile_only( WC_Order $order, array $evidence ): Kuka_Island_Core_Invoice_Result {
+		$uuid   = trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true ) );
+		$number = trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true ) );
+
+		if ( '' === $uuid ) {
+			// Something was sent and the identifier for asking about it is gone.
+			// There is nothing to reconcile, and still nothing safe to send.
+			$this->lock_for_manual_query( $order, self::ERROR_RECONCILE_NO_UUID );
+
+			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+				sprintf( 'Transmission evidence (%s) without an invoice UUID; refusing to send again.', implode( ',', $evidence ) ),
+				self::ERROR_RECONCILE_NO_UUID,
+				self::manual_query_message()
+			);
+		}
+
+		try {
+			$result = $this->provider->get_invoice_status( $uuid, $number );
+		} catch ( Exception $recon_e ) {
+			// The exception text is not read, logged or stored: only the safe
+			// code goes on the order.
+			unset( $recon_e );
+			$this->lock_for_manual_query( $order, self::ERROR_RECONCILE_UNAVAILABLE );
+
+			throw new Kuka_Island_Core_Invoice_Transient_Exception(
+				'Invoice already transmitted and its EDM status could not be reconciled.',
+				self::ERROR_RECONCILE_UNAVAILABLE,
+				self::manual_query_message()
+			);
+		}
+
+		if ( ! $result->is_success() ) {
+			$this->lock_for_manual_query( $order, self::ERROR_RECONCILE_UNAVAILABLE );
+
+			return $result;
+		}
+
+		// Record what EDM actually said, whatever it was.
+		Kuka_Island_Core_Invoice_Order_Store::save_status_query( $order, $result );
+
+		if ( ! self::is_definite_reconcile_status( $result->get_status() ) ) {
+			$this->lock_for_manual_query( $order, self::ERROR_RECONCILE_INDEFINITE );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Put an unresolvable transmitted document into the manual-query lock.
+	 *
+	 * The note is added only when the status actually changes, so a repeated
+	 * retry does not fill the order with identical notes.
+	 *
+	 * @param WC_Order $order           Order.
+	 * @param string   $safe_error_code Safe classification code.
+	 */
+	private function lock_for_manual_query( WC_Order $order, string $safe_error_code ): void {
+		$transitioned = Kuka_Island_Core_Invoice_Order_Store::save_reconciliation_required(
+			$order,
+			$safe_error_code,
+			self::manual_query_message()
+		);
+
+		if ( $transitioned ) {
+			Kuka_Island_Core_Invoice_Order_Store::add_operator_note( $order, self::manual_query_message(), $safe_error_code );
 		}
 	}
 

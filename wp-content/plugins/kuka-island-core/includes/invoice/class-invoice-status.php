@@ -34,6 +34,16 @@ final class Kuka_Island_Core_Invoice_Status {
 	 * invoice was never transmitted. Distinct from a runtime error.
 	 */
 	public const STATUS_BLOCKED             = 'blocked';
+	/**
+	 * A transmission was attempted and EDM has not given a usable answer about
+	 * it. The document may exist at EDM, so it may never be transmitted again;
+	 * only GetInvoiceStatus can resolve it, and a person has to do that.
+	 *
+	 * Deliberately NOT needs_manual_review. That status is in can_retry(), so
+	 * an already-transmitted document sitting in it can be sent a second time
+	 * the moment a reconciliation attempt fails.
+	 */
+	public const STATUS_RECONCILIATION_REQUIRED = 'reconciliation_required';
 
 	/**
 	 * Map status to human-readable Turkish label.
@@ -51,6 +61,7 @@ final class Kuka_Island_Core_Invoice_Status {
 			self::STATUS_REJECTED            => __( 'Alıcı Tarafından Reddedildi', 'kuka-island-core' ),
 			self::STATUS_CANCELLED           => __( 'İptal Edildi', 'kuka-island-core' ),
 			self::STATUS_BLOCKED             => __( 'Fail-Closed Engellendi (Sözleşme Doğrulanmadı)', 'kuka-island-core' ),
+			self::STATUS_RECONCILIATION_REQUIRED => __( 'Manuel EDM Durum Sorgusu Gerekli (Mükerrer Gönderim Kilitli)', 'kuka-island-core' ),
 			default                          => __( 'Fatura Oluşturulmadı', 'kuka-island-core' ),
 		};
 	}
@@ -87,7 +98,37 @@ final class Kuka_Island_Core_Invoice_Status {
 	 * Is this status pending, uncertain, or in progress?
 	 */
 	public static function is_in_progress( string $status ): bool {
-		return in_array( $status, array( self::STATUS_QUEUED, self::STATUS_SENDING, self::STATUS_SENT, self::STATUS_PENDING_APPROVAL, self::STATUS_SEND_UNCERTAIN ), true );
+		return in_array( $status, array( self::STATUS_QUEUED, self::STATUS_SENDING, self::STATUS_SENT, self::STATUS_PENDING_APPROVAL, self::STATUS_SEND_UNCERTAIN, self::STATUS_RECONCILIATION_REQUIRED ), true );
+	}
+
+	/**
+	 * May a generic error handler overwrite this status with needs_manual_review?
+	 *
+	 * No, for every status that either states a settled fiscal fact or records a
+	 * deliberate fail-closed decision. The queue worker's catch blocks used to
+	 * flatten any exception into needs_manual_review, which is a status
+	 * can_retry() permits -- so an exception raised while reconciling an
+	 * already-transmitted document handed that document straight back to the
+	 * send path.
+	 *
+	 * @param string $status Current invoice status.
+	 */
+	public static function is_escalation_protected( string $status ): bool {
+		return in_array(
+			$status,
+			array(
+				self::STATUS_BLOCKED,
+				self::STATUS_RECONCILIATION_REQUIRED,
+				self::STATUS_SENDING,
+				self::STATUS_SENT,
+				self::STATUS_PENDING_APPROVAL,
+				self::STATUS_SEND_UNCERTAIN,
+				self::STATUS_COMPLETED,
+				self::STATUS_REJECTED,
+				self::STATUS_CANCELLED,
+			),
+			true
+		);
 	}
 
 	/**
@@ -125,7 +166,7 @@ final class Kuka_Island_Core_Invoice_Status {
 				'color'  => '#92400e',
 				'border' => '#fde68a',
 			),
-			self::STATUS_NEEDS_MANUAL_REVIEW, self::STATUS_FAILED, self::STATUS_BLOCKED, self::STATUS_REJECTED, self::STATUS_CANCELLED => array(
+			self::STATUS_NEEDS_MANUAL_REVIEW, self::STATUS_FAILED, self::STATUS_BLOCKED, self::STATUS_REJECTED, self::STATUS_CANCELLED, self::STATUS_RECONCILIATION_REQUIRED => array(
 				'bg'     => '#fef2f2',
 				'color'  => '#991b1b',
 				'border' => '#fecaca',

@@ -3980,6 +3980,490 @@ if ( $runner_available ) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Central post-transmission guard: no blind resend, ever                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * GetInvoiceStatus answers with a fixed STATUS literal, or refuses outright.
+ */
+final class Kuka_Island_Test_Status_Literal_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, int> */
+	public array $calls = array();
+	/** @var string STATUS literal to hand back. */
+	public string $status_literal;
+	/** @var bool Refuse the query instead of answering. */
+	public bool $fail_status;
+
+	public function __construct( string $status_literal = 'PACKAGE - PROCESSING', bool $fail_status = false ) {
+		$this->status_literal = $status_literal;
+		$this->fail_status    = $fail_status;
+	}
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+
+		if ( 'Login' === $operation ) {
+			return array( 'SESSION_ID' => 'session-guard-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+
+		if ( 'GetInvoiceStatus' === $operation ) {
+			if ( $this->fail_status ) {
+				throw new SoapFault( 'HTTP', 'Connection timed out during status reconciliation' );
+			}
+
+			return array(
+				'INVOICE_STATUS' => array(
+					array(
+						'UUID'   => $parameters['INVOICE']['UUID'] ?? 'uuid-guard-fixture',
+						'HEADER' => array( 'STATUS' => $this->status_literal ),
+					),
+				),
+			);
+		}
+
+		if ( 'SendInvoice' === $operation ) {
+			return array(
+				'INVOICE'        => array(
+					'UUID' => $parameters['INVOICE'][0]['UUID'] ?? 'uuid-guard-send',
+					'ID'   => $parameters['INVOICE'][0]['ID'] ?? 'KUK-UNSET',
+					// Not on EDM's published list, so not an answer.
+					'HEADER' => array( 'STATUS' => $this->status_literal ),
+				),
+				'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+			);
+		}
+
+		return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+	}
+}
+
+/*
+ * (A) The poller gives up. It used to write needs_manual_review here, which
+ * can_retry() permits -- so the document became sendable again the moment a
+ * reconciliation failed. Driven through the real Action Scheduler runner.
+ */
+if ( $runner_available ) {
+	$giveup_cases = array(
+		// name => [ seeded poll attempts, started_at offset, expected safe code ]
+		'attempt_cap' => array( Kuka_Island_Core_Invoice_Status_Poller::MAX_ATTEMPTS - 1, 0, Kuka_Island_Core_Invoice_Status_Poller::ERROR_MAX_ATTEMPTS ),
+		'elapsed_cap' => array( 1, -( Kuka_Island_Core_Invoice_Status_Poller::MAX_ELAPSED + 60 ), Kuka_Island_Core_Invoice_Status_Poller::ERROR_MAX_ELAPSED ),
+	);
+
+	$giveup_ok      = true;
+	$giveup_details = array();
+	$giveup_sends   = 0;
+	$giveup_loads   = 0;
+
+	foreach ( $giveup_cases as $case => $spec ) {
+		$giveup_transport = new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - PROCESSING' );
+		$giveup_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $giveup_transport ) );
+		$giveup_poller    = new Kuka_Island_Core_Invoice_Status_Poller( $giveup_manager );
+
+		$giveup_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
+		kuka_add_line( $giveup_order, 'Give-up Fixture', '100.00', '100.00', 1, '10.00' );
+		$giveup_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_UUID, 'uuid-giveup-' . $case );
+		$giveup_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, 'KUK2026000000905' );
+		$giveup_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL );
+		$giveup_order->update_meta_data( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS, (string) $spec[0] );
+		$giveup_order->update_meta_data( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT, (string) ( time() + $spec[1] ) );
+		$giveup_order->save();
+		$giveup_order_id     = (int) $giveup_order->get_id();
+		$giveup_notes_before = count( wc_get_order_notes( array( 'order_id' => $giveup_order_id ) ) );
+
+		$giveup_saved = $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] ?? null;
+		remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+		$giveup_poller->register();
+
+		Kuka_Island_Core_Invoice_Status_Poller::unschedule( $giveup_order_id );
+		Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $giveup_order_id, 300 );
+		$giveup_ids    = $poll_pending_ids( $giveup_order_id );
+		$giveup_action = (int) ( $giveup_ids[0] ?? 0 );
+		if ( $giveup_action > 0 ) {
+			ActionScheduler_QueueRunner::instance()->process_action( $giveup_action, 'kuka-verify' );
+		}
+
+		remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+		if ( null !== $giveup_saved ) {
+			$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] = $giveup_saved;
+		}
+
+		$giveup_reloaded = wc_get_order( $giveup_order_id );
+		$giveup_status   = Kuka_Island_Core_Invoice_Order_Store::get_status( $giveup_reloaded );
+		$giveup_code     = (string) $giveup_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+		$giveup_pending  = count( $poll_pending_ids( $giveup_order_id ) );
+		$giveup_history  = (array) ( $giveup_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_HISTORY, true ) ?: array() );
+		$giveup_last     = (array) ( end( $giveup_history ) ?: array() );
+		$giveup_notes    = wc_get_order_notes( array( 'order_id' => $giveup_order_id ) );
+		$giveup_note_hit = false;
+		foreach ( $giveup_notes as $note ) {
+			if ( str_contains( (string) $note->content, $spec[2] ) ) {
+				$giveup_note_hit = true;
+			}
+		}
+
+		$giveup_sends += (int) ( $giveup_transport->calls['SendInvoice'] ?? 0 );
+		$giveup_loads += (int) ( $giveup_transport->calls['LoadInvoice'] ?? 0 );
+
+		$hit = 0 === $giveup_pending
+			&& Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED === $giveup_status
+			&& false === Kuka_Island_Core_Invoice_Status::can_retry( $giveup_status )
+			&& $spec[2] === $giveup_code
+			&& Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED === (string) ( $giveup_last['status'] ?? '' )
+			&& str_contains( (string) ( $giveup_last['message'] ?? '' ), $spec[2] )
+			&& $giveup_note_hit
+			&& count( $giveup_notes ) === $giveup_notes_before + 1
+			// The old status is gone for good: never needs_manual_review.
+			&& Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW !== $giveup_status;
+
+		$giveup_details[] = $case . '=' . $giveup_status . '/' . ( $giveup_code ?: 'none' ) . '/pending' . $giveup_pending;
+		if ( ! $hit ) {
+			$giveup_ok = false;
+		}
+
+		kuka_test_delete_order( $giveup_order_id, $test_run_id );
+	}
+
+	$report(
+		'INVOICE_POLL_GIVE_UP_IS_NOT_RETRYABLE',
+		$giveup_ok
+		&& 0 === $giveup_sends
+		&& 0 === $giveup_loads,
+		sprintf(
+			'measured:action_scheduler_runner|cases:%d|%s|retryable:no|SendInvoice=%d|LoadInvoice=%d',
+			count( $giveup_cases ),
+			implode( ' ', $giveup_details ),
+			$giveup_sends,
+			$giveup_loads
+		)
+	);
+}
+
+/*
+ * (B..F) The guard itself, measured through the production process_order().
+ *
+ * Every scenario below carries persistent evidence of a transmission attempt and
+ * is then asked to send again, with force=true and with reconciliation failing --
+ * the exact combination that used to fall through to SendInvoice.
+ */
+$guard_matrix = array(
+	// name => [ seeded meta, force, GetInvoiceStatus behaviour, expected status ]
+	'give_up_locked'        => array(
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS   => Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+			Kuka_Island_Core_Invoice_Order_Store::META_UUID     => 'uuid-guard-giveup',
+			Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS => '1',
+		),
+		true,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	'unrecognised_status'   => array(
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS   => Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
+			Kuka_Island_Core_Invoice_Order_Store::META_UUID     => 'uuid-guard-unknown',
+			Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS => '1',
+		),
+		true,
+		'unknown',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	'package_fail'          => array(
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS   => Kuka_Island_Core_Invoice_Status::STATUS_FAILED,
+			Kuka_Island_Core_Invoice_Order_Store::META_UUID     => 'uuid-guard-packagefail',
+			Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS => '1',
+		),
+		true,
+		'package_fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_FAILED,
+	),
+	'schedule_failed'       => array(
+		array(
+			// The state a37a8b8 leaves behind when Action Scheduler refuses.
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS     => Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+			Kuka_Island_Core_Invoice_Order_Store::META_UUID       => 'uuid-guard-schedfail',
+			Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR => Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED,
+			Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS   => '1',
+		),
+		true,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	// Evidence one fact at a time, each on its own, all with force=true.
+	'evidence_uuid_only'    => array(
+		array( Kuka_Island_Core_Invoice_Order_Store::META_UUID => 'uuid-guard-only' ),
+		true,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	'evidence_status_only'  => array(
+		array( Kuka_Island_Core_Invoice_Order_Store::META_STATUS => Kuka_Island_Core_Invoice_Status::STATUS_SENDING ),
+		true,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	'evidence_sent_at_only' => array(
+		array( Kuka_Island_Core_Invoice_Order_Store::META_SENT_AT => (string) ( time() - 3600 ) ),
+		true,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	'evidence_attempts_only' => array(
+		array( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS => '1' ),
+		true,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+	// Non-force callers are covered by the same guard.
+	'unforced_queue_worker' => array(
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS   => Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
+			Kuka_Island_Core_Invoice_Order_Store::META_UUID     => 'uuid-guard-unforced',
+			Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS => '1',
+		),
+		false,
+		'fail',
+		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+	),
+);
+
+$guard_ok      = true;
+$guard_details = array();
+$guard_sends   = 0;
+$guard_loads   = 0;
+
+foreach ( $guard_matrix as $case => $spec ) {
+	$guard_transport = match ( $spec[2] ) {
+		'unknown'      => new Kuka_Island_Test_Status_Literal_Transport( 'PROCESS SUCCESS NOTE' ),
+		'package_fail' => new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - FAIL' ),
+		default        => new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - PROCESSING', true ),
+	};
+
+	$guard_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $guard_transport ) );
+	$guard_order   = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array_merge(
+			array(
+				Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+				Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+			),
+			$spec[0]
+		)
+	);
+	$guard_order_id  = (int) $guard_order->get_id();
+	$uuid_before     = (string) $guard_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+	$number_before   = (string) $guard_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true );
+
+	try {
+		$guard_manager->process_order( $guard_order, (bool) $spec[1] );
+	} catch ( Throwable $t ) {
+		unset( $t );
+	}
+
+	$guard_order->read_meta_data( true );
+	$guard_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $guard_order );
+	$uuid_after   = (string) $guard_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+	$number_after = (string) $guard_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true );
+
+	$case_sends = (int) ( $guard_transport->calls['SendInvoice'] ?? 0 );
+	$case_loads = (int) ( $guard_transport->calls['LoadInvoice'] ?? 0 );
+	$guard_sends += $case_sends;
+	$guard_loads += $case_loads;
+
+	$hit = 0 === $case_sends
+		&& 0 === $case_loads
+		&& $guard_status === (string) $spec[3]
+		// Neither identifier is rewritten: a manual GetInvoiceStatus needs both.
+		&& $uuid_after === $uuid_before
+		&& $number_after === $number_before;
+
+	$guard_details[] = $case . '=' . $guard_status . '/send' . $case_sends;
+	if ( ! $hit ) {
+		$guard_ok = false;
+	}
+
+	kuka_test_delete_order( $guard_order_id, $test_run_id );
+}
+
+$report(
+	'INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND',
+	$guard_ok
+	&& 0 === $guard_sends
+	&& 0 === $guard_loads,
+	sprintf(
+		'measured:manager_process_order|cases:%d|%s|SendInvoice=%d|LoadInvoice=%d|identifiers_preserved:yes',
+		count( $guard_matrix ),
+		implode( ' ', $guard_details ),
+		$guard_sends,
+		$guard_loads
+	)
+);
+
+/*
+ * (C) The whole unrecognised-status story end to end, counted on ONE transport:
+ * the first SendInvoice happens, EDM answers with a literal that is not on its
+ * published list, and the manual re-send that follows must not produce a second
+ * document.
+ */
+$unknown_transport = new Kuka_Island_Test_Status_Literal_Transport( 'PROCESS SUCCESS NOTE' );
+$unknown_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $unknown_transport ) );
+$unknown_order     = kuka_create_lock_order(
+	$test_run_id,
+	$billing_props,
+	array(
+		Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+		Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+	)
+);
+$unknown_order_id = (int) $unknown_order->get_id();
+
+try {
+	$unknown_manager->process_order( $unknown_order );
+} catch ( Throwable $t ) {
+	unset( $t );
+}
+$unknown_order->read_meta_data( true );
+$unknown_first_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $unknown_order );
+$unknown_first_sends  = (int) ( $unknown_transport->calls['SendInvoice'] ?? 0 );
+$unknown_uuid         = (string) $unknown_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+// The evidence the order screen and the queue now consult before offering a
+// re-send. can_retry() alone said yes here, which is what used to put a
+// "Faturayı Gönder" button on an already-transmitted document.
+$unknown_first_evidence = Kuka_Island_Core_Invoice_Manager::transmission_evidence( $unknown_order );
+$unknown_offers_send    = array() === $unknown_first_evidence && Kuka_Island_Core_Invoice_Status::can_retry( $unknown_first_status );
+
+// The order screen's re-send button, and then the queue worker, both go through
+// process_order(). Neither may produce a second document.
+try {
+	$unknown_manager->process_order( $unknown_order, true );
+} catch ( Throwable $t ) {
+	unset( $t );
+}
+try {
+	$unknown_manager->process_order( $unknown_order );
+} catch ( Throwable $t ) {
+	unset( $t );
+}
+$unknown_order->read_meta_data( true );
+$unknown_final_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $unknown_order );
+$unknown_final_sends  = (int) ( $unknown_transport->calls['SendInvoice'] ?? 0 );
+$unknown_final_uuid   = (string) $unknown_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+
+$report(
+	'INVOICE_UNRECOGNISED_STATUS_NEVER_RESENDS',
+	// Exactly one transmission for the life of this document.
+	1 === $unknown_first_sends
+	&& 1 === $unknown_final_sends
+	&& 0 === (int) ( $unknown_transport->calls['LoadInvoice'] ?? 0 )
+	// The unrecognised SendInvoice answer is a manual-review state...
+	&& Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW === $unknown_first_status
+	// ...which can_retry() allows, which is exactly why the guard, not the
+	// status, is what stops the second send.
+	&& true === Kuka_Island_Core_Invoice_Status::can_retry( $unknown_first_status )
+	// ...and the evidence is what makes the admin and the queue refuse to offer
+	// the re-send in the first place.
+	&& array() !== $unknown_first_evidence
+	&& false === $unknown_offers_send
+	// After the retry attempts the order is locked out of the send path.
+	&& Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED === $unknown_final_status
+	&& false === Kuka_Island_Core_Invoice_Status::can_retry( $unknown_final_status )
+	&& '' !== $unknown_uuid
+	&& $unknown_final_uuid === $unknown_uuid,
+	sprintf(
+		'measured:manager_process_order|SendInvoice_after_first:%d|SendInvoice_after_two_retries:%d|LoadInvoice=%d|first_status:%s|first_retryable:%s|evidence:%s|admin_offers_send:%s|final_status:%s|final_retryable:%s|uuid_stable:%s',
+		$unknown_first_sends,
+		$unknown_final_sends,
+		$unknown_transport->calls['LoadInvoice'] ?? 0,
+		$unknown_first_status,
+		Kuka_Island_Core_Invoice_Status::can_retry( $unknown_first_status ) ? 'yes' : 'no',
+		empty( $unknown_first_evidence ) ? 'NONE' : implode( '+', $unknown_first_evidence ),
+		$unknown_offers_send ? 'YES' : 'no',
+		$unknown_final_status,
+		Kuka_Island_Core_Invoice_Status::can_retry( $unknown_final_status ) ? 'YES' : 'no',
+		'' !== $unknown_uuid && $unknown_final_uuid === $unknown_uuid ? 'yes' : 'no'
+	)
+);
+
+kuka_test_delete_order( $unknown_order_id, $test_run_id );
+
+/*
+ * (E) The other side of the guard: an order that was NEVER transmitted keeps its
+ * ordinary retry behaviour. A guard that locked unsent orders would quietly stop
+ * the shop invoicing at all, which is a different failure, not a safer one.
+ */
+$presend_cases = array(
+	'never_sent_none'          => Kuka_Island_Core_Invoice_Status::STATUS_NONE,
+	'never_sent_manual_review' => Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
+	'never_sent_failed'        => Kuka_Island_Core_Invoice_Status::STATUS_FAILED,
+	'never_sent_blocked'       => Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED,
+);
+
+$presend_ok      = true;
+$presend_details = array();
+$presend_sends   = 0;
+
+foreach ( $presend_cases as $case => $seed_status ) {
+	$presend_transport = new Kuka_Island_Test_Tracking_Transport();
+	$presend_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $presend_transport ) );
+	$presend_order     = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS         => $seed_status,
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER         => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE  => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$presend_order_id = (int) $presend_order->get_id();
+
+	// No UUID, no sent_at, no advanced attempt counter: nothing was transmitted.
+	$evidence = Kuka_Island_Core_Invoice_Manager::transmission_evidence( $presend_order );
+
+	try {
+		$presend_manager->process_order( $presend_order, true );
+	} catch ( Throwable $t ) {
+		unset( $t );
+	}
+
+	$presend_order->read_meta_data( true );
+	$case_sends     = (int) ( $presend_transport->calls['SendInvoice'] ?? 0 );
+	$presend_sends += $case_sends;
+	$presend_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $presend_order );
+
+	$hit = array() === $evidence
+		&& 1 === $case_sends
+		&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === $presend_status;
+
+	$presend_details[] = $case . '=' . $presend_status . '/send' . $case_sends;
+	if ( ! $hit ) {
+		$presend_ok = false;
+	}
+
+	kuka_test_delete_order( $presend_order_id, $test_run_id );
+}
+
+$report(
+	'INVOICE_PRE_TRANSMISSION_STILL_SENDS',
+	$presend_ok
+	&& count( $presend_cases ) === $presend_sends,
+	sprintf(
+		'measured:manager_process_order|cases:%d|%s|evidence:none|SendInvoice=%d',
+		count( $presend_cases ),
+		implode( ' ', $presend_details ),
+		$presend_sends
+	)
+);
+
+/* -------------------------------------------------------------------------- */
 /* INTERNETSALESDETAILS                                                        */
 /* -------------------------------------------------------------------------- */
 

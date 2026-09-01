@@ -147,6 +147,76 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 	}
 
 	/**
+	 * Persist the fail-closed post-transmission lock.
+	 *
+	 * A transmission was attempted and EDM has not given a usable answer, so the
+	 * document may exist. STATUS_RECONCILIATION_REQUIRED is outside can_retry(),
+	 * which is the whole point: needs_manual_review would let the send path pick
+	 * this document up again and produce a second fiscal document.
+	 *
+	 * The attempt counter is not advanced -- no new transmission happened -- and
+	 * the UUID and document number are left exactly as they are, because they are
+	 * what a manual GetInvoiceStatus needs.
+	 *
+	 * Only the safe error code is stored: no exception text, credential, SOAP
+	 * payload or customer data.
+	 *
+	 * @param WC_Order $order           WooCommerce order.
+	 * @param string   $safe_error_code Safe classification code.
+	 * @param string   $message         Fixed operator-facing sentence.
+	 * @return bool Whether this call changed the status (a first transition).
+	 */
+	public static function save_reconciliation_required( WC_Order $order, string $safe_error_code, string $message ): bool {
+		$was = self::get_status( $order );
+
+		$order->update_meta_data( self::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED );
+		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
+		$order->update_meta_data( self::META_LAST_QUERIED_AT, time() );
+
+		self::add_history_entry(
+			$order,
+			Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+			sprintf( '%s (%s)', $message, $safe_error_code )
+		);
+
+		$order->save_meta_data();
+
+		return Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED !== $was;
+	}
+
+	/**
+	 * Leave a fixed, safe sentence in the order's own note list.
+	 *
+	 * The order screen's notes are where somebody working the order will read
+	 * it, so a fail-closed lock that only exists in meta is not visible enough.
+	 *
+	 * Best effort by design: the history entry written by the caller is the
+	 * record, and a note that cannot be created must not take a completed
+	 * transmission down with it. Only the fixed sentence and the safe code are
+	 * ever written.
+	 *
+	 * @param WC_Order $order           WooCommerce order.
+	 * @param string   $message         Fixed operator-facing sentence.
+	 * @param string   $safe_error_code Safe classification code.
+	 */
+	public static function add_operator_note( WC_Order $order, string $message, string $safe_error_code ): void {
+		try {
+			$order->add_order_note(
+				sprintf(
+					/* translators: 1: warning sentence, 2: safe error code */
+					__( '%1$s (%2$s)', 'kuka-island-core' ),
+					$message,
+					$safe_error_code
+				),
+				0,
+				false
+			);
+		} catch ( Throwable $note_error ) {
+			unset( $note_error );
+		}
+	}
+
+	/**
 	 * Record that an automatic status query could not be booked.
 	 *
 	 * The invoice status is deliberately left exactly as it is. sent,
