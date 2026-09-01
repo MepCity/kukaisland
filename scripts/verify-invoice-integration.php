@@ -4838,6 +4838,276 @@ if ( $runner_available ) {
 	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $qcc_order_id );
 	kuka_test_delete_order( $qrc_order_id, $test_run_id );
 	kuka_test_delete_order( $qcc_order_id, $test_run_id );
+	/* ---------------------------------------------------------------------- */
+	/* The queue retry counter belongs to one chain and outlives none of them  */
+	/* ---------------------------------------------------------------------- */
+
+	/**
+	 * Transport for the chain-ownership cases.
+	 *
+	 * Normal answers by default; each flag turns one specific failure on.
+	 */
+	$queue_case_transport_class = new class() implements Kuka_Island_Core_SOAP_Transport_Interface {
+		/** @var array<string, int> */
+		public array $calls = array();
+		/** @var bool Raise the SOAP timeout the client classifies as transient. */
+		public bool $timeout_on_send = false;
+		/** @var bool Raise a NON-Kuka exception, so the queue's generic catch runs. */
+		public bool $generic_on_send = false;
+
+		public function get_last_request(): string {
+			return '';
+		}
+
+		public function get_last_response(): string {
+			return '';
+		}
+
+		public function call( string $operation, array $parameters ) {
+			$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+
+			if ( 'Login' === $operation ) {
+				return array( 'SESSION_ID' => 'session-queue-chain', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+			}
+
+			if ( 'SendInvoice' === $operation ) {
+				if ( $this->generic_on_send ) {
+					throw new RuntimeException( 'Non-Kuka failure raised below the client.' );
+				}
+				if ( $this->timeout_on_send ) {
+					throw new SoapFault( 'HTTP', 'Connection timed out after 30 seconds' );
+				}
+
+				return array(
+					'INVOICE'        => array(
+						'UUID' => $parameters['INVOICE'][0]['UUID'] ?? 'uuid-queue-chain',
+						'ID'   => $parameters['INVOICE'][0]['ID'] ?? 'KUK-UNSET',
+					),
+					'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+				);
+			}
+
+			return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+	};
+
+	/*
+	 * Every one of these starts the same way: a real lock_collision leaves the
+	 * chain with a count of 1 and one pending action. Then the chain ends a
+	 * different way each time, and the count must not survive any of them --
+	 * a leftover 1 or 2 silently shortens the retry budget of whatever chain
+	 * runs next for that order.
+	 */
+	$chain_exit_cases = array(
+		// name => [ mutation, expected status, expected fiscal attempts, expected poll actions ]
+		'permanent_pre_send'  => array( 'strip_number_source', Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED, 0, 0 ),
+		'evidence_handover'   => array( 'timeout_on_send', Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, 1, 1 ),
+		'generic_exception'   => array( 'generic_on_send', Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, 1, 1 ),
+		'auto_send_disabled'  => array( 'auto_send_off', Kuka_Island_Core_Invoice_Status::STATUS_NONE, 0, 0 ),
+	);
+
+	$chain_ok       = true;
+	$chain_details  = array();
+	$chain_first_ok = true;
+
+	foreach ( $chain_exit_cases as $case => $spec ) {
+		$chain_transport = clone $queue_case_transport_class;
+		$chain_transport->calls = array();
+		$chain_transport->timeout_on_send = false;
+		$chain_transport->generic_on_send = false;
+
+		$chain_manager = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $chain_transport ) );
+		$chain_queue   = new Kuka_Island_Core_Invoice_Queue( $chain_manager );
+		$chain_order   = kuka_create_lock_order(
+			$test_run_id,
+			$billing_props,
+			array(
+				Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+				Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+			)
+		);
+		$chain_order_id = (int) $chain_order->get_id();
+		$chain_lock     = 'kuka_inv_' . $chain_order_id;
+
+		$chain_rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$chain_held = '1' === (string) $chain_rival->get_var( $chain_rival->prepare( 'SELECT GET_LOCK(%s, 0)', $chain_lock ) );
+
+		$chain_saved = $install_queue_worker( $chain_queue );
+		as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $chain_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+		as_schedule_single_action( time(), Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $chain_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+
+		// Run 1: a genuine pre-transmission transient.
+		$chain_run1 = $drain_send_actions( $chain_order_id, 1 );
+		$chain_mid  = wc_get_order( $chain_order_id );
+		$mid_retries = (string) $chain_mid->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+		$mid_fiscal  = (string) $chain_mid->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true );
+		$mid_pending = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $chain_order_id ) );
+
+		if ( true !== $chain_held
+			|| 1 !== $chain_run1['runs']
+			|| '1' !== $mid_retries
+			|| ! ( '' === $mid_fiscal || '0' === $mid_fiscal )
+			|| 1 !== $mid_pending ) {
+			$chain_first_ok = false;
+		}
+
+		// The lock goes, and the chain now ends this case's own way.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$chain_rival->get_var( $chain_rival->prepare( 'SELECT RELEASE_LOCK(%s)', $chain_lock ) );
+
+		switch ( $spec[0] ) {
+			case 'strip_number_source':
+				// EDM provenance gone -> fail-closed numbering, a PERMANENT
+				// pre-transmission error. Nothing is sent.
+				$chain_mid->delete_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE );
+				$chain_mid->save_meta_data();
+				break;
+
+			case 'timeout_on_send':
+				$chain_transport->timeout_on_send = true;
+				break;
+
+			case 'generic_on_send':
+				$chain_transport->generic_on_send = true;
+				break;
+
+			case 'auto_send_off':
+				// The same order, a worker whose config now says auto-send is
+				// off. It owns nothing further and must leave nothing behind.
+				$off_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $chain_transport ) );
+				$restore_queue_worker( $chain_saved );
+				$chain_saved = $install_queue_worker( new Kuka_Island_Core_Invoice_Queue( $off_manager ) );
+				break;
+		}
+
+		// Run 2: the chain ends.
+		$chain_run2 = $drain_send_actions( $chain_order_id );
+		$restore_queue_worker( $chain_saved );
+
+		$chain_after   = wc_get_order( $chain_order_id );
+		$after_retries = (string) $chain_after->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+		$after_fiscal  = (int) $chain_after->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true );
+		$after_status  = Kuka_Island_Core_Invoice_Order_Store::get_status( $chain_after );
+		$after_pending = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $chain_order_id ) );
+		$after_poll    = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS, $chain_order_id ) );
+
+		$hit = 1 === $chain_run2['runs']
+			&& false === $chain_run2['hit_limit']
+			// The counter is gone, on every one of these exits.
+			&& '' === $after_retries
+			&& 0 === $after_pending
+			&& $after_status === (string) $spec[1]
+			&& $after_fiscal === (int) $spec[2]
+			&& $after_poll === (int) $spec[3];
+
+		$chain_details[] = $case . '=' . $after_status . '/retries:' . ( '' === $after_retries ? 'absent' : $after_retries ) . '/send_pending:' . $after_pending . '/poll_pending:' . $after_poll;
+		if ( ! $hit ) {
+			$chain_ok = false;
+		}
+
+		Kuka_Island_Core_Invoice_Status_Poller::unschedule( $chain_order_id );
+		as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $chain_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+		kuka_test_delete_order( $chain_order_id, $test_run_id );
+	}
+
+	$report(
+		'INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT',
+		$chain_ok && $chain_first_ok,
+		sprintf(
+			'measured:real_queue_worker_on_action_scheduler|cases:%d|first_run_transient:%s|%s|fiscal_counter_untouched_by_queue:yes',
+			count( $chain_exit_cases ),
+			$chain_first_ok ? 'retries:1/fiscal:0/pending:1' : 'WRONG',
+			implode( ' ', $chain_details )
+		)
+	);
+
+	/*
+	 * A new chain must not inherit an older chain's count. maybe_enqueue_order()
+	 * is where a chain begins, so that is where the slate is wiped.
+	 */
+	$stale_transport = new Kuka_Island_Test_Tracking_Transport();
+	$stale_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $stale_transport ) );
+	$stale_queue     = new Kuka_Island_Core_Invoice_Queue( $stale_manager );
+	$stale_order     = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+			// Residue from an earlier chain, one short of the cap.
+			Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES        => '2',
+		)
+	);
+	$stale_order_id  = (int) $stale_order->get_id();
+	$stale_seeded    = (string) $stale_order->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+
+	// The real enqueue entry point, on a settled, non-fixture order.
+	$stale_queue->maybe_enqueue_order( $stale_order_id, wc_get_order( $stale_order_id ) );
+
+	$stale_after_enqueue = wc_get_order( $stale_order_id );
+	$stale_cleared       = (string) $stale_after_enqueue->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+	$stale_status        = Kuka_Island_Core_Invoice_Order_Store::get_status( $stale_after_enqueue );
+	$stale_queued        = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $stale_order_id ) );
+
+	/*
+	 * maybe_enqueue_order() writes STATUS_QUEUED, and 'queued' is not in
+	 * can_retry(), so a worker run would raise a permanent
+	 * invalid_invoice_status_transition instead of reaching the send path. That
+	 * is a separate latent defect on the auto-send path -- auto-send is off in
+	 * production and is not this change's subject -- so the status is put back to
+	 * where the first real worker run would find it, and the counter is what this
+	 * test measures.
+	 */
+	$stale_after_enqueue->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_NONE );
+	$stale_after_enqueue->save_meta_data();
+
+	$stale_rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$stale_held = '1' === (string) $stale_rival->get_var( $stale_rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_' . $stale_order_id ) );
+
+	$stale_saved = $install_queue_worker( $stale_queue );
+	$stale_run   = $drain_send_actions( $stale_order_id, 1 );
+	$restore_queue_worker( $stale_saved );
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$stale_rival->get_var( $stale_rival->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_inv_' . $stale_order_id ) );
+
+	$stale_final   = wc_get_order( $stale_order_id );
+	$stale_retries = (string) $stale_final->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+	$stale_pending = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $stale_order_id ) );
+
+	$report(
+		'INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO',
+		'2' === $stale_seeded
+		// The enqueue wiped the residue before scheduling anything.
+		&& '' === $stale_cleared
+		&& Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $stale_status
+		&& 1 === $stale_queued
+		&& true === $stale_held
+		&& 1 === $stale_run['runs']
+		// The new chain's first transient counts 1, not 3: the old value is not
+		// inherited, so this chain gets its full budget.
+		&& '1' === $stale_retries
+		&& 1 === $stale_pending
+		&& 0 === (int) ( $stale_transport->calls['SendInvoice'] ?? 0 ),
+		sprintf(
+			'measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:%s|after_enqueue:%s|status_after_enqueue:%s|actions_after_enqueue:%d|first_transient_retries:%s|send_actions_pending:%d|SendInvoice=%d',
+			$stale_seeded,
+			'' === $stale_cleared ? 'cleared' : $stale_cleared,
+			$stale_status,
+			$stale_queued,
+			'' === $stale_retries ? 'absent' : $stale_retries,
+			$stale_pending,
+			$stale_transport->calls['SendInvoice'] ?? 0
+		)
+	);
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $stale_order_id );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	kuka_test_delete_order( $stale_order_id, $test_run_id );
 }
 
 /* -------------------------------------------------------------------------- */

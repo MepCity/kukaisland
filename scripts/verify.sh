@@ -697,6 +697,16 @@ expect_invoice_match "a failed reconciliation does not reschedule the send worke
 expect_invoice_match "the pre-transmission retry chain is bounded" "^INVOICE_QUEUE_PRETRANSMISSION_RETRY_CAP=PASS\\|failed_runs:3\\|send_actions_pending=0\\|status=needs_manual_review\\|infinite_chain:no\\|measured:real_queue_worker_on_action_scheduler\\|max_retry_attempts:3\\|SendInvoice=0\\|fiscal_send_attempts:0\\|lock_held_by_second_session:yes$"
 expect_invoice_match "the queue retry counter is its own and clears on success" "^INVOICE_QUEUE_RETRY_COUNTER_CLEARED_ON_SUCCESS=PASS\\|measured:real_queue_worker_on_action_scheduler\\|failed_runs:1\\|queue_retries_after_failure:1\\|fiscal_send_attempts_after_failure:none\\|rescheduled:1\\|successful_runs:1\\|queue_retries_after_success:cleared\\|fiscal_send_attempts_after_success:1\\|SendInvoice=1\\|status=sent\\|send_actions_pending=0$"
 
+# _kuka_invoice_queue_retries belongs to ONE live chain of send actions. A value
+# left behind by a finished chain would silently shorten the retry budget of
+# the next one, so every exit that ends this worker's ownership clears it:
+# a permanent pre-send error, a non-Kuka exception, the hand-over to the
+# poller once transmission evidence exists, auto-send being switched off, and
+# a new chain starting from maybe_enqueue_order().
+expect_invoice_match "the queue retry counter survives no chain exit" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|measured:real_queue_worker_on_action_scheduler\\|cases:4\\|first_run_transient:retries:1/fiscal:0/pending:1\\|"
+expect_invoice_match "every chain exit leaves the counter absent" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|.*permanent_pre_send=blocked/retries:absent/send_pending:0/poll_pending:0 evidence_handover=send_uncertain/retries:absent/send_pending:0/poll_pending:1 generic_exception=send_uncertain/retries:absent/send_pending:0/poll_pending:1 auto_send_disabled=none/retries:absent/send_pending:0/poll_pending:0\\|fiscal_counter_untouched_by_queue:yes$"
+expect_invoice_line "a new chain starts the counter at zero" "INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO=PASS|measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:2|after_enqueue:cleared|status_after_enqueue:queued|actions_after_enqueue:1|first_transient_retries:1|send_actions_pending:1|SendInvoice=0"
+
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 
 # odemeSekli is a fiscal enumeration. Only ODEMEARACISI is confirmed, iyzico is

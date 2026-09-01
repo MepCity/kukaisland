@@ -23,6 +23,12 @@ final class Kuka_Island_Core_Invoice_Queue {
 	 * is a GetInvoiceStatus call, so that counter never moves on the
 	 * reconciliation path. The cap therefore never arrived and the worker could
 	 * reschedule itself without end.
+	 *
+	 * The value belongs to ONE live chain of ACTION_PROCESS_INVOICE actions and
+	 * to nothing else. Every path that ends this worker's ownership clears it,
+	 * and maybe_enqueue_order() clears it again when it starts a new chain, so a
+	 * count left by an earlier chain can never be inherited as a smaller retry
+	 * budget by a later one.
 	 */
 	public const META_QUEUE_RETRIES = '_kuka_invoice_queue_retries';
 
@@ -88,6 +94,11 @@ final class Kuka_Island_Core_Invoice_Queue {
 			return;
 		}
 
+		// A new chain starts from zero. Any count still on the order belongs to
+		// a chain that is already over, and inheriting it would silently give
+		// this one a shorter retry budget.
+		$this->clear_queue_retries( $order );
+
 		// Mark status as queued.
 		Kuka_Island_Core_Invoice_Order_Store::set_status( $order, Kuka_Island_Core_Invoice_Status::STATUS_QUEUED, __( 'Fatura kuyruğa eklendi.', 'kuka-island-core' ) );
 
@@ -107,6 +118,10 @@ final class Kuka_Island_Core_Invoice_Queue {
 
 		$config = $this->manager->get_config();
 		if ( ! $config->is_auto_send_enabled() ) {
+			// Auto-send was switched off mid-chain. This worker owns nothing
+			// further, so it leaves no retry budget behind either.
+			$this->clear_queue_retries( $order );
+
 			return;
 		}
 
@@ -119,9 +134,14 @@ final class Kuka_Island_Core_Invoice_Queue {
 		} catch ( Kuka_Island_Core_Invoice_Transient_Exception $transient_e ) {
 			$this->handle_transient_failure( $order_id );
 		} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $perm_e ) {
-			// Permanent error: no auto-retry.
+			// Permanent error: no auto-retry, so the chain is over and its count
+			// goes with it. Cleared before escalating, because escalation may
+			// legitimately decline to touch a protected status and must not
+			// decide whether the counter survives.
+			$this->clear_queue_retries( $order );
 			$this->escalate_to_manual_review( $order, $perm_e->get_user_message() );
 		} catch ( Exception $e ) {
+			$this->clear_queue_retries( $order );
 			$this->escalate_to_manual_review(
 				$order,
 				__( 'Beklenmeyen hata sebebiyle işlem durduruldu.', 'kuka-island-core' )
@@ -161,6 +181,11 @@ final class Kuka_Island_Core_Invoice_Queue {
 
 		if ( array() !== Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order )
 			|| Kuka_Island_Core_Invoice_Status::is_escalation_protected( $status ) ) {
+			// Ownership has moved to the poller or to a manual EDM query. The
+			// send chain is finished, so its count must not sit on the order
+			// waiting to shorten some future chain's budget.
+			$this->clear_queue_retries( $order );
+
 			return;
 		}
 
