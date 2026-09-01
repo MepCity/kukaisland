@@ -680,12 +680,22 @@ expect_invoice_match "a failed follow-up keeps the in-flight status" "^INVOICE_P
 expect_invoice_match "the poll give-up is not retryable" "^INVOICE_POLL_GIVE_UP_IS_NOT_RETRYABLE=PASS\\|measured:action_scheduler_runner\\|cases:2\\|attempt_cap=reconciliation_required/status_polling_max_attempts_reached/pending0 elapsed_cap=reconciliation_required/status_polling_max_elapsed_reached/pending0\\|retryable:no\\|SendInvoice=0\\|LoadInvoice=0$"
 expect_invoice_match "no transmitted document is ever resent" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|measured:manager_process_order\\|cases:9\\|"
 expect_invoice_match "every evidence fact locks the send path alone" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|.*evidence_uuid_only=reconciliation_required/send0 evidence_status_only=reconciliation_required/send0 evidence_sent_at_only=reconciliation_required/send0 evidence_attempts_only=reconciliation_required/send0 "
-expect_invoice_match "force and the queue worker are both guarded" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|.*give_up_locked=reconciliation_required/send0 unrecognised_status=reconciliation_required/send0 package_fail=failed/send0 schedule_failed=reconciliation_required/send0 .*unforced_queue_worker=reconciliation_required/send0\\|SendInvoice=0\\|LoadInvoice=0\\|identifiers_preserved:yes$"
+expect_invoice_match "force and an unforced call are both guarded" "^INVOICE_POST_TRANSMISSION_GUARD_NO_RESEND=PASS\\|.*give_up_locked=reconciliation_required/send0 unrecognised_status=reconciliation_required/send0 package_fail=failed/send0 schedule_failed=reconciliation_required/send0 .*unforced_manager_call=reconciliation_required/send0\\|SendInvoice=0\\|LoadInvoice=0\\|identifiers_preserved:yes$"
 expect_invoice_line "an unrecognised EDM status never produces a second document" "INVOICE_UNRECOGNISED_STATUS_NEVER_RESENDS=PASS|measured:manager_process_order|SendInvoice_after_first:1|SendInvoice_after_two_retries:1|LoadInvoice=0|first_status:needs_manual_review|first_retryable:yes|evidence:uuid+sent_at+send_attempts|admin_offers_send:no|final_status:reconciliation_required|final_retryable:no|uuid_stable:yes"
 
 # The other side of the guard: an order that was never transmitted keeps its
 # ordinary retry behaviour, so the guard cannot quietly stop the shop invoicing.
 expect_invoice_line "an unsent order still sends normally" "INVOICE_PRE_TRANSMISSION_STILL_SENDS=PASS|measured:manager_process_order|cases:4|never_sent_none=sent/send1 never_sent_manual_review=sent/send1 never_sent_failed=sent/send1 never_sent_blocked=sent/send1|evidence:none|SendInvoice=4"
+
+# THE REAL SEND QUEUE WORKER, run as an Action Scheduler action through the real
+# runner -- not a direct manager call. Reconciling a transmitted document is a
+# GetInvoiceStatus call, which never advances the fiscal send-attempt counter,
+# so the worker's old cap (read from that counter) never arrived and it could
+# reschedule itself without end. The status query belongs to the poller.
+expect_invoice_match "a send timeout hands the document to the poller" "^INVOICE_QUEUE_SEND_TIMEOUT_OWNED_BY_POLLER=PASS\\|SendInvoice=1\\|send_actions_pending=0\\|poll_actions_pending=1\\|status=send_uncertain\\|measured:real_queue_worker_on_action_scheduler\\|worker_runs:1\\|LoadInvoice=0\\|queue_retry_meta:none$"
+expect_invoice_match "a failed reconciliation does not reschedule the send worker" "^INVOICE_QUEUE_RECONCILIATION_FAILURE_DOES_NOT_RESCHEDULE_SEND=PASS\\|SendInvoice=0\\|GetInvoiceStatus=1\\|send_actions_pending=0\\|status=reconciliation_required\\|identifiers_preserved:yes\\|measured:real_queue_worker_on_action_scheduler\\|worker_runs:1\\|retryable:no\\|LoadInvoice=0$"
+expect_invoice_match "the pre-transmission retry chain is bounded" "^INVOICE_QUEUE_PRETRANSMISSION_RETRY_CAP=PASS\\|failed_runs:3\\|send_actions_pending=0\\|status=needs_manual_review\\|infinite_chain:no\\|measured:real_queue_worker_on_action_scheduler\\|max_retry_attempts:3\\|SendInvoice=0\\|fiscal_send_attempts:0\\|lock_held_by_second_session:yes$"
+expect_invoice_match "the queue retry counter is its own and clears on success" "^INVOICE_QUEUE_RETRY_COUNTER_CLEARED_ON_SUCCESS=PASS\\|measured:real_queue_worker_on_action_scheduler\\|failed_runs:1\\|queue_retries_after_failure:1\\|fiscal_send_attempts_after_failure:none\\|rescheduled:1\\|successful_runs:1\\|queue_retries_after_success:cleared\\|fiscal_send_attempts_after_success:1\\|SendInvoice=1\\|status=sent\\|send_actions_pending=0$"
 
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 

@@ -14,6 +14,18 @@ final class Kuka_Island_Core_Invoice_Queue {
 	public const ACTION_PROCESS_INVOICE = 'kuka_island_process_order_invoice';
 	public const MAX_RETRY_ATTEMPTS     = 3;
 
+	/**
+	 * Failed worker runs in the CURRENT queue chain.
+	 *
+	 * Deliberately its own key. This used to be read from
+	 * _kuka_invoice_attempts, which is the fiscal record of how many times
+	 * SendInvoice was actually called -- and reconciling a transmitted document
+	 * is a GetInvoiceStatus call, so that counter never moves on the
+	 * reconciliation path. The cap therefore never arrived and the worker could
+	 * reschedule itself without end.
+	 */
+	public const META_QUEUE_RETRIES = '_kuka_invoice_queue_retries';
+
 	private Kuka_Island_Core_Invoice_Manager $manager;
 
 	public function __construct( ?Kuka_Island_Core_Invoice_Manager $manager = null ) {
@@ -100,20 +112,12 @@ final class Kuka_Island_Core_Invoice_Queue {
 
 		try {
 			$this->manager->process_order( $order );
+
+			// The send path completed. Whatever this chain had been counting is
+			// spent, so a later genuine pre-send hiccup starts from zero.
+			$this->clear_queue_retries( $order );
 		} catch ( Kuka_Island_Core_Invoice_Transient_Exception $transient_e ) {
-			$attempts = (int) $order->get_meta( '_kuka_invoice_attempts', true );
-			if ( $attempts < self::MAX_RETRY_ATTEMPTS ) {
-				// Limited exponential backoff: 2m (120s), 8m (480s), 32m (1920s).
-				$delay = (int) ( 120 * pow( 4, max( 0, $attempts - 1 ) ) );
-				$this->schedule_action( $order_id, time() + $delay );
-			} else {
-				// Exhausted max retry attempts -> transition to manual review,
-				// unless the manager already recorded a protected state.
-				$this->escalate_to_manual_review(
-					$order,
-					__( 'Otomatik deneme limiti aşıldı. Fatura manuel inceleme gerektiriyor.', 'kuka-island-core' )
-				);
-			}
+			$this->handle_transient_failure( $order_id );
 		} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $perm_e ) {
 			// Permanent error: no auto-retry.
 			$this->escalate_to_manual_review( $order, $perm_e->get_user_message() );
@@ -123,6 +127,78 @@ final class Kuka_Island_Core_Invoice_Queue {
 				__( 'Beklenmeyen hata sebebiyle işlem durduruldu.', 'kuka-island-core' )
 			);
 		}
+	}
+
+	/**
+	 * Decide whether a transient failure deserves another send worker run.
+	 *
+	 * The order is re-read first, because process_order() has just written to it
+	 * and the decision depends entirely on what it wrote.
+	 *
+	 * Two states end the chain instead of extending it:
+	 *
+	 * - Any persistent evidence of a previous transmission. process_order() can
+	 *   only reconcile such an order, and reconciling is GetInvoiceStatus, so
+	 *   rescheduling the SEND worker to do it was both pointless and unbounded:
+	 *   the old cap was read from the fiscal send-attempt counter, which a
+	 *   status query never advances. Ownership of an in-flight document belongs
+	 *   to the status poller's own action and to the manual EDM query in the
+	 *   order screen -- not to the send queue.
+	 * - An escalation-protected status, for the same reason from the other side.
+	 *
+	 * Everything else is a genuine pre-transmission transient error and keeps
+	 * its bounded, backed-off retry.
+	 *
+	 * @param int $order_id WooCommerce order ID.
+	 */
+	private function handle_transient_failure( int $order_id ): void {
+		$order = wc_get_order( $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$status = Kuka_Island_Core_Invoice_Order_Store::get_status( $order );
+
+		if ( array() !== Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order )
+			|| Kuka_Island_Core_Invoice_Status::is_escalation_protected( $status ) ) {
+			return;
+		}
+
+		$retries = (int) $order->get_meta( self::META_QUEUE_RETRIES, true ) + 1;
+		$order->update_meta_data( self::META_QUEUE_RETRIES, (string) $retries );
+		$order->save_meta_data();
+
+		if ( $retries >= self::MAX_RETRY_ATTEMPTS ) {
+			// Exhausted this chain. No new action is created, so the chain ends
+			// here rather than continuing on a counter that never moves.
+			$this->escalate_to_manual_review(
+				$order,
+				__( 'Otomatik deneme limiti aşıldı. Fatura manuel inceleme gerektiriyor.', 'kuka-island-core' )
+			);
+			// A fresh budget for the next chain: the cap is per chain, and a new
+			// chain only ever starts from a new order-status event.
+			$this->clear_queue_retries( $order );
+
+			return;
+		}
+
+		// Limited exponential backoff: 2m (120s), 8m (480s).
+		$delay = (int) ( 120 * pow( 4, max( 0, $retries - 1 ) ) );
+		$this->schedule_action( $order_id, time() + $delay );
+	}
+
+	/**
+	 * Forget the queue's retry count for this order.
+	 *
+	 * @param WC_Order $order Order.
+	 */
+	private function clear_queue_retries( WC_Order $order ): void {
+		if ( '' === (string) $order->get_meta( self::META_QUEUE_RETRIES, true ) ) {
+			return;
+		}
+
+		$order->delete_meta_data( self::META_QUEUE_RETRIES );
+		$order->save_meta_data();
 	}
 
 	/**

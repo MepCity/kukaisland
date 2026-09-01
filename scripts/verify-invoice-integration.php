@@ -4222,8 +4222,9 @@ $guard_matrix = array(
 		'fail',
 		Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
 	),
-	// Non-force callers are covered by the same guard.
-	'unforced_queue_worker' => array(
+	// A non-force caller is covered by the same guard. This is a direct manager
+	// call, not the queue worker -- the real worker is measured further down.
+	'unforced_manager_call' => array(
 		array(
 			Kuka_Island_Core_Invoice_Order_Store::META_STATUS   => Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
 			Kuka_Island_Core_Invoice_Order_Store::META_UUID     => 'uuid-guard-unforced',
@@ -4462,6 +4463,382 @@ $report(
 		$presend_sends
 	)
 );
+
+/* -------------------------------------------------------------------------- */
+/* The REAL send queue worker, on the real Action Scheduler runner             */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Everything below runs Kuka_Island_Core_Invoice_Queue::process_queued_order()
+ * as an Action Scheduler action, through
+ * ActionScheduler_Abstract_QueueRunner::process_action(). Calling the manager
+ * directly would not exercise the worker's own catch blocks, which is where the
+ * rescheduling decision lives.
+ *
+ * auto_send is satisfied by a per-test config object, so the worker's own
+ * readiness gate is honoured rather than bypassed. No option, constant or
+ * production default is touched.
+ */
+if ( $runner_available ) {
+	$queue_config = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'auto_send' => true ) ) );
+
+	/**
+	 * Pending action IDs for one hook and one order.
+	 *
+	 * @param string $hook     Action hook.
+	 * @param int    $order_id Order ID.
+	 * @return array<int, int>
+	 */
+	$hook_pending_ids = static function ( string $hook, int $order_id ): array {
+		return array_map(
+			'intval',
+			(array) as_get_scheduled_actions(
+				array(
+					'hook'     => $hook,
+					'args'     => array( 'order_id' => $order_id ),
+					'group'    => Kuka_Island_Core_Invoice_Status_Poller::GROUP,
+					'status'   => ActionScheduler_Store::STATUS_PENDING,
+					'per_page' => 50,
+					'orderby'  => 'none',
+				),
+				'ids'
+			)
+		);
+	};
+
+	/**
+	 * Install a queue worker as the ONLY callback for the send action.
+	 *
+	 * register() is deliberately not used: it would also hook
+	 * maybe_enqueue_order() onto the order-status transitions, and fixtures
+	 * created later in this run would start enqueueing themselves.
+	 *
+	 * @param Kuka_Island_Core_Invoice_Queue $queue Worker to install.
+	 * @return array<string, mixed>|null Callbacks that were displaced.
+	 */
+	$install_queue_worker = static function ( Kuka_Island_Core_Invoice_Queue $queue ) {
+		$saved = $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE ] ?? null;
+		remove_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE );
+		add_action( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( $queue, 'process_queued_order' ), 10, 1 );
+
+		return $saved;
+	};
+
+	$restore_queue_worker = static function ( $saved ): void {
+		remove_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE );
+		if ( null !== $saved ) {
+			$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE ] = $saved;
+		}
+	};
+
+	/**
+	 * Run every pending send action for one order, once each, in order.
+	 *
+	 * Returns how many actions actually executed, which is the number of failed
+	 * worker runs when none of them succeeds.
+	 *
+	 * @param int $order_id Order ID.
+	 * @param int $limit    Safety stop, so a runaway chain ends the test rather
+	 *                      than the process.
+	 * @return array{runs: int, hit_limit: bool}
+	 */
+	$drain_send_actions = static function ( int $order_id, int $limit = 8 ) use ( $hook_pending_ids ): array {
+		$runs = 0;
+
+		while ( $runs < $limit ) {
+			$pending = $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $order_id );
+			if ( array() === $pending ) {
+				break;
+			}
+
+			ActionScheduler_QueueRunner::instance()->process_action( (int) $pending[0], 'kuka-verify' );
+			++$runs;
+		}
+
+		return array(
+			'runs'      => $runs,
+			'hit_limit' => $runs >= $limit,
+		);
+	};
+
+	/*
+	 * (1) SendInvoice times out. The manager records send_uncertain and books the
+	 * status query. The worker used to ALSO schedule another send action, which
+	 * is a second SendInvoice waiting to happen; the status query is the
+	 * poller's job.
+	 */
+	$qto_transport = new Kuka_Island_Test_Tracking_Transport();
+	$qto_transport->simulate_timeout_on_send = true;
+	$qto_manager = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qto_transport ) );
+	$qto_queue   = new Kuka_Island_Core_Invoice_Queue( $qto_manager );
+	$qto_order   = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$qto_order_id = (int) $qto_order->get_id();
+
+	$qto_saved = $install_queue_worker( $qto_queue );
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $qto_order_id );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qto_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+
+	as_schedule_single_action( time(), Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qto_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	$qto_drain = $drain_send_actions( $qto_order_id );
+	$restore_queue_worker( $qto_saved );
+
+	$qto_reloaded    = wc_get_order( $qto_order_id );
+	$qto_status      = Kuka_Island_Core_Invoice_Order_Store::get_status( $qto_reloaded );
+	$qto_send_calls  = (int) ( $qto_transport->calls['SendInvoice'] ?? 0 );
+	$qto_send_queued = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $qto_order_id ) );
+	$qto_poll_queued = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS, $qto_order_id ) );
+	$qto_retry_meta  = (string) $qto_reloaded->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+
+	$report(
+		'INVOICE_QUEUE_SEND_TIMEOUT_OWNED_BY_POLLER',
+		1 === $qto_send_calls
+		&& 0 === $qto_send_queued
+		&& 1 === $qto_poll_queued
+		&& Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN === $qto_status
+		&& 0 === (int) ( $qto_transport->calls['LoadInvoice'] ?? 0 )
+		// Exactly one worker run, and the chain did not extend itself.
+		&& 1 === $qto_drain['runs']
+		&& false === $qto_drain['hit_limit']
+		// The send queue keeps no retry budget for a transmitted document.
+		&& '' === $qto_retry_meta,
+		sprintf(
+			'SendInvoice=%d|send_actions_pending=%d|poll_actions_pending=%d|status=%s|measured:real_queue_worker_on_action_scheduler|worker_runs:%d|LoadInvoice=%d|queue_retry_meta:%s',
+			$qto_send_calls,
+			$qto_send_queued,
+			$qto_poll_queued,
+			$qto_status,
+			$qto_drain['runs'],
+			$qto_transport->calls['LoadInvoice'] ?? 0,
+			'' === $qto_retry_meta ? 'none' : $qto_retry_meta
+		)
+	);
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $qto_order_id );
+	kuka_test_delete_order( $qto_order_id, $test_run_id );
+
+	/*
+	 * (2) Reconciliation fails for a document that carries transmission
+	 * evidence. The worker must not reschedule itself, and must not overwrite
+	 * the manager's reconciliation_required with needs_manual_review.
+	 */
+	$qrf_transport = new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - PROCESSING', true );
+	$qrf_manager   = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qrf_transport ) );
+	$qrf_queue     = new Kuka_Island_Core_Invoice_Queue( $qrf_manager );
+	$qrf_order     = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS         => Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+			Kuka_Island_Core_Invoice_Order_Store::META_UUID           => 'uuid-queue-reconcile',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER         => 'KUK2026000000906',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE  => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+			Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS       => '1',
+		)
+	);
+	$qrf_order_id  = (int) $qrf_order->get_id();
+	$qrf_uuid_pre  = (string) $qrf_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+	$qrf_num_pre   = (string) $qrf_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true );
+
+	$qrf_saved = $install_queue_worker( $qrf_queue );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qrf_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	as_schedule_single_action( time(), Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qrf_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	$qrf_drain = $drain_send_actions( $qrf_order_id );
+	$restore_queue_worker( $qrf_saved );
+
+	$qrf_reloaded   = wc_get_order( $qrf_order_id );
+	$qrf_status     = Kuka_Island_Core_Invoice_Order_Store::get_status( $qrf_reloaded );
+	$qrf_uuid_post  = (string) $qrf_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+	$qrf_num_post   = (string) $qrf_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true );
+	$qrf_identifiers = $qrf_uuid_post === $qrf_uuid_pre && $qrf_num_post === $qrf_num_pre;
+	$qrf_send_queued = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $qrf_order_id ) );
+
+	$report(
+		'INVOICE_QUEUE_RECONCILIATION_FAILURE_DOES_NOT_RESCHEDULE_SEND',
+		0 === (int) ( $qrf_transport->calls['SendInvoice'] ?? 0 )
+		&& 1 === (int) ( $qrf_transport->calls['GetInvoiceStatus'] ?? 0 )
+		&& 0 === $qrf_send_queued
+		&& Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED === $qrf_status
+		&& $qrf_identifiers
+		&& 0 === (int) ( $qrf_transport->calls['LoadInvoice'] ?? 0 )
+		// The worker's catch block did not flatten the manager's decision.
+		&& Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW !== $qrf_status
+		&& false === Kuka_Island_Core_Invoice_Status::can_retry( $qrf_status )
+		// One run, and no successor: the old code looped here for ever because
+		// the fiscal attempt counter never advances on a status query.
+		&& 1 === $qrf_drain['runs']
+		&& false === $qrf_drain['hit_limit'],
+		sprintf(
+			'SendInvoice=%d|GetInvoiceStatus=%d|send_actions_pending=%d|status=%s|identifiers_preserved:%s|measured:real_queue_worker_on_action_scheduler|worker_runs:%d|retryable:%s|LoadInvoice=%d',
+			$qrf_transport->calls['SendInvoice'] ?? 0,
+			$qrf_transport->calls['GetInvoiceStatus'] ?? 0,
+			$qrf_send_queued,
+			$qrf_status,
+			$qrf_identifiers ? 'yes' : 'no',
+			$qrf_drain['runs'],
+			Kuka_Island_Core_Invoice_Status::can_retry( $qrf_status ) ? 'YES' : 'no',
+			$qrf_transport->calls['LoadInvoice'] ?? 0
+		)
+	);
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $qrf_order_id );
+	kuka_test_delete_order( $qrf_order_id, $test_run_id );
+
+	/*
+	 * (3) A genuine PRE-transmission transient error keeps its bounded retry.
+	 *
+	 * The manager's own send lock is held by a real second MySQL session, so
+	 * process_order() raises lock_collision before it reaches routing, numbering
+	 * or SendInvoice. Nothing is transmitted and no evidence is written, which is
+	 * exactly the case that should still be retried -- and still stop.
+	 */
+	$qrc_transport = new Kuka_Island_Test_Tracking_Transport();
+	$qrc_manager   = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qrc_transport ) );
+	$qrc_queue     = new Kuka_Island_Core_Invoice_Queue( $qrc_manager );
+	$qrc_order     = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$qrc_order_id = (int) $qrc_order->get_id();
+
+	$qrc_rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$qrc_lock_held = '1' === (string) $qrc_rival->get_var( $qrc_rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_' . $qrc_order_id ) );
+
+	$qrc_saved = $install_queue_worker( $qrc_queue );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qrc_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	as_schedule_single_action( time(), Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qrc_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	$qrc_drain = $drain_send_actions( $qrc_order_id );
+	$restore_queue_worker( $qrc_saved );
+
+	$qrc_reloaded    = wc_get_order( $qrc_order_id );
+	$qrc_status      = Kuka_Island_Core_Invoice_Order_Store::get_status( $qrc_reloaded );
+	$qrc_send_queued = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $qrc_order_id ) );
+	$qrc_fiscal      = (int) $qrc_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true );
+
+	$report(
+		'INVOICE_QUEUE_PRETRANSMISSION_RETRY_CAP',
+		true === $qrc_lock_held
+		&& Kuka_Island_Core_Invoice_Queue::MAX_RETRY_ATTEMPTS === $qrc_drain['runs']
+		&& false === $qrc_drain['hit_limit']
+		&& 0 === $qrc_send_queued
+		&& Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW === $qrc_status
+		// Nothing was transmitted, and the fiscal counter proves it: the queue's
+		// budget is its own meta key, not this one.
+		&& 0 === (int) ( $qrc_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === $qrc_fiscal,
+		sprintf(
+			'failed_runs:%d|send_actions_pending=%d|status=%s|infinite_chain:%s|measured:real_queue_worker_on_action_scheduler|max_retry_attempts:%d|SendInvoice=%d|fiscal_send_attempts:%d|lock_held_by_second_session:%s',
+			$qrc_drain['runs'],
+			$qrc_send_queued,
+			$qrc_status,
+			$qrc_drain['hit_limit'] ? 'YES' : 'no',
+			Kuka_Island_Core_Invoice_Queue::MAX_RETRY_ATTEMPTS,
+			$qrc_transport->calls['SendInvoice'] ?? 0,
+			$qrc_fiscal,
+			$qrc_lock_held ? 'yes' : 'no'
+		)
+	);
+
+	/*
+	 * (4) The queue's retry counter is its own, and a successful run clears it.
+	 *
+	 * Same order, same held lock: one failed run leaves a count of 1 while the
+	 * fiscal send-attempt counter is still 0. Releasing the lock lets the next
+	 * run succeed, and the count goes away.
+	 */
+	$qcc_transport = new Kuka_Island_Test_Tracking_Transport();
+	$qcc_manager   = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qcc_transport ) );
+	$qcc_queue     = new Kuka_Island_Core_Invoice_Queue( $qcc_manager );
+	$qcc_order     = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$qcc_order_id = (int) $qcc_order->get_id();
+
+	$qcc_rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$qcc_lock_held = '1' === (string) $qcc_rival->get_var( $qcc_rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_' . $qcc_order_id ) );
+
+	$qcc_saved = $install_queue_worker( $qcc_queue );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qcc_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	as_schedule_single_action( time(), Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $qcc_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+
+	// One failed run while the lock is held.
+	$qcc_first = $drain_send_actions( $qcc_order_id, 1 );
+	$qcc_mid   = wc_get_order( $qcc_order_id );
+	$qcc_retry_after_failure  = (string) $qcc_mid->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+	$qcc_fiscal_after_failure = (string) $qcc_mid->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true );
+	$qcc_queued_after_failure = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $qcc_order_id ) );
+
+	// Release the lock so the retry succeeds.
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$qcc_rival->get_var( $qcc_rival->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_inv_' . $qcc_order_id ) );
+
+	$qcc_second = $drain_send_actions( $qcc_order_id );
+	$restore_queue_worker( $qcc_saved );
+
+	$qcc_reloaded    = wc_get_order( $qcc_order_id );
+	$qcc_retry_after_success  = (string) $qcc_reloaded->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+	$qcc_fiscal_after_success = (int) $qcc_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true );
+	$qcc_status      = Kuka_Island_Core_Invoice_Order_Store::get_status( $qcc_reloaded );
+	$qcc_send_queued = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $qcc_order_id ) );
+
+	$report(
+		'INVOICE_QUEUE_RETRY_COUNTER_CLEARED_ON_SUCCESS',
+		true === $qcc_lock_held
+		&& 1 === $qcc_first['runs']
+		// The queue counted its own failure...
+		&& '1' === $qcc_retry_after_failure
+		// ...while the fiscal send-attempt counter stayed untouched. Those two
+		// being the same key is what let the old cap never arrive.
+		&& ( '' === $qcc_fiscal_after_failure || '0' === $qcc_fiscal_after_failure )
+		&& 1 === $qcc_queued_after_failure
+		// The retry then succeeded and the queue's count went away.
+		&& 1 === $qcc_second['runs']
+		&& false === $qcc_second['hit_limit']
+		&& '' === $qcc_retry_after_success
+		&& 1 === (int) ( $qcc_transport->calls['SendInvoice'] ?? 0 )
+		&& 1 === $qcc_fiscal_after_success
+		&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === $qcc_status
+		&& 0 === $qcc_send_queued,
+		sprintf(
+			'measured:real_queue_worker_on_action_scheduler|failed_runs:%d|queue_retries_after_failure:%s|fiscal_send_attempts_after_failure:%s|rescheduled:%d|successful_runs:%d|queue_retries_after_success:%s|fiscal_send_attempts_after_success:%d|SendInvoice=%d|status=%s|send_actions_pending=%d',
+			$qcc_first['runs'],
+			'' === $qcc_retry_after_failure ? 'none' : $qcc_retry_after_failure,
+			'' === $qcc_fiscal_after_failure ? 'none' : $qcc_fiscal_after_failure,
+			$qcc_queued_after_failure,
+			$qcc_second['runs'],
+			'' === $qcc_retry_after_success ? 'cleared' : $qcc_retry_after_success,
+			$qcc_fiscal_after_success,
+			$qcc_transport->calls['SendInvoice'] ?? 0,
+			$qcc_status,
+			$qcc_send_queued
+		)
+	);
+
+	// Ownership-checked cleanup for both fixtures and every action they created.
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$qrc_rival->get_var( $qrc_rival->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_inv_' . $qrc_order_id ) );
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $qrc_order_id );
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $qcc_order_id );
+	kuka_test_delete_order( $qrc_order_id, $test_run_id );
+	kuka_test_delete_order( $qcc_order_id, $test_run_id );
+}
 
 /* -------------------------------------------------------------------------- */
 /* INTERNETSALESDETAILS                                                        */
