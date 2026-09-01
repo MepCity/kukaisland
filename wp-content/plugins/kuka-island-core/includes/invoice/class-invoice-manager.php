@@ -122,6 +122,34 @@ class Kuka_Island_Core_Invoice_Manager {
 	}
 
 	/**
+	 * May a NEVER-TRANSMITTED order start a transmission from this status?
+	 *
+	 * Two separate questions live here, and they used to be conflated into one.
+	 *
+	 * can_retry() answers "may an operator ask for this again?" and drives the
+	 * order screen's re-send button. STATUS_QUEUED must NOT be in it: an order
+	 * the queue has already claimed is not waiting for a human to press
+	 * anything, and offering the button would invite a second chain.
+	 *
+	 * This predicate answers "is the worker allowed to pick this up?", which
+	 * STATUS_QUEUED is precisely the status for. maybe_enqueue_order() writes it
+	 * and then schedules ACTION_PROCESS_INVOICE, so the worker's own unforced
+	 * call arrived at a gate built only from can_retry() and was refused with
+	 * invalid_invoice_status_transition -- meaning the automatic path could not
+	 * send anything at all.
+	 *
+	 * This says nothing about a document that may already exist. The
+	 * transmission_evidence() guard is consulted first and outranks this
+	 * entirely; nothing here can be reached by an order that has been sent.
+	 *
+	 * @param string $status Current invoice status.
+	 */
+	public static function may_start_transmission( string $status ): bool {
+		return Kuka_Island_Core_Invoice_Status::can_retry( $status )
+			|| Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $status;
+	}
+
+	/**
 	 * What the shop is told when a transmitted document cannot be resolved.
 	 */
 	public static function manual_query_message(): string {
@@ -140,6 +168,9 @@ class Kuka_Island_Core_Invoice_Manager {
 	 * - A document left in flight (sent, pending_approval, send_uncertain) gets exactly one
 	 *   GetInvoiceStatus query booked on the poller's own Action Scheduler action. The poller
 	 *   cannot reach SendInvoice, so this never becomes a second transmission.
+	 * - STATUS_QUEUED is a valid start status for the background worker, and is deliberately
+	 *   NOT in can_retry(), so the order screen offers no re-send button for a queued order.
+	 *   See may_start_transmission().
 	 * - CENTRAL GUARD: any persistent evidence of a previous transmission attempt (UUID,
 	 *   a post-transmission status, sent_at, or an advanced attempt counter) makes this
 	 *   method reconcile-only. $force does not lift it, and no caller can bypass it,
@@ -187,9 +218,10 @@ class Kuka_Island_Core_Invoice_Manager {
 		 */
 		$reconcile_only = array() !== self::transmission_evidence( $order );
 
-		// Non-force calls refuse non-retryable states. A reconcile-only order is
-		// not being retried, so this gate does not apply to it.
-		if ( ! $reconcile_only && ! $force && ! Kuka_Island_Core_Invoice_Status::can_retry( $current_status ) ) {
+		// Non-force calls refuse a status the send path may not start from. A
+		// reconcile-only order is not starting anything, so this gate does not
+		// apply to it. Re-verified on the fresh record inside the lock.
+		if ( ! $reconcile_only && ! $force && ! self::may_start_transmission( $current_status ) ) {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Invoice status cannot be retried automatically.',
 				'invalid_invoice_status_transition',
@@ -240,6 +272,17 @@ class Kuka_Island_Core_Invoice_Manager {
 				}
 
 				return $recon_result;
+			}
+
+			// The same start decision, re-taken on the record read inside the
+			// lock: the status may have moved while this worker was queueing for
+			// it, and the pre-lock answer is no longer evidence of anything.
+			if ( ! $force && ! self::may_start_transmission( $locked_status ) ) {
+				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+					'Invoice status cannot be retried automatically.',
+					'invalid_invoice_status_transition',
+					__( 'Fatura durumu şu anda yeniden gönderime uygun değildir.', 'kuka-island-core' )
+				);
 			}
 
 			// 6. Determine document type and profile (e-Fatura vs e-Arşiv).

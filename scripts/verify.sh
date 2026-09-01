@@ -705,7 +705,20 @@ expect_invoice_match "the queue retry counter is its own and clears on success" 
 # a new chain starting from maybe_enqueue_order().
 expect_invoice_match "the queue retry counter survives no chain exit" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|measured:real_queue_worker_on_action_scheduler\\|cases:4\\|first_run_transient:retries:1/fiscal:0/pending:1\\|"
 expect_invoice_match "every chain exit leaves the counter absent" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|.*permanent_pre_send=blocked/retries:absent/send_pending:0/poll_pending:0 evidence_handover=send_uncertain/retries:absent/send_pending:0/poll_pending:1 generic_exception=send_uncertain/retries:absent/send_pending:0/poll_pending:1 auto_send_disabled=none/retries:absent/send_pending:0/poll_pending:0\\|fiscal_counter_untouched_by_queue:yes$"
-expect_invoice_line "a new chain starts the counter at zero" "INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO=PASS|measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:2|after_enqueue:cleared|status_after_enqueue:queued|actions_after_enqueue:1|first_transient_retries:1|send_actions_pending:1|SendInvoice=0"
+expect_invoice_line "a new chain starts the counter at zero" "INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO=PASS|measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:2|after_enqueue:cleared|status_after_enqueue:queued|actions_after_enqueue:1|first_transient_retries:1|send_actions_pending:1|SendInvoice=0|status_after_worker:queued|manual_status_rewrite:none"
+
+# THE REAL AUTOMATIC PATH. maybe_enqueue_order() writes STATUS_QUEUED and
+# schedules the send action; the worker's unforced process_order() then met a gate
+# built only from can_retry(), which does not list 'queued' -- so the automatic
+# path refused every order it had just queued and SendInvoice was never called.
+# Measured through the real enqueue, the real action and the real worker, with no
+# status, meta or counter rewritten by the test and force never used.
+expect_invoice_line "a queued order actually reaches SendInvoice" "INVOICE_AUTO_SEND_QUEUED_ORDER_REACHES_SEND=PASS|measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|status_after_enqueue=queued|send_actions_after_enqueue=1|worker_runs=1|SendInvoice=1|LoadInvoice=0|status_after_worker=sent|send_actions_pending=0|queue_retry_meta=absent|fiscal_send_attempts=1|poll_actions_pending=1|last_error=none|manual_status_rewrite:none|force_used:no"
+
+# And letting the worker start from 'queued' must not offer an operator a re-send
+# button for an order the queue already owns: can_retry() is what the order screen
+# consults, and may_start_transmission() is a separate question.
+expect_invoice_line "a queued order offers no re-send button" "INVOICE_QUEUED_STATUS_DOES_NOT_ENABLE_ADMIN_RESEND=PASS|measured:production_predicates_and_real_enqueue|can_retry(queued)=false|admin_offers_send=no|is_in_progress(queued)=true|may_start_transmission(queued)=true|duplicate_enqueue_actions=0"
 
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 

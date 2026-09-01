@@ -5052,18 +5052,8 @@ if ( $runner_available ) {
 	$stale_status        = Kuka_Island_Core_Invoice_Order_Store::get_status( $stale_after_enqueue );
 	$stale_queued        = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $stale_order_id ) );
 
-	/*
-	 * maybe_enqueue_order() writes STATUS_QUEUED, and 'queued' is not in
-	 * can_retry(), so a worker run would raise a permanent
-	 * invalid_invoice_status_transition instead of reaching the send path. That
-	 * is a separate latent defect on the auto-send path -- auto-send is off in
-	 * production and is not this change's subject -- so the status is put back to
-	 * where the first real worker run would find it, and the counter is what this
-	 * test measures.
-	 */
-	$stale_after_enqueue->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_NONE );
-	$stale_after_enqueue->save_meta_data();
-
+	// The status stays exactly as the real enqueue left it: queued. Nothing here
+	// rewrites production state, so the worker run below is the real one.
 	$stale_rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 	$stale_held = '1' === (string) $stale_rival->get_var( $stale_rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_' . $stale_order_id ) );
@@ -5078,6 +5068,7 @@ if ( $runner_available ) {
 	$stale_final   = wc_get_order( $stale_order_id );
 	$stale_retries = (string) $stale_final->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
 	$stale_pending = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $stale_order_id ) );
+	$stale_status_final = Kuka_Island_Core_Invoice_Order_Store::get_status( $stale_final );
 
 	$report(
 		'INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO',
@@ -5092,22 +5083,176 @@ if ( $runner_available ) {
 		// inherited, so this chain gets its full budget.
 		&& '1' === $stale_retries
 		&& 1 === $stale_pending
-		&& 0 === (int) ( $stale_transport->calls['SendInvoice'] ?? 0 ),
+		&& 0 === (int) ( $stale_transport->calls['SendInvoice'] ?? 0 )
+		// The real queued status carried the run: no manual rewrite here.
+		&& Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $stale_status_final,
 		sprintf(
-			'measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:%s|after_enqueue:%s|status_after_enqueue:%s|actions_after_enqueue:%d|first_transient_retries:%s|send_actions_pending:%d|SendInvoice=%d',
+			'measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:%s|after_enqueue:%s|status_after_enqueue:%s|actions_after_enqueue:%d|first_transient_retries:%s|send_actions_pending:%d|SendInvoice=%d|status_after_worker:%s|manual_status_rewrite:none',
 			$stale_seeded,
 			'' === $stale_cleared ? 'cleared' : $stale_cleared,
 			$stale_status,
 			$stale_queued,
 			'' === $stale_retries ? 'absent' : $stale_retries,
 			$stale_pending,
-			$stale_transport->calls['SendInvoice'] ?? 0
+			$stale_transport->calls['SendInvoice'] ?? 0,
+			$stale_status_final
 		)
 	);
 
 	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $stale_order_id );
 	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
 	kuka_test_delete_order( $stale_order_id, $test_run_id );
+
+	/* ---------------------------------------------------------------------- */
+	/* The real automatic path, end to end, with nothing rewritten by hand     */
+	/* ---------------------------------------------------------------------- */
+
+	/*
+	 * maybe_enqueue_order() writes STATUS_QUEUED and schedules
+	 * ACTION_PROCESS_INVOICE. The worker's unforced process_order() call then met
+	 * a gate built only from can_retry(), which does not list 'queued' -- so the
+	 * automatic path refused every order it had just queued, with
+	 * invalid_invoice_status_transition, and SendInvoice was never called.
+	 *
+	 * This runs the production chain exactly as it stands: the real enqueue entry
+	 * point, the real Action Scheduler action, the real worker. No status, meta or
+	 * counter is touched by the test between the two steps, and force is never
+	 * used.
+	 */
+	$e2e_transport = new Kuka_Island_Test_Tracking_Transport();
+	$e2e_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $e2e_transport ) );
+	$e2e_queue     = new Kuka_Island_Core_Invoice_Queue( $e2e_manager );
+	$e2e_order     = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$e2e_order_id = (int) $e2e_order->get_id();
+
+	// Nothing has been transmitted, and the order is not a fixture-marked one.
+	$e2e_evidence_before = Kuka_Island_Core_Invoice_Manager::transmission_evidence( $e2e_order );
+	$e2e_is_fixture      = Kuka_Island_Core_Invoice_Fixture_Guard::is_test_fixture_order( $e2e_order );
+	$e2e_settled         = $e2e_manager->is_order_settled( $e2e_order );
+
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $e2e_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $e2e_order_id );
+
+	// Step 1: the real enqueue.
+	$e2e_queue->maybe_enqueue_order( $e2e_order_id, wc_get_order( $e2e_order_id ) );
+
+	$e2e_after_enqueue  = wc_get_order( $e2e_order_id );
+	$e2e_status_queued  = Kuka_Island_Core_Invoice_Order_Store::get_status( $e2e_after_enqueue );
+	$e2e_actions_queued = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $e2e_order_id ) );
+
+	// Step 2: the real worker, on the real action. The status is left alone.
+	$e2e_saved = $install_queue_worker( $e2e_queue );
+	$e2e_drain = $drain_send_actions( $e2e_order_id );
+	$restore_queue_worker( $e2e_saved );
+
+	$e2e_final        = wc_get_order( $e2e_order_id );
+	$e2e_status_final = Kuka_Island_Core_Invoice_Order_Store::get_status( $e2e_final );
+	$e2e_retry_meta   = (string) $e2e_final->get_meta( Kuka_Island_Core_Invoice_Queue::META_QUEUE_RETRIES, true );
+	$e2e_fiscal       = (int) $e2e_final->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS, true );
+	$e2e_last_error   = (string) $e2e_final->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+	$e2e_send_pending = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $e2e_order_id ) );
+	$e2e_poll_pending = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS, $e2e_order_id ) );
+
+	$report(
+		'INVOICE_AUTO_SEND_QUEUED_ORDER_REACHES_SEND',
+		array() === $e2e_evidence_before
+		&& false === $e2e_is_fixture
+		&& true === $e2e_settled
+		&& Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $e2e_status_queued
+		&& 1 === $e2e_actions_queued
+		&& 1 === $e2e_drain['runs']
+		&& false === $e2e_drain['hit_limit']
+		// The document was actually transmitted, once.
+		&& 1 === (int) ( $e2e_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $e2e_transport->calls['LoadInvoice'] ?? 0 )
+		// The mock answers with no HEADER STATUS, so the contract's own outcome
+		// for "accepted, not yet described" is 'sent' -- a polling job.
+		&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === $e2e_status_final
+		&& '' === $e2e_last_error
+		&& 0 === $e2e_send_pending
+		&& '' === $e2e_retry_meta
+		&& 1 === $e2e_fiscal
+		// And the status query is booked on the poller's own action.
+		&& 1 === $e2e_poll_pending,
+		sprintf(
+			'measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|status_after_enqueue=%s|send_actions_after_enqueue=%d|worker_runs=%d|SendInvoice=%d|LoadInvoice=%d|status_after_worker=%s|send_actions_pending=%d|queue_retry_meta=%s|fiscal_send_attempts=%d|poll_actions_pending=%d|last_error=%s|manual_status_rewrite:none|force_used:no',
+			$e2e_status_queued,
+			$e2e_actions_queued,
+			$e2e_drain['runs'],
+			$e2e_transport->calls['SendInvoice'] ?? 0,
+			$e2e_transport->calls['LoadInvoice'] ?? 0,
+			$e2e_status_final,
+			$e2e_send_pending,
+			'' === $e2e_retry_meta ? 'absent' : $e2e_retry_meta,
+			$e2e_fiscal,
+			$e2e_poll_pending,
+			'' === $e2e_last_error ? 'none' : $e2e_last_error
+		)
+	);
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $e2e_order_id );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $e2e_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	kuka_test_delete_order( $e2e_order_id, $test_run_id );
+
+	/*
+	 * Letting the worker start from 'queued' must not put a re-send button in
+	 * front of an operator for an order the queue already owns. can_retry() is
+	 * what the order screen consults, and 'queued' is deliberately absent from
+	 * it; may_start_transmission() is a separate question with a separate answer.
+	 */
+	$queued_order = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			Kuka_Island_Core_Invoice_Order_Store::META_STATUS         => Kuka_Island_Core_Invoice_Status::STATUS_QUEUED,
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER        => 'KUK2026000000042',
+			Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$queued_order_id = (int) $queued_order->get_id();
+	$queued_status   = Kuka_Island_Core_Invoice_Order_Store::get_status( $queued_order );
+
+	// The exact expression the order screen and the manual-send handler use.
+	$queued_admin_offers = array() === Kuka_Island_Core_Invoice_Manager::transmission_evidence( $queued_order )
+		&& Kuka_Island_Core_Invoice_Status::can_retry( $queued_status );
+
+	// The duplicate-enqueue guard still recognises a queued order.
+	$queued_enqueue_transport = new Kuka_Island_Test_Tracking_Transport();
+	$queued_enqueue_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $queued_enqueue_transport ) );
+	$queued_enqueue_queue     = new Kuka_Island_Core_Invoice_Queue( $queued_enqueue_manager );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $queued_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	$queued_enqueue_queue->maybe_enqueue_order( $queued_order_id, wc_get_order( $queued_order_id ) );
+	$queued_double_actions = count( $hook_pending_ids( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, $queued_order_id ) );
+
+	$report(
+		'INVOICE_QUEUED_STATUS_DOES_NOT_ENABLE_ADMIN_RESEND',
+		false === Kuka_Island_Core_Invoice_Status::can_retry( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED )
+		&& false === $queued_admin_offers
+		&& true === Kuka_Island_Core_Invoice_Status::is_in_progress( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED )
+		// The worker, and only the worker, may start from it.
+		&& true === Kuka_Island_Core_Invoice_Manager::may_start_transmission( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED )
+		// A queued order is not enqueued a second time.
+		&& 0 === $queued_double_actions
+		&& 0 === (int) ( $queued_enqueue_transport->calls['SendInvoice'] ?? 0 ),
+		sprintf(
+			'measured:production_predicates_and_real_enqueue|can_retry(queued)=%s|admin_offers_send=%s|is_in_progress(queued)=%s|may_start_transmission(queued)=%s|duplicate_enqueue_actions=%d',
+			Kuka_Island_Core_Invoice_Status::can_retry( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED ) ? 'true' : 'false',
+			$queued_admin_offers ? 'yes' : 'no',
+			Kuka_Island_Core_Invoice_Status::is_in_progress( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED ) ? 'true' : 'false',
+			Kuka_Island_Core_Invoice_Manager::may_start_transmission( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED ) ? 'true' : 'false',
+			$queued_double_actions
+		)
+	);
+
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $queued_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	kuka_test_delete_order( $queued_order_id, $test_run_id );
 }
 
 /* -------------------------------------------------------------------------- */
