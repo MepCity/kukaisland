@@ -624,6 +624,21 @@ expect_invoice_line "Generic individual VKN needs literal true" "INVOICE_GENERIC
 expect_invoice_line "Generic individual VKN runtime behaviour" "INVOICE_GENERIC_VKN_RUNTIME_BEHAVIOUR=PASS|default_error:missing_individual_tckn|explicit_true_vkn:11111111111"
 
 # Audit item 3: auto-send honours the whole can_send_invoice contract.
+# EDM document status contract, polling lifecycle and the internet-sales block.
+# Every one of these is behavioural: fixtures through the real parsers, a mocked
+# transport whose operation counts are read back, and real orders on disk.
+expect_invoice_match "SendInvoice status is read from the nested HEADER" "^INVOICE_SEND_RESPONSE_STATUS_CONTRACT=PASS\\|cases:10\\|"
+expect_invoice_match "EDM statuses match exactly, never by substring" "^INVOICE_EDM_STATUS_EXACT_MATCH=PASS\\|cases:12\\|"
+expect_invoice_line "GetInvoiceStatus sends no date window" "INVOICE_GET_STATUS_REQUEST_CONTRACT=PASS|measured:mock_transport_request|top_level_keys:REQUEST_HEADER,INVOICE|date_fields:none|calls:1"
+expect_invoice_match "e-Archive GIB_STATUS_CODE -1 does not mask success" "^INVOICE_EARCHIVE_GIB_MINUS_ONE_IS_SUCCESS=PASS\\|lifecycle:completed\\|"
+expect_invoice_match "accepted, rejected and cancelled stay distinct" "^INVOICE_TERMINAL_STATUS_SEPARATION=PASS\\|cases:3\\|"
+expect_invoice_match "the status poller lifecycle is bounded" "^INVOICE_STATUS_POLL_LIFECYCLE=PASS\\|cases:9\\|"
+expect_invoice_line "the poller never sends an invoice" "INVOICE_POLLER_NEVER_SENDS=PASS|measured:mock_transport|SendInvoice=0|LoadInvoice=0|GetInvoiceStatus=1|order_status:completed|recorded_edm_status:SEND - SUCCEED"
+expect_invoice_line "polling is never scheduled twice for one order" "INVOICE_POLL_NO_DUPLICATE_SCHEDULE=PASS|action_scheduler:present|first:created|second:refused|distinct_from_send_action:yes"
+expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:10\\|"
+expect_invoice_line "the payment date comes from get_date_paid" "INVOICE_INTERNET_SALES_PAYMENT_DATE_SOURCE=PASS|measured:real_orders|created:2026-08-01|paid:2026-08-05|equals_created:no|unpaid_date:empty|unpaid_build:refused"
+expect_invoice_match "the carrier identity is never invented" "^INVOICE_CARRIER_IDENTITY_NEVER_INVENTED=PASS\\|carrier_lookup_table:none\\|reader_emits_vkn:no\\|reader_emits_title:no\\|"
+
 expect_invoice_line "Auto-send honours full readiness contract" "INVOICE_AUTO_SEND_FULL_READINESS_CONTRACT=PASS|ready_enabled:yes|fields_checked:11|leaks:none|postcode_optional:yes"
 
 # EDM's own sample invoices carry no supplier cbc:PostalZone and its test portal
@@ -661,7 +676,7 @@ expect_invoice_line "CheckUser DOMXPath" "INVOICE_SOAP_XPATH_CHECK_USER=PASS|ass
 expect_invoice_line "GetInvoiceSerial DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_SERIAL=PASS|assertions:6|serial_code:KUK|last_serial_used:42|failed:none"
 expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:15|single_base64_sha256_match:yes|error:none|failed:none"
 expect_invoice_line "SendInvoice e-Invoice DOMXPath" "INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=PASS|assertions:6|failed:none"
-expect_invoice_line "GetInvoiceStatus DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_STATUS=PASS|assertions:7|parsed_status:completed|failed:none"
+expect_invoice_line "GetInvoiceStatus DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_STATUS=PASS|assertions:9|parsed_status:completed|failed:none"
 expect_invoice_line "GetInvoice DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE=PASS|assertions:6|error:none|failed:none"
 expect_invoice_line "EmailInvoice DOMXPath" "INVOICE_SOAP_XPATH_EMAIL_INVOICE=PASS|assertions:6|error:none|failed:none"
 expect_invoice_line "Logout DOMXPath" "INVOICE_SOAP_XPATH_LOGOUT=PASS|assertions:3|session_cleared:yes|failed:none"
@@ -673,7 +688,7 @@ expect_invoice_line "Numbering is fail-closed BLOCKED" "INVOICE_NUMBERING_FAIL_C
 expect_invoice_line "Queue worker preserves the blocked status" "INVOICE_NUMBERING_BLOCKED_STATUS_PRESERVED=PASS|status_after_queue_worker:blocked"
 expect_invoice_line "Mapper rejects an empty invoice number" "INVOICE_MAPPER_REJECTS_EMPTY_NUMBER=PASS|code:invoice_numbering_unconfirmed"
 expect_invoice_line "Legacy numbers without EDM provenance are rejected" "INVOICE_NUMBERING_REJECTS_LEGACY_NUMBER=PASS|code:invoice_numbering_unconfirmed|status:blocked|SendInvoice:0|seeded_number_without_provenance:yes"
-expect_invoice_line "A real send records the EDM number provenance" "INVOICE_SEND_RECORDS_EDM_PROVENANCE=PASS|SendInvoice:1|status:completed|number:KUK2026000000042|number_source:edm|error:none"
+expect_invoice_line "A real send records the EDM number provenance" "INVOICE_SEND_RECORDS_EDM_PROVENANCE=PASS|SendInvoice:1|status:sent|number:KUK2026000000042|number_source:edm|error:none"
 
 # Audit item 5: fiscal fallbacks removed, fail-closed instead.
 expect_invoice_match "Fiscal fallbacks removed from production path" "^INVOICE_FISCAL_FALLBACKS_REMOVED=PASS\|module_files_scanned:[0-9]{2,}\|fallback_hits:none\|generic_vkn_occurrences:class-invoice-order-mapper\.php\(1\)$"

@@ -11,6 +11,7 @@ final class Kuka_Island_Core_Invoice {
 	private Kuka_Island_Core_Invoice_Config $config;
 	private Kuka_Island_Core_Invoice_Manager $manager;
 	private Kuka_Island_Core_Invoice_Queue $queue;
+	private Kuka_Island_Core_Invoice_Status_Poller $poller;
 	private Kuka_Island_Core_Invoice_Admin $admin;
 
 	public function __construct() {
@@ -19,11 +20,13 @@ final class Kuka_Island_Core_Invoice {
 		$this->config  = new Kuka_Island_Core_Invoice_Config();
 		$this->manager = new Kuka_Island_Core_Invoice_Manager( $this->config );
 		$this->queue   = new Kuka_Island_Core_Invoice_Queue( $this->manager );
+		$this->poller  = new Kuka_Island_Core_Invoice_Status_Poller( $this->manager );
 		$this->admin   = new Kuka_Island_Core_Invoice_Admin( $this->manager );
 	}
 
 	public function register(): void {
 		$this->queue->register();
+		$this->poller->register();
 		$this->admin->register();
 	}
 
@@ -44,6 +47,7 @@ final class Kuka_Island_Core_Invoice {
 		require_once $dir . 'class-edm-fault-classifier.php';
 		require_once $dir . 'class-edm-request-header.php';
 		require_once $dir . 'class-invoice-status.php';
+		require_once $dir . 'class-edm-document-status.php';
 		require_once $dir . 'class-invoice-fixture-guard.php';
 		require_once $dir . 'class-invoice-config.php';
 		require_once $dir . 'class-invoice-result.php';
@@ -54,7 +58,9 @@ final class Kuka_Island_Core_Invoice {
 		require_once $dir . 'class-invoice-order-mapper.php';
 		require_once $dir . 'class-invoice-order-store.php';
 		require_once $dir . 'class-invoice-numbering.php';
+		require_once $dir . 'class-internet-sales-details.php';
 		require_once $dir . 'class-invoice-manager.php';
+		require_once $dir . 'class-invoice-status-poller.php';
 		require_once $dir . 'class-invoice-queue.php';
 		require_once $dir . 'class-invoice-admin.php';
 	}

@@ -23,6 +23,13 @@ final class Kuka_Island_Core_Invoice_Status {
 	public const STATUS_NEEDS_MANUAL_REVIEW = 'needs_manual_review';
 	public const STATUS_FAILED              = 'failed';
 	/**
+	 * EDM reported REJECTED - SUCCEED. The exchange finished; the recipient
+	 * refused the document. Terminal, and deliberately NOT completed.
+	 */
+	public const STATUS_REJECTED            = 'rejected';
+	/** EDM reported CANCELLED - SUCCEED. Terminal, and not completed. */
+	public const STATUS_CANCELLED           = 'cancelled';
+	/**
 	 * Deliberate fail-closed block: a required contract is unconfirmed, so the
 	 * invoice was never transmitted. Distinct from a runtime error.
 	 */
@@ -41,6 +48,8 @@ final class Kuka_Island_Core_Invoice_Status {
 			self::STATUS_COMPLETED           => __( 'Tamamlandı', 'kuka-island-core' ),
 			self::STATUS_NEEDS_MANUAL_REVIEW => __( 'Manuel Müdahale Gerekli', 'kuka-island-core' ),
 			self::STATUS_FAILED              => __( 'Hata Oluştu', 'kuka-island-core' ),
+			self::STATUS_REJECTED            => __( 'Alıcı Tarafından Reddedildi', 'kuka-island-core' ),
+			self::STATUS_CANCELLED           => __( 'İptal Edildi', 'kuka-island-core' ),
 			self::STATUS_BLOCKED             => __( 'Fail-Closed Engellendi (Sözleşme Doğrulanmadı)', 'kuka-island-core' ),
 			default                          => __( 'Fatura Oluşturulmadı', 'kuka-island-core' ),
 		};
@@ -61,6 +70,16 @@ final class Kuka_Island_Core_Invoice_Status {
 	 * Is this status terminal and complete?
 	 */
 	public static function is_terminal( string $status ): bool {
+		return in_array( $status, array( self::STATUS_COMPLETED, self::STATUS_REJECTED, self::STATUS_CANCELLED ), true );
+	}
+
+	/**
+	 * Did the document finish successfully?
+	 *
+	 * Distinct from is_terminal(): rejection and cancellation are final answers
+	 * too, but they are not acceptances and must never be reported as one.
+	 */
+	public static function is_successful( string $status ): bool {
 		return self::STATUS_COMPLETED === $status;
 	}
 
@@ -106,7 +125,7 @@ final class Kuka_Island_Core_Invoice_Status {
 				'color'  => '#92400e',
 				'border' => '#fde68a',
 			),
-			self::STATUS_NEEDS_MANUAL_REVIEW, self::STATUS_FAILED, self::STATUS_BLOCKED => array(
+			self::STATUS_NEEDS_MANUAL_REVIEW, self::STATUS_FAILED, self::STATUS_BLOCKED, self::STATUS_REJECTED, self::STATUS_CANCELLED => array(
 				'bg'     => '#fef2f2',
 				'color'  => '#991b1b',
 				'border' => '#fecaca',

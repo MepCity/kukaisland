@@ -1309,10 +1309,13 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 	);
 
 	/* --- 7H: GetInvoiceStatus -------------------------------------------- */
+	// The published status literal, in its published place.
 	$soap_interceptor->mock_response_body = kuka_soap_envelope(
 		'<GetInvoiceStatusResponse xmlns="http://tempuri.org/">'
 		. '<INVOICE_STATUS TRXID="4242" UUID="uuid-verify-0001" ID="KUK2026000000042">'
-		. '<STATUS>1300</STATUS><STATUS_DESCRIPTION>Basariyla Tamamlandi</STATUS_DESCRIPTION>'
+		. '<HEADER><STATUS>SEND - SUCCEED</STATUS>'
+		. '<STATUS_DESCRIPTION>Basariyla gonderildi</STATUS_DESCRIPTION>'
+		. '<GIB_STATUS_CODE>-1</GIB_STATUS_CODE></HEADER>'
 		. '</INVOICE_STATUS></GetInvoiceStatusResponse>'
 	);
 	$status_result = null;
@@ -1330,8 +1333,12 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 			$xp_session                                   => $soap_session_id,
 			'//*[local-name()="INVOICE"]/@UUID'            => 'uuid-verify-0001',
 			'//*[local-name()="INVOICE"]/@ID'              => 'KUK2026000000042',
-			'//*[local-name()="START_DATE"]'               => true,
-			'//*[local-name()="END_DATE"]'                 => true,
+			// Not part of GetInvoiceStatusRequest. A same-day window used to
+			// hide any document issued on another date.
+			'//*[local-name()="START_DATE"]'               => false,
+			'//*[local-name()="END_DATE"]'                 => false,
+			'//*[local-name()="CR_START_DATE"]'            => false,
+			'//*[local-name()="CR_END_DATE"]'              => false,
 		)
 	);
 	$report(
@@ -2817,6 +2824,512 @@ $report(
 
 /* ========================================================================== */
 /* TEST 15 - Database keyset isolation                                        */
+/* ========================================================================== */
+/* EDM document status contract, polling and internet-sales details            */
+/* ========================================================================== */
+
+/**
+ * Transport that answers SendInvoice / GetInvoiceStatus from a fixture and
+ * counts every operation, so "the poller never sends" is measured rather than
+ * asserted.
+ */
+final class Kuka_Island_Test_Status_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, int> */
+	public array $calls = array();
+	/** @var array<string, array<string, mixed>> Last request per operation. */
+	public array $requests = array();
+	/** @var mixed */
+	public $send_response;
+	/** @var mixed */
+	public $status_response;
+
+	public function __construct( $send_response = null, $status_response = null ) {
+		$this->send_response   = $send_response;
+		$this->status_response = $status_response;
+	}
+
+	public function call( string $action, array $parameters ) {
+		$this->calls[ $action ]    = ( $this->calls[ $action ] ?? 0 ) + 1;
+		$this->requests[ $action ] = $parameters;
+
+		if ( 'Login' === $action ) {
+			return array( 'SESSION_ID' => 'session-status-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+		if ( 'SendInvoice' === $action ) {
+			return $this->send_response;
+		}
+		if ( 'GetInvoiceStatus' === $action ) {
+			return $this->status_response;
+		}
+
+		return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+	}
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+}
+
+/**
+ * Build a SendInvoiceResponse with the status in its published place.
+ *
+ * @param int|null $return_code REQUEST_RETURN.RETURN_CODE, or null to omit.
+ * @param string   $status      INVOICE > HEADER > STATUS, or '' to omit.
+ * @param bool     $nested      Put the status in HEADER (true) or at the
+ *                              INVOICE root (false) to prove the root is not read.
+ */
+$build_send_response = static function ( ?int $return_code, string $status, bool $nested = true ): array {
+	$invoice = array(
+		'UUID' => 'uuid-status-fixture',
+		'ID'   => 'KUK2026000000900',
+	);
+	if ( '' !== $status ) {
+		if ( $nested ) {
+			$invoice['HEADER'] = array(
+				'STATUS'             => $status,
+				'STATUS_DESCRIPTION' => 'fixture description',
+			);
+		} else {
+			$invoice['STATUS'] = $status;
+		}
+	}
+	$response = array( 'INVOICE' => array( $invoice ) );
+	if ( null !== $return_code ) {
+		$response['REQUEST_RETURN'] = array( 'RETURN_CODE' => $return_code );
+	}
+
+	return $response;
+};
+
+$send_status_of = static function ( array $response ) use ( $config ): Kuka_Island_Core_Invoice_Result {
+	$transport = new Kuka_Island_Test_Status_Transport( $response, null );
+	$client    = new Kuka_Island_Core_EDM_Client( $config, $transport );
+	$client->login();
+	$method = new ReflectionMethod( Kuka_Island_Core_EDM_Client::class, 'parse_send_invoice_response' );
+	$method->setAccessible( true );
+
+	return $method->invoke( $client, $response, 'uuid-status-fixture', 'KUK2026000000900' );
+};
+
+// RETURN_CODE = 0 means the CALL was accepted; it says nothing about the
+// document. None of these may come back completed.
+$send_cases = array(
+	'rc0_package_processing' => array( $build_send_response( 0, 'PACKAGE - PROCESSING' ), Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL ),
+	'rc0_no_status'          => array( $build_send_response( 0, '' ), Kuka_Island_Core_Invoice_Status::STATUS_SENT ),
+	'rc0_send_succeed'       => array( $build_send_response( 0, 'SEND - SUCCEED' ), Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED ),
+	'rc0_send_processing'    => array( $build_send_response( 0, 'SEND - PROCESSING' ), Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL ),
+	'rc0_rejected'           => array( $build_send_response( 0, 'REJECTED - SUCCEED' ), Kuka_Island_Core_Invoice_Status::STATUS_REJECTED ),
+	'rc0_cancelled'          => array( $build_send_response( 0, 'CANCELLED - SUCCEED' ), Kuka_Island_Core_Invoice_Status::STATUS_CANCELLED ),
+	'rc0_package_fail'       => array( $build_send_response( 0, 'PACKAGE - FAIL' ), Kuka_Island_Core_Invoice_Status::STATUS_FAILED ),
+	'rc0_unknown_status'     => array( $build_send_response( 0, 'TOTALLY - MADE_UP' ), Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW ),
+	// A status at the INVOICE root is NOT the contract location: it must be
+	// ignored, leaving the document undescribed rather than complete.
+	'root_status_ignored'    => array( $build_send_response( 0, 'SEND - SUCCEED', false ), Kuka_Island_Core_Invoice_Status::STATUS_SENT ),
+	'no_return_code'         => array( $build_send_response( null, 'PACKAGE - PROCESSING' ), Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL ),
+);
+
+$send_ok      = true;
+$send_details = array();
+foreach ( $send_cases as $case => $spec ) {
+	$actual = $send_status_of( $spec[0] )->get_status();
+	$hit    = $actual === $spec[1];
+	$send_details[] = $case . '=' . $actual;
+	if ( ! $hit ) {
+		$send_ok = false;
+		$send_details[ array_key_last( $send_details ) ] = $case . '=WRONG(' . $actual . ' expected ' . $spec[1] . ')';
+	}
+}
+
+$report(
+	'INVOICE_SEND_RESPONSE_STATUS_CONTRACT',
+	$send_ok,
+	sprintf( 'cases:%d|%s', count( $send_cases ), implode( ' ', $send_details ) )
+);
+
+// Whitespace-normalised exact matching. A description containing "RED" is not a
+// rejection, and a padded literal still matches.
+$classify_cases = array(
+	'padded_send_succeed'   => array( "  SEND -   SUCCEED \n", Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, true ),
+	'lowercase_literal'     => array( 'send - succeed', Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, true ),
+	'accepted_succeed'      => array( 'ACCEPTED - SUCCEED', Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, true ),
+	'wait_gib'              => array( 'SEND - WAIT_GIB_RESPONSE', Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, true ),
+	'wait_system'           => array( 'SEND - WAIT_SYSTEM_RESPONSE', Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, true ),
+	'wait_application'      => array( 'SEND - WAIT_APPLICATION_RESPONSE', Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, true ),
+	'unknown_unknown'       => array( 'UNKNOWN - UNKNOWN', Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, true ),
+	'send_failed'           => array( 'SEND - FAILED', Kuka_Island_Core_Invoice_Status::STATUS_FAILED, true ),
+	// Substring traps that used to fire.
+	'unrelated_red_text'    => array( 'BELGE REDDEDILMEDI', Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW, false ),
+	'unrelated_success'     => array( 'PROCESS SUCCESS NOTE', Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW, false ),
+	'bare_zero'             => array( '0', Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW, false ),
+	'kabul_text'            => array( 'KABUL EDILDI', Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW, false ),
+);
+
+$classify_ok      = true;
+$classify_details = array();
+foreach ( $classify_cases as $case => $spec ) {
+	$classified = Kuka_Island_Core_EDM_Document_Status::classify( $spec[0] );
+	$lifecycle  = Kuka_Island_Core_EDM_Document_Status::resolve_lifecycle( $classified );
+	$hit        = $lifecycle === $spec[1] && $classified['known'] === $spec[2];
+	$classify_details[] = $case . '=' . $lifecycle . ( $classified['known'] ? '/known' : '/unknown' );
+	if ( ! $hit ) {
+		$classify_ok = false;
+	}
+}
+
+$report(
+	'INVOICE_EDM_STATUS_EXACT_MATCH',
+	$classify_ok,
+	sprintf( 'cases:%d|%s', count( $classify_cases ), implode( ' ', $classify_details ) )
+);
+
+/*
+ * GetInvoiceStatus: the request contract, and GIB_STATUS_CODE never standing in
+ * for STATUS. The request is read off the mocked transport, so it is the actual
+ * PHP array the client would hand SoapClient.
+ */
+$status_response_earchive = array(
+	'INVOICE_STATUS' => array(
+		array(
+			'UUID'   => 'uuid-status-fixture',
+			'ID'     => 'KUK2026000000900',
+			'HEADER' => array(
+				'STATUS'                 => 'SEND - SUCCEED',
+				'STATUS_DESCRIPTION'     => 'Basariyla gonderildi',
+				// Normal for e-Archive: not routed through the GİB e-Invoice
+				// channel. It must not mask the SEND - SUCCEED above.
+				'GIB_STATUS_CODE'        => '-1',
+				'RESPONSE_CODE'          => '200',
+				'EARCHIVE_REPORT_STATUS' => 'NOT_REPORTED',
+			),
+		),
+	),
+);
+
+$status_transport = new Kuka_Island_Test_Status_Transport( null, $status_response_earchive );
+$status_client    = new Kuka_Island_Core_EDM_Client( $config, $status_transport );
+$status_result    = $status_client->get_invoice_status( 'uuid-status-fixture', 'KUK2026000000900' );
+$status_request   = $status_transport->requests['GetInvoiceStatus'] ?? array();
+$status_raw       = $status_result->get_raw_data();
+
+$forbidden_date_fields = array_values(
+	array_filter(
+		array( 'START_DATE', 'END_DATE', 'CR_START_DATE', 'CR_END_DATE' ),
+		static fn( string $field ): bool => array_key_exists( $field, $status_request )
+	)
+);
+
+$report(
+	'INVOICE_GET_STATUS_REQUEST_CONTRACT',
+	array() === $forbidden_date_fields
+	&& array( 'REQUEST_HEADER', 'INVOICE' ) === array_keys( $status_request )
+	&& 'uuid-status-fixture' === ( $status_request['INVOICE']['UUID'] ?? '' )
+	&& 'KUK2026000000900' === ( $status_request['INVOICE']['ID'] ?? '' )
+	&& 1 === ( $status_transport->calls['GetInvoiceStatus'] ?? 0 ),
+	sprintf(
+		'measured:mock_transport_request|top_level_keys:%s|date_fields:%s|calls:%d',
+		implode( ',', array_keys( $status_request ) ),
+		empty( $forbidden_date_fields ) ? 'none' : implode( ',', $forbidden_date_fields ),
+		$status_transport->calls['GetInvoiceStatus'] ?? 0
+	)
+);
+
+$report(
+	'INVOICE_EARCHIVE_GIB_MINUS_ONE_IS_SUCCESS',
+	Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED === $status_result->get_status()
+	&& 'SEND - SUCCEED' === ( $status_raw['status'] ?? '' )
+	// Recorded, but as their own fields.
+	&& '-1' === ( $status_raw['gib_status_code'] ?? '' )
+	&& '200' === ( $status_raw['response_code'] ?? '' )
+	&& 'NOT_REPORTED' === ( $status_raw['earchive_report_status'] ?? '' ),
+	sprintf(
+		'lifecycle:%s|status:%s|gib_status_code:%s|response_code:%s|earchive_report_status:%s|report_blocks_success:%s',
+		$status_result->get_status(),
+		(string) ( $status_raw['status'] ?? '' ),
+		(string) ( $status_raw['gib_status_code'] ?? '' ),
+		(string) ( $status_raw['response_code'] ?? '' ),
+		(string) ( $status_raw['earchive_report_status'] ?? '' ),
+		Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED === $status_result->get_status() ? 'no' : 'YES'
+	)
+);
+
+// Commercial accept/reject/cancel are three different answers.
+$terminal_cases = array(
+	'accepted'  => array( 'ACCEPTED - SUCCEED', Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, true ),
+	'rejected'  => array( 'REJECTED - SUCCEED', Kuka_Island_Core_Invoice_Status::STATUS_REJECTED, false ),
+	'cancelled' => array( 'CANCELLED - SUCCEED', Kuka_Island_Core_Invoice_Status::STATUS_CANCELLED, false ),
+);
+$terminal_ok      = true;
+$terminal_details = array();
+foreach ( $terminal_cases as $case => $spec ) {
+	$transport = new Kuka_Island_Test_Status_Transport(
+		null,
+		array( 'INVOICE_STATUS' => array( array( 'UUID' => 'u', 'HEADER' => array( 'STATUS' => $spec[0] ) ) ) )
+	);
+	$client   = new Kuka_Island_Core_EDM_Client( $config, $transport );
+	$lifecyc  = $client->get_invoice_status( 'u' )->get_status();
+	$hit      = $lifecyc === $spec[1]
+		&& Kuka_Island_Core_Invoice_Status::is_terminal( $lifecyc )
+		&& Kuka_Island_Core_Invoice_Status::is_successful( $lifecyc ) === $spec[2];
+	$terminal_details[] = $case . '=' . $lifecyc . ( Kuka_Island_Core_Invoice_Status::is_successful( $lifecyc ) ? '/successful' : '/not_successful' );
+	if ( ! $hit ) {
+		$terminal_ok = false;
+	}
+}
+
+$report(
+	'INVOICE_TERMINAL_STATUS_SEPARATION',
+	$terminal_ok,
+	sprintf( 'cases:%d|%s', count( $terminal_cases ), implode( ' ', $terminal_details ) )
+);
+
+/* -------------------------------------------------------------------------- */
+/* Polling lifecycle                                                           */
+/* -------------------------------------------------------------------------- */
+
+$poll_cases = array(
+	'pending_reschedules'   => array( Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, 0, 0, 'reschedule' ),
+	'sent_reschedules'      => array( Kuka_Island_Core_Invoice_Status::STATUS_SENT, 1, 600, 'reschedule' ),
+	'uncertain_reschedules' => array( Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, 2, 900, 'reschedule' ),
+	'completed_stops'       => array( Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, 1, 600, 'stop' ),
+	'rejected_stops'        => array( Kuka_Island_Core_Invoice_Status::STATUS_REJECTED, 1, 600, 'stop' ),
+	'cancelled_stops'       => array( Kuka_Island_Core_Invoice_Status::STATUS_CANCELLED, 1, 600, 'stop' ),
+	'failed_stops'          => array( Kuka_Island_Core_Invoice_Status::STATUS_FAILED, 1, 600, 'stop' ),
+	'attempt_cap'           => array( Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, Kuka_Island_Core_Invoice_Status_Poller::MAX_ATTEMPTS, 600, 'give_up' ),
+	'elapsed_cap'           => array( Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, 1, Kuka_Island_Core_Invoice_Status_Poller::MAX_ELAPSED, 'give_up' ),
+);
+$poll_ok      = true;
+$poll_details = array();
+foreach ( $poll_cases as $case => $spec ) {
+	$decision = Kuka_Island_Core_Invoice_Status_Poller::decide( $spec[0], $spec[1], $spec[2] );
+	$hit      = $decision['action'] === $spec[3];
+	$poll_details[] = $case . '=' . $decision['action'];
+	if ( ! $hit ) {
+		$poll_ok = false;
+	}
+}
+// The delay is bounded at both ends.
+$delays_bounded = true;
+for ( $attempt = 0; $attempt <= 40; $attempt++ ) {
+	$delay = Kuka_Island_Core_Invoice_Status_Poller::delay_for_attempt( $attempt );
+	if ( $delay < Kuka_Island_Core_Invoice_Status_Poller::MIN_DELAY || $delay > Kuka_Island_Core_Invoice_Status_Poller::MAX_DELAY ) {
+		$delays_bounded = false;
+	}
+}
+
+$report(
+	'INVOICE_STATUS_POLL_LIFECYCLE',
+	$poll_ok && $delays_bounded,
+	sprintf(
+		'cases:%d|%s|delay_bounded:%s|max_attempts:%d|max_elapsed:%d',
+		count( $poll_cases ),
+		implode( ' ', $poll_details ),
+		$delays_bounded ? 'yes' : 'no',
+		Kuka_Island_Core_Invoice_Status_Poller::MAX_ATTEMPTS,
+		Kuka_Island_Core_Invoice_Status_Poller::MAX_ELAPSED
+	)
+);
+
+/*
+ * The poller must never send. Driven through the real poll path with a counting
+ * transport and a real order fixture, then the operation counts are read off
+ * the transport.
+ */
+$poll_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
+kuka_add_line( $poll_order, 'Poll Fixture', '100.00', '100.00', 1, '10.00' );
+kuka_add_tax_rate( $poll_order, 1, 10, '10.00' );
+$poll_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_UUID, 'uuid-poll-fixture' );
+$poll_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, 'KUK2026000000901' );
+$poll_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SENT );
+$poll_order->save();
+
+$poll_transport = new Kuka_Island_Test_Status_Transport(
+	null,
+	array( 'INVOICE_STATUS' => array( array( 'UUID' => 'uuid-poll-fixture', 'HEADER' => array( 'STATUS' => 'SEND - SUCCEED' ) ) ) )
+);
+$poll_provider = new Kuka_Island_Core_EDM_Provider( $config, $poll_transport );
+$poll_manager  = new Kuka_Island_Core_Invoice_Manager( $config, $poll_provider );
+$poller        = new Kuka_Island_Core_Invoice_Status_Poller( $poll_manager );
+
+$poller->poll_order( $poll_order->get_id() );
+
+$reloaded_poll_order = wc_get_order( $poll_order->get_id() );
+$poll_send_calls     = (int) ( $poll_transport->calls['SendInvoice'] ?? 0 );
+$poll_load_calls     = (int) ( $poll_transport->calls['LoadInvoice'] ?? 0 );
+$poll_status_calls   = (int) ( $poll_transport->calls['GetInvoiceStatus'] ?? 0 );
+
+$report(
+	'INVOICE_POLLER_NEVER_SENDS',
+	0 === $poll_send_calls
+	&& 0 === $poll_load_calls
+	&& 1 === $poll_status_calls
+	&& Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED === (string) $reloaded_poll_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, true )
+	&& 'SEND - SUCCEED' === (string) $reloaded_poll_order->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS, true ),
+	sprintf(
+		'measured:mock_transport|SendInvoice=%d|LoadInvoice=%d|GetInvoiceStatus=%d|order_status:%s|recorded_edm_status:%s',
+		$poll_send_calls,
+		$poll_load_calls,
+		$poll_status_calls,
+		(string) $reloaded_poll_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, true ),
+		(string) $reloaded_poll_order->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS, true )
+	)
+);
+
+kuka_test_delete_order( $poll_order->get_id(), $test_run_id );
+
+// Duplicate scheduling: the second request for the same order must not create a
+// second action. Action Scheduler may be absent, in which case both calls
+// return false and the invariant "no duplicate" still holds.
+$dup_order_id   = 999000001;
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $dup_order_id );
+$dup_first      = Kuka_Island_Core_Invoice_Status_Poller::schedule( $dup_order_id, 300 );
+$dup_second     = Kuka_Island_Core_Invoice_Status_Poller::schedule( $dup_order_id, 300 );
+$dup_as_present = function_exists( 'as_schedule_single_action' );
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $dup_order_id );
+
+$report(
+	'INVOICE_POLL_NO_DUPLICATE_SCHEDULE',
+	false === $dup_second
+	&& $dup_first === $dup_as_present
+	&& Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS !== Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE,
+	sprintf(
+		'action_scheduler:%s|first:%s|second:%s|distinct_from_send_action:%s',
+		$dup_as_present ? 'present' : 'absent',
+		$dup_first ? 'created' : 'not_created',
+		$dup_second ? 'CREATED' : 'refused',
+		Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS !== Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE ? 'yes' : 'no'
+	)
+);
+
+/* -------------------------------------------------------------------------- */
+/* INTERNETSALESDETAILS                                                        */
+/* -------------------------------------------------------------------------- */
+
+$isd_base = array(
+	'web_address'    => 'https://kukaisland.com',
+	'payment_method' => 'iyzico',
+	'payment_date'   => '2026-08-30',
+	'shipment_state' => Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE,
+	'shipment_date'  => '2026-08-31',
+	'carrier_vkn'    => '1234567890',
+	'carrier_title'  => 'Kargo A.S.',
+);
+
+$isd_cases = array(
+	'complete_shipment'   => array( array(), true, '' ),
+	'digital_no_shipment' => array( array( 'shipment_state' => Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_NONE, 'shipment_date' => '', 'carrier_vkn' => '', 'carrier_title' => '' ), true, '' ),
+	'partial_shipment'    => array( array( 'shipment_state' => Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PARTIAL ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_PARTIAL ),
+	'pending_shipment'    => array( array( 'shipment_state' => Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PENDING ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_PENDING ),
+	'no_payment_date'     => array( array( 'payment_date' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_DATE_MISSING ),
+	'no_shipment_date'    => array( array( 'shipment_date' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_DATE_MISSING ),
+	'no_carrier_vkn'      => array( array( 'carrier_vkn' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_VKN_MISSING ),
+	'no_carrier_title'    => array( array( 'carrier_title' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_TITLE_MISSING ),
+	'no_web_address'      => array( array( 'web_address' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_WEB_ADDRESS_MISSING ),
+	'no_payment_method'   => array( array( 'payment_method' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING ),
+);
+
+$isd_ok      = true;
+$isd_details = array();
+foreach ( $isd_cases as $case => $spec ) {
+	$built = Kuka_Island_Core_Internet_Sales_Details::build( array_merge( $isd_base, $spec[0] ) );
+	$hit   = $built['ok'] === $spec[1]
+		&& ( '' === $spec[2] || in_array( $spec[2], $built['errors'], true ) )
+		// A refused build yields no partial block.
+		&& ( $built['ok'] || array() === $built['details'] );
+	$isd_details[] = $case . '=' . ( $built['ok'] ? 'built' : 'refused' );
+	if ( ! $hit ) {
+		$isd_ok = false;
+	}
+}
+
+$isd_full  = Kuka_Island_Core_Internet_Sales_Details::build( $isd_base );
+$isd_ship  = $isd_full['details']['gonderiBilgileri'] ?? array();
+$isd_shape = '2026-08-30' === ( $isd_full['details']['odemeTarihi'] ?? '' )
+	&& '2026-08-31' === ( $isd_ship['gonderimTarihi'] ?? '' )
+	&& '1234567890' === ( $isd_ship['gonderiTasiyan']['tuzelKisi']['vkn'] ?? '' )
+	&& 'Kargo A.S.' === ( $isd_ship['gonderiTasiyan']['tuzelKisi']['unvan'] ?? '' )
+	// Optional, and absent when no intermediary applies.
+	&& ! array_key_exists( 'odemeAracisiAdi', $isd_full['details'] );
+
+$isd_agent = Kuka_Island_Core_Internet_Sales_Details::build( array_merge( $isd_base, array( 'payment_agent' => 'iyzico Odeme' ) ) );
+
+$report(
+	'INVOICE_INTERNET_SALES_DETAILS_CONTRACT',
+	$isd_ok
+	&& $isd_shape
+	&& 'iyzico Odeme' === ( $isd_agent['details']['odemeAracisiAdi'] ?? '' ),
+	sprintf(
+		'cases:%d|%s|shape:%s|payment_agent_optional:%s',
+		count( $isd_cases ),
+		implode( ' ', $isd_details ),
+		$isd_shape ? 'ok' : 'WRONG',
+		'iyzico Odeme' === ( $isd_agent['details']['odemeAracisiAdi'] ?? '' ) ? 'yes' : 'no'
+	)
+);
+
+// The payment date must come from get_date_paid(), never from the creation
+// date. Proved against two real orders: one paid on a different day, one unpaid.
+$paid_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
+$paid_order->set_date_created( '2026-08-01 09:00:00' );
+$paid_order->set_date_paid( '2026-08-05 14:30:00' );
+$paid_order->save();
+
+$unpaid_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'pending' ) ) );
+$unpaid_order->set_date_created( '2026-08-01 09:00:00' );
+$unpaid_order->save();
+
+$paid_date   = Kuka_Island_Core_Internet_Sales_Details::read_payment_date( wc_get_order( $paid_order->get_id() ) );
+$unpaid_date = Kuka_Island_Core_Internet_Sales_Details::read_payment_date( wc_get_order( $unpaid_order->get_id() ) );
+$unpaid_build = Kuka_Island_Core_Internet_Sales_Details::build( array_merge( $isd_base, array( 'payment_date' => $unpaid_date ) ) );
+
+$report(
+	'INVOICE_INTERNET_SALES_PAYMENT_DATE_SOURCE',
+	'2026-08-05' === $paid_date
+	&& '2026-08-01' !== $paid_date
+	&& '' === $unpaid_date
+	&& false === $unpaid_build['ok']
+	&& in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_DATE_MISSING, $unpaid_build['errors'], true ),
+	sprintf(
+		'measured:real_orders|created:2026-08-01|paid:%s|equals_created:%s|unpaid_date:%s|unpaid_build:%s',
+		$paid_date,
+		'2026-08-01' === $paid_date ? 'YES' : 'no',
+		'' === $unpaid_date ? 'empty' : $unpaid_date,
+		$unpaid_build['ok'] ? 'BUILT' : 'refused'
+	)
+);
+
+// The carrier identity is never inferred from a provider label.
+$isd_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-internet-sales-details.php' );
+$invented   = array();
+foreach ( array( 'DHL', 'dhl', 'Yurtici', 'Aras', 'MNG', 'PTT', 'UPS' ) as $carrier ) {
+	if ( preg_match( '/[\'"]' . preg_quote( $carrier, '/' ) . '[\'"]\s*=>/', $isd_source ) ) {
+		$invented[] = $carrier;
+	}
+}
+$facts_shape = Kuka_Island_Core_Internet_Sales_Details::read_shipment_facts( wc_get_order( $unpaid_order->get_id() ) );
+
+$report(
+	'INVOICE_CARRIER_IDENTITY_NEVER_INVENTED',
+	array() === $invented
+	// The reader returns labels and dates only: no VKN or title is produced.
+	&& ! array_key_exists( 'carrier_vkn', (array) $facts_shape )
+	&& ! array_key_exists( 'carrier_title', (array) $facts_shape )
+	&& array_key_exists( 'provider_label', (array) $facts_shape ),
+	sprintf(
+		'carrier_lookup_table:%s|reader_emits_vkn:%s|reader_emits_title:%s|reader_keys:%s',
+		empty( $invented ) ? 'none' : implode( ',', $invented ),
+		array_key_exists( 'carrier_vkn', (array) $facts_shape ) ? 'YES' : 'no',
+		array_key_exists( 'carrier_title', (array) $facts_shape ) ? 'YES' : 'no',
+		implode( ',', array_keys( (array) $facts_shape ) )
+	)
+);
+
+kuka_test_delete_order( $paid_order->get_id(), $test_run_id );
+kuka_test_delete_order( $unpaid_order->get_id(), $test_run_id );
+
 /* ========================================================================== */
 /* REQUEST_HEADER contract and safe SOAP fault classification                  */
 /* ========================================================================== */

@@ -375,16 +375,18 @@ final class Kuka_Island_Core_EDM_Client {
 	public function get_invoice_status( string $uuid, string $invoice_number = '' ): Kuka_Island_Core_Invoice_Result {
 		return $this->execute_with_session(
 			function ( string $session_id ) use ( $uuid, $invoice_number ): Kuka_Island_Core_Invoice_Result {
-				$now_date = gmdate( 'Y-m-d' );
-				$request  = array(
+				/*
+				 * GetInvoiceStatusRequest carries REQUEST_HEADER and INVOICE
+				 * only. The four date fields this used to send are not part of
+				 * that contract, and a same-day window silently hid any
+				 * document issued on another date.
+				 * https://docs.edmbilisim.com.tr/api/api-documentation/einvoice/referenced/EFaturaEDMConnectorService.GetInvoiceStatusRequest.html
+				 */
+				$request = array(
 					'REQUEST_HEADER' => self::build_request_header( (string) $session_id, 'GetInvoiceStatus' ),
 					'INVOICE'        => array(
 						'UUID' => $uuid,
 					),
-					'START_DATE'     => $now_date,
-					'END_DATE'       => $now_date,
-					'CR_START_DATE'  => $now_date,
-					'CR_END_DATE'    => $now_date,
 				);
 
 				if ( '' !== $invoice_number ) {
@@ -694,81 +696,175 @@ final class Kuka_Island_Core_EDM_Client {
 		);
 	}
 
+	/**
+	 * Parse a SendInvoiceResponse.
+	 *
+	 * Contract: the document status lives at INVOICE > HEADER > STATUS, with
+	 * STATUS_DESCRIPTION beside it. UUID and ID are fields of the INVOICE entry
+	 * itself.
+	 *
+	 * Three assumptions are deliberately gone:
+	 *
+	 * - The status no longer starts at 'SUCCESS'. A default of success means a
+	 *   response that says nothing produces a completed invoice.
+	 * - REQUEST_RETURN.RETURN_CODE = 0 means EDM ACCEPTED THE CALL. It says
+	 *   nothing about the document, so it can no longer complete an invoice.
+	 * - STATUS is read from the nested HEADER, not from the INVOICE root, which
+	 *   is where it never was.
+	 *
+	 * @param mixed  $response         Raw SOAP response.
+	 * @param string $expected_uuid    UUID that was sent.
+	 * @param string $expected_number  Document number that was sent, if any.
+	 */
 	private function parse_send_invoice_response( $response, string $expected_uuid, string $expected_number ): Kuka_Island_Core_Invoice_Result {
-		$invoice_obj = null;
-		$status_code = 'SUCCESS';
-		$status_desc = 'Fatura EDM sistemine iletildi.';
+		$normalized = self::to_array_deep( $response );
 
-		if ( is_object( $response ) ) {
-			$invoice_obj = $response->INVOICE ?? ( $response->INVOICE_STATUS ?? null );
-			if ( isset( $response->REQUEST_RETURN->RETURN_CODE ) ) {
-				$status_code = (string) $response->REQUEST_RETURN->RETURN_CODE;
-			}
-		} elseif ( is_array( $response ) ) {
-			$invoice_obj = $response['INVOICE'] ?? ( $response['INVOICE_STATUS'] ?? null );
-			if ( isset( $response['REQUEST_RETURN']['RETURN_CODE'] ) ) {
-				$status_code = (string) $response['REQUEST_RETURN']['RETURN_CODE'];
-			}
+		$return_code = null;
+		if ( isset( $normalized['REQUEST_RETURN']['RETURN_CODE'] ) && is_scalar( $normalized['REQUEST_RETURN']['RETURN_CODE'] ) ) {
+			$return_code = (string) $normalized['REQUEST_RETURN']['RETURN_CODE'];
 		}
 
-		if ( is_array( $invoice_obj ) && ! empty( $invoice_obj[0] ) ) {
-			$invoice_obj = $invoice_obj[0];
+		$invoice = $normalized['INVOICE'] ?? ( $normalized['INVOICE_STATUS'] ?? array() );
+		if ( is_array( $invoice ) && array_key_exists( 0, $invoice ) ) {
+			$invoice = $invoice[0];
 		}
+		$invoice = is_array( $invoice ) ? $invoice : array();
 
-		$invoice_obj = is_object( $invoice_obj ) ? $invoice_obj : (object) ( is_array( $invoice_obj ) ? $invoice_obj : array() );
+		$uuid           = (string) ( $invoice['UUID'] ?? ( $invoice['GUID'] ?? $expected_uuid ) );
+		$invoice_number = (string) ( $invoice['ID'] ?? ( $invoice['INVOICE_NUMBER'] ?? $expected_number ) );
 
-		$uuid           = (string) ( $invoice_obj->UUID ?? ( $invoice_obj->GUID ?? $expected_uuid ) );
-		$invoice_number = (string) ( $invoice_obj->ID ?? ( $invoice_obj->INVOICE_NUMBER ?? $expected_number ) );
+		// The published location, and only it.
+		$header      = is_array( $invoice['HEADER'] ?? null ) ? $invoice['HEADER'] : array();
+		$raw_status  = (string) ( $header['STATUS'] ?? '' );
+		$status_desc = (string) ( $header['STATUS_DESCRIPTION'] ?? '' );
 
-		if ( ! empty( $invoice_obj->STATUS ) ) {
-			$status_code = (string) $invoice_obj->STATUS;
+		$classified = Kuka_Island_Core_EDM_Document_Status::classify( $raw_status );
+
+		if ( '' === $raw_status ) {
+			/*
+			 * The call was accepted but the document was not described. It is
+			 * in EDM's hands and its state is genuinely unknown, so it becomes
+			 * a polling job rather than a finished invoice.
+			 */
+			$status      = null === $return_code || '0' === $return_code
+				? Kuka_Island_Core_Invoice_Status::STATUS_SENT
+				: Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW;
+			$status_desc = '' !== $status_desc ? $status_desc : __( 'EDM isteği kabul etti; belge durumu henüz bildirilmedi.', 'kuka-island-core' );
+		} else {
+			$status = Kuka_Island_Core_EDM_Document_Status::resolve_lifecycle( $classified );
 		}
-		if ( ! empty( $invoice_obj->STATUS_DESCRIPTION ) ) {
-			$status_desc = (string) $invoice_obj->STATUS_DESCRIPTION;
-		}
-
-		$status = match ( true ) {
-			str_contains( strtoupper( $status_code ), 'SUCCESS' ) || str_contains( strtoupper( $status_code ), '1300' ) || str_contains( strtoupper( $status_code ), 'GIB_SUCCESS' ) || str_contains( strtoupper( $status_code ), 'KABUL' ) || '0' === $status_code => Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED,
-			str_contains( strtoupper( $status_code ), 'REJECT' ) || str_contains( strtoupper( $status_code ), 'ERROR' ) || str_contains( strtoupper( $status_code ), 'RED' ) => Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
-			default => Kuka_Island_Core_Invoice_Status::STATUS_SENT,
-		};
 
 		return Kuka_Island_Core_Invoice_Result::success(
 			$uuid,
 			$invoice_number,
 			$status,
-			$status_code,
+			$classified['normalized'],
 			$status_desc,
-			(array) $invoice_obj
+			array(
+				'return_code'      => $return_code,
+				'status'           => $classified['normalized'],
+				'status_class'     => $classified['class'],
+				'status_known'     => $classified['known'],
+				'invoice'          => $invoice,
+			)
 		);
 	}
 
-	private function parse_invoice_status_response( $response, string $uuid, string $invoice_number ): Kuka_Island_Core_Invoice_Result {
-		$status_obj = is_object( $response ) ? ( $response->INVOICE_STATUS ?? $response ) : ( is_array( $response ) ? ( $response['INVOICE_STATUS'] ?? $response ) : null );
-		if ( is_array( $status_obj ) && ! empty( $status_obj[0] ) ) {
-			$status_obj = $status_obj[0];
+	/**
+	 * Recursively turn a SOAP response into nested arrays.
+	 *
+	 * PHP's SoapClient hands back stdClass at every level, so a nested lookup
+	 * such as INVOICE > HEADER > STATUS has to cope with objects, arrays and
+	 * mixtures of both. Converting once, up front, is what lets the parser
+	 * address the published path directly instead of guessing at shapes.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return mixed
+	 */
+	private static function to_array_deep( $value ) {
+		if ( is_object( $value ) ) {
+			$value = get_object_vars( $value );
 		}
-		$status_obj = is_object( $status_obj ) ? $status_obj : (object) ( is_array( $status_obj ) ? $status_obj : array() );
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+		$out = array();
+		foreach ( $value as $key => $item ) {
+			$out[ $key ] = self::to_array_deep( $item );
+		}
 
-		$res_uuid   = (string) ( $status_obj->UUID ?? ( $status_obj->GUID ?? $uuid ) );
-		$res_num    = (string) ( $status_obj->ID ?? ( $status_obj->INVOICE_NUMBER ?? $invoice_number ) );
-		$code       = (string) ( $status_obj->STATUS_CODE ?? ( $status_obj->GIB_STATUS_CODE ?? ( $status_obj->STATUS ?? '' ) ) );
-		$desc       = (string) ( $status_obj->STATUS_DESCRIPTION ?? ( $status_obj->GIB_STATUS_DESCRIPTION ?? '' ) );
+		return $out;
+	}
 
-		$status = match ( true ) {
-			str_contains( strtoupper( $code ), 'SUCCESS' ) || str_contains( strtoupper( $code ), '1300' ) || str_contains( strtoupper( $code ), 'GIB_SUCCESS' ) || str_contains( strtoupper( $code ), 'KABUL' ) || '0' === $code => Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED,
-			str_contains( strtoupper( $code ), 'REJECT' ) || str_contains( strtoupper( $code ), 'ERROR' ) || str_contains( strtoupper( $code ), 'RED' ) => Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW,
-			default => Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL,
-		};
+	/**
+	 * Parse a GetInvoiceStatusResponse.
+	 *
+	 * STATUS is the authority and nothing may stand in for it. GIB_STATUS_CODE
+	 * used to be read as a fallback, which is actively harmful for e-Archive:
+	 * those documents are not sent through GİB's e-Invoice channel, so
+	 * GIB_STATUS_CODE = -1 is the normal answer and must not mask a perfectly
+	 * good SEND - SUCCEED.
+	 *
+	 * RESPONSE_CODE and EARCHIVE_REPORT_STATUS are parsed as their own fields.
+	 * The e-Archive report is a separate reconciliation signal about the
+	 * monthly GİB report, not about whether this invoice reached the customer,
+	 * so it never blocks SEND - SUCCEED.
+	 *
+	 * @param mixed  $response       Raw SOAP response.
+	 * @param string $uuid           UUID that was queried.
+	 * @param string $invoice_number Document number that was queried, if any.
+	 */
+	private function parse_invoice_status_response( $response, string $uuid, string $invoice_number ): Kuka_Island_Core_Invoice_Result {
+		$normalized = self::to_array_deep( $response );
+		$normalized = is_array( $normalized ) ? $normalized : array();
+
+		$entry = $normalized['INVOICE_STATUS'] ?? ( $normalized['INVOICE'] ?? $normalized );
+		if ( is_array( $entry ) && array_key_exists( 0, $entry ) ) {
+			$entry = $entry[0];
+		}
+		$entry = is_array( $entry ) ? $entry : array();
+
+		// STATUS may sit on the entry or, as in SendInvoice, inside HEADER.
+		$header = is_array( $entry['HEADER'] ?? null ) ? $entry['HEADER'] : array();
+
+		$res_uuid = (string) ( $entry['UUID'] ?? ( $header['UUID'] ?? ( $entry['GUID'] ?? $uuid ) ) );
+		$res_num  = (string) ( $entry['ID'] ?? ( $header['ID'] ?? ( $entry['INVOICE_NUMBER'] ?? $invoice_number ) ) );
+
+		$raw_status = (string) ( $header['STATUS'] ?? ( $entry['STATUS'] ?? '' ) );
+		$desc       = (string) ( $header['STATUS_DESCRIPTION'] ?? ( $entry['STATUS_DESCRIPTION'] ?? '' ) );
+
+		$classified = Kuka_Island_Core_EDM_Document_Status::classify( $raw_status );
+		$status     = Kuka_Island_Core_EDM_Document_Status::resolve_lifecycle( $classified );
+
+		// Reported alongside, never substituted for STATUS.
+		$gib_status_code       = self::scalar_or_empty( $header['GIB_STATUS_CODE'] ?? ( $entry['GIB_STATUS_CODE'] ?? null ) );
+		$response_code         = self::scalar_or_empty( $header['RESPONSE_CODE'] ?? ( $entry['RESPONSE_CODE'] ?? null ) );
+		$earchive_report_state = self::scalar_or_empty( $header['EARCHIVE_REPORT_STATUS'] ?? ( $entry['EARCHIVE_REPORT_STATUS'] ?? null ) );
 
 		return Kuka_Island_Core_Invoice_Result::success(
 			$res_uuid,
 			$res_num,
 			$status,
-			$code,
+			$classified['normalized'],
 			$desc,
-			(array) $status_obj
+			array(
+				'status'                 => $classified['normalized'],
+				'status_class'           => $classified['class'],
+				'status_known'           => $classified['known'],
+				'gib_status_code'        => $gib_status_code,
+				'response_code'          => $response_code,
+				'earchive_report_status' => $earchive_report_state,
+			)
 		);
+	}
+
+	/**
+	 * Read a scalar field, or the empty string when it is absent or structured.
+	 *
+	 * @param mixed $value Raw value.
+	 */
+	private static function scalar_or_empty( $value ): string {
+		return is_scalar( $value ) ? (string) $value : '';
 	}
 
 	/**
