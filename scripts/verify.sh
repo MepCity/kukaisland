@@ -59,6 +59,13 @@ printf '%s\n' "$invoice_integration"
 edm_sandbox_harness=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-edm-sandbox-harness.php)
 printf '%s\n' "$edm_sandbox_harness"
 
+# The reconciliation reset, measured through the REAL user surface: the actual
+# wrapper, the actual driver, a throwaway XDG_CONFIG_HOME and a shim that
+# records docker's real argument vector. Host-side, because the wrapper cannot
+# run from inside the container it starts.
+edm_reset_offline=$(./scripts/verify-reset-offline.sh 2>&1 || true)
+printf '%s\n' "$edm_reset_offline"
+
 # The credential mount must be reachable only by the single allow-listed
 # read-only script. Every other value must be refused BEFORE the credential gate,
 # so a refusal reason of credentials_file_absent counts as a leak here.
@@ -286,6 +293,16 @@ expect_invoice_line() {
   label=$1
   line=$2
   if printf '%s\n%s\n' "$invoice_integration" "$invoice_external_isolation" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_reset_offline_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$edm_reset_offline" | grep -Fqx "$line"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected $line)" >&2
@@ -752,12 +769,15 @@ expect_sandbox_line "the UBL id and the SOAP invoice id are independent" "SANDBO
 expect_sandbox_line "with no serial the request lets EDM assign the number" "SANDBOX_NO_SERIES_LOAD_REQUEST=PASS|calls:1|operation:LoadInvoice|generate_invoice_id_on_load:true|invoiceserial_requested:absent|invoice_id_attribute:absent|verdict:PASS|label:draft_uploaded|edm_assigned_number:read_back"
 expect_sandbox_line "LoadInvoice uploads a draft and SendInvoice is never called" "SANDBOX_LOAD_VS_SEND_SEMANTICS=PASS|transport_operations:LoadInvoice|forbidden_calls:none|success_label:draft_uploaded|sendinvoice_line:present|draft_step:present"
 expect_sandbox_line "an uncertain write carries a safe fault classification" "SANDBOX_UNCERTAIN_WRITE_CARRIES_SAFE_FAULT=PASS|calls:1|classification:uncertain|fault_line_shape:ok|remote_text_leaked:none"
-# The reconciliation reset claims to make no EDM call. It used to run after
-# Login, GetInvoiceSerial and CheckUser, so the claim was false; it is now
-# measured rather than asserted.
-expect_sandbox_line "the reconciliation reset is fully offline" "SANDBOX_RECONCILIATION_RESET_IS_OFFLINE=PASS|credentials_loaded:no|client_created:no|soap_calls:0|from:uncertain|to:idle|history:append_only|uuid_unchanged:yes|reset_precedes_credentials:yes|second_reset:refused|wrong_evidence_state_unchanged:yes"
-expect_sandbox_line "the reset calls no EDM operation at all" "SANDBOX_RESET_CALLS_NO_EDM_OPERATION=PASS|Login=0|Logout=0|GetInvoiceSerial=0|CheckUser=0|LoadInvoice=0|SendInvoice=0|total=0"
-expect_sandbox_line "the reset wrapper mounts no credentials" "SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS=PASS|reset_branch_found:yes|credential_mount:absent|write_env_forwarded:absent|state_mount:present|normal_path_protections:intact"
+# Static guards on the reconciliation reset. The behavioural proof is the pair
+# of host-side checks further down, which run the real wrapper and driver.
+expect_sandbox_line "the reset parse precedes every EDM path" "SANDBOX_RESET_PRECEDES_EVERY_EDM_PATH=PASS|measured:source_position|reset_parsed:yes|reset_exits:yes|reachable_before_reset_exit:none"
+expect_sandbox_line "the claim state machine handles the reset" "SANDBOX_RESET_STATE_MACHINE=PASS|measured:claim_class|from:uncertain|to:idle|uuid_unchanged:yes|history:append_only|second_reset:refused|wrong_evidence_state_unchanged:yes"
+expect_sandbox_line "the reset wrapper source mounts no credentials" "SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS=PASS|measured:wrapper_source|reset_branch_found:yes|credential_mount:absent|write_env_forwarded:absent|state_mount:present|host_gate_before_docker:yes|normal_path_protections:intact"
+
+# Behavioural, on the host: the real wrapper and the real driver.
+expect_reset_offline_line "an open write gate refuses the reset before docker starts" "SANDBOX_RESET_HOST_WRITE_GATE=PASS|exit:1|reason:write_gate_open_during_reset|docker_started:no|credentials_mounted:no|state_unchanged:yes"
+expect_reset_offline_line "the real wrapper resets offline with no credential mount" "SANDBOX_RESET_REAL_WRAPPER_DRIVER=PASS|credentials_file:absent|credentials_mounted:no|from:uncertain|to:idle|uuid_unchanged:yes|history:append_only|real_claim_unchanged:yes"
 expect_sandbox_line "state fixtures are cleaned up" "SANDBOX_STATE_FIXTURES_CLEANED=PASS|temp_root_removed:yes"
 expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
 expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"

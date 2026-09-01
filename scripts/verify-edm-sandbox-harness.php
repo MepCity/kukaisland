@@ -1706,44 +1706,78 @@ $report(
 );
 
 /* ========================================================================== */
-/* The reconciliation reset is genuinely offline                                */
+/* Reconciliation reset: static contract only                                   */
 /* ========================================================================== */
 
 /*
- * The reset used to run AFTER Login, GetInvoiceSerial and CheckUser, so its
- * documented "no EDM call" was false. This drives the real driver with no
- * credential file mounted and a transport that counts every operation it is
- * asked to perform, then proves the count is zero and the transition still
- * happened. Only a temporary state file is touched: the real sandbox claim is
- * never opened.
+ * SCOPE. These checks are STATIC. They read the driver's source and exercise
+ * the claim state machine directly. They do NOT run scripts/edm-sandbox-run.sh
+ * and they do NOT run scripts/edm-sandbox-invoice.php, so they cannot and must
+ * not be reported as proof that the shipped driver makes no SOAP call.
+ *
+ * An earlier version of this block built its own copy of the reset out of a
+ * closure and passed a "counting transport" it then discarded. That measured
+ * nothing: the transport was never reachable from the code under test, so a
+ * count of zero was guaranteed regardless of what the real driver did.
+ *
+ * The behavioural proof lives on the host, in scripts/verify-reset-offline.sh,
+ * which drives the real wrapper and the real driver and reads the mounts off
+ * docker's actual argument vector:
+ *   SANDBOX_RESET_HOST_WRITE_GATE
+ *   SANDBOX_RESET_REAL_WRAPPER_DRIVER
  */
-final class Kuka_Sandbox_Counting_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
-	/** @var array<int, string> Every operation the driver attempted. */
-	public array $operations = array();
+$driver_body = (string) file_get_contents( __DIR__ . '/edm-sandbox-invoice.php' );
 
-	public function call( string $action, array $parameters ) {
-		$this->operations[] = $action;
+$pos_reset       = strpos( $driver_body, '$reset_requested = false;' );
+$pos_reset_exit  = strpos( $driver_body, "exit( \$reset_result['ok'] ? 0 : 1 );" );
+$pos_credentials = strpos( $driver_body, 'kuka_edm_test_credentials(' );
+$pos_config      = strpos( $driver_body, 'new Kuka_Island_Core_Invoice_Config(' );
+$pos_client      = strpos( $driver_body, 'new Kuka_Island_Core_EDM_Client(' );
+$pos_login       = strpos( $driver_body, '$client->login()' );
+$pos_serial      = strpos( $driver_body, '$client->get_invoice_serial(' );
+$pos_check_user  = strpos( $driver_body, '$client->check_user(' );
 
-		throw new RuntimeException( 'The offline reset path must never reach a transport.' );
-	}
-
-	public function get_last_request(): string {
-		return '';
-	}
-
-	public function get_last_response(): string {
-		return '';
+$after_reset_exit = array(
+	'credentials'      => $pos_credentials,
+	'config'           => $pos_config,
+	'client'           => $pos_client,
+	'login'            => $pos_login,
+	'get_invoice_serial' => $pos_serial,
+	'check_user'       => $pos_check_user,
+);
+$too_early = array();
+foreach ( $after_reset_exit as $label => $pos ) {
+	if ( false !== $pos && ( false === $pos_reset_exit || $pos < $pos_reset_exit ) ) {
+		$too_early[] = $label;
 	}
 }
 
-$reset_root = $state_root . '/offline-reset';
+$report(
+	'SANDBOX_RESET_PRECEDES_EVERY_EDM_PATH',
+	false !== $pos_reset
+	&& false !== $pos_reset_exit
+	&& $pos_reset < $pos_reset_exit
+	&& array() === $too_early,
+	sprintf(
+		'measured:source_position|reset_parsed:%s|reset_exits:%s|reachable_before_reset_exit:%s',
+		false !== $pos_reset ? 'yes' : 'no',
+		false !== $pos_reset_exit ? 'yes' : 'no',
+		empty( $too_early ) ? 'none' : implode( ',', $too_early )
+	)
+);
+
+/*
+ * The claim state machine itself, exercised directly. This is a genuine unit
+ * test OF Kuka_Sandbox_Claim -- not of the driver -- and is labelled that way.
+ */
+$reset_root = $state_root . '/reset-state-machine';
 mkdir( $reset_root, 0700, true );
 $reset_file = $reset_root . '/claim.json';
+$reset_lock = $reset_root . '/claim.lock';
 
-// Seed a genuine uncertain record through the state machine, never by hand.
-$seed_claim = new Kuka_Sandbox_Claim( $reset_file, $reset_root . '/claim.lock' );
+$seed_claim = new Kuka_Sandbox_Claim( $reset_file, $reset_lock );
 $seed_claim->acquire();
-$seed_claim->claim( 'uuid-offline-reset-fixture', 'LoadInvoice' );
+$seed_claim->claim( 'uuid-reset-state-machine-fixture', 'LoadInvoice' );
 $seed_claim->settle( Kuka_Sandbox_Claim::S_UNCERTAIN, array( 'outcome' => 'transport_exception' ) );
 $seed_claim->release();
 
@@ -1752,23 +1786,7 @@ $before_state   = (string) ( $before_record['state'] ?? '' );
 $before_uuid    = (string) ( $before_record['uuid'] ?? '' );
 $before_history = (array) ( $before_record['history'] ?? array() );
 
-/**
- * Run the reset the way the driver does, with a transport that would record any
- * EDM operation. Nothing constructs a client on this path, so the counter must
- * stay empty.
- *
- * @param string                            $file      State file.
- * @param string                            $lock      Lock file.
- * @param string                            $evidence  Evidence token.
- * @param string                            $audit     Audit label.
- * @param Kuka_Sandbox_Counting_Transport   $transport Counting transport.
- * @return array<string, mixed>
- */
-$run_offline_reset = static function ( string $file, string $lock, string $evidence, string $audit, Kuka_Sandbox_Counting_Transport $transport ): array {
-	// The credential loader is deliberately NOT called and no config, client or
-	// transport is constructed: the transport below exists only to be counted.
-	unset( $transport );
-
+$apply_reset = static function ( string $file, string $lock, string $evidence, string $audit ): array {
 	$claim = new Kuka_Sandbox_Claim( $file, $lock );
 	if ( ! $claim->acquire() ) {
 		return array( 'ok' => false, 'reason' => 'lock_unavailable', 'state' => 'unknown' );
@@ -1779,104 +1797,79 @@ $run_offline_reset = static function ( string $file, string $lock, string $evide
 	return $result;
 };
 
-$counting_transport = new Kuka_Sandbox_Counting_Transport();
-$offline_reset      = $run_offline_reset( $reset_file, $reset_root . '/claim.lock', 'document_absent_at_edm', 'edm_portal_absent', $counting_transport );
+$first_reset = $apply_reset( $reset_file, $reset_lock, 'document_absent_at_edm', 'edm_portal_absent' );
 
 $after_record  = json_decode( (string) file_get_contents( $reset_file ), true );
 $after_state   = (string) ( $after_record['state'] ?? '' );
 $after_uuid    = (string) ( $after_record['uuid'] ?? '' );
 $after_history = (array) ( $after_record['history'] ?? array() );
 
-// History is append-only: every earlier entry survives byte-for-byte and
-// exactly one audit entry was added.
 $history_preserved = count( $after_history ) === count( $before_history ) + 1
 	&& array_slice( $after_history, 0, count( $before_history ) ) === $before_history;
-$appended          = (array) end( $after_history );
+$appended = (array) end( $after_history );
 
-// A second reset must be refused, and a wrong evidence token must change
-// nothing on disk.
-$second_reset  = $run_offline_reset( $reset_file, $reset_root . '/claim.lock', 'document_absent_at_edm', '', $counting_transport );
-$after_second  = (string) file_get_contents( $reset_file );
+// A second reset is refused, and a wrong evidence token leaves the file
+// byte-identical.
+$second_reset = $apply_reset( $reset_file, $reset_lock, 'document_absent_at_edm', '' );
 
-$wrong_root = $state_root . '/offline-reset-wrong';
+$wrong_root = $state_root . '/reset-wrong-evidence';
 mkdir( $wrong_root, 0700, true );
 $wrong_file  = $wrong_root . '/claim.json';
-$wrong_claim = new Kuka_Sandbox_Claim( $wrong_file, $wrong_root . '/claim.lock' );
+$wrong_lock  = $wrong_root . '/claim.lock';
+$wrong_claim = new Kuka_Sandbox_Claim( $wrong_file, $wrong_lock );
 $wrong_claim->acquire();
 $wrong_claim->claim( 'uuid-wrong-evidence', 'LoadInvoice' );
 $wrong_claim->settle( Kuka_Sandbox_Claim::S_UNCERTAIN, array( 'outcome' => 'transport_exception' ) );
 $wrong_claim->release();
 
 $wrong_before = (string) file_get_contents( $wrong_file );
-$wrong_reset  = $run_offline_reset( $wrong_file, $wrong_root . '/claim.lock', 'edm_portal_absent', '', $counting_transport );
+$wrong_reset  = $apply_reset( $wrong_file, $wrong_lock, 'edm_portal_absent', '' );
 $wrong_after  = (string) file_get_contents( $wrong_file );
 
-// The driver must parse the reset before it can load a credential or build a
-// client: measured on the source, by position.
-$driver_body     = (string) file_get_contents( __DIR__ . '/edm-sandbox-invoice.php' );
-$pos_reset       = strpos( $driver_body, '$reset_requested = false;' );
-$pos_credentials = strpos( $driver_body, 'kuka_edm_test_credentials(' );
-$pos_config      = strpos( $driver_body, 'new Kuka_Island_Core_Invoice_Config(' );
-$pos_client      = strpos( $driver_body, 'new Kuka_Island_Core_EDM_Client(' );
-$pos_reset_exit  = strpos( $driver_body, "exit( \$reset_result['ok'] ? 0 : 1 );" );
-$order_ok        = false !== $pos_reset && false !== $pos_reset_exit && false !== $pos_credentials
-	&& $pos_reset < $pos_credentials
-	&& $pos_reset_exit < $pos_credentials
-	&& ( false === $pos_config || $pos_reset_exit < $pos_config )
-	&& ( false === $pos_client || $pos_reset_exit < $pos_client );
-
 $report(
-	'SANDBOX_RECONCILIATION_RESET_IS_OFFLINE',
-	array() === $counting_transport->operations
-	&& $order_ok
-	&& Kuka_Sandbox_Claim::S_UNCERTAIN === $before_state
+	'SANDBOX_RESET_STATE_MACHINE',
+	Kuka_Sandbox_Claim::S_UNCERTAIN === $before_state
+	&& true === $first_reset['ok']
 	&& Kuka_Sandbox_Claim::S_IDLE === $after_state
-	&& true === $offline_reset['ok']
 	&& $before_uuid === $after_uuid
 	&& $history_preserved
 	&& 'document_absent_at_edm' === ( $appended['evidence'] ?? '' )
 	&& 'edm_portal_absent' === ( $appended['audit'] ?? '' )
-	// Second reset refused, wrong evidence leaves the file byte-identical.
 	&& false === $second_reset['ok']
 	&& false === $wrong_reset['ok']
 	&& $wrong_before === $wrong_after,
 	sprintf(
-		'credentials_loaded:no|client_created:no|soap_calls:%d|from:%s|to:%s|history:%s|uuid_unchanged:%s|reset_precedes_credentials:%s|second_reset:%s|wrong_evidence_state_unchanged:%s',
-		count( $counting_transport->operations ),
+		'measured:claim_class|from:%s|to:%s|uuid_unchanged:%s|history:%s|second_reset:%s|wrong_evidence_state_unchanged:%s',
 		$before_state,
 		$after_state,
-		$history_preserved ? 'append_only' : 'REWRITTEN',
 		$before_uuid === $after_uuid ? 'yes' : 'no',
-		$order_ok ? 'yes' : 'no',
+		$history_preserved ? 'append_only' : 'REWRITTEN',
 		false === $second_reset['ok'] ? 'refused' : 'ACCEPTED',
 		$wrong_before === $wrong_after ? 'yes' : 'no'
 	)
 );
 
-// Named EDM operations, each proved to be zero.
-$named_ops     = array( 'Login', 'Logout', 'GetInvoiceSerial', 'CheckUser', 'LoadInvoice', 'SendInvoice' );
-$op_counts     = array();
-$all_ops_zero  = true;
-foreach ( $named_ops as $op ) {
-	$count           = count( array_filter( $counting_transport->operations, static fn( string $seen ): bool => $seen === $op ) );
-	$op_counts[]     = $op . '=' . $count;
-	$all_ops_zero    = $all_ops_zero && 0 === $count;
-}
-
-$report(
-	'SANDBOX_RESET_CALLS_NO_EDM_OPERATION',
-	$all_ops_zero && array() === $counting_transport->operations,
-	implode( '|', $op_counts ) . '|total=' . count( $counting_transport->operations )
-);
-
-// The wrapper must not mount the credential file in reset mode.
-$wrapper_body   = (string) file_get_contents( __DIR__ . '/edm-sandbox-run.sh' );
-$reset_branch   = '';
-$wrapper_start  = strpos( $wrapper_body, 'if [ "$reset_mode" = "yes" ]; then' );
+/*
+ * Wrapper source guard. Also static: the behavioural equivalent is
+ * SANDBOX_RESET_REAL_WRAPPER_DRIVER, which reads the mounts off the argument
+ * vector docker actually received.
+ */
+$wrapper_body  = (string) file_get_contents( __DIR__ . '/edm-sandbox-run.sh' );
+$reset_branch  = '';
+$wrapper_start = strpos( $wrapper_body, 'if [ "$reset_mode" = "yes" ]; then' );
 if ( false !== $wrapper_start ) {
 	$wrapper_end  = strpos( $wrapper_body, "\nfi\n", $wrapper_start );
 	$reset_branch = false !== $wrapper_end ? substr( $wrapper_body, $wrapper_start, $wrapper_end - $wrapper_start ) : '';
 }
+
+// The host-side refusal must be positioned before docker, the state directory
+// and the credential handling.
+$pos_host_gate  = strpos( $wrapper_body, 'if [ "$reset_mode" = "yes" ] && [ "$allow" = "true" ]; then' );
+$pos_mkdir      = strpos( $wrapper_body, 'mkdir -p "$state_dir"' );
+$pos_first_dock = strpos( $wrapper_body, 'docker compose run' );
+$host_gate_first = false !== $pos_host_gate
+	&& ( false === $pos_mkdir || $pos_host_gate < $pos_mkdir )
+	&& ( false === $pos_first_dock || $pos_host_gate < $pos_first_dock );
 
 $report(
 	'SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS',
@@ -1884,15 +1877,17 @@ $report(
 	&& ! str_contains( $reset_branch, 'edm-test.env' )
 	&& ! str_contains( $reset_branch, 'KUKA_EDM_ALLOW_SANDBOX_WRITE' )
 	&& str_contains( $reset_branch, '/run/edm/state' )
+	&& $host_gate_first
 	// The normal paths keep their credential protections.
 	&& str_contains( $wrapper_body, 'credentials_file_mode_not_600' )
 	&& str_contains( $wrapper_body, '"$cred_file":/run/edm/edm-test.env:ro' ),
 	sprintf(
-		'reset_branch_found:%s|credential_mount:%s|write_env_forwarded:%s|state_mount:%s|normal_path_protections:%s',
+		'measured:wrapper_source|reset_branch_found:%s|credential_mount:%s|write_env_forwarded:%s|state_mount:%s|host_gate_before_docker:%s|normal_path_protections:%s',
 		'' !== $reset_branch ? 'yes' : 'no',
 		str_contains( $reset_branch, 'edm-test.env' ) ? 'PRESENT' : 'absent',
 		str_contains( $reset_branch, 'KUKA_EDM_ALLOW_SANDBOX_WRITE' ) ? 'PRESENT' : 'absent',
 		str_contains( $reset_branch, '/run/edm/state' ) ? 'present' : 'ABSENT',
+		$host_gate_first ? 'yes' : 'no',
 		( str_contains( $wrapper_body, 'credentials_file_mode_not_600' ) && str_contains( $wrapper_body, '"$cred_file":/run/edm/edm-test.env:ro' ) ) ? 'intact' : 'WEAKENED'
 	)
 );

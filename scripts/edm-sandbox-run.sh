@@ -44,6 +44,19 @@ for arg in "$@"; do
   esac
 done
 
+allow="${KUKA_EDM_ALLOW_SANDBOX_WRITE:-}"
+
+# A reset asks to forget an in-flight write; an open write gate asks to perform
+# one. Together the intent is ambiguous, so neither happens. This is enforced
+# HERE, on the host, before anything else: the reset branch deliberately does
+# not forward the variable into the container, so the driver's own
+# write_gate_open_during_reset check would never see it and the refusal would
+# be silently skipped. Nothing is started, mounted or created first.
+if [ "$reset_mode" = "yes" ] && [ "$allow" = "true" ]; then
+  echo "EDM_SANDBOX_RUN=BLOCKED|reason:write_gate_open_during_reset|credentials_mounted:no|docker_started:no|state_unchanged:yes"
+  exit 1
+fi
+
 case "$cred_file" in
   "$project_dir"/*)
     echo "EDM_SANDBOX_RUN=BLOCKED|reason:credential_path_inside_repository" >&2
@@ -57,6 +70,7 @@ chmod 700 "$state_dir"
 
 if [ "$reset_mode" = "yes" ]; then
   # No credential file requirement, no credential mount, no write env var.
+  # The host gate above has already refused an open write gate.
   echo "EDM_SANDBOX_RUN=RECONCILIATION_RESET|credentials_mounted:no|write_env_forwarded:no|state_only:yes"
   exec docker compose run --rm -T \
     -v "$state_dir":/run/edm/state \
@@ -75,7 +89,6 @@ if [ "$mode" != "600" ]; then
   exit 1
 fi
 
-allow="${KUKA_EDM_ALLOW_SANDBOX_WRITE:-}"
 if [ "$allow" = "true" ]; then
   echo "EDM_SANDBOX_RUN=WRITE_GATE_OPEN|env_gate:true|operation_confirmation_still_required"
 else

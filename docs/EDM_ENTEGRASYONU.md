@@ -656,22 +656,53 @@ yapılmaz**, JSON elle düzenlenmez, geçmiş korunur ve yalnızca eklenir:
 ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<etiket>
 ```
 
-**Bu akış tamamen çevrimdışıdır** ve bu artık ölçülüyor. Önceki sürümde reset kontrolü
-`Login`, `GetInvoiceSerial` ve `CheckUser` çalıştıktan **sonra** yer alıyordu; "hiçbir EDM
-çağrısı yapmaz" ifadesi o hâliyle doğru değildi.
+**Bu akış tamamen çevrimdışıdır.** Önceki sürümde reset kontrolü `Login`, `GetInvoiceSerial`
+ve `CheckUser` çalıştıktan **sonra** yer alıyordu; "hiçbir EDM çağrısı yapmaz" ifadesi o
+hâliyle doğru değildi.
 
-Şimdi CLI argümanları dosyanın en başında ayrıştırılıyor ve reset dalı; kimlik dosyası
+CLI argümanları artık dosyanın en başında ayrıştırılıyor ve reset dalı; kimlik dosyası
 okunmadan, `Invoice_Config` kurulmadan, endpoint doğrulanmadan, client/transport
-oluşturulmadan çalışıp çıkıyor. Sarmalayıcı da reset modunda kimlik dosyası **istemiyor** ve
-**mount etmiyor**, `KUKA_EDM_ALLOW_SANDBOX_WRITE` değişkenini iletmiyor — yani kod yolu
-değişse bile konteynerde okunacak bir kimlik dosyası yok. Normal PLAN/LoadInvoice
-yollarındaki kimlik korumaları değişmedi.
+oluşturulmadan çalışıp çıkıyor.
+
+**Host tarafındaki yazma kapısı.** Sarmalayıcı reset modunda `KUKA_EDM_ALLOW_SANDBOX_WRITE`
+değişkenini konteynere iletmez — bu nedenle sürücünün kendi `write_gate_open_during_reset`
+kontrolü o değişkeni hiç göremez. Bu yüzden reddin **host'ta**, docker başlamadan, state
+dizinine dokunulmadan yapılması gerekir:
 
 ```
-SANDBOX_RECONCILIATION_RESET_IS_OFFLINE=PASS|credentials_loaded:no|client_created:no|soap_calls:0|from:uncertain|to:idle|history:append_only|uuid_unchanged:yes|reset_precedes_credentials:yes|second_reset:refused|wrong_evidence_state_unchanged:yes
-SANDBOX_RESET_CALLS_NO_EDM_OPERATION=PASS|Login=0|Logout=0|GetInvoiceSerial=0|CheckUser=0|LoadInvoice=0|SendInvoice=0|total=0
-SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS=PASS|reset_branch_found:yes|credential_mount:absent|write_env_forwarded:absent|state_mount:present|normal_path_protections:intact
+$ KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=edm_portal_absent
+EDM_SANDBOX_RUN=BLOCKED|reason:write_gate_open_during_reset|credentials_mounted:no|docker_started:no|state_unchanged:yes
+$ echo $?
+1
 ```
+
+`allow` değeri `true` dışında herhangi bir şeyse reset çevrimdışı çalışır. PLAN/LoadInvoice
+yazma kapıları değişmedi.
+
+**Nasıl ölçülüyor.** İki katman ayrı ayrı etiketlenir; hangisinin ne kanıtladığı karıştırılmaz.
+
+| Kontrol | Ölçüm türü | Ne kanıtlar |
+|---|---|---|
+| `SANDBOX_RESET_PRECEDES_EVERY_EDM_PATH` | `measured:source_position` | Reset ayrıştırma ve çıkış; credential, config, client, `Login`, `GetInvoiceSerial`, `CheckUser` konumlarının **hepsinden önce** |
+| `SANDBOX_RESET_STATE_MACHINE` | `measured:claim_class` | `Kuka_Sandbox_Claim` geçiş semantiği |
+| `SANDBOX_RESET_WRAPPER_MOUNTS_NO_CREDENTIALS` | `measured:wrapper_source` | Sarmalayıcı reset dalında kimlik mount'u ve write env yok; host kapısı docker'dan önce |
+| `SANDBOX_RESET_HOST_WRITE_GATE` | **davranışsal, host** | Gerçek sarmalayıcı; exit 1, docker hiç başlatılmadı, state byte-identical |
+| `SANDBOX_RESET_REAL_WRAPPER_DRIVER` | **davranışsal, host** | Gerçek sarmalayıcı + gerçek sürücü; `uncertain → idle`, kimlik mount'u yok (docker'ın gerçek argüman vektöründen okunur) |
+
+```
+SANDBOX_RESET_HOST_WRITE_GATE=PASS|exit:1|reason:write_gate_open_during_reset|docker_started:no|credentials_mounted:no|state_unchanged:yes
+SANDBOX_RESET_REAL_WRAPPER_DRIVER=PASS|credentials_file:absent|credentials_mounted:no|from:uncertain|to:idle|uuid_unchanged:yes|history:append_only|real_claim_unchanged:yes
+```
+
+Davranışsal iki kontrol `scripts/verify-reset-offline.sh` içinde, host'ta çalışır (sarmalayıcı
+kendi başlattığı konteynerin içinden çalıştırılamaz). Geçici bir `XDG_CONFIG_HOME` kullanır,
+`uncertain` kaydı durum makinesiyle üretir, `PATH` başına docker'ın argüman vektörünü kaydeden
+bir shim koyar ve geliştiricinin gerçek claim dosyasına hiç dokunmaz.
+
+**Kaldırılan yanıltıcı ölçüm.** Bir önceki sürümde konteyner içinde bir "counting transport"
+kuruluyor, reset kendi closure'ıyla yeniden yazılıyor ve transport `unset` ediliyordu. Sayaç
+sıfır çıkıyordu ama test edilen koddan o transport'a hiç erişilemiyordu; yani sonuç gerçek
+sürücü hakkında hiçbir şey kanıtlamıyordu. Kaldırıldı.
 
 Reset girdileri fail-closed reddedilir:
 
