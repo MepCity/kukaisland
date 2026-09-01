@@ -146,6 +146,35 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 		$order->save_meta_data();
 	}
 
+	/**
+	 * Record that an automatic status query could not be booked.
+	 *
+	 * The invoice status is deliberately left exactly as it is. sent,
+	 * pending_approval and send_uncertain all refuse a re-send, while
+	 * needs_manual_review is a status can_retry() permits -- so rewriting an
+	 * in-flight document into it would turn a scheduling problem into a second
+	 * fiscal document. The attempt counter is not advanced either: no
+	 * transmission happened.
+	 *
+	 * Only the safe error code reaches the order. No exception text, credential,
+	 * SOAP payload or customer data is written here.
+	 *
+	 * @param WC_Order $order           WooCommerce order.
+	 * @param string   $safe_error_code One of the poller's ERROR_* codes.
+	 * @param string   $message         Fixed operator-facing sentence.
+	 */
+	public static function save_polling_not_scheduled( WC_Order $order, string $safe_error_code, string $message ): void {
+		$status = self::get_status( $order );
+
+		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
+
+		// The history entry carries the status the document still has, which is
+		// the point: the record says "unchanged", not "escalated".
+		self::add_history_entry( $order, $status, sprintf( '%s (%s)', $message, $safe_error_code ) );
+
+		$order->save_meta_data();
+	}
+
 	public static function save_status_query( WC_Order $order, Kuka_Island_Core_Invoice_Result $result ): void {
 		$order->update_meta_data( self::META_STATUS, $result->get_status() );
 		$order->update_meta_data( self::META_LAST_QUERIED_AT, time() );

@@ -3196,25 +3196,39 @@ $report(
 kuka_test_delete_order( $poll_order->get_id(), $test_run_id );
 
 // Duplicate scheduling: the second request for the same order must not create a
-// second action. Action Scheduler may be absent, in which case both calls
-// return false and the invariant "no duplicate" still holds.
+// second action, and must say so as 'already_pending' rather than as a bare
+// refusal that reads the same as a scheduler failure.
 $dup_order_id   = 999000001;
 Kuka_Island_Core_Invoice_Status_Poller::unschedule( $dup_order_id );
-$dup_first      = Kuka_Island_Core_Invoice_Status_Poller::schedule( $dup_order_id, 300 );
-$dup_second     = Kuka_Island_Core_Invoice_Status_Poller::schedule( $dup_order_id, 300 );
+$dup_first      = Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $dup_order_id, 300 );
+$dup_second     = Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $dup_order_id, 300 );
 $dup_as_present = function_exists( 'as_schedule_single_action' );
 Kuka_Island_Core_Invoice_Status_Poller::unschedule( $dup_order_id );
 
+$dup_expected_first  = $dup_as_present
+	? Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED
+	: Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_SCHEDULER_UNAVAILABLE;
+$dup_expected_second = $dup_as_present
+	? Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_ALREADY_PENDING
+	: Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_SCHEDULER_UNAVAILABLE;
+
 $report(
 	'INVOICE_POLL_NO_DUPLICATE_SCHEDULE',
-	false === $dup_second
-	&& $dup_first === $dup_as_present
+	$dup_expected_first === $dup_first
+	&& $dup_expected_second === $dup_second
+	// already_pending is a success; scheduler_unavailable and schedule_failed
+	// are not. That distinction is the whole point of the outcome codes.
+	&& '' === Kuka_Island_Core_Invoice_Status_Poller::error_code_for( Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_ALREADY_PENDING )
+	&& '' === Kuka_Island_Core_Invoice_Status_Poller::error_code_for( Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED )
+	&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULER_UNAVAILABLE === Kuka_Island_Core_Invoice_Status_Poller::error_code_for( Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_SCHEDULER_UNAVAILABLE )
+	&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED === Kuka_Island_Core_Invoice_Status_Poller::error_code_for( Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_FAILED )
+	&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_LOCK_WITHOUT_PENDING === Kuka_Island_Core_Invoice_Status_Poller::error_code_for( Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_LOCK_CONTENDED )
 	&& Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS !== Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE,
 	sprintf(
-		'action_scheduler:%s|first:%s|second:%s|distinct_from_send_action:%s',
+		'action_scheduler:%s|first:%s|second:%s|success_outcomes:created,already_pending|distinct_from_send_action:%s',
 		$dup_as_present ? 'present' : 'absent',
-		$dup_first ? 'created' : 'not_created',
-		$dup_second ? 'CREATED' : 'refused',
+		$dup_first,
+		$dup_second,
 		Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS !== Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE ? 'yes' : 'no'
 	)
 );
@@ -3483,27 +3497,73 @@ if ( ! $runner_available ) {
 	}
 
 	$pending_after_terminal = count( $poll_pending_ids( $runner_order_id ) );
+	$runner_chain_order     = wc_get_order( $runner_order_id );
+	// Captured before the race scenarios below rewrite the status on purpose.
+	$runner_chain_status    = $runner_chain_order instanceof WC_Order
+		? (string) $runner_chain_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, true )
+		: 'order_missing';
+	$runner_chain_error     = $runner_chain_order instanceof WC_Order
+		? (string) $runner_chain_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true )
+		: 'order_missing';
 
-	// Two concurrent booking attempts must still leave one query.
-	//
-	// The advisory lock is a MySQL session lock, so the competing worker is a
-	// real second connection: it takes the same lock the scheduler takes, and
-	// the scheduler running here has to refuse while that lock is held. One
-	// attempt refused plus one attempt booked is the whole race.
+	/*
+	 * The lock race, both ways round.
+	 *
+	 * The advisory lock is a MySQL session lock, so the rival worker is a real
+	 * second connection holding the very lock the scheduler takes. Losing that
+	 * lock is only safe if the winner actually left a query behind, and the
+	 * winner may have failed exactly as this call could have -- so the pending
+	 * query has to be looked for, never assumed.
+	 */
+	$race_lock_name = 'kuka_inv_poll_' . $runner_order_id;
+	$rival          = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+
+	$race_order = wc_get_order( $runner_order_id );
+	// Put the document back in flight, so "the in-flight status is preserved"
+	// is a claim the race can actually falsify.
+	$race_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SENT );
+	$race_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, '' );
+	$race_order->save_meta_data();
+
+	// (a) The rival booked a query and then took the lock. This is an ordinary
+	// already_pending, and nothing may be recorded as a failure.
 	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $runner_order_id );
-	$rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	$rival_booked = Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $runner_order_id, 300 );
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-	$rival_holds = '1' === (string) $rival->get_var( $rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_poll_' . $runner_order_id ) );
+	$rival_holds_a = '1' === (string) $rival->get_var( $rival->prepare( 'SELECT GET_LOCK(%s, 0)', $race_lock_name ) );
 
-	$attempt_while_held = Kuka_Island_Core_Invoice_Status_Poller::schedule( $runner_order_id, 300 );
-	$pending_while_held = count( $poll_pending_ids( $runner_order_id ) );
+	$race_with_pending    = Kuka_Island_Core_Invoice_Status_Poller::book_query( $race_order, 300 );
+	$pending_with_pending = count( $poll_pending_ids( $runner_order_id ) );
 
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-	$rival->get_var( $rival->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_inv_poll_' . $runner_order_id ) );
+	$rival->get_var( $rival->prepare( 'SELECT RELEASE_LOCK(%s)', $race_lock_name ) );
 
-	$attempt_after_release = Kuka_Island_Core_Invoice_Status_Poller::schedule( $runner_order_id, 300 );
-	$attempt_duplicate    = Kuka_Island_Core_Invoice_Status_Poller::schedule( $runner_order_id, 300 );
-	$pending_after_race   = count( $poll_pending_ids( $runner_order_id ) );
+	$race_order->read_meta_data( true );
+	$error_after_with_pending = (string) $race_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+
+	// (b) The rival holds the lock and booked nothing. Reporting success here
+	// is the silent failure being removed, so it has to leave a visible record.
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $runner_order_id );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$rival_holds_b = '1' === (string) $rival->get_var( $rival->prepare( 'SELECT GET_LOCK(%s, 0)', $race_lock_name ) );
+
+	$notes_before_race       = count( wc_get_order_notes( array( 'order_id' => $runner_order_id ) ) );
+	$race_without_pending    = Kuka_Island_Core_Invoice_Status_Poller::book_query( $race_order, 300 );
+	$pending_without_pending = count( $poll_pending_ids( $runner_order_id ) );
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$rival->get_var( $rival->prepare( 'SELECT RELEASE_LOCK(%s)', $race_lock_name ) );
+
+	$race_order->read_meta_data( true );
+	$error_after_race  = (string) $race_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+	$status_after_race = Kuka_Island_Core_Invoice_Order_Store::get_status( $race_order );
+	$notes_after_race  = count( wc_get_order_notes( array( 'order_id' => $runner_order_id ) ) );
+
+	// (c) With the lock free again, one booking is created and the next is an
+	// already_pending success rather than an indistinguishable refusal.
+	$attempt_after_release = Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $runner_order_id, 300 );
+	$attempt_duplicate     = Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $runner_order_id, 300 );
+	$pending_after_race    = count( $poll_pending_ids( $runner_order_id ) );
 
 	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $runner_order_id );
 
@@ -3513,18 +3573,14 @@ if ( ! $runner_available ) {
 		$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] = $saved_callbacks;
 	}
 
-	$reloaded_runner = wc_get_order( $runner_order_id );
-	$runner_final    = $reloaded_runner instanceof WC_Order
-		? (string) $reloaded_runner->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, true )
-		: 'order_missing';
-
 	$expected_steps = array( 'before1:1', 'after1:1', 'before2:1', 'after2:1', 'before3:1', 'after3:0' );
 	$running_seen   = array( ActionScheduler_Store::STATUS_RUNNING, ActionScheduler_Store::STATUS_RUNNING, ActionScheduler_Store::STATUS_RUNNING );
 	$complete_seen  = array( ActionScheduler_Store::STATUS_COMPLETE, ActionScheduler_Store::STATUS_COMPLETE, ActionScheduler_Store::STATUS_COMPLETE );
 
 	$report(
 		'INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER',
-		true === $runner_started
+		true === $runner_started['ok']
+		&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED === $runner_started['outcome']
 		// (a) each action really executed while it was RUNNING...
 		&& $running_seen === $observed_running
 		// ...and finished COMPLETE.
@@ -3534,38 +3590,393 @@ if ( ! $runner_available ) {
 		&& array( 'future', 'future', 'future' ) === $runner_future
 		// (d) the terminal answer leaves nothing booked.
 		&& 0 === $pending_after_terminal
-		&& Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED === $runner_final
-		// (e) two concurrent attempts, one query.
-		&& true === $rival_holds
-		&& false === $attempt_while_held
-		&& 0 === $pending_while_held
-		&& true === $attempt_after_release
-		&& false === $attempt_duplicate
-		&& 1 === $pending_after_race
+		&& Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED === $runner_chain_status
+		// A chain that worked records no scheduling failure.
+		&& '' === $runner_chain_error
 		// GetInvoiceStatus is still the only operation the poller can reach.
 		&& 3 === (int) ( $scripted_transport->calls['GetInvoiceStatus'] ?? 0 )
 		&& 0 === (int) ( $scripted_transport->calls['SendInvoice'] ?? 0 )
 		&& 0 === (int) ( $scripted_transport->calls['LoadInvoice'] ?? 0 ),
 		sprintf(
-			'measured:action_scheduler_runner|steps:%s|action_status_during_run:%s|action_status_after_run:%s|followup_dates:%s|pending_after_terminal:%d|order_status:%s|race:held=%s,while_held=%s,after_release=%s,duplicate=%s,pending=%d|SendInvoice=%d|LoadInvoice=%d|GetInvoiceStatus=%d',
+			'measured:action_scheduler_runner|start_outcome:%s|steps:%s|action_status_during_run:%s|action_status_after_run:%s|followup_dates:%s|pending_after_terminal:%d|order_status:%s|last_error:%s|SendInvoice=%d|LoadInvoice=%d|GetInvoiceStatus=%d',
+			(string) $runner_started['outcome'],
 			implode( ' ', $runner_steps ),
 			empty( $observed_running ) ? 'none' : implode( ',', $observed_running ),
 			empty( $runner_statuses ) ? 'none' : implode( ',', $runner_statuses ),
 			empty( $runner_future ) ? 'none' : implode( ',', $runner_future ),
 			$pending_after_terminal,
-			$runner_final,
-			$rival_holds ? 'yes' : 'no',
-			$attempt_while_held ? 'CREATED' : 'refused',
-			$attempt_after_release ? 'created' : 'NOT_CREATED',
-			$attempt_duplicate ? 'CREATED' : 'refused',
-			$pending_after_race,
+			$runner_chain_status,
+			'' === $runner_chain_error ? 'none' : $runner_chain_error,
 			$scripted_transport->calls['SendInvoice'] ?? 0,
 			$scripted_transport->calls['LoadInvoice'] ?? 0,
 			$scripted_transport->calls['GetInvoiceStatus'] ?? 0
 		)
 	);
 
+	$report(
+		'INVOICE_POLL_LOCK_RACE_FAIL_VISIBLE',
+		// The rival's own booking really happened, so (a) is a genuine race.
+		Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED === $rival_booked
+		&& true === $rival_holds_a
+		// (a) A lost lock WITH a pending query behind it is an ordinary success.
+		&& true === $race_with_pending['ok']
+		&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_ALREADY_PENDING === $race_with_pending['outcome']
+		&& true === $race_with_pending['pending_verified']
+		&& '' === $race_with_pending['error_code']
+		&& '' === $error_after_with_pending
+		&& 1 === $pending_with_pending
+		// (b) A lost lock with NOTHING behind it is not silent success.
+		&& true === $rival_holds_b
+		&& false === $race_without_pending['ok']
+		&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_LOCK_CONTENDED === $race_without_pending['outcome']
+		&& false === $race_without_pending['pending_verified']
+		&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_LOCK_WITHOUT_PENDING === $race_without_pending['error_code']
+		&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_LOCK_WITHOUT_PENDING === $error_after_race
+		&& 0 === $pending_without_pending
+		// The document keeps its in-flight status: needs_manual_review would
+		// let can_retry() send it a second time.
+		&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === $status_after_race
+		&& false === Kuka_Island_Core_Invoice_Status::can_retry( $status_after_race )
+		// And somebody is told, in the order's own note list.
+		&& $notes_after_race === $notes_before_race + 1
+		// (c) With the lock free, one created and one already_pending.
+		&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED === $attempt_after_release
+		&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_ALREADY_PENDING === $attempt_duplicate
+		&& 1 === $pending_after_race
+		// Neither branch of the race touches a document.
+		&& 0 === (int) ( $scripted_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $scripted_transport->calls['LoadInvoice'] ?? 0 ),
+		sprintf(
+			'measured:second_mysql_session|rival_booking:%s|with_pending:held=%s,outcome=%s,verified=%s,error=%s,pending=%d|without_pending:held=%s,outcome=%s,verified=%s,error=%s,pending=%d|status_preserved:%s|retryable:%s|notes_added:%d|after_release:%s|duplicate:%s|pending_total:%d|SendInvoice=%d|LoadInvoice=%d',
+			$rival_booked,
+			$rival_holds_a ? 'yes' : 'no',
+			(string) $race_with_pending['outcome'],
+			true === $race_with_pending['pending_verified'] ? 'yes' : 'no',
+			'' === $race_with_pending['error_code'] ? 'none' : $race_with_pending['error_code'],
+			$pending_with_pending,
+			$rival_holds_b ? 'yes' : 'no',
+			(string) $race_without_pending['outcome'],
+			false === $race_without_pending['pending_verified'] ? 'no' : 'yes',
+			'' === $race_without_pending['error_code'] ? 'NONE' : $race_without_pending['error_code'],
+			$pending_without_pending,
+			$status_after_race,
+			Kuka_Island_Core_Invoice_Status::can_retry( $status_after_race ) ? 'YES' : 'no',
+			$notes_after_race - $notes_before_race,
+			$attempt_after_release,
+			$attempt_duplicate,
+			$pending_after_race,
+			$scripted_transport->calls['SendInvoice'] ?? 0,
+			$scripted_transport->calls['LoadInvoice'] ?? 0
+		)
+	);
+
 	kuka_test_delete_order( $runner_order_id, $test_run_id );
+}
+
+/* -------------------------------------------------------------------------- */
+/* A booking that does not happen is visible, and never resends               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Make Action Scheduler genuinely return 0 for the poller's hook only.
+ *
+ * pre_as_schedule_single_action short-circuits as_schedule_single_action(), and
+ * a non-null return is handed straight back to the caller -- so 0 here is the
+ * real "I could not schedule that" answer, not a stubbed method.
+ *
+ * Scoped to the poll hook so nothing else scheduled in this process is
+ * affected.
+ */
+$refuse_poll_scheduling = static function ( $pre, $timestamp, $hook ) {
+	if ( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS === $hook ) {
+		return 0;
+	}
+
+	return $pre;
+};
+
+/**
+ * Words that must never reach the order from a scheduling failure.
+ *
+ * @return array<int, string>
+ */
+$forbidden_needles = array( 'SoapFault', 'Exception', 'Stack trace', 'PASSWORD', 'SECRET_KEY', 'SESSION_ID', 'Envelope', '<soap', 'wp_password', 'kukaisland_edm' );
+
+/*
+ * (1) The FIRST booking fails, straight after a real SendInvoice.
+ *
+ * Previously Kuka_Island_Core_Invoice_Manager::start_status_polling() swallowed
+ * this and returned false into nothing: the document sat in flight with no query
+ * booked and nothing on the order to say so.
+ */
+$fail_transport = new Kuka_Island_Test_Tracking_Transport();
+$fail_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $fail_transport ) );
+$fail_order     = kuka_create_lock_order(
+	$test_run_id,
+	$billing_props,
+	array(
+		'_kuka_invoice_number'        => 'KUK2026000000042',
+		'_kuka_invoice_number_source' => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+	)
+);
+$fail_order_id    = (int) $fail_order->get_id();
+$fail_notes_before = count( wc_get_order_notes( array( 'order_id' => $fail_order_id ) ) );
+
+add_filter( 'pre_as_schedule_single_action', $refuse_poll_scheduling, 10, 3 );
+$fail_error = '';
+try {
+	$fail_manager->process_order( $fail_order );
+} catch ( Throwable $t ) {
+	$fail_error = get_class( $t );
+}
+remove_filter( 'pre_as_schedule_single_action', $refuse_poll_scheduling, 10 );
+
+$fail_order->read_meta_data( true );
+$fail_status   = Kuka_Island_Core_Invoice_Order_Store::get_status( $fail_order );
+$fail_code     = (string) $fail_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+$fail_outcome  = (string) $fail_order->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_SCHEDULE_OUTCOME, true );
+$fail_pending  = count( $poll_pending_ids( $fail_order_id ) );
+$fail_history  = (array) ( $fail_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_HISTORY, true ) ?: array() );
+$fail_last     = (array) ( end( $fail_history ) ?: array() );
+$fail_notes    = wc_get_order_notes( array( 'order_id' => $fail_order_id ) );
+$fail_note_txt = '';
+foreach ( $fail_notes as $note ) {
+	if ( str_contains( (string) $note->content, Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED ) ) {
+		$fail_note_txt = (string) $note->content;
+	}
+}
+
+// Nothing about the failure leaks: no exception text, no credential, no payload.
+$fail_leaks = array();
+foreach ( $forbidden_needles as $needle ) {
+	$haystack = $fail_note_txt . '|' . (string) ( $fail_last['message'] ?? '' ) . '|' . $fail_code;
+	if ( '' !== $needle && stripos( $haystack, $needle ) !== false ) {
+		$fail_leaks[] = $needle;
+	}
+}
+
+// already_pending is an ordinary success and writes no failure at all.
+$ok_order = kuka_create_lock_order(
+	$test_run_id,
+	$billing_props,
+	array(
+		'_kuka_invoice_status'        => Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+		'_kuka_invoice_uuid'          => 'uuid-already-pending',
+		'_kuka_invoice_number'        => 'KUK2026000000042',
+		'_kuka_invoice_number_source' => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+	)
+);
+$ok_order_id = (int) $ok_order->get_id();
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $ok_order_id );
+$ok_notes_before = count( wc_get_order_notes( array( 'order_id' => $ok_order_id ) ) );
+$ok_first        = Kuka_Island_Core_Invoice_Status_Poller::book_query( $ok_order, 300 );
+$ok_second       = Kuka_Island_Core_Invoice_Status_Poller::book_query( $ok_order, 300 );
+$ok_pending      = count( $poll_pending_ids( $ok_order_id ) );
+$ok_order->read_meta_data( true );
+$ok_code        = (string) $ok_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+$ok_notes_after = count( wc_get_order_notes( array( 'order_id' => $ok_order_id ) ) );
+
+$report(
+	'INVOICE_POLL_FIRST_SCHEDULE_FAILURE_VISIBLE',
+	// The document really was transmitted, exactly once, and nothing else was
+	// called on the send path.
+	1 === (int) ( $fail_transport->calls['SendInvoice'] ?? 0 )
+	&& 0 === (int) ( $fail_transport->calls['GetInvoiceStatus'] ?? 0 )
+	&& 0 === (int) ( $fail_transport->calls['LoadInvoice'] ?? 0 )
+	// The send itself still succeeded: a booking problem is not a send problem.
+	&& '' === $fail_error
+	// No query was booked, and the order says so by safe code.
+	&& 0 === $fail_pending
+	&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED === $fail_code
+	&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_FAILED === $fail_outcome
+	// The in-flight status stands. needs_manual_review would let can_retry()
+	// send this document a second time.
+	&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === $fail_status
+	&& false === Kuka_Island_Core_Invoice_Status::can_retry( $fail_status )
+	// History records the failure against the status the document still has.
+	&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === (string) ( $fail_last['status'] ?? '' )
+	&& str_contains( (string) ( $fail_last['message'] ?? '' ), Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED )
+	// And an order note tells whoever opens the order what to do.
+	&& '' !== $fail_note_txt
+	&& count( $fail_notes ) === $fail_notes_before + 1
+	&& str_contains( $fail_note_txt, 'manuel' )
+	&& array() === $fail_leaks
+	// already_pending is success, and leaves nothing behind.
+	&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED === $ok_first['outcome']
+	&& true === $ok_first['ok']
+	&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_ALREADY_PENDING === $ok_second['outcome']
+	&& true === $ok_second['ok']
+	&& '' === $ok_second['error_code']
+	&& '' === $ok_code
+	&& $ok_notes_after === $ok_notes_before
+	&& 1 === $ok_pending,
+	sprintf(
+		'measured:pre_as_schedule_single_action=0|SendInvoice=%d|GetInvoiceStatus=%d|LoadInvoice=%d|send_threw:%s|pending:%d|outcome:%s|error_code:%s|status:%s|retryable:%s|history_status:%s|note_added:%d|leaks:%s|already_pending:%s/%s|already_pending_error:%s|already_pending_notes:%d|already_pending_pending:%d',
+		$fail_transport->calls['SendInvoice'] ?? 0,
+		$fail_transport->calls['GetInvoiceStatus'] ?? 0,
+		$fail_transport->calls['LoadInvoice'] ?? 0,
+		'' === $fail_error ? 'no' : $fail_error,
+		$fail_pending,
+		$fail_outcome ?: 'none',
+		$fail_code ?: 'none',
+		$fail_status,
+		Kuka_Island_Core_Invoice_Status::can_retry( $fail_status ) ? 'YES' : 'no',
+		(string) ( $fail_last['status'] ?? 'none' ),
+		count( $fail_notes ) - $fail_notes_before,
+		empty( $fail_leaks ) ? 'none' : implode( ',', $fail_leaks ),
+		(string) $ok_first['outcome'],
+		(string) $ok_second['outcome'],
+		'' === $ok_second['error_code'] ? 'none' : $ok_second['error_code'],
+		$ok_notes_after - $ok_notes_before,
+		$ok_pending
+	)
+);
+
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $ok_order_id );
+kuka_test_delete_order( $fail_order_id, $test_run_id );
+kuka_test_delete_order( $ok_order_id, $test_run_id );
+
+/*
+ * (2) The FOLLOW-UP booking fails, inside a real Action Scheduler run.
+ *
+ * Previously poll_order() called schedule() and returned without looking at the
+ * answer, so the chain simply ended: no next query, no record, and the caps that
+ * were supposed to escalate were never reached.
+ */
+if ( $runner_available ) {
+	$followup_transport = new class() implements Kuka_Island_Core_SOAP_Transport_Interface {
+		/** @var array<string, int> */
+		public array $calls = array();
+
+		public function get_last_request(): string {
+			return '';
+		}
+
+		public function get_last_response(): string {
+			return '';
+		}
+
+		public function call( string $operation, array $parameters ) {
+			$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+
+			if ( 'Login' === $operation ) {
+				return array( 'SESSION_ID' => 'session-followup-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+			}
+
+			if ( 'GetInvoiceStatus' === $operation ) {
+				return array(
+					'INVOICE_STATUS' => array(
+						array(
+							'UUID'   => $parameters['INVOICE']['UUID'] ?? 'uuid-followup-fixture',
+							// Still in flight, so a follow-up is wanted.
+							'HEADER' => array( 'STATUS' => 'PACKAGE - PROCESSING' ),
+						),
+					),
+				);
+			}
+
+			return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+	};
+
+	$followup_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
+	kuka_add_line( $followup_order, 'Followup Fixture', '100.00', '100.00', 1, '10.00' );
+	$followup_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_UUID, 'uuid-followup-fixture' );
+	$followup_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, 'KUK2026000000904' );
+	$followup_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SENT );
+	$followup_order->save();
+	$followup_order_id    = (int) $followup_order->get_id();
+	$followup_notes_before = count( wc_get_order_notes( array( 'order_id' => $followup_order_id ) ) );
+
+	$followup_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $followup_transport ) );
+	$followup_poller  = new Kuka_Island_Core_Invoice_Status_Poller( $followup_manager );
+
+	$followup_saved = $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] ?? null;
+	remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+	$followup_poller->register();
+
+	// The first action is created normally; only the follow-up is refused.
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $followup_order_id );
+	$followup_first  = Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $followup_order_id, 300 );
+	$followup_ids    = $poll_pending_ids( $followup_order_id );
+	$followup_action = (int) ( $followup_ids[0] ?? 0 );
+
+	add_filter( 'pre_as_schedule_single_action', $refuse_poll_scheduling, 10, 3 );
+	if ( $followup_action > 0 ) {
+		ActionScheduler_QueueRunner::instance()->process_action( $followup_action, 'kuka-verify' );
+	}
+	remove_filter( 'pre_as_schedule_single_action', $refuse_poll_scheduling, 10 );
+
+	$followup_action_status = $followup_action > 0 ? (string) ActionScheduler::store()->get_status( $followup_action ) : 'none';
+	$followup_pending       = count( $poll_pending_ids( $followup_order_id ) );
+
+	remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+	if ( null !== $followup_saved ) {
+		$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] = $followup_saved;
+	}
+
+	$followup_reloaded = wc_get_order( $followup_order_id );
+	$followup_status   = Kuka_Island_Core_Invoice_Order_Store::get_status( $followup_reloaded );
+	$followup_code     = (string) $followup_reloaded->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+	$followup_outcome  = (string) $followup_reloaded->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_SCHEDULE_OUTCOME, true );
+	$followup_attempts = (int) $followup_reloaded->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS, true );
+	$followup_notes    = wc_get_order_notes( array( 'order_id' => $followup_order_id ) );
+	$followup_note_txt = '';
+	foreach ( $followup_notes as $note ) {
+		if ( str_contains( (string) $note->content, Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED ) ) {
+			$followup_note_txt = (string) $note->content;
+		}
+	}
+
+	$followup_leaks = array();
+	foreach ( $forbidden_needles as $needle ) {
+		if ( '' !== $needle && stripos( $followup_note_txt . '|' . $followup_code, $needle ) !== false ) {
+			$followup_leaks[] = $needle;
+		}
+	}
+
+	$report(
+		'INVOICE_POLL_FOLLOWUP_SCHEDULE_FAILURE_VISIBLE',
+		Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED === $followup_first
+		&& $followup_action > 0
+		// The action itself ran and completed; the query was made.
+		&& ActionScheduler_Store::STATUS_COMPLETE === $followup_action_status
+		&& 1 === (int) ( $followup_transport->calls['GetInvoiceStatus'] ?? 0 )
+		// Nothing was transmitted or reloaded from the poll path.
+		&& 0 === (int) ( $followup_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $followup_transport->calls['LoadInvoice'] ?? 0 )
+		// The chain really did stop, and it said so.
+		&& 0 === $followup_pending
+		&& Kuka_Island_Core_Invoice_Status_Poller::ERROR_SCHEDULE_FAILED === $followup_code
+		&& Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_FAILED === $followup_outcome
+		&& '' !== $followup_note_txt
+		&& count( $followup_notes ) === $followup_notes_before + 1
+		&& array() === $followup_leaks
+		// EDM said PACKAGE - PROCESSING, so the document stays in flight and
+		// cannot be re-sent.
+		&& Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL === $followup_status
+		&& false === Kuka_Island_Core_Invoice_Status::can_retry( $followup_status )
+		// The attempt that happened is counted; the caps are not bypassed.
+		&& 1 === $followup_attempts,
+		sprintf(
+			'measured:action_scheduler_runner+pre_as_schedule_single_action=0|first_booking:%s|action_status:%s|GetInvoiceStatus=%d|SendInvoice=%d|LoadInvoice=%d|pending:%d|outcome:%s|error_code:%s|status:%s|retryable:%s|attempts:%d|note_added:%d|leaks:%s',
+			$followup_first,
+			$followup_action_status,
+			$followup_transport->calls['GetInvoiceStatus'] ?? 0,
+			$followup_transport->calls['SendInvoice'] ?? 0,
+			$followup_transport->calls['LoadInvoice'] ?? 0,
+			$followup_pending,
+			$followup_outcome ?: 'none',
+			$followup_code ?: 'none',
+			$followup_status,
+			Kuka_Island_Core_Invoice_Status::can_retry( $followup_status ) ? 'YES' : 'no',
+			$followup_attempts,
+			count( $followup_notes ) - $followup_notes_before,
+			empty( $followup_leaks ) ? 'none' : implode( ',', $followup_leaks )
+		)
+	);
+
+	kuka_test_delete_order( $followup_order_id, $test_run_id );
 }
 
 /* -------------------------------------------------------------------------- */

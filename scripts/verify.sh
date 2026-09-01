@@ -634,7 +634,7 @@ expect_invoice_match "e-Archive GIB_STATUS_CODE -1 does not mask success" "^INVO
 expect_invoice_match "accepted, rejected and cancelled stay distinct" "^INVOICE_TERMINAL_STATUS_SEPARATION=PASS\\|cases:3\\|"
 expect_invoice_match "the status poller lifecycle is bounded" "^INVOICE_STATUS_POLL_LIFECYCLE=PASS\\|cases:9\\|"
 expect_invoice_line "the poller never sends an invoice" "INVOICE_POLLER_NEVER_SENDS=PASS|measured:mock_transport|SendInvoice=0|LoadInvoice=0|GetInvoiceStatus=1|order_status:completed|recorded_edm_status:SEND - SUCCEED"
-expect_invoice_line "polling is never scheduled twice for one order" "INVOICE_POLL_NO_DUPLICATE_SCHEDULE=PASS|action_scheduler:present|first:created|second:refused|distinct_from_send_action:yes"
+expect_invoice_line "polling is never scheduled twice for one order" "INVOICE_POLL_NO_DUPLICATE_SCHEDULE=PASS|action_scheduler:present|first:created|second:already_pending|success_outcomes:created,already_pending|distinct_from_send_action:yes"
 
 # The poller has to start itself. Both the queue worker and the order screen's
 # manual send go through Manager::process_order(), so one measurement covers
@@ -649,11 +649,29 @@ expect_invoice_match "the send path never queries or reloads" "^INVOICE_POLLER_A
 # each action executes while it is in-progress -- which is what used to make
 # as_has_scheduled_action() refuse the follow-up -- and still books exactly one
 # future query, twice over, then none at all on the terminal answer.
-expect_invoice_match "a real Action Scheduler run books the follow-up" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|measured:action_scheduler_runner\\|steps:before1:1 after1:1 before2:1 after2:1 before3:1 after3:0\\|"
+expect_invoice_match "a real Action Scheduler run books the follow-up" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|measured:action_scheduler_runner\\|.*\\|steps:before1:1 after1:1 before2:1 after2:1 before3:1 after3:0\\|"
 expect_invoice_match "the action really runs and completes" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*action_status_during_run:in-progress,in-progress,in-progress\\|action_status_after_run:complete,complete,complete\\|followup_dates:future,future,future\\|"
 expect_invoice_match "the terminal answer leaves nothing booked" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*pending_after_terminal:0\\|order_status:completed\\|"
-expect_invoice_match "two concurrent bookings leave one query" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*race:held=yes,while_held=refused,after_release=created,duplicate=refused,pending=1\\|"
+expect_invoice_match "a working chain records no scheduling failure" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*start_outcome:created\\|.*last_error:none\\|"
 expect_invoice_match "the poll chain never sends or reloads" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*\\|SendInvoice=0\\|LoadInvoice=0\\|GetInvoiceStatus=3$"
+
+# A booking that does not happen must be visible, and must never resend.
+# The lock race is measured against a real second MySQL session: losing the
+# lock is success only when the winner actually left a pending query, and is a
+# recorded failure when it did not.
+expect_invoice_match "two concurrent bookings leave one query" "^INVOICE_POLL_LOCK_RACE_FAIL_VISIBLE=PASS\\|measured:second_mysql_session\\|rival_booking:created\\|"
+expect_invoice_match "a lost lock with a pending query is success" "^INVOICE_POLL_LOCK_RACE_FAIL_VISIBLE=PASS\\|.*with_pending:held=yes,outcome=already_pending,verified=yes,error=none,pending=1\\|"
+expect_invoice_match "a lost lock with nothing behind it is recorded" "^INVOICE_POLL_LOCK_RACE_FAIL_VISIBLE=PASS\\|.*without_pending:held=yes,outcome=lock_contended,verified=no,error=status_poll_lock_contended_without_pending,pending=0\\|"
+expect_invoice_match "the race preserves the in-flight status" "^INVOICE_POLL_LOCK_RACE_FAIL_VISIBLE=PASS\\|.*status_preserved:sent\\|retryable:no\\|notes_added:1\\|after_release:created\\|duplicate:already_pending\\|pending_total:1\\|SendInvoice=0\\|LoadInvoice=0$"
+
+# Action Scheduler is made to genuinely return 0 through its own
+# pre_as_schedule_single_action filter, first on the send path and then on the
+# follow-up inside a real runner. Neither may resend, and neither may be quiet.
+expect_invoice_match "a failed first booking is visible" "^INVOICE_POLL_FIRST_SCHEDULE_FAILURE_VISIBLE=PASS\\|measured:pre_as_schedule_single_action=0\\|SendInvoice=1\\|GetInvoiceStatus=0\\|LoadInvoice=0\\|send_threw:no\\|pending:0\\|outcome:schedule_failed\\|error_code:status_poll_schedule_failed\\|"
+expect_invoice_match "a failed first booking keeps the in-flight status" "^INVOICE_POLL_FIRST_SCHEDULE_FAILURE_VISIBLE=PASS\\|.*status:sent\\|retryable:no\\|history_status:sent\\|note_added:1\\|leaks:none\\|"
+expect_invoice_match "already_pending is a silent success" "^INVOICE_POLL_FIRST_SCHEDULE_FAILURE_VISIBLE=PASS\\|.*already_pending:created/already_pending\\|already_pending_error:none\\|already_pending_notes:0\\|already_pending_pending:1$"
+expect_invoice_match "a failed follow-up booking is visible" "^INVOICE_POLL_FOLLOWUP_SCHEDULE_FAILURE_VISIBLE=PASS\\|measured:action_scheduler_runner\\+pre_as_schedule_single_action=0\\|first_booking:created\\|action_status:complete\\|GetInvoiceStatus=1\\|SendInvoice=0\\|LoadInvoice=0\\|pending:0\\|"
+expect_invoice_match "a failed follow-up keeps the in-flight status" "^INVOICE_POLL_FOLLOWUP_SCHEDULE_FAILURE_VISIBLE=PASS\\|.*outcome:schedule_failed\\|error_code:status_poll_schedule_failed\\|status:pending_approval\\|retryable:no\\|attempts:1\\|note_added:1\\|leaks:none$"
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 
 # odemeSekli is a fiscal enumeration. Only ODEMEARACISI is confirmed, iyzico is

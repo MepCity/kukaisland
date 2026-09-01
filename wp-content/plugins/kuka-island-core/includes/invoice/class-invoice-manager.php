@@ -271,20 +271,28 @@ class Kuka_Island_Core_Invoice_Manager {
 	 * not sent, pending_approval or send_uncertain -- so a completed, rejected,
 	 * cancelled or failed document books nothing.
 	 *
-	 * Failure to book is not allowed to fail the send: the invoice was already
-	 * transmitted and persisted, and the order screen's requery button remains.
+	 * A booking that does not happen must not fail the send: the document is
+	 * already transmitted and persisted, and throwing from here would reach the
+	 * queue worker's generic handler, which writes needs_manual_review -- a
+	 * status can_retry() permits, so the next run could send the document
+	 * again. It must not be silent either, which is why the poller records the
+	 * reason on the order instead of a bare false being dropped here.
 	 *
 	 * @param WC_Order $order Order carrying the persisted send outcome.
-	 * @return bool Whether a query was booked by this call.
+	 * @return array{ok: bool, outcome: string, pending_verified: bool|null, error_code: string}
 	 */
-	private function start_status_polling( WC_Order $order ): bool {
+	private function start_status_polling( WC_Order $order ): array {
 		try {
 			return Kuka_Island_Core_Invoice_Status_Poller::start(
 				$order,
 				Kuka_Island_Core_Invoice_Order_Store::get_status( $order )
 			);
-		} catch ( Throwable $e ) {
-			return false;
+		} catch ( Throwable $scheduling_error ) {
+			// The exception text is deliberately not read, logged or stored:
+			// only the poller's safe code goes on the order.
+			unset( $scheduling_error );
+
+			return Kuka_Island_Core_Invoice_Status_Poller::record_scheduling_exception( $order );
 		}
 	}
 

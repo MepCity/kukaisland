@@ -53,6 +53,44 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	public const META_EARCHIVE_REPORT_STATUS = '_kuka_invoice_earchive_report_status';
 	/** GIB_STATUS_CODE, recorded but never used as the document status. */
 	public const META_GIB_STATUS_CODE = '_kuka_invoice_gib_status_code';
+	/**
+	 * Outcome of the last booking attempt, as one of the SCHEDULE_* codes.
+	 *
+	 * Recorded on every attempt, successful or not, so "is a query booked for
+	 * this document?" is answerable from the order rather than inferred.
+	 */
+	public const META_LAST_SCHEDULE_OUTCOME = '_kuka_invoice_poll_schedule_outcome';
+
+	/*
+	 * Booking outcomes. A boolean cannot tell "a query is already waiting"
+	 * apart from "Action Scheduler refused to create one", and those two need
+	 * opposite responses: the first is a normal success, the second means the
+	 * document has no query booked and nobody knows.
+	 */
+	/** This call created the query. */
+	public const SCHEDULE_CREATED = 'created';
+	/** A query was already waiting. Nothing to do, and nothing wrong. */
+	public const SCHEDULE_ALREADY_PENDING = 'already_pending';
+	/** Another worker holds the booking decision for this order. */
+	public const SCHEDULE_LOCK_CONTENDED = 'lock_contended';
+	/** Action Scheduler is not loaded, so nothing can be booked at all. */
+	public const SCHEDULE_SCHEDULER_UNAVAILABLE = 'scheduler_unavailable';
+	/** Action Scheduler was asked and returned action ID 0. */
+	public const SCHEDULE_FAILED = 'schedule_failed';
+	/** The document is answered; no query is wanted. Not a failure. */
+	public const SCHEDULE_NOT_APPLICABLE = 'not_applicable';
+
+	/*
+	 * Safe error codes for a query that was wanted and did not get booked.
+	 * Codes only: no exception text, no credential, no SOAP payload, no
+	 * customer data is ever written to the order from this class.
+	 */
+	/** Action Scheduler was absent. */
+	public const ERROR_SCHEDULER_UNAVAILABLE = 'status_poll_scheduler_unavailable';
+	/** Action Scheduler refused to create the action. */
+	public const ERROR_SCHEDULE_FAILED = 'status_poll_schedule_failed';
+	/** The booking lock was held and no pending query could be found after it. */
+	public const ERROR_LOCK_WITHOUT_PENDING = 'status_poll_lock_contended_without_pending';
 
 	/**
 	 * Advisory lock name prefix for the booking decision.
@@ -176,35 +214,39 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	}
 
 	/**
-	 * Book a query, unless one is already waiting.
+	 * Attempt the booking and say exactly what happened.
 	 *
 	 * Two guards, because the pending-only check on its own is a
 	 * check-then-act race: two workers that both notice the same pending
 	 * document can both see zero pending queries and both create one.
 	 *
 	 * 1. A per-order MySQL advisory lock serialises the decision across
-	 *    processes. A worker that cannot take the lock does not queue behind it
-	 *    -- the holder is already booking the same query, so there is nothing
-	 *    left to do.
+	 *    processes. A worker that cannot take the lock does not queue behind it.
 	 * 2. Inside the lock, the pending-only query decides.
+	 *
+	 * Returns a code rather than a boolean on purpose. 'already_pending' and
+	 * 'schedule_failed' are both "this call created nothing", and treating them
+	 * the same is how a document ends up with no query booked and nobody aware
+	 * of it.
 	 *
 	 * @param int $order_id Order ID.
 	 * @param int $delay    Seconds from now.
-	 * @return bool Whether THIS call created a new action.
+	 * @return string One of the SCHEDULE_* codes.
 	 */
-	public static function schedule( int $order_id, int $delay = self::FIRST_DELAY ): bool {
+	public static function schedule_query( int $order_id, int $delay = self::FIRST_DELAY ): string {
 		if ( ! function_exists( 'as_schedule_single_action' ) ) {
-			return false;
+			return self::SCHEDULE_SCHEDULER_UNAVAILABLE;
 		}
 
 		if ( ! self::acquire_schedule_lock( $order_id ) ) {
-			// Another process holds the booking decision for this order.
-			return false;
+			// Somebody else is deciding. Whether they actually booked anything
+			// is a separate question, answered by book_query().
+			return self::SCHEDULE_LOCK_CONTENDED;
 		}
 
 		try {
 			if ( self::has_pending_query( $order_id ) ) {
-				return false;
+				return self::SCHEDULE_ALREADY_PENDING;
 			}
 
 			$action_id = (int) as_schedule_single_action(
@@ -214,12 +256,154 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 				self::GROUP
 			);
 
-			// Action Scheduler returns 0 when it could not schedule. Reporting
-			// that as success would leave the document with no query booked and
-			// nobody aware of it.
-			return $action_id > 0;
+			// Action Scheduler returns 0 when it could not schedule.
+			return $action_id > 0 ? self::SCHEDULE_CREATED : self::SCHEDULE_FAILED;
 		} finally {
 			self::release_schedule_lock( $order_id );
+		}
+	}
+
+	/**
+	 * The safe error code a booking outcome deserves, or '' when it is fine.
+	 *
+	 * 'lock_contended' maps to the without-pending code because book_query()
+	 * only leaves that outcome standing once it has looked for a pending query
+	 * and not found one.
+	 *
+	 * @param string $outcome One of the SCHEDULE_* codes.
+	 */
+	public static function error_code_for( string $outcome ): string {
+		return match ( $outcome ) {
+			self::SCHEDULE_SCHEDULER_UNAVAILABLE => self::ERROR_SCHEDULER_UNAVAILABLE,
+			self::SCHEDULE_FAILED                => self::ERROR_SCHEDULE_FAILED,
+			self::SCHEDULE_LOCK_CONTENDED        => self::ERROR_LOCK_WITHOUT_PENDING,
+			default                              => '',
+		};
+	}
+
+	/**
+	 * What the shop is told when a query could not be booked.
+	 *
+	 * A fixed sentence. The safe code is appended by the caller; nothing else
+	 * about the failure is written anywhere.
+	 */
+	public static function unbooked_message(): string {
+		return __( 'Fatura gönderilmiş olabilir; otomatik durum sorgusu planlanamadı, lütfen fatura durumunu manuel olarak sorgulayın.', 'kuka-island-core' );
+	}
+
+	/**
+	 * Book a query for a document and report the outcome, visibly.
+	 *
+	 * The single entry point for both the send path and the poll chain, so the
+	 * two cannot classify the same failure differently.
+	 *
+	 * A lost lock is not success on its own. The winner may have booked a query
+	 * or may have failed the same way this call could have, so the pending
+	 * query is looked for rather than assumed. If it is there, this is an
+	 * ordinary 'already_pending'; if it is not, the failure is recorded.
+	 *
+	 * The invoice status is never touched here. sent, pending_approval and
+	 * send_uncertain all refuse a re-send, and rewriting one of them into
+	 * needs_manual_review -- which can_retry() allows -- would turn a
+	 * scheduling problem into a duplicate fiscal document.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param int      $delay Seconds from now.
+	 * @return array{ok: bool, outcome: string, pending_verified: bool|null, error_code: string}
+	 */
+	public static function book_query( WC_Order $order, int $delay = self::FIRST_DELAY ): array {
+		$order_id = (int) $order->get_id();
+		$outcome  = self::schedule_query( $order_id, $delay );
+
+		$pending_verified = null;
+		if ( self::SCHEDULE_LOCK_CONTENDED === $outcome ) {
+			$pending_verified = self::has_pending_query( $order_id );
+			if ( $pending_verified ) {
+				$outcome = self::SCHEDULE_ALREADY_PENDING;
+			}
+		}
+
+		$error_code = self::error_code_for( $outcome );
+
+		self::record_schedule_outcome( $order, $outcome, $error_code );
+
+		return array(
+			'ok'               => '' === $error_code,
+			'outcome'          => $outcome,
+			'pending_verified' => $pending_verified,
+			'error_code'       => $error_code,
+		);
+	}
+
+	/**
+	 * Record a booking failure raised as an exception rather than an outcome.
+	 *
+	 * Letting it escape would hand the order to the queue worker's generic
+	 * handler, which writes needs_manual_review -- and that status permits a
+	 * re-send of a document that has already been transmitted.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return array{ok: bool, outcome: string, pending_verified: bool|null, error_code: string}
+	 */
+	public static function record_scheduling_exception( WC_Order $order ): array {
+		self::record_schedule_outcome( $order, self::SCHEDULE_FAILED, self::ERROR_SCHEDULE_FAILED );
+
+		return array(
+			'ok'               => false,
+			'outcome'          => self::SCHEDULE_FAILED,
+			'pending_verified' => null,
+			'error_code'       => self::ERROR_SCHEDULE_FAILED,
+		);
+	}
+
+	/**
+	 * Persist what the booking attempt did, and say so on the order when it
+	 * did not do what was wanted.
+	 *
+	 * @param string $outcome    One of the SCHEDULE_* codes.
+	 * @param string $error_code Safe error code, or '' when the outcome is fine.
+	 */
+	private static function record_schedule_outcome( WC_Order $order, string $outcome, string $error_code ): void {
+		try {
+			$order->update_meta_data( self::META_LAST_SCHEDULE_OUTCOME, $outcome );
+
+			if ( '' === $error_code ) {
+				$order->save_meta_data();
+
+				return;
+			}
+
+			Kuka_Island_Core_Invoice_Order_Store::save_polling_not_scheduled(
+				$order,
+				$error_code,
+				self::unbooked_message()
+			);
+		} catch ( Throwable $meta_error ) {
+			// The order meta could not be written. There is no quieter place to
+			// put this and nothing further to try; the order note below is the
+			// remaining chance of it being seen.
+			unset( $meta_error );
+		}
+
+		if ( '' === $error_code ) {
+			return;
+		}
+
+		try {
+			// Visible in the order screen's own note list, where somebody
+			// working the order will actually read it.
+			$order->add_order_note(
+				sprintf(
+					/* translators: 1: warning sentence, 2: safe error code */
+					__( '%1$s (%2$s)', 'kuka-island-core' ),
+					self::unbooked_message(),
+					$error_code
+				),
+				0,
+				false
+			);
+		} catch ( Throwable $note_error ) {
+			unset( $note_error );
 		}
 	}
 
@@ -282,10 +466,18 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	 *
 	 * @param WC_Order $order     Order.
 	 * @param string   $lifecycle Lifecycle status the send produced.
+	 * @return array{ok: bool, outcome: string, pending_verified: bool|null, error_code: string}
 	 */
-	public static function start( WC_Order $order, string $lifecycle ): bool {
+	public static function start( WC_Order $order, string $lifecycle ): array {
 		if ( ! Kuka_Island_Core_EDM_Document_Status::should_keep_polling( $lifecycle ) ) {
-			return false;
+			// An answered document is not a failed booking. Nothing is recorded
+			// on the order, because nothing went wrong.
+			return array(
+				'ok'               => true,
+				'outcome'          => self::SCHEDULE_NOT_APPLICABLE,
+				'pending_verified' => null,
+				'error_code'       => '',
+			);
 		}
 
 		if ( '' === (string) $order->get_meta( self::META_POLL_STARTED_AT, true ) ) {
@@ -294,7 +486,7 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 			$order->save_meta_data();
 		}
 
-		return self::schedule( (int) $order->get_id(), self::FIRST_DELAY );
+		return self::book_query( $order, self::FIRST_DELAY );
 	}
 
 	/**
@@ -343,8 +535,20 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 		$decision = self::decide( $lifecycle, $attempts, $elapsed );
 
 		if ( 'reschedule' === $decision['action'] ) {
-			self::schedule( (int) $order->get_id(), $decision['delay'] );
+			$booking = self::book_query( $order, $decision['delay'] );
 
+			if ( $booking['ok'] ) {
+				return;
+			}
+
+			/*
+			 * The chain has no next link. book_query() has already put the
+			 * reason on the order by safe code, added the note, and left the
+			 * in-flight status alone -- so a person requeries from the order
+			 * screen and nothing here retransmits a document that may already
+			 * have arrived. Falling through to unschedule() would only cancel
+			 * a query that was never created.
+			 */
 			return;
 		}
 
