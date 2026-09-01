@@ -635,7 +635,37 @@ expect_invoice_match "accepted, rejected and cancelled stay distinct" "^INVOICE_
 expect_invoice_match "the status poller lifecycle is bounded" "^INVOICE_STATUS_POLL_LIFECYCLE=PASS\\|cases:9\\|"
 expect_invoice_line "the poller never sends an invoice" "INVOICE_POLLER_NEVER_SENDS=PASS|measured:mock_transport|SendInvoice=0|LoadInvoice=0|GetInvoiceStatus=1|order_status:completed|recorded_edm_status:SEND - SUCCEED"
 expect_invoice_line "polling is never scheduled twice for one order" "INVOICE_POLL_NO_DUPLICATE_SCHEDULE=PASS|action_scheduler:present|first:created|second:refused|distinct_from_send_action:yes"
-expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:10\\|"
+
+# The poller has to start itself. Both the queue worker and the order screen's
+# manual send go through Manager::process_order(), so one measurement covers
+# both: eight sends, eight documents, and a query booked only for the three
+# outcomes that are still in flight.
+expect_invoice_match "the poller starts from the real send path" "^INVOICE_POLLER_AUTOSTARTS_FROM_SEND=PASS\\|measured:manager_process_order\\|cases:8\\|"
+expect_invoice_match "in-flight sends book exactly one query" "^INVOICE_POLLER_AUTOSTARTS_FROM_SEND=PASS\\|.*queue_worker=sent/1 manual_send=sent/1 send_uncertain=send_uncertain/1 "
+expect_invoice_match "answered documents book none" "^INVOICE_POLLER_AUTOSTARTS_FROM_SEND=PASS\\|.*completed=completed/0 rejected=rejected/0 cancelled=cancelled/0 failed=failed/0 unknown_status=needs_manual_review/0\\|"
+expect_invoice_match "the send path never queries or reloads" "^INVOICE_POLLER_AUTOSTARTS_FROM_SEND=PASS\\|.*\\|SendInvoice=8\\|LoadInvoice=0\\|GetInvoiceStatus=0\\|shared_entry_point:process_order$"
+
+# Proved on the real Action Scheduler runner, not by calling poll_order():
+# each action executes while it is in-progress -- which is what used to make
+# as_has_scheduled_action() refuse the follow-up -- and still books exactly one
+# future query, twice over, then none at all on the terminal answer.
+expect_invoice_match "a real Action Scheduler run books the follow-up" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|measured:action_scheduler_runner\\|steps:before1:1 after1:1 before2:1 after2:1 before3:1 after3:0\\|"
+expect_invoice_match "the action really runs and completes" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*action_status_during_run:in-progress,in-progress,in-progress\\|action_status_after_run:complete,complete,complete\\|followup_dates:future,future,future\\|"
+expect_invoice_match "the terminal answer leaves nothing booked" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*pending_after_terminal:0\\|order_status:completed\\|"
+expect_invoice_match "two concurrent bookings leave one query" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*race:held=yes,while_held=refused,after_release=created,duplicate=refused,pending=1\\|"
+expect_invoice_match "the poll chain never sends or reloads" "^INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER=PASS\\|.*\\|SendInvoice=0\\|LoadInvoice=0\\|GetInvoiceStatus=3$"
+expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
+
+# odemeSekli is a fiscal enumeration. Only ODEMEARACISI is confirmed, iyzico is
+# the intermediary that goes with it, and every other gateway -- and every
+# user-facing checkout title -- is refused rather than guessed at.
+expect_invoice_match "the payment method is a fiscal literal, not a label" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|gateway_cases:13\\|"
+expect_invoice_match "iyzico resolves to ODEMEARACISI" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|.*iyzico_checkout=ODEMEARACISI iyzico_pwi=ODEMEARACISI "
+expect_invoice_match "unmapped gateways are refused by name" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|.*bacs=internet_sales_payment_method_unmapped cod=internet_sales_payment_method_unmapped cheque=internet_sales_payment_method_unmapped "
+expect_invoice_match "ODEMEARACISI without a name is refused" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|.*intermediary_blank=internet_sales_payment_agent_missing "
+expect_invoice_match "a nonempty payment title never becomes odemeSekli" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|.*nonempty_titles_refused:7/7\\|odemeSekli:ODEMEARACISI\\|odemeAracisiAdi:iyzico\\|fiscal_literals:ODEMEARACISI\\|specified_keys:none\\|reads_title:no$"
+expect_invoice_line "the gateway id comes from WooCommerce, not the title" "INVOICE_INTERNET_SALES_GATEWAY_SOURCE=PASS|measured:real_order|gateway_id:iyzico|gateway_title:Banka/Kredi Kartı ile Öde|odemeSekli:ODEMEARACISI|odemeAracisiAdi:iyzico"
+expect_invoice_line "the internet-sales block is still not wired to a send" "INVOICE_INTERNET_SALES_NOT_WIRED_TO_SEND=PASS|files_scanned:6|references:none"
 expect_invoice_line "the payment date comes from get_date_paid" "INVOICE_INTERNET_SALES_PAYMENT_DATE_SOURCE=PASS|measured:real_orders|created:2026-08-01|paid:2026-08-05|equals_created:no|unpaid_date:empty|unpaid_build:refused"
 expect_invoice_match "the carrier identity is never invented" "^INVOICE_CARRIER_IDENTITY_NEVER_INVENTED=PASS\\|carrier_lookup_table:none\\|reader_emits_vkn:no\\|reader_emits_title:no\\|"
 

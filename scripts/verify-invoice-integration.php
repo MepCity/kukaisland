@@ -42,6 +42,9 @@ $note = static function ( string $line ): void {
 
 const KUKA_TEST_RUN_META = '_kuka_isolation_run_id';
 const KUKA_TEST_QUEUE_HOOK = 'kuka_island_process_order_invoice';
+// The status poller's own action. Any scenario that reaches SendInvoice now
+// books one of these, so fixture cleanup has to account for it.
+const KUKA_TEST_POLL_HOOK = 'kuka_island_query_invoice_status';
 
 $test_run_id  = wp_generate_uuid4();
 $probe_run_id = wp_generate_uuid4();
@@ -184,6 +187,11 @@ function kuka_test_delete_order( int $order_id, string $expected_run_id ): bool 
 		wp_delete_comment( $order_note->id, true );
 	}
 
+	// Any scenario that reached SendInvoice booked a status query. Removing the
+	// fixture without removing the booking would leave an action pointing at a
+	// deleted order.
+	kuka_purge_queue_scheduling( array( $order_id ) );
+
 	$order->delete( true );
 	unset( $GLOBALS['kuka_invoice_tracked_orders'][ $order_id ] );
 
@@ -201,10 +209,15 @@ function kuka_purge_queue_scheduling( array $order_ids ): int {
 
 	$removed = 0;
 
+	$hooks = array( KUKA_TEST_QUEUE_HOOK, KUKA_TEST_POLL_HOOK );
+
 	foreach ( $order_ids as $order_id ) {
-		if ( function_exists( 'as_unschedule_all_actions' ) ) {
-			as_unschedule_all_actions( KUKA_TEST_QUEUE_HOOK, array( 'order_id' => $order_id ), 'kuka-island-invoice' );
+		foreach ( $hooks as $hook ) {
+			if ( function_exists( 'as_unschedule_all_actions' ) ) {
+				as_unschedule_all_actions( $hook, array( 'order_id' => $order_id ), 'kuka-island-invoice' );
+			}
 		}
+		// Only the queue hook has a wp-cron fallback shape.
 		$timestamp = wp_next_scheduled( KUKA_TEST_QUEUE_HOOK, array( $order_id ) );
 		if ( false !== $timestamp ) {
 			wp_unschedule_event( $timestamp, KUKA_TEST_QUEUE_HOOK, array( $order_id ) );
@@ -222,8 +235,9 @@ function kuka_purge_queue_scheduling( array $order_ids ): int {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared
 		$action_ids = (array) $wpdb->get_col(
 			$wpdb->prepare(
-				'SELECT action_id FROM ' . $actions_table . ' WHERE hook = %s AND args LIKE %s',
+				'SELECT action_id FROM ' . $actions_table . ' WHERE hook IN (%s, %s) AND args LIKE %s',
 				KUKA_TEST_QUEUE_HOOK,
+				KUKA_TEST_POLL_HOOK,
 				'%' . $wpdb->esc_like( '"order_id":' . $order_id ) . '%'
 			)
 		);
@@ -269,8 +283,9 @@ function kuka_count_queue_scheduling( array $order_ids ): int {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared
 		$count += (int) $wpdb->get_var(
 			$wpdb->prepare(
-				'SELECT COUNT(*) FROM ' . $actions_table . ' WHERE hook = %s AND args LIKE %s',
+				'SELECT COUNT(*) FROM ' . $actions_table . ' WHERE hook IN (%s, %s) AND args LIKE %s',
 				KUKA_TEST_QUEUE_HOOK,
+				KUKA_TEST_POLL_HOOK,
 				'%' . $wpdb->esc_like( '"order_id":' . $order_id ) . '%'
 			)
 		);
@@ -3204,18 +3219,368 @@ $report(
 	)
 );
 
+// unschedule() cancels rows rather than removing them, and this scenario uses a
+// synthetic order ID that no fixture cleanup covers. Purge it so repeated verify
+// runs do not accumulate rows in the Action Scheduler table.
+kuka_purge_queue_scheduling( array( $dup_order_id ) );
+
+/* -------------------------------------------------------------------------- */
+/* The poller starts by itself, and keeps going, on the real runner            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Count the status queries still WAITING for one order.
+ *
+ * Pending only. A running action is not a booking; it is the query currently
+ * happening, which is exactly the distinction the scheduler got wrong.
+ */
+$poll_pending_ids = static function ( int $order_id ): array {
+	if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
+		return array();
+	}
+
+	return array_map(
+		'intval',
+		(array) as_get_scheduled_actions(
+			array(
+				'hook'     => Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS,
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => Kuka_Island_Core_Invoice_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 50,
+				'orderby'  => 'none',
+			),
+			'ids'
+		)
+	);
+};
+
+/*
+ * A send has to start the poll on its own. Everything below runs through the
+ * production Kuka_Island_Core_Invoice_Manager::process_order() -- the single
+ * method both Kuka_Island_Core_Invoice_Queue::process_queued_order() and the
+ * order screen's manual send call -- and the booking is then read out of Action
+ * Scheduler, not out of the poller.
+ */
+$autostart_cases = array(
+	// name => [ force, send response or null for the tracking transport,
+	//           timeout on send, expected lifecycle, queries expected ]
+	'queue_worker'    => array( false, null, false, Kuka_Island_Core_Invoice_Status::STATUS_SENT, 1 ),
+	'manual_send'     => array( true, null, false, Kuka_Island_Core_Invoice_Status::STATUS_SENT, 1 ),
+	// Ambiguous network error: ask, never resend.
+	'send_uncertain'  => array( false, null, true, Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, 1 ),
+	// Terminal answers book nothing.
+	'completed'       => array( false, $build_send_response( 0, 'SEND - SUCCEED' ), false, Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, 0 ),
+	'rejected'        => array( false, $build_send_response( 0, 'REJECTED - SUCCEED' ), false, Kuka_Island_Core_Invoice_Status::STATUS_REJECTED, 0 ),
+	'cancelled'       => array( false, $build_send_response( 0, 'CANCELLED - SUCCEED' ), false, Kuka_Island_Core_Invoice_Status::STATUS_CANCELLED, 0 ),
+	'failed'          => array( false, $build_send_response( 0, 'SEND - FAILED' ), false, Kuka_Island_Core_Invoice_Status::STATUS_FAILED, 0 ),
+	'unknown_status'  => array( false, $build_send_response( 0, 'PROCESS SUCCESS NOTE' ), false, Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW, 0 ),
+);
+
+$autostart_ok      = true;
+$autostart_details = array();
+$autostart_sends   = 0;
+$autostart_loads   = 0;
+$autostart_queries = 0;
+
+foreach ( $autostart_cases as $case => $spec ) {
+	if ( null === $spec[1] ) {
+		$transport = new Kuka_Island_Test_Tracking_Transport();
+		$transport->simulate_timeout_on_send = (bool) $spec[2];
+	} else {
+		$transport = new Kuka_Island_Test_Status_Transport( $spec[1], null );
+	}
+
+	$case_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $transport ) );
+	$case_order   = kuka_create_lock_order(
+		$test_run_id,
+		$billing_props,
+		array(
+			'_kuka_invoice_number'        => 'KUK2026000000042',
+			'_kuka_invoice_number_source' => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+	$case_order_id = (int) $case_order->get_id();
+
+	// Nothing booked before the send.
+	$booked_before = count( $poll_pending_ids( $case_order_id ) );
+
+	try {
+		$case_manager->process_order( $case_order, (bool) $spec[0] );
+	} catch ( Throwable $t ) {
+		// send_uncertain rethrows on purpose; the booking still has to exist.
+		unset( $t );
+	}
+
+	$case_order->read_meta_data( true );
+	$booked_after  = count( $poll_pending_ids( $case_order_id ) );
+	$case_status   = Kuka_Island_Core_Invoice_Order_Store::get_status( $case_order );
+	$poll_started  = (string) $case_order->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT, true );
+
+	$autostart_sends   += (int) ( $transport->calls['SendInvoice'] ?? 0 );
+	$autostart_loads   += (int) ( $transport->calls['LoadInvoice'] ?? 0 );
+	$autostart_queries += (int) ( $transport->calls['GetInvoiceStatus'] ?? 0 );
+
+	$hit = 0 === $booked_before
+		&& $booked_after === (int) $spec[4]
+		&& $case_status === (string) $spec[3]
+		// Exactly one transmission per case, whatever the answer was.
+		&& 1 === (int) ( $transport->calls['SendInvoice'] ?? 0 )
+		// A booked poll also records when polling began; an unbooked one does not.
+		&& ( 0 === (int) $spec[4] ? '' === $poll_started : '' !== $poll_started );
+
+	$autostart_details[] = $case . '=' . $case_status . '/' . $booked_after;
+	if ( ! $hit ) {
+		$autostart_ok = false;
+	}
+
+	kuka_test_delete_order( $case_order_id, $test_run_id );
+}
+
+// Both entry points reach the same method, which is why they cannot diverge.
+$queue_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-invoice-queue.php' );
+$admin_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-invoice-admin.php' );
+$shared_entry = str_contains( $queue_source, '->process_order(' ) && str_contains( $admin_source, '->process_order(' );
+
+$report(
+	'INVOICE_POLLER_AUTOSTARTS_FROM_SEND',
+	$autostart_ok
+	&& $shared_entry
+	// The send path never reaches a status query, and never a second document.
+	&& 0 === $autostart_queries
+	&& 0 === $autostart_loads
+	&& count( $autostart_cases ) === $autostart_sends,
+	sprintf(
+		'measured:manager_process_order|cases:%d|%s|SendInvoice=%d|LoadInvoice=%d|GetInvoiceStatus=%d|shared_entry_point:%s',
+		count( $autostart_cases ),
+		implode( ' ', $autostart_details ),
+		$autostart_sends,
+		$autostart_loads,
+		$autostart_queries,
+		$shared_entry ? 'process_order' : 'DIVERGENT'
+	)
+);
+
+/*
+ * The follow-up query, proved on the real Action Scheduler runner.
+ *
+ * as_has_scheduled_action() counts pending AND running actions, so the previous
+ * scheduler could not book a follow-up from inside its own callback: the action
+ * running at that moment made every schedule() call look like a duplicate. The
+ * only way to show the fix is to let a real action reach STATUS_RUNNING and
+ * observe what it manages to book.
+ *
+ * ActionScheduler_Abstract_QueueRunner::process_action() runs one action through
+ * the real lifecycle -- pending -> running -> complete -- and nothing else in
+ * the queue is touched.
+ */
+$runner_available = class_exists( 'ActionScheduler_QueueRunner' )
+	&& class_exists( 'ActionScheduler_Store' )
+	&& class_exists( 'ActionScheduler' );
+
+if ( ! $runner_available ) {
+	$report( 'INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER', false, 'action_scheduler_runner:absent' );
+} else {
+	/**
+	 * GetInvoiceStatus answers, one per call, so the chain can be walked.
+	 */
+	$scripted_transport = new class() implements Kuka_Island_Core_SOAP_Transport_Interface {
+		/** @var array<string, int> */
+		public array $calls = array();
+		/** @var array<int, string> STATUS literals to hand back, in order. */
+		public array $script = array();
+		/** @var int */
+		public int $index = 0;
+
+		public function get_last_request(): string {
+			return '';
+		}
+
+		public function get_last_response(): string {
+			return '';
+		}
+
+		public function call( string $operation, array $parameters ) {
+			$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+
+			if ( 'Login' === $operation ) {
+				return array( 'SESSION_ID' => 'session-runner-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+			}
+
+			if ( 'GetInvoiceStatus' === $operation ) {
+				$status = $this->script[ $this->index ] ?? end( $this->script );
+				++$this->index;
+
+				return array(
+					'INVOICE_STATUS' => array(
+						array(
+							'UUID'   => $parameters['INVOICE']['UUID'] ?? 'uuid-runner-fixture',
+							'HEADER' => array( 'STATUS' => $status ),
+						),
+					),
+				);
+			}
+
+			return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+	};
+
+	// Two in-flight answers, then a terminal one.
+	$scripted_transport->script = array( 'PACKAGE - PROCESSING', 'SEND - WAIT_GIB_RESPONSE', 'SEND - SUCCEED' );
+
+	$runner_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
+	kuka_add_line( $runner_order, 'Runner Fixture', '100.00', '100.00', 1, '10.00' );
+	$runner_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_UUID, 'uuid-runner-fixture' );
+	$runner_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, 'KUK2026000000903' );
+	$runner_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SENT );
+	$runner_order->save();
+	$runner_order_id = (int) $runner_order->get_id();
+
+	$runner_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $scripted_transport ) );
+	$runner_poller  = new Kuka_Island_Core_Invoice_Status_Poller( $runner_manager );
+
+	// Only the mock-backed poller may answer this action, so no production
+	// callback can reach a real endpoint from inside the runner.
+	$saved_callbacks = $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] ?? null;
+	remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+	$runner_poller->register();
+
+	// What status does the action carry while its own callback is executing?
+	$running_action_id  = 0;
+	$observed_running   = array();
+	add_action(
+		Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS,
+		static function () use ( &$running_action_id, &$observed_running ): void {
+			$observed_running[] = (string) ActionScheduler::store()->get_status( $running_action_id );
+		},
+		1,
+		1
+	);
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $runner_order_id );
+	$runner_started = Kuka_Island_Core_Invoice_Status_Poller::start( $runner_order, Kuka_Island_Core_Invoice_Status::STATUS_SENT );
+
+	$runner_steps    = array();
+	$runner_statuses = array();
+	$runner_future   = array();
+	$now             = time();
+
+	for ( $round = 1; $round <= 3; $round++ ) {
+		$pending = $poll_pending_ids( $runner_order_id );
+		$runner_steps[] = 'before' . $round . ':' . count( $pending );
+		if ( 1 !== count( $pending ) ) {
+			break;
+		}
+
+		$running_action_id = (int) $pending[0];
+		$scheduled_at      = ActionScheduler::store()->fetch_action( $running_action_id )->get_schedule()->get_date();
+		$runner_future[]   = ( $scheduled_at instanceof DateTime && $scheduled_at->getTimestamp() > $now ) ? 'future' : 'NOT_FUTURE';
+
+		ActionScheduler_QueueRunner::instance()->process_action( $running_action_id, 'kuka-verify' );
+
+		$runner_statuses[] = (string) ActionScheduler::store()->get_status( $running_action_id );
+		$runner_steps[]    = 'after' . $round . ':' . count( $poll_pending_ids( $runner_order_id ) );
+	}
+
+	$pending_after_terminal = count( $poll_pending_ids( $runner_order_id ) );
+
+	// Two concurrent booking attempts must still leave one query.
+	//
+	// The advisory lock is a MySQL session lock, so the competing worker is a
+	// real second connection: it takes the same lock the scheduler takes, and
+	// the scheduler running here has to refuse while that lock is held. One
+	// attempt refused plus one attempt booked is the whole race.
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $runner_order_id );
+	$rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$rival_holds = '1' === (string) $rival->get_var( $rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_poll_' . $runner_order_id ) );
+
+	$attempt_while_held = Kuka_Island_Core_Invoice_Status_Poller::schedule( $runner_order_id, 300 );
+	$pending_while_held = count( $poll_pending_ids( $runner_order_id ) );
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$rival->get_var( $rival->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_inv_poll_' . $runner_order_id ) );
+
+	$attempt_after_release = Kuka_Island_Core_Invoice_Status_Poller::schedule( $runner_order_id, 300 );
+	$attempt_duplicate    = Kuka_Island_Core_Invoice_Status_Poller::schedule( $runner_order_id, 300 );
+	$pending_after_race   = count( $poll_pending_ids( $runner_order_id ) );
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $runner_order_id );
+
+	// Restore whatever the plugin had registered.
+	remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+	if ( null !== $saved_callbacks ) {
+		$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] = $saved_callbacks;
+	}
+
+	$reloaded_runner = wc_get_order( $runner_order_id );
+	$runner_final    = $reloaded_runner instanceof WC_Order
+		? (string) $reloaded_runner->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, true )
+		: 'order_missing';
+
+	$expected_steps = array( 'before1:1', 'after1:1', 'before2:1', 'after2:1', 'before3:1', 'after3:0' );
+	$running_seen   = array( ActionScheduler_Store::STATUS_RUNNING, ActionScheduler_Store::STATUS_RUNNING, ActionScheduler_Store::STATUS_RUNNING );
+	$complete_seen  = array( ActionScheduler_Store::STATUS_COMPLETE, ActionScheduler_Store::STATUS_COMPLETE, ActionScheduler_Store::STATUS_COMPLETE );
+
+	$report(
+		'INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER',
+		true === $runner_started
+		// (a) each action really executed while it was RUNNING...
+		&& $running_seen === $observed_running
+		// ...and finished COMPLETE.
+		&& $complete_seen === $runner_statuses
+		// (b) and (c) exactly one future query after each in-flight answer.
+		&& $expected_steps === $runner_steps
+		&& array( 'future', 'future', 'future' ) === $runner_future
+		// (d) the terminal answer leaves nothing booked.
+		&& 0 === $pending_after_terminal
+		&& Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED === $runner_final
+		// (e) two concurrent attempts, one query.
+		&& true === $rival_holds
+		&& false === $attempt_while_held
+		&& 0 === $pending_while_held
+		&& true === $attempt_after_release
+		&& false === $attempt_duplicate
+		&& 1 === $pending_after_race
+		// GetInvoiceStatus is still the only operation the poller can reach.
+		&& 3 === (int) ( $scripted_transport->calls['GetInvoiceStatus'] ?? 0 )
+		&& 0 === (int) ( $scripted_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $scripted_transport->calls['LoadInvoice'] ?? 0 ),
+		sprintf(
+			'measured:action_scheduler_runner|steps:%s|action_status_during_run:%s|action_status_after_run:%s|followup_dates:%s|pending_after_terminal:%d|order_status:%s|race:held=%s,while_held=%s,after_release=%s,duplicate=%s,pending=%d|SendInvoice=%d|LoadInvoice=%d|GetInvoiceStatus=%d',
+			implode( ' ', $runner_steps ),
+			empty( $observed_running ) ? 'none' : implode( ',', $observed_running ),
+			empty( $runner_statuses ) ? 'none' : implode( ',', $runner_statuses ),
+			empty( $runner_future ) ? 'none' : implode( ',', $runner_future ),
+			$pending_after_terminal,
+			$runner_final,
+			$rival_holds ? 'yes' : 'no',
+			$attempt_while_held ? 'CREATED' : 'refused',
+			$attempt_after_release ? 'created' : 'NOT_CREATED',
+			$attempt_duplicate ? 'CREATED' : 'refused',
+			$pending_after_race,
+			$scripted_transport->calls['SendInvoice'] ?? 0,
+			$scripted_transport->calls['LoadInvoice'] ?? 0,
+			$scripted_transport->calls['GetInvoiceStatus'] ?? 0
+		)
+	);
+
+	kuka_test_delete_order( $runner_order_id, $test_run_id );
+}
+
 /* -------------------------------------------------------------------------- */
 /* INTERNETSALESDETAILS                                                        */
 /* -------------------------------------------------------------------------- */
 
 $isd_base = array(
-	'web_address'    => 'https://kukaisland.com',
-	'payment_method' => 'iyzico',
-	'payment_date'   => '2026-08-30',
-	'shipment_state' => Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE,
-	'shipment_date'  => '2026-08-31',
-	'carrier_vkn'    => '1234567890',
-	'carrier_title'  => 'Kargo A.S.',
+	'web_address'     => 'https://kukaisland.com',
+	// The WooCommerce gateway ID, not its checkout title.
+	'payment_gateway' => 'iyzico',
+	'payment_date'    => '2026-08-30',
+	'shipment_state'  => Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE,
+	'shipment_date'   => '2026-08-31',
+	'carrier_vkn'     => '1234567890',
+	'carrier_title'   => 'Kargo A.S.',
 );
 
 $isd_cases = array(
@@ -3228,7 +3593,9 @@ $isd_cases = array(
 	'no_carrier_vkn'      => array( array( 'carrier_vkn' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_VKN_MISSING ),
 	'no_carrier_title'    => array( array( 'carrier_title' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_TITLE_MISSING ),
 	'no_web_address'      => array( array( 'web_address' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_WEB_ADDRESS_MISSING ),
-	'no_payment_method'   => array( array( 'payment_method' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING ),
+	'no_payment_gateway'  => array( array( 'payment_gateway' => '' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING ),
+	'unmapped_gateway'    => array( array( 'payment_gateway' => 'bacs' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED ),
+	'gateway_title'       => array( array( 'payment_gateway' => 'Banka/Kredi Kartı ile Öde' ), false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED ),
 );
 
 $isd_ok      = true;
@@ -3250,23 +3617,227 @@ $isd_ship  = $isd_full['details']['gonderiBilgileri'] ?? array();
 $isd_shape = '2026-08-30' === ( $isd_full['details']['odemeTarihi'] ?? '' )
 	&& '2026-08-31' === ( $isd_ship['gonderimTarihi'] ?? '' )
 	&& '1234567890' === ( $isd_ship['gonderiTasiyan']['tuzelKisi']['vkn'] ?? '' )
-	&& 'Kargo A.S.' === ( $isd_ship['gonderiTasiyan']['tuzelKisi']['unvan'] ?? '' )
-	// Optional, and absent when no intermediary applies.
-	&& ! array_key_exists( 'odemeAracisiAdi', $isd_full['details'] );
-
-$isd_agent = Kuka_Island_Core_Internet_Sales_Details::build( array_merge( $isd_base, array( 'payment_agent' => 'iyzico Odeme' ) ) );
+	&& 'Kargo A.S.' === ( $isd_ship['gonderiTasiyan']['tuzelKisi']['unvan'] ?? '' );
 
 $report(
 	'INVOICE_INTERNET_SALES_DETAILS_CONTRACT',
-	$isd_ok
-	&& $isd_shape
-	&& 'iyzico Odeme' === ( $isd_agent['details']['odemeAracisiAdi'] ?? '' ),
+	$isd_ok && $isd_shape,
 	sprintf(
-		'cases:%d|%s|shape:%s|payment_agent_optional:%s',
+		'cases:%d|%s|shape:%s',
 		count( $isd_cases ),
 		implode( ' ', $isd_details ),
-		$isd_shape ? 'ok' : 'WRONG',
-		'iyzico Odeme' === ( $isd_agent['details']['odemeAracisiAdi'] ?? '' ) ? 'yes' : 'no'
+		$isd_shape ? 'ok' : 'WRONG'
+	)
+);
+
+/*
+ * odemeSekli is a fiscal enumeration, so a nonempty payment string is not a
+ * licence to write it there. Two doors are measured: the gateway lookup, and
+ * the pair validator any producer has to pass.
+ */
+$isd_iyzico = Kuka_Island_Core_Internet_Sales_Details::payment_for_gateway( 'iyzico' );
+$isd_pwi    = Kuka_Island_Core_Internet_Sales_Details::payment_for_gateway( 'pwi' );
+
+$gateway_cases = array(
+	// Both iyzico gateways: the intermediary collected the money.
+	'iyzico_checkout' => array( 'iyzico', true, '', 'ODEMEARACISI', 'iyzico' ),
+	'iyzico_pwi'      => array( 'pwi', true, '', 'ODEMEARACISI', 'iyzico' ),
+	'iyzico_uppercase' => array( 'IYZICO', true, '', 'ODEMEARACISI', 'iyzico' ),
+	'iyzico_padded'   => array( "  iyzico\t", true, '', 'ODEMEARACISI', 'iyzico' ),
+	// Empty is a missing fact, not a default.
+	'empty'           => array( '', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING, '', '' ),
+	// Real WooCommerce gateways with no confirmed EDM literal. Refused, not guessed.
+	'bacs'            => array( 'bacs', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	'cod'             => array( 'cod', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	'cheque'          => array( 'cheque', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	// User-facing checkout titles, which are what a get_payment_method_title()
+	// call would hand over. None of them is a gateway id or a fiscal literal.
+	'title_card'      => array( 'Banka/Kredi Kartı ile Öde', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	'title_credit'    => array( 'Kredi kartı ile öde', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	'title_pwi'       => array( 'iyzico ile öde', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	'title_transfer'  => array( 'Banka havalesi/EFT', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+	// A fiscal literal is not a gateway id either.
+	'literal_as_id'   => array( 'ODEMEARACISI', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, '', '' ),
+);
+
+$gateway_ok      = true;
+$gateway_details = array();
+foreach ( $gateway_cases as $case => $spec ) {
+	$resolved = Kuka_Island_Core_Internet_Sales_Details::payment_for_gateway( $spec[0] );
+	$hit      = $resolved['ok'] === $spec[1]
+		&& $resolved['error'] === $spec[2]
+		&& $resolved['odemeSekli'] === $spec[3]
+		&& $resolved['odemeAracisiAdi'] === $spec[4];
+	$gateway_details[] = $case . '=' . ( $resolved['ok'] ? $resolved['odemeSekli'] : ( $resolved['error'] ?: 'refused' ) );
+	if ( ! $hit ) {
+		$gateway_ok = false;
+	}
+}
+
+$pair_cases = array(
+	'intermediary_named'  => array( 'ODEMEARACISI', 'iyzico', true, '' ),
+	// ODEMEARACISI states somebody else collected the money; a blank name
+	// leaves that half-stated, so it is refused.
+	'intermediary_blank'  => array( 'ODEMEARACISI', '', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_AGENT_MISSING ),
+	'intermediary_spaces' => array( 'ODEMEARACISI', '   ', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_AGENT_MISSING ),
+	// A gateway slug, a checkout title and an unproven literal are all refused
+	// as odemeSekli values.
+	'gateway_slug'        => array( 'iyzico', 'iyzico', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_NOT_FISCAL ),
+	'checkout_title'      => array( 'Kredi kartı ile öde', 'iyzico', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_NOT_FISCAL ),
+	'unproven_literal'    => array( 'KREDIKARTI', '', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_NOT_FISCAL ),
+	'unproven_literal_2'  => array( 'EFT/HAVALE', '', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_NOT_FISCAL ),
+	'lowercase_literal'   => array( 'odemearacisi', 'iyzico', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_NOT_FISCAL ),
+	'empty_literal'       => array( '', 'iyzico', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING ),
+);
+
+$pair_ok      = true;
+$pair_details = array();
+foreach ( $pair_cases as $case => $spec ) {
+	$verdict = Kuka_Island_Core_Internet_Sales_Details::validate_payment( $spec[0], $spec[1] );
+	$hit     = $verdict['ok'] === $spec[2] && $verdict['error'] === $spec[3];
+	$pair_details[] = $case . '=' . ( $verdict['ok'] ? 'accepted' : ( $verdict['error'] ?: 'refused' ) );
+	if ( ! $hit ) {
+		$pair_ok = false;
+	}
+}
+
+// Every refused gateway must also refuse the whole block, with no partial
+// details left behind.
+$refused_titles       = array( 'Banka/Kredi Kartı ile Öde', 'Kredi kartı ile öde', 'iyzico ile öde', 'Banka havalesi/EFT', 'Kapıda ödeme', 'PayPal', 'ODEMEARACISI' );
+$refused_title_count  = 0;
+$refused_title_leaks  = array();
+foreach ( $refused_titles as $title ) {
+	$built = Kuka_Island_Core_Internet_Sales_Details::build( array_merge( $isd_base, array( 'payment_gateway' => $title ) ) );
+	if ( false === $built['ok'] && array() === $built['details'] ) {
+		++$refused_title_count;
+	} else {
+		$refused_title_leaks[] = $title;
+	}
+}
+
+// The built block carries the fiscal literal, never the gateway id or a title,
+// and carries no *Specified companion key: the WSDL has no such element.
+$isd_iyzico_block = Kuka_Island_Core_Internet_Sales_Details::build( $isd_base );
+
+/**
+ * Collect every key in a nested block, at any depth.
+ *
+ * @param array<string, mixed> $node Block or sub-block.
+ * @return array<int, string>
+ */
+$collect_keys = static function ( array $node ) use ( &$collect_keys ): array {
+	$keys = array();
+	foreach ( $node as $key => $value ) {
+		$keys[] = (string) $key;
+		if ( is_array( $value ) ) {
+			$keys = array_merge( $keys, $collect_keys( $value ) );
+		}
+	}
+
+	return $keys;
+};
+
+$specified_keys = array_values(
+	array_filter(
+		$collect_keys( (array) $isd_iyzico_block['details'] ),
+		static fn( string $key ): bool => str_ends_with( $key, 'Specified' )
+	)
+);
+
+$isd_class_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-internet-sales-details.php' );
+// A *Specified companion key written as an array key anywhere in the producer.
+// The class docblock mentions the name to explain why it is absent, which is
+// why the scan looks for a key assignment rather than the bare word.
+$specified_source_hits = preg_match( '/[\'"][A-Za-z_]*Specified[\'"]\s*=>/', $isd_class_source );
+
+$report(
+	'INVOICE_INTERNET_SALES_PAYMENT_CONTRACT',
+	$gateway_ok
+	&& $pair_ok
+	&& count( $refused_titles ) === $refused_title_count
+	&& array() === $specified_keys
+	// A single confirmed literal; nothing was invented alongside it.
+	&& array( 'ODEMEARACISI' ) === Kuka_Island_Core_Internet_Sales_Details::fiscal_payment_literals()
+	&& 'ODEMEARACISI' === ( $isd_iyzico_block['details']['odemeSekli'] ?? '' )
+	&& 'iyzico' === ( $isd_iyzico_block['details']['odemeAracisiAdi'] ?? '' )
+	// The gateway id itself never reaches the fiscal field.
+	&& 'iyzico' !== ( $isd_iyzico_block['details']['odemeSekli'] ?? '' )
+	&& $isd_iyzico['ok']
+	&& $isd_pwi['ok']
+	// The class reads the gateway id, never the shop-editable title. The
+	// docblock names the title getter to say why it is not used, so the scan
+	// looks for an actual call.
+	&& ! str_contains( $isd_class_source, '->get_payment_method_title(' )
+	&& 0 === $specified_source_hits,
+	sprintf(
+		'gateway_cases:%d|%s|pair_cases:%d|%s|nonempty_titles_refused:%d/%d%s|odemeSekli:%s|odemeAracisiAdi:%s|fiscal_literals:%s|specified_keys:%s|reads_title:%s',
+		count( $gateway_cases ),
+		implode( ' ', $gateway_details ),
+		count( $pair_cases ),
+		implode( ' ', $pair_details ),
+		$refused_title_count,
+		count( $refused_titles ),
+		empty( $refused_title_leaks ) ? '' : '|LEAKED:' . implode( ',', $refused_title_leaks ),
+		(string) ( $isd_iyzico_block['details']['odemeSekli'] ?? 'absent' ),
+		(string) ( $isd_iyzico_block['details']['odemeAracisiAdi'] ?? 'absent' ),
+		implode( ',', Kuka_Island_Core_Internet_Sales_Details::fiscal_payment_literals() ),
+		empty( $specified_keys ) ? 'none' : implode( ',', $specified_keys ),
+		str_contains( $isd_class_source, '->get_payment_method_title(' ) ? 'YES' : 'no'
+	)
+);
+
+// The gateway id is read from WooCommerce, and a real iyzico order resolves to
+// the intermediary literal end to end.
+$gateway_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
+$gateway_order->set_payment_method( 'iyzico' );
+$gateway_order->set_payment_method_title( 'Banka/Kredi Kartı ile Öde' );
+$gateway_order->save();
+
+$read_gateway   = Kuka_Island_Core_Internet_Sales_Details::read_payment_gateway( wc_get_order( $gateway_order->get_id() ) );
+$read_resolved  = Kuka_Island_Core_Internet_Sales_Details::payment_for_gateway( $read_gateway );
+
+$report(
+	'INVOICE_INTERNET_SALES_GATEWAY_SOURCE',
+	'iyzico' === $read_gateway
+	&& 'Banka/Kredi Kartı ile Öde' !== $read_gateway
+	&& $read_resolved['ok']
+	&& 'ODEMEARACISI' === $read_resolved['odemeSekli']
+	&& 'iyzico' === $read_resolved['odemeAracisiAdi'],
+	sprintf(
+		'measured:real_order|gateway_id:%s|gateway_title:%s|odemeSekli:%s|odemeAracisiAdi:%s',
+		$read_gateway,
+		(string) wc_get_order( $gateway_order->get_id() )->get_payment_method_title(),
+		$read_resolved['odemeSekli'] ?: 'none',
+		$read_resolved['odemeAracisiAdi'] ?: 'none'
+	)
+);
+
+kuka_test_delete_order( $gateway_order->get_id(), $test_run_id );
+
+// The producer stays off the transmission path this round.
+$transmission_path_files = array(
+	'class-edm-client.php',
+	'class-edm-provider.php',
+	'class-invoice-manager.php',
+	'class-invoice-order-mapper.php',
+	'class-ubl-tr-builder.php',
+	'class-invoice-queue.php',
+);
+$isd_wiring = array();
+foreach ( $transmission_path_files as $file ) {
+	$path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $file;
+	if ( is_readable( $path ) && str_contains( (string) file_get_contents( $path ), 'Internet_Sales_Details' ) ) {
+		$isd_wiring[] = $file;
+	}
+}
+
+$report(
+	'INVOICE_INTERNET_SALES_NOT_WIRED_TO_SEND',
+	array() === $isd_wiring,
+	sprintf(
+		'files_scanned:%d|references:%s',
+		count( $transmission_path_files ),
+		empty( $isd_wiring ) ? 'none' : implode( ',', $isd_wiring )
 	)
 );
 

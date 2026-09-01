@@ -42,6 +42,9 @@ class Kuka_Island_Core_Invoice_Manager {
 	 * - Database advisory lock guards concurrency.
 	 * - UUID, invoice number, and 'sending' status are persisted in a single atomic store operation before SendInvoice.
 	 * - Ambiguous network errors during SendInvoice transition to 'send_uncertain' (never needs_manual_review).
+	 * - A document left in flight (sent, pending_approval, send_uncertain) gets exactly one
+	 *   GetInvoiceStatus query booked on the poller's own Action Scheduler action. The poller
+	 *   cannot reach SendInvoice, so this never becomes a second transmission.
 	 *
 	 * @param WC_Order $order WooCommerce Order.
 	 * @param bool     $force Force retry for failed states only.
@@ -204,6 +207,15 @@ class Kuka_Island_Core_Invoice_Manager {
 				$err_code = method_exists( $send_exception, 'get_safe_error_code' ) ? $send_exception->get_safe_error_code() : 'send_network_timeout';
 				$err_msg  = method_exists( $send_exception, 'get_user_message' ) ? $send_exception->get_user_message() : $send_exception->getMessage();
 				Kuka_Island_Core_Invoice_Order_Store::save_send_uncertain( $fresh_order, $err_code, $err_msg );
+
+				/*
+				 * The transmission may or may not have landed. Booking a
+				 * GetInvoiceStatus query is the only safe next move: the
+				 * poller cannot reach SendInvoice, so asking can never turn
+				 * into a blind second transmission.
+				 */
+				$this->start_status_polling( $fresh_order );
+
 				throw $send_exception;
 			}
 
@@ -223,6 +235,19 @@ class Kuka_Island_Core_Invoice_Manager {
 				);
 			}
 
+			/*
+			 * 11. A document that is still on its way gets exactly one status
+			 * query booked, from the persisted status rather than the result
+			 * object, so what is polled is what was recorded. sent,
+			 * pending_approval and send_uncertain are the only three that
+			 * qualify; completed, rejected, cancelled and the error states are
+			 * answers and are never asked about again.
+			 *
+			 * This sits on the single path both the queue worker and the order
+			 * screen's manual send take, so the two behave identically.
+			 */
+			$this->start_status_polling( $fresh_order );
+
 			if ( $order !== $fresh_order ) {
 				$order->read_meta_data( true );
 			}
@@ -235,6 +260,31 @@ class Kuka_Island_Core_Invoice_Manager {
 			throw $e;
 		} finally {
 			$this->release_lock( $lock_key );
+		}
+	}
+
+	/**
+	 * Book the automatic status query for a document that is still on its way.
+	 *
+	 * The gate is the status actually persisted on the order, and
+	 * Kuka_Island_Core_Invoice_Status_Poller::start() refuses anything that is
+	 * not sent, pending_approval or send_uncertain -- so a completed, rejected,
+	 * cancelled or failed document books nothing.
+	 *
+	 * Failure to book is not allowed to fail the send: the invoice was already
+	 * transmitted and persisted, and the order screen's requery button remains.
+	 *
+	 * @param WC_Order $order Order carrying the persisted send outcome.
+	 * @return bool Whether a query was booked by this call.
+	 */
+	private function start_status_polling( WC_Order $order ): bool {
+		try {
+			return Kuka_Island_Core_Invoice_Status_Poller::start(
+				$order,
+				Kuka_Island_Core_Invoice_Order_Store::get_status( $order )
+			);
+		} catch ( Throwable $e ) {
+			return false;
 		}
 	}
 

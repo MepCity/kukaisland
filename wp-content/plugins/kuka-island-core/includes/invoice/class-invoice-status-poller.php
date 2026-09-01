@@ -14,6 +14,10 @@
  * matters most in the send_uncertain case, where the safe move is to ask, never
  * to resend blind.
  *
+ * Polling begins from Kuka_Island_Core_Invoice_Manager::process_order(), the one
+ * place a SendInvoice result is persisted, so the automatic queue and the manual
+ * send button in the order screen behave identically.
+ *
  * @package Kuka_Island_Core
  */
 
@@ -49,6 +53,15 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	public const META_EARCHIVE_REPORT_STATUS = '_kuka_invoice_earchive_report_status';
 	/** GIB_STATUS_CODE, recorded but never used as the document status. */
 	public const META_GIB_STATUS_CODE = '_kuka_invoice_gib_status_code';
+
+	/**
+	 * Advisory lock name prefix for the booking decision.
+	 *
+	 * One lock per order, and deliberately NOT the send lock
+	 * ('kuka_inv_' . $order_id) the manager holds: booking a query must never
+	 * be able to block, or be blocked by, a transmission.
+	 */
+	private const SCHEDULE_LOCK_PREFIX = 'kuka_inv_poll_';
 
 	private Kuka_Island_Core_Invoice_Manager $manager;
 
@@ -128,40 +141,119 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	}
 
 	/**
-	 * Is a query already booked for this order?
+	 * Is a FUTURE query already booked for this order?
+	 *
+	 * Deliberately not as_has_scheduled_action(): that helper queries
+	 * STATUS_RUNNING together with STATUS_PENDING, so the action currently
+	 * executing counts as "already booked". The follow-up query is scheduled
+	 * from inside that very callback, where the action is running, so a
+	 * pending-or-running check refuses every follow-up and the poll chain stops
+	 * dead after one attempt.
+	 *
+	 * Only STATUS_PENDING answers the question that matters here: is there a
+	 * query still waiting to run?
 	 *
 	 * @param int $order_id Order ID.
 	 */
-	public static function is_scheduled( int $order_id ): bool {
-		if ( ! function_exists( 'as_has_scheduled_action' ) ) {
+	public static function has_pending_query( int $order_id ): bool {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
 			return false;
 		}
 
-		return (bool) as_has_scheduled_action( self::ACTION_QUERY_STATUS, array( 'order_id' => $order_id ), self::GROUP );
+		$pending = as_get_scheduled_actions(
+			array(
+				'hook'     => self::ACTION_QUERY_STATUS,
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => self::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 1,
+				'orderby'  => 'none',
+			),
+			'ids'
+		);
+
+		return array() !== (array) $pending;
 	}
 
 	/**
-	 * Book a query, unless one is already booked.
+	 * Book a query, unless one is already waiting.
 	 *
-	 * The duplicate check is what keeps a single order from accumulating a
-	 * queue of identical queries when several code paths notice the same
-	 * pending document.
+	 * Two guards, because the pending-only check on its own is a
+	 * check-then-act race: two workers that both notice the same pending
+	 * document can both see zero pending queries and both create one.
+	 *
+	 * 1. A per-order MySQL advisory lock serialises the decision across
+	 *    processes. A worker that cannot take the lock does not queue behind it
+	 *    -- the holder is already booking the same query, so there is nothing
+	 *    left to do.
+	 * 2. Inside the lock, the pending-only query decides.
 	 *
 	 * @param int $order_id Order ID.
 	 * @param int $delay    Seconds from now.
-	 * @return bool Whether a new action was created.
+	 * @return bool Whether THIS call created a new action.
 	 */
 	public static function schedule( int $order_id, int $delay = self::FIRST_DELAY ): bool {
-		if ( self::is_scheduled( $order_id ) ) {
-			return false;
-		}
 		if ( ! function_exists( 'as_schedule_single_action' ) ) {
 			return false;
 		}
 
-		as_schedule_single_action( time() + max( 1, $delay ), self::ACTION_QUERY_STATUS, array( 'order_id' => $order_id ), self::GROUP );
+		if ( ! self::acquire_schedule_lock( $order_id ) ) {
+			// Another process holds the booking decision for this order.
+			return false;
+		}
 
-		return true;
+		try {
+			if ( self::has_pending_query( $order_id ) ) {
+				return false;
+			}
+
+			$action_id = (int) as_schedule_single_action(
+				time() + max( 1, $delay ),
+				self::ACTION_QUERY_STATUS,
+				array( 'order_id' => $order_id ),
+				self::GROUP
+			);
+
+			// Action Scheduler returns 0 when it could not schedule. Reporting
+			// that as success would leave the document with no query booked and
+			// nobody aware of it.
+			return $action_id > 0;
+		} finally {
+			self::release_schedule_lock( $order_id );
+		}
+	}
+
+	/**
+	 * Take the per-order booking lock, or report that somebody else has it.
+	 *
+	 * Timeout 0 on purpose: the loser of the race has no work to do, so waiting
+	 * would only hold a worker open.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	private static function acquire_schedule_lock( int $order_id ): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$acquired = $wpdb->get_var(
+			$wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', self::SCHEDULE_LOCK_PREFIX . $order_id )
+		);
+
+		return '1' === (string) $acquired;
+	}
+
+	/**
+	 * Release the per-order booking lock.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	private static function release_schedule_lock( int $order_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->get_var(
+			$wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::SCHEDULE_LOCK_PREFIX . $order_id )
+		);
 	}
 
 	/**
@@ -176,7 +268,17 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	}
 
 	/**
-	 * Begin polling a document that has just been accepted.
+	 * Begin polling a document that has just been transmitted.
+	 *
+	 * Called from Kuka_Island_Core_Invoice_Manager::process_order() once the
+	 * SendInvoice outcome is persisted -- including the ambiguous-network case,
+	 * where asking is the only safe move. Only sent, pending_approval and
+	 * send_uncertain start a poll; completed, rejected, cancelled and the error
+	 * states are answers, and an answered document is not asked about again.
+	 *
+	 * Meta is written with save_meta_data() rather than save(): the counters are
+	 * order meta, and this runs inside the manager's send lock, where a full
+	 * order save would fire the order-save hooks for no reason.
 	 *
 	 * @param WC_Order $order     Order.
 	 * @param string   $lifecycle Lifecycle status the send produced.
@@ -189,7 +291,7 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 		if ( '' === (string) $order->get_meta( self::META_POLL_STARTED_AT, true ) ) {
 			$order->update_meta_data( self::META_POLL_STARTED_AT, (string) time() );
 			$order->update_meta_data( self::META_POLL_ATTEMPTS, '0' );
-			$order->save();
+			$order->save_meta_data();
 		}
 
 		return self::schedule( (int) $order->get_id(), self::FIRST_DELAY );
@@ -221,7 +323,7 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 
 		++$attempts;
 		$order->update_meta_data( self::META_POLL_ATTEMPTS, (string) $attempts );
-		$order->save();
+		$order->save_meta_data();
 
 		// A failed query is not a verdict about the document: keep polling
 		// within the caps rather than declaring anything.
@@ -235,7 +337,7 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 			$order->update_meta_data( self::META_RESPONSE_CODE, (string) ( $raw['response_code'] ?? '' ) );
 			$order->update_meta_data( self::META_EARCHIVE_REPORT_STATUS, (string) ( $raw['earchive_report_status'] ?? '' ) );
 			$order->update_meta_data( self::META_GIB_STATUS_CODE, (string) ( $raw['gib_status_code'] ?? '' ) );
-			$order->save();
+			$order->save_meta_data();
 		}
 
 		$decision = self::decide( $lifecycle, $attempts, $elapsed );
@@ -251,7 +353,7 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 			// person decides from here; nothing is resent.
 			$order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW );
 			$order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, 'status_polling_' . $decision['reason'] );
-			$order->save();
+			$order->save_meta_data();
 		}
 
 		self::unschedule( (int) $order->get_id() );
