@@ -370,14 +370,21 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 	 * plausible wrong date. Both are stated explicitly now.
 	 *
 	 * Strict on purpose. A value that is not exactly the expected format, that
-	 * carries trailing data, or that names a day that does not exist is refused
-	 * rather than coerced.
+	 * carries leading or trailing data, or that names a day that does not exist
+	 * is refused rather than coerced.
+	 *
+	 * The input is deliberately NOT normalised -- no trim, no ltrim, no rtrim.
+	 * Trimming first made the method contradict its own contract:
+	 * ' 2026-09-02 20:30:00' and '2026-09-02 20:30:00 ' were accepted, because
+	 * the round-trip below then compared against the already-cleaned string. A
+	 * stored fiscal timestamp carrying stray whitespace is a corrupt row, and
+	 * quietly repairing one is how a value nobody wrote gets onto a document.
+	 * The empty string is the one value that is simply absent.
 	 *
 	 * @param string $raw Raw date_fulfilled value, in UTC.
 	 * @return DateTimeImmutable|null Null when the value cannot be trusted.
 	 */
 	public static function parse_fulfillment_datetime( string $raw ): ?DateTimeImmutable {
-		$raw = trim( $raw );
 		if ( '' === $raw ) {
 			return null;
 		}
@@ -403,9 +410,13 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			return null;
 		}
 
-		// Round-trip: catches trailing data and a rolled-over impossible date
-		// such as 2026-02-30 even where the parser raises nothing. Compared
-		// before the zone shift, while the value is still the stored one.
+		/*
+		 * Round-trip against the UNMODIFIED input: catches leading and trailing
+		 * data of any kind -- spaces, tabs, newlines, CRLF -- and a rolled-over
+		 * impossible date such as 2026-02-30 even where the parser raises
+		 * nothing. Compared before the zone shift, while the value is still the
+		 * stored one.
+		 */
 		if ( $parsed->format( 'Y-m-d H:i:s' ) !== $raw ) {
 			return null;
 		}

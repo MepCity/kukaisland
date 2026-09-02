@@ -760,7 +760,11 @@ expect_invoice_match "the IssueDate is not the order date and does not move" "^I
 # day. strtotime() only happened to agree here because WordPress leaves PHP on
 # UTC; the parse now names UTC explicitly and refuses anything loose.
 expect_invoice_match "the handover date is the shop calendar day" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|measured:woocommerce_setter_roundtrip_and_real_send\\|php_tz:UTC\\|wp_tz:Europe/Istanbul\\|storage:utc\\|roundtrip_cases:6\\|late_evening=2026-09-02 23:30:00->2026-09-02 20:30:00->2026-09-02 just_after_midnight=2026-09-02 00:30:00->2026-09-01 21:30:00->2026-09-02 "
-expect_invoice_match "the local midnight boundary and loose input" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|.*\\|boundary:utc_20_59_59=2026-09-02 utc_21_00_00=2026-09-03\\|refused:8/8\\|midnight_ordering:correct\\|"
+# Seventeen refusals now: the parser normalised its input before the round-trip
+# compare, so a stored value with stray leading or trailing whitespace was
+# quietly repaired and accepted. Nothing is trimmed any more -- a corrupt row
+# reads as corrupt -- and the canonical value is still accepted.
+expect_invoice_match "the local midnight boundary and loose input" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|.*\\|boundary:utc_20_59_59=2026-09-02 utc_21_00_00=2026-09-03\\|refused:17/17\\|wrongly_accepted:none\\|canonical:2026-09-02\\|midnight_ordering:correct\\|"
 expect_invoice_match "an unreadable handover date is fail-closed" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|.*\\|invalid_date:internet_sales_details_incomplete/SendInvoice=0\\|status:blocked\\|hint:Kargoya verilme tarihi okunamadı; fatura oluşturulmadı\\.$"
 
 # gonderiTasiyan/tuzelKisi/vkn is a LEGAL person's tax number: exactly ten

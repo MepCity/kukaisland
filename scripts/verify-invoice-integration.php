@@ -7379,14 +7379,46 @@ if ( $runner_available
 		$tz_boundary_details[] = $case . '=' . $day;
 	}
 
-	// Anything that is not exactly the stored format is refused, not coerced.
-	$tz_refusals = array( '', '2026-09-02', '2026-09-02T23:30:00', '2026-09-02 23:30:00 extra', '2026-02-30 10:00:00', '2026-13-01 10:00:00', 'not-a-date', '02-09-2026 23:30:00' );
+	/*
+	 * Anything that is not exactly the stored format is refused, not coerced.
+	 *
+	 * The whitespace rows matter on their own: the parser used to trim its input
+	 * before the round-trip compare, so a stored value carrying stray leading or
+	 * trailing whitespace was quietly repaired and accepted -- which contradicted
+	 * the strictness the method claims. Nothing is normalised now, so a corrupt
+	 * row reads as corrupt.
+	 */
+	$tz_refusals = array(
+		'empty'              => '',
+		'date_only'          => '2026-09-02',
+		'iso_t_separator'    => '2026-09-02T23:30:00',
+		'trailing_words'     => '2026-09-02 23:30:00 extra',
+		'impossible_day'     => '2026-02-30 10:00:00',
+		'impossible_month'   => '2026-13-01 10:00:00',
+		'free_text'          => 'not-a-date',
+		'wrong_field_order'  => '02-09-2026 23:30:00',
+		'leading_space'      => ' 2026-09-02 20:30:00',
+		'trailing_space'     => '2026-09-02 20:30:00 ',
+		'leading_tab'        => "\t2026-09-02 20:30:00",
+		'trailing_tab'       => "2026-09-02 20:30:00\t",
+		'leading_newline'    => "\n2026-09-02 20:30:00",
+		'trailing_crlf'      => "2026-09-02 20:30:00\r\n",
+		'whitespace_only'    => '   ',
+		'tab_only'           => "\t",
+		'inner_double_space' => '2026-09-02  20:30:00',
+	);
 	$tz_refused  = 0;
-	foreach ( $tz_refusals as $bad ) {
+	$tz_accepted = array();
+	foreach ( $tz_refusals as $refusal_case => $bad ) {
 		if ( '' === Kuka_Island_Core_Invoice_Manager::shipment_date_only( $bad ) ) {
 			++$tz_refused;
+			continue;
 		}
+		$tz_accepted[] = $refusal_case;
 	}
+
+	// The canonical stored value is still accepted, unchanged.
+	$tz_canonical_day = Kuka_Island_Core_Invoice_Manager::shipment_date_only( '2026-09-02 20:30:00' );
 
 	// Two shipments either side of local midnight order as moments.
 	$before_midnight = Kuka_Island_Core_Internet_Sales_Details::parse_fulfillment_datetime( '2026-09-02 20:50:00' );
@@ -7483,6 +7515,9 @@ if ( $runner_available
 		&& $tz_ok
 		&& $tz_boundary_ok
 		&& count( $tz_refusals ) === $tz_refused
+		&& array() === $tz_accepted
+		// Refusing padding did not cost the canonical value.
+		&& '2026-09-02' === $tz_canonical_day
 		&& true === $midnight_order
 		// The real request carries the helper's answer for the stored value.
 		&& '' === $tz_send_error
@@ -7500,7 +7535,7 @@ if ( $runner_available
 		&& Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED === Kuka_Island_Core_Invoice_Order_Store::get_status( $bad_reloaded )
 		&& 'Kargoya verilme tarihi okunamadı; fatura oluşturulmadı.' === $bad_hint,
 		sprintf(
-			'measured:woocommerce_setter_roundtrip_and_real_send|php_tz:%s|wp_tz:%s|storage:utc|roundtrip_cases:%d|%s|boundary:%s|refused:%d/%d|midnight_ordering:%s|stored_raw:%s|soap_gonderimTarihi:%s|helper_day:%s|shop_today:%s|invalid_date:%s/SendInvoice=%d|status:%s|hint:%s',
+			'measured:woocommerce_setter_roundtrip_and_real_send|php_tz:%s|wp_tz:%s|storage:utc|roundtrip_cases:%d|%s|boundary:%s|refused:%d/%d|wrongly_accepted:%s|canonical:%s|midnight_ordering:%s|stored_raw:%s|soap_gonderimTarihi:%s|helper_day:%s|shop_today:%s|invalid_date:%s/SendInvoice=%d|status:%s|hint:%s',
 			date_default_timezone_get(),
 			wp_timezone()->getName(),
 			count( $tz_roundtrip_cases ),
@@ -7508,6 +7543,8 @@ if ( $runner_available
 			implode( ' ', $tz_boundary_details ),
 			$tz_refused,
 			count( $tz_refusals ),
+			empty( $tz_accepted ) ? 'none' : implode( ',', $tz_accepted ),
+			$tz_canonical_day ?: 'REFUSED',
 			$midnight_order ? 'correct' : 'WRONG',
 			$tz_stored_raw ?: 'none',
 			$tz_soap_day ?: 'none',
