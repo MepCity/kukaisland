@@ -295,19 +295,24 @@ final class Kuka_Island_Core_EDM_Client {
 
 				$receiver_alias = (string) ( $payload['receiver_alias'] ?? '' );
 				$invoice_serial = (string) ( $payload['invoice_serial'] ?? '' );
-				$invoice_number = (string) ( $payload['invoice_number'] ?? '' );
+				$customer_email = trim( (string) ( $payload['customer_email'] ?? '' ) );
 
-				// WSDL: SendInvoiceRequest/INVOICE is tns:INVOICE, which declares the
-				// required attribute TRXID (xs:long) plus the optional UUID and ID
-				// attributes.
+				/*
+				 * WSDL: SendInvoiceRequest/INVOICE is tns:INVOICE, which declares
+				 * the required attribute TRXID (xs:long) plus the optional UUID
+				 * and ID attributes.
+				 *
+				 * @ID is deliberately never sent. EDM technical support confirmed
+				 * that automatic numbering is requested through the submitted
+				 * UBL's cbc:ID sentinel, and that EDM returns the number it
+				 * assigned in the response. Putting the sentinel here -- or any
+				 * locally chosen value -- would be asking for a number this shop
+				 * is not allowed to choose.
+				 */
 				$invoice_entry = array(
 					'TRXID' => (int) ( $payload['trx_id'] ?? 0 ),
 					'UUID'  => (string) ( $payload['uuid'] ?? '' ),
 				);
-
-				if ( '' !== $invoice_number ) {
-					$invoice_entry['ID'] = $invoice_number;
-				}
 
 				$header = array(
 					'SENDER'                          => $this->config->get_sender_vkn(),
@@ -325,10 +330,25 @@ final class Kuka_Island_Core_EDM_Client {
 					'MARKED'                          => false,
 				);
 
-				// WSDL: INVOICE/HEADER/TO is minOccurs="0" and RECEIVER/@alias is an
-				// optional attribute. e-Arşiv recipients have no GİB mailbox, so both
-				// are omitted instead of being filled with an invented alias.
-				if ( '' !== $receiver_alias ) {
+				/*
+				 * INVOICE/HEADER/TO is minOccurs="0" and means two different
+				 * things for the two profiles, which is what the previous code
+				 * got wrong by treating it as a GİB alias in both.
+				 *
+				 * - e-Fatura: TO is the recipient's GİB mailbox alias.
+				 * - e-Arşiv: the recipient has no GİB mailbox. EDM technical
+				 *   support confirmed TO carries the buyer's e-mail address, and
+				 *   that EDM then delivers the document itself -- so there is no
+				 *   EmailInvoice call anywhere on this path.
+				 *
+				 * RECEIVER/@alias stays an e-Fatura-only attribute and is omitted
+				 * entirely for e-Arşiv rather than sent as an empty string.
+				 */
+				if ( $is_earchive ) {
+					if ( '' !== $customer_email ) {
+						$header['TO'] = $customer_email;
+					}
+				} elseif ( '' !== $receiver_alias ) {
 					$header['TO'] = $receiver_alias;
 				}
 
@@ -343,7 +363,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$invoice_entry['CONTENT'] = (string) ( $payload['ubl_xml'] ?? '' );
 
 				$receiver = array( 'vkn' => (string) ( $payload['receiver_vkn'] ?? '' ) );
-				if ( '' !== $receiver_alias ) {
+				if ( ! $is_earchive && '' !== $receiver_alias ) {
 					$receiver['alias'] = $receiver_alias;
 				}
 
@@ -360,7 +380,10 @@ final class Kuka_Island_Core_EDM_Client {
 				);
 
 				$response = $this->transport->call( 'SendInvoice', $request );
-				return $this->parse_send_invoice_response( $response, $payload['uuid'] ?? '', $payload['invoice_number'] ?? '' );
+
+				// No expected number is passed: there is nothing local that
+				// could stand in for the one EDM assigns.
+				return $this->parse_send_invoice_response( $response, $payload['uuid'] ?? '', '' );
 			}
 		);
 	}
@@ -731,7 +754,7 @@ final class Kuka_Island_Core_EDM_Client {
 		$invoice = is_array( $invoice ) ? $invoice : array();
 
 		$uuid           = (string) ( $invoice['UUID'] ?? ( $invoice['GUID'] ?? $expected_uuid ) );
-		$invoice_number = (string) ( $invoice['ID'] ?? ( $invoice['INVOICE_NUMBER'] ?? $expected_number ) );
+		$invoice_number = self::assigned_number_or_empty( (string) ( $invoice['ID'] ?? ( $invoice['INVOICE_NUMBER'] ?? $expected_number ) ) );
 
 		// The published location, and only it.
 		$header      = is_array( $invoice['HEADER'] ?? null ) ? $invoice['HEADER'] : array();
@@ -754,6 +777,8 @@ final class Kuka_Island_Core_EDM_Client {
 			$status = Kuka_Island_Core_EDM_Document_Status::resolve_lifecycle( $classified );
 		}
 
+		$status = self::withhold_completion_without_number( $status, $invoice_number );
+
 		return Kuka_Island_Core_Invoice_Result::success(
 			$uuid,
 			$invoice_number,
@@ -765,9 +790,48 @@ final class Kuka_Island_Core_EDM_Client {
 				'status'           => $classified['normalized'],
 				'status_class'     => $classified['class'],
 				'status_known'     => $classified['known'],
+				'assigned_number'  => $invoice_number,
 				'invoice'          => $invoice,
 			)
 		);
+	}
+
+	/**
+	 * Keep only a document number EDM itself assigned.
+	 *
+	 * The automatic-numbering sentinel is a request, not an identifier, so a
+	 * response echoing it back carries no number at all.
+	 *
+	 * @param string $candidate Raw value from the response.
+	 */
+	private static function assigned_number_or_empty( string $candidate ): string {
+		$candidate = trim( $candidate );
+
+		return Kuka_Island_Core_Invoice_Numbering::is_auto_number_sentinel( $candidate ) ? '' : $candidate;
+	}
+
+	/**
+	 * Hold back 'completed' until the document actually has a number.
+	 *
+	 * EDM assigns the number, and a document it has not numbered is not a
+	 * finished fiscal document however positive the STATUS reads. Such a
+	 * response becomes a polling job instead, so the number is picked up by the
+	 * next GetInvoiceStatus rather than the invoice being closed without one.
+	 *
+	 * Only 'completed' is affected. rejected, cancelled and the error states are
+	 * answers about the document and stay exactly as EDM reported them.
+	 *
+	 * @param string $lifecycle      Lifecycle the status mapped to.
+	 * @param string $invoice_number Number kept from the response, possibly ''.
+	 */
+	private static function withhold_completion_without_number( string $lifecycle, string $invoice_number ): string {
+		if ( Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED !== $lifecycle ) {
+			return $lifecycle;
+		}
+
+		return '' === trim( $invoice_number )
+			? Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL
+			: $lifecycle;
 	}
 
 	/**
@@ -828,13 +892,14 @@ final class Kuka_Island_Core_EDM_Client {
 		$header = is_array( $entry['HEADER'] ?? null ) ? $entry['HEADER'] : array();
 
 		$res_uuid = (string) ( $entry['UUID'] ?? ( $header['UUID'] ?? ( $entry['GUID'] ?? $uuid ) ) );
-		$res_num  = (string) ( $entry['ID'] ?? ( $header['ID'] ?? ( $entry['INVOICE_NUMBER'] ?? $invoice_number ) ) );
+		$res_num  = self::assigned_number_or_empty( (string) ( $entry['ID'] ?? ( $header['ID'] ?? ( $entry['INVOICE_NUMBER'] ?? $invoice_number ) ) ) );
 
 		$raw_status = (string) ( $header['STATUS'] ?? ( $entry['STATUS'] ?? '' ) );
 		$desc       = (string) ( $header['STATUS_DESCRIPTION'] ?? ( $entry['STATUS_DESCRIPTION'] ?? '' ) );
 
 		$classified = Kuka_Island_Core_EDM_Document_Status::classify( $raw_status );
 		$status     = Kuka_Island_Core_EDM_Document_Status::resolve_lifecycle( $classified );
+		$status     = self::withhold_completion_without_number( $status, $res_num );
 
 		// Reported alongside, never substituted for STATUS.
 		$gib_status_code       = self::scalar_or_empty( $header['GIB_STATUS_CODE'] ?? ( $entry['GIB_STATUS_CODE'] ?? null ) );
@@ -854,6 +919,7 @@ final class Kuka_Island_Core_EDM_Client {
 				'gib_status_code'        => $gib_status_code,
 				'response_code'          => $response_code,
 				'earchive_report_status' => $earchive_report_state,
+				'assigned_number'        => $res_num,
 			)
 		);
 	}

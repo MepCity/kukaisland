@@ -374,10 +374,11 @@ $report(
  * constants are therefore required to live in exactly one place, and no plugin
  * file may reference the library, its constants or its credential keys.
  *
- * The recipient default is the sharper case: 11111111111 exists in the mapper
- * only behind the reviewed allow_generic_individual_vkn policy, which defaults
- * to false. That gate is asserted here so the sandbox work cannot be mistaken
- * for having relaxed it.
+ * The recipient identity is the sharper case: 11111111111 is the generic GİB
+ * consumer TCKN that EDM technical support confirmed for individual e-Arşiv
+ * recipients, so it now belongs in the mapper as a named constant -- and
+ * nowhere else. What is asserted here is that it is declared once, in the
+ * mapper, and that the sandbox library is not where any of it comes from.
  */
 $module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/';
 $module_files = (array) glob( $module_dir . '*.php' );
@@ -418,22 +419,36 @@ foreach ( $module_files as $module_file ) {
 }
 
 $mapper_src = (string) file_get_contents( $module_dir . 'class-invoice-order-mapper.php' );
-$config_src = (string) file_get_contents( $module_dir . 'class-invoice-config.php' );
-// The generic recipient identity is still reachable only through the policy
-// gate, and the policy still defaults to false.
-$generic_vkn_gated = str_contains( $mapper_src, '! $this->config->allow_generic_individual_vkn()' )
-	&& str_contains( $config_src, "defined( 'KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN' ) && true === KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN" );
+
+/*
+ * The generic consumer TCKN is declared exactly once, as
+ * Kuka_Island_Core_Invoice_Order_Mapper::GENERIC_INDIVIDUAL_TCKN, and every
+ * other module file refers to that constant rather than repeating the literal.
+ * A second copy is how a fiscal identifier drifts.
+ */
+$generic_tckn_declared = str_contains( $mapper_src, "public const GENERIC_INDIVIDUAL_TCKN = '11111111111';" );
+$generic_tckn_copies   = array();
+foreach ( $module_files as $module_file ) {
+	$body  = $executable_only( (string) file_get_contents( $module_file ) );
+	$hits  = preg_match_all( "/['\"]11111111111['\"]/", $body );
+	$limit = basename( $module_file ) === 'class-invoice-order-mapper.php' ? 1 : 0;
+	if ( $hits > $limit ) {
+		$generic_tckn_copies[] = basename( $module_file ) . '(' . $hits . ')';
+	}
+}
 
 $report(
 	'SANDBOX_DEFAULTS_NOT_IN_PRODUCTION',
 	count( $module_files ) >= 15
 	&& array() === $leak_hits
-	&& $generic_vkn_gated,
+	&& $generic_tckn_declared
+	&& array() === $generic_tckn_copies,
 	sprintf(
-		'module_files:%d|sandbox_references:%s|generic_receiver_still_policy_gated:%s',
+		'module_files:%d|sandbox_references:%s|generic_tckn_declared_once:%s|extra_literal_copies:%s',
 		count( $module_files ),
 		empty( $leak_hits ) ? 'none' : implode( ',', $leak_hits ),
-		$generic_vkn_gated ? 'yes' : 'no'
+		$generic_tckn_declared ? 'yes' : 'no',
+		empty( $generic_tckn_copies ) ? 'none' : implode( ',', $generic_tckn_copies )
 	)
 );
 
@@ -1231,13 +1246,33 @@ $report(
 	sprintf( 'module_files:%d|hits:%s', count( $module_files ), empty( $write_hits ) ? 'none' : implode( ',', $write_hits ) )
 );
 
-// Production numbering guard untouched.
+/*
+ * Production numbering guard untouched by the sandbox work.
+ *
+ * The contract it enforces has moved on -- EDM confirmed that the submitted UBL
+ * asks for automatic numbering with a fixed sentinel and returns the number it
+ * assigned -- but the two guarantees that matter here are the same ones:
+ * nothing local is ever accepted as a fiscal number, and the serial prefix comes
+ * only from the reviewed configuration.
+ */
 $numbering_src = (string) file_get_contents( $module_dir . 'class-invoice-numbering.php' );
+$store_src     = (string) file_get_contents( $module_dir . 'class-invoice-order-store.php' );
+$numbering_guards = array(
+	'sentinel_declared'      => str_contains( $numbering_src, "AUTO_NUMBER_SENTINEL = 'ABC2009123456789'" ),
+	'series_fail_closed'     => str_contains( $numbering_src, "ERROR_SERIES_UNCONFIGURED = 'invoice_series_unconfigured'" ),
+	'provenance_required'    => str_contains( $numbering_src, 'NUMBER_SOURCE_EDM !== $source' ),
+	'sentinel_never_stored'  => str_contains( $store_src, 'Kuka_Island_Core_Invoice_Numbering::is_auto_number_sentinel( $number )' ),
+);
+$numbering_gaps = array_keys( array_filter( $numbering_guards, static fn( bool $ok ): bool => ! $ok ) );
+
 $report(
 	'SANDBOX_NUMBERING_GUARD_UNTOUCHED',
-	str_contains( $numbering_src, "ERROR_UNCONFIRMED = 'invoice_numbering_unconfirmed'" )
-	&& str_contains( $numbering_src, 'NUMBER_SOURCE_EDM === $source' ),
-	'invoice_numbering_unconfirmed:present|provenance_required:present'
+	array() === $numbering_gaps,
+	sprintf(
+		'guards:%d|missing:%s',
+		count( $numbering_guards ),
+		empty( $numbering_gaps ) ? 'none' : implode( ',', $numbering_gaps )
+	)
 );
 
 /* ========================================================================== */

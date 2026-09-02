@@ -32,6 +32,40 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 	public const META_ATTEMPTS          = '_kuka_invoice_attempts';
 	public const META_HISTORY           = '_kuka_invoice_history';
 
+	/**
+	 * Append-only record of documents this order has superseded.
+	 *
+	 * Written by the operator-approved recreate flow. Nothing removes entries:
+	 * a document that once existed at EDM stays on the record even after a
+	 * replacement is issued.
+	 */
+	public const META_SUPERSEDED = '_kuka_invoice_superseded';
+
+	/**
+	 * Write an EDM-assigned document number, or refuse to.
+	 *
+	 * The single place META_NUMBER is set. The automatic-numbering sentinel is
+	 * rejected here rather than at each call site: it is EDM's "assign this
+	 * yourself" request, it looks exactly like a fiscal identifier, and writing
+	 * it would put a number on the order that no tax authority ever issued.
+	 *
+	 * @param WC_Order $order  WooCommerce order.
+	 * @param string   $number Candidate document number from an EDM response.
+	 * @return bool Whether the number was accepted and written.
+	 */
+	private static function write_edm_number( WC_Order $order, string $number ): bool {
+		$number = trim( $number );
+
+		if ( '' === $number || Kuka_Island_Core_Invoice_Numbering::is_auto_number_sentinel( $number ) ) {
+			return false;
+		}
+
+		$order->update_meta_data( self::META_NUMBER, $number );
+		$order->update_meta_data( self::META_NUMBER_SOURCE, self::NUMBER_SOURCE_EDM );
+
+		return true;
+	}
+
 	public static function get_status( WC_Order $order ): string {
 		$status = (string) $order->get_meta( self::META_STATUS, true );
 		return '' !== $status ? $status : Kuka_Island_Core_Invoice_Status::STATUS_NONE;
@@ -69,9 +103,11 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 	public static function mark_sending( WC_Order $order, string $uuid, string $invoice_number, string $note = '' ): void {
 		$order->update_meta_data( self::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SENDING );
 		$order->update_meta_data( self::META_UUID, $uuid );
-		if ( '' !== $invoice_number ) {
-			$order->update_meta_data( self::META_NUMBER, $invoice_number );
-		}
+
+		// Pre-transmission there is no document number to record: the UBL asks
+		// EDM to assign one. write_edm_number() refuses the sentinel, so even a
+		// caller that passed it cannot leave it on the order.
+		self::write_edm_number( $order, $invoice_number );
 		self::add_history_entry( $order, Kuka_Island_Core_Invoice_Status::STATUS_SENDING, $note ?: 'Fatura XML oluşturuldu, EDM gönderimi başlatılıyor.' );
 		$order->save_meta_data();
 	}
@@ -87,10 +123,9 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 		if ( '' !== $result->get_uuid() ) {
 			$order->update_meta_data( self::META_UUID, $result->get_uuid() );
 		}
-		if ( '' !== $result->get_invoice_number() ) {
-			$order->update_meta_data( self::META_NUMBER, $result->get_invoice_number() );
-			$order->update_meta_data( self::META_NUMBER_SOURCE, self::NUMBER_SOURCE_EDM );
-		}
+
+		// EDM's own INVOICE/@ID from the response is the only fiscal number.
+		self::write_edm_number( $order, $result->get_invoice_number() );
 
 		$order->update_meta_data( self::META_SENT_AT, $now );
 		$order->update_meta_data( self::META_LAST_QUERIED_AT, $now );
@@ -142,6 +177,67 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 		$order->update_meta_data( self::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN );
 
 		self::add_history_entry( $order, Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, sprintf( 'Ağ Belirsizliği / Zaman Aşımı (%s): %s. Mükerrerliği önlemek için uzlaştırma bekleniyor.', $safe_error_code, $message ) );
+
+		$order->save_meta_data();
+	}
+
+	/**
+	 * Move a refused document into the audit archive and free the send path.
+	 *
+	 * Append-only: the failed document's UUID, EDM-assigned number, status and
+	 * last EDM status literal are all kept, and nothing is ever removed from the
+	 * archive. What is cleared is the LIVE identity -- UUID, number, provenance,
+	 * sent_at and the send-attempt counter -- because those four are what
+	 * Kuka_Island_Core_Invoice_Manager::transmission_evidence() reads, and the
+	 * replacement genuinely has not been transmitted.
+	 *
+	 * Clearing them is safe only because the caller has established that EDM
+	 * REFUSED the old document, and because the archive keeps it on the record.
+	 *
+	 * @param WC_Order             $order           WooCommerce order.
+	 * @param array<string, mixed> $superseded      Snapshot of the refused document.
+	 * @param string               $replacement_uuid UUID minted for the replacement.
+	 * @param int                  $generation      Replacement count for this order.
+	 * @param string               $safe_error_code Safe classification code.
+	 * @param string               $message         Fixed operator-facing sentence.
+	 */
+	public static function archive_superseded_document( WC_Order $order, array $superseded, string $replacement_uuid, int $generation, string $safe_error_code, string $message ): void {
+		$archive   = $order->get_meta( self::META_SUPERSEDED, true );
+		$archive   = is_array( $archive ) ? array_values( $archive ) : array();
+		$archive[] = array_merge(
+			$superseded,
+			array(
+				'generation'       => $generation,
+				'replacement_uuid' => $replacement_uuid,
+			)
+		);
+
+		$order->update_meta_data( self::META_SUPERSEDED, $archive );
+
+		// The live identity of a document that no longer exists here.
+		$order->delete_meta_data( self::META_UUID );
+		$order->delete_meta_data( self::META_NUMBER );
+		$order->delete_meta_data( self::META_NUMBER_SOURCE );
+		$order->delete_meta_data( self::META_SENT_AT );
+		$order->update_meta_data( self::META_ATTEMPTS, 0 );
+
+		$order->update_meta_data( self::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_NONE );
+		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
+
+		self::add_history_entry(
+			$order,
+			Kuka_Island_Core_Invoice_Status::STATUS_NONE,
+			sprintf(
+				'%s (%s) [superseded_uuid:%s|superseded_number:%s|superseded_edm_status:%s|replacement_uuid:%s|generation:%d]',
+				$message,
+				$safe_error_code,
+				'' === (string) ( $superseded['uuid'] ?? '' ) ? 'none' : (string) $superseded['uuid'],
+				'' === (string) ( $superseded['invoice_number'] ?? '' ) ? 'none' : (string) $superseded['invoice_number'],
+				'' === (string) ( $superseded['edm_status'] ?? '' ) ? 'none' : (string) $superseded['edm_status'],
+				$replacement_uuid,
+				$generation
+			)
+		);
 
 		$order->save_meta_data();
 	}
@@ -249,10 +345,7 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 		$order->update_meta_data( self::META_STATUS, $result->get_status() );
 		$order->update_meta_data( self::META_LAST_QUERIED_AT, time() );
 
-		if ( '' !== $result->get_invoice_number() ) {
-			$order->update_meta_data( self::META_NUMBER, $result->get_invoice_number() );
-			$order->update_meta_data( self::META_NUMBER_SOURCE, self::NUMBER_SOURCE_EDM );
-		}
+		self::write_edm_number( $order, $result->get_invoice_number() );
 
 		self::add_history_entry( $order, $result->get_status(), sprintf( 'EDM durum sorgulandı: %s (Kod: %s)', $result->get_status_description(), $result->get_status_code() ) );
 

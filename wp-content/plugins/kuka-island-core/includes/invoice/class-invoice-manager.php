@@ -288,11 +288,21 @@ class Kuka_Island_Core_Invoice_Manager {
 			// 6. Determine document type and profile (e-Fatura vs e-Arşiv).
 			$routing = $this->resolve_routing( $fresh_order );
 
-			// 7. Resolve the fiscal document number. Only EDM may assign it; a
-			// locally derived number (order ID, local counter) is prohibited, so
-			// an unconfirmed numbering contract is a fail-closed BLOCKED state.
+			/*
+			 * 7. Ask EDM to assign the fiscal document number.
+			 *
+			 * The submitted UBL's cbc:ID carries EDM's automatic-numbering
+			 * sentinel; the number itself comes back in the response and is the
+			 * only value ever recorded as this document's number. A locally
+			 * derived number (order ID, local counter) remains prohibited.
+			 *
+			 * The registered three-character serial prefix is validated here and
+			 * comes only from the reviewed environment configuration, so a
+			 * document is never submitted against a serial the shop has not
+			 * registered. An unconfigured serial is fail-closed BLOCKED.
+			 */
 			try {
-				$invoice_number = Kuka_Island_Core_Invoice_Numbering::resolve_assigned_number( $fresh_order );
+				$invoice_number = Kuka_Island_Core_Invoice_Numbering::resolve_requested_number( $this->config, $routing['document_type'] );
 			} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $numbering_e ) {
 				Kuka_Island_Core_Invoice_Order_Store::save_blocked(
 					$fresh_order,
@@ -315,10 +325,12 @@ class Kuka_Island_Core_Invoice_Manager {
 			$ubl_xml     = $ubl_builder->build_xml();
 
 			// Store in-progress status AND atomic UUID/number in a SINGLE atomic store operation BEFORE transmitting.
+			// The number argument is '' on purpose: nothing local may be recorded
+			// as this document's number, and the sentinel least of all.
 			Kuka_Island_Core_Invoice_Order_Store::mark_sending(
 				$fresh_order,
 				$invoice_data['uuid'],
-				$invoice_data['invoice_number'],
+				'',
 				__( 'Fatura XML oluşturuldu, EDM gönderimi başlatılıyor.', 'kuka-island-core' )
 			);
 
@@ -334,6 +346,10 @@ class Kuka_Island_Core_Invoice_Manager {
 				'payable_amount'    => (string) ( $invoice_data['totals']['payable_amount'] ?? '0.00' ),
 				'receiver_vkn'      => $invoice_data['customer']['tax_number'],
 				'receiver_alias'    => $invoice_data['receiver_alias'],
+				// e-Arşiv: INVOICE/HEADER/TO carries the buyer's e-mail address,
+				// which is how EDM delivers the document. Same address as the
+				// UBL's cbc:ElectronicMail.
+				'customer_email'    => $invoice_data['customer']['email'],
 				'ubl_xml'           => $ubl_xml,
 			);
 
@@ -384,6 +400,13 @@ class Kuka_Island_Core_Invoice_Manager {
 			 * screen's manual send take, so the two behave identically.
 			 */
 			$this->start_status_polling( $fresh_order );
+
+			/*
+			 * A replacement identity approved by an operator has now been used.
+			 * Releasing the reservation keeps a later document from silently
+			 * inheriting a UUID a person minted for this one.
+			 */
+			Kuka_Island_Core_Invoice_Recovery::clear_reservation( $fresh_order );
 
 			if ( $order !== $fresh_order ) {
 				$order->read_meta_data( true );

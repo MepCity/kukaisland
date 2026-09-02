@@ -58,6 +58,7 @@ final class Kuka_Island_Core_Invoice {
 		require_once $dir . 'class-invoice-order-mapper.php';
 		require_once $dir . 'class-invoice-order-store.php';
 		require_once $dir . 'class-invoice-numbering.php';
+		require_once $dir . 'class-invoice-recovery.php';
 		require_once $dir . 'class-internet-sales-details.php';
 		require_once $dir . 'class-invoice-manager.php';
 		require_once $dir . 'class-invoice-status-poller.php';

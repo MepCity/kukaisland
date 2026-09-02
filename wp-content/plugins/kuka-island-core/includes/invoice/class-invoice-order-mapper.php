@@ -43,6 +43,15 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Core_Invoice_Order_Mapper {
+	/**
+	 * GİB's generic retail-consumer TCKN for individual e-Arşiv recipients.
+	 *
+	 * Confirmed by EDM technical support as the identifier to use, with the
+	 * buyer's real name in cac:Person. It is not a fallback for a missing name
+	 * and it is not used for a corporate recipient.
+	 */
+	public const GENERIC_INDIVIDUAL_TCKN = '11111111111';
+
 	private Kuka_Island_Core_Invoice_Config $config;
 
 	public function __construct( Kuka_Island_Core_Invoice_Config $config ) {
@@ -139,6 +148,13 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 	public function map_order_to_invoice_data( WC_Order $order, string $document_type, string $profile_id, string $receiver_alias, string $invoice_number ): array {
 		$uuid = trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true ) );
 		if ( '' === $uuid ) {
+			// A UUID reserved by the operator-approved recreate flow, if any.
+			// A document that once existed at EDM never has its UUID reused, so
+			// the replacement's identity is minted before the send and recorded
+			// against the one it supersedes.
+			$uuid = Kuka_Island_Core_Invoice_Recovery::reserved_uuid( $order );
+		}
+		if ( '' === $uuid ) {
 			$uuid = wp_generate_uuid4();
 		}
 
@@ -156,12 +172,15 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 
 		$invoice_number = trim( $invoice_number );
 		if ( '' === $invoice_number ) {
-			// Defensive: the manager resolves the number through
-			// Kuka_Island_Core_Invoice_Numbering before mapping. Local fiscal
-			// numbering is prohibited, so there is no fallback here.
+			/*
+			 * Defensive: the manager resolves what cbc:ID must carry through
+			 * Kuka_Island_Core_Invoice_Numbering::resolve_requested_number()
+			 * before mapping -- the automatic-numbering sentinel. Local fiscal
+			 * numbering is prohibited, so there is no fallback here.
+			 */
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
-				'No EDM-assigned invoice number supplied to the mapper.',
-				Kuka_Island_Core_Invoice_Numbering::ERROR_UNCONFIRMED,
+				'No document number was supplied to the mapper; cbc:ID cannot be empty.',
+				Kuka_Island_Core_Invoice_Numbering::ERROR_NUMBER_NOT_ASSIGNED,
 				__( 'Fatura numarası yalnızca EDM tarafından atanabilir.', 'kuka-island-core' )
 			);
 		}
@@ -601,15 +620,20 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 				);
 			}
 		} elseif ( '' === $tax_number ) {
-			if ( ! $this->config->allow_generic_individual_vkn() ) {
-				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
-					'Individual TCKN is missing and the generic retail VKN policy is disabled.',
-					'missing_individual_tckn',
-					__( 'Bireysel müşteri için geçerli bir T.C. Kimlik Numarası girilmelidir.', 'kuka-island-core' )
-				);
-			}
-			// Explicitly enabled and reviewed policy only.
-			$tax_number = '11111111111';
+			/*
+			 * EDM technical support confirmed in writing that an individual
+			 * e-Arşiv recipient is identified by the generic consumer TCKN
+			 * 11111111111, with the buyer's real name in the UBL cac:Person
+			 * block. A shop must therefore NOT ask a retail customer for their
+			 * TCKN at checkout, and none is asked for: WooCommerce's billing
+			 * name is what identifies the buyer.
+			 *
+			 * The name is not optional in exchange. A generic consumer title --
+			 * the Nihai Tuketici placeholder some integrations emit -- would be a
+			 * fabricated party name on a fiscal document, so a missing first or
+			 * last name is fail-closed below.
+			 */
+			$tax_number = self::GENERIC_INDIVIDUAL_TCKN;
 		} elseif ( ! preg_match( '/^\d{11}$/', $tax_number ) ) {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Individual TCKN must be exactly 11 digits.',
@@ -630,9 +654,44 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 
 		$country_code = trim( (string) $order->get_billing_country() );
 
+		$first_name = trim( (string) $order->get_billing_first_name() );
+		$last_name  = trim( (string) $order->get_billing_last_name() );
+
+		if ( ! $is_corporate && ( '' === $first_name || '' === $last_name ) ) {
+			// The individual recipient is identified by name, not by TCKN. With
+			// no name there is nobody to put on the document, and inventing a
+			// generic title is not an option.
+			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+				sprintf(
+					'Individual recipient name is incomplete (first_name:%s, last_name:%s).',
+					'' === $first_name ? 'absent' : 'present',
+					'' === $last_name ? 'absent' : 'present'
+				),
+				'missing_individual_name',
+				__( 'Bireysel fatura için alıcının adı ve soyadı zorunludur.', 'kuka-island-core' )
+			);
+		}
+
+		$email = trim( (string) $order->get_billing_email() );
+
+		if ( '' === $email || ! is_email( $email ) ) {
+			/*
+			 * EDM delivers the e-Arşiv document to the buyer itself, from the
+			 * address in the UBL cbc:ElectronicMail and in
+			 * SendInvoiceRequest/INVOICE/HEADER/TO. With no address the buyer
+			 * would never receive the invoice, so this is fail-closed rather
+			 * than a document nobody gets.
+			 */
+			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+				'Recipient e-mail address is missing or malformed.',
+				'missing_customer_email',
+				__( 'Faturanın alıcıya iletilebilmesi için geçerli bir e-posta adresi zorunludur.', 'kuka-island-core' )
+			);
+		}
+
 		return array(
-			'first_name' => (string) $order->get_billing_first_name(),
-			'last_name'  => (string) $order->get_billing_last_name(),
+			'first_name' => $first_name,
+			'last_name'  => $last_name,
 			'company'    => $is_corporate ? (string) $order->get_billing_company() : '',
 			'tax_number' => $tax_number,
 			'tax_office' => $tax_office,
@@ -641,7 +700,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			'city'       => $billing_city,
 			'postcode'   => (string) $order->get_billing_postcode(),
 			'country'    => ( '' === $country_code || 'TR' === $country_code ) ? 'Türkiye' : $country_code,
-			'email'      => (string) $order->get_billing_email(),
+			'email'      => $email,
 			'phone'      => (string) $order->get_billing_phone(),
 		);
 	}

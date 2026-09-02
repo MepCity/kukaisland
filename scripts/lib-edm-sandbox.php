@@ -799,7 +799,10 @@ function kuka_sandbox_build_ubl( array $supplier, string $receiver_vkn, string $
 			'city'       => 'TEST',
 			'postcode'   => '00000',
 			'country'    => 'Türkiye',
-			'email'      => '',
+			// cbc:ElectronicMail is mandatory: EDM delivers the e-Arşiv document
+			// from it. An obviously synthetic sandbox address, on a reserved
+			// example domain that cannot receive mail.
+			'email'      => 'sandbox-test-alici@example.invalid',
 			'phone'      => '',
 		),
 		'payment'           => array(

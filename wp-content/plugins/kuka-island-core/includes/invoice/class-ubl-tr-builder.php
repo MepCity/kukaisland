@@ -242,9 +242,16 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 			$this->append_cbc( $dom, $party_name, 'cbc:Name', (string) $customer['company'] );
 			$party->appendChild( $party_name );
 		} else {
+			/*
+			 * An individual e-Arşiv recipient is identified by the generic
+			 * consumer TCKN plus a REAL name. Both parts are mandatory: an empty
+			 * cbc:FirstName or cbc:FamilyName would leave the document without
+			 * an identifiable buyer, and a generic consumer substitute would be a
+			 * fabricated party name.
+			 */
 			$person = $dom->createElement( 'cac:Person' );
-			$this->append_cbc( $dom, $person, 'cbc:FirstName', (string) ( $customer['first_name'] ?? '' ) );
-			$this->append_cbc( $dom, $person, 'cbc:FamilyName', (string) ( $customer['last_name'] ?? '' ) );
+			$this->append_cbc( $dom, $person, 'cbc:FirstName', $this->required( $customer['first_name'] ?? null, 'customer.first_name' ) );
+			$this->append_cbc( $dom, $person, 'cbc:FamilyName', $this->required( $customer['last_name'] ?? null, 'customer.last_name' ) );
 			$party->appendChild( $person );
 		}
 
@@ -264,16 +271,18 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 		$party_tax->appendChild( $tax_scheme );
 		$party->appendChild( $party_tax );
 
-		if ( ! empty( $customer['email'] ) || ! empty( $customer['phone'] ) ) {
-			$contact = $dom->createElement( 'cac:Contact' );
-			if ( ! empty( $customer['phone'] ) ) {
-				$this->append_cbc( $dom, $contact, 'cbc:Telephone', (string) $customer['phone'] );
-			}
-			if ( ! empty( $customer['email'] ) ) {
-				$this->append_cbc( $dom, $contact, 'cbc:ElectronicMail', (string) $customer['email'] );
-			}
-			$party->appendChild( $contact );
+		/*
+		 * EDM delivers the e-Arşiv document to this address itself, so
+		 * cbc:ElectronicMail is mandatory rather than decorative. The same
+		 * address goes into SendInvoiceRequest/INVOICE/HEADER/TO; there is no
+		 * separate EmailInvoice call.
+		 */
+		$contact = $dom->createElement( 'cac:Contact' );
+		if ( ! empty( $customer['phone'] ) ) {
+			$this->append_cbc( $dom, $contact, 'cbc:Telephone', (string) $customer['phone'] );
 		}
+		$this->append_cbc( $dom, $contact, 'cbc:ElectronicMail', $this->required( $customer['email'] ?? null, 'customer.email' ) );
+		$party->appendChild( $contact );
 
 		$cust_party->appendChild( $party );
 		$invoice->appendChild( $cust_party );

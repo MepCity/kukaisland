@@ -33,7 +33,6 @@ final class Kuka_Island_Core_Invoice_Config {
 	private string $sender_postcode;
 	private string $series_einvoice;
 	private string $series_earchive;
-	private bool $allow_generic_individual_vkn;
 	private bool $auto_send;
 	private int $timeout;
 	private string $custom_wsdl;
@@ -57,14 +56,6 @@ final class Kuka_Island_Core_Invoice_Config {
 		$this->sender_postcode   = trim( (string) ( $overrides['sender_postcode'] ?? ( defined( 'KUKA_LEGAL_POSTCODE' ) ? KUKA_LEGAL_POSTCODE : '' ) ) );
 		$this->series_einvoice   = trim( (string) ( $overrides['series_einvoice'] ?? ( defined( 'KUKA_EDM_SERIES_EINVOICE' ) ? KUKA_EDM_SERIES_EINVOICE : '' ) ) );
 		$this->series_earchive   = trim( (string) ( $overrides['series_earchive'] ?? ( defined( 'KUKA_EDM_SERIES_EARCHIVE' ) ? KUKA_EDM_SERIES_EARCHIVE : '' ) ) );
-
-		// Fail-closed: the generic GİB retail consumer VKN (11111111111) is only
-		// usable when an explicit, reviewed policy constant is set to the literal
-		// boolean true. An undefined, empty, string or truthy-but-not-true value
-		// keeps the policy disabled.
-		$this->allow_generic_individual_vkn = array_key_exists( 'allow_generic_individual_vkn', $overrides )
-			? true === $overrides['allow_generic_individual_vkn']
-			: ( defined( 'KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN' ) && true === KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN );
 
 		$auto_send_const  = defined( 'KUKA_INVOICE_AUTO_SEND' ) ? (bool) KUKA_INVOICE_AUTO_SEND : ( defined( 'KUKA_EDM_AUTO_SEND' ) ? (bool) KUKA_EDM_AUTO_SEND : false );
 		$this->auto_send  = (bool) ( $overrides['auto_send'] ?? $auto_send_const );
@@ -140,10 +131,6 @@ final class Kuka_Island_Core_Invoice_Config {
 
 	public function get_series_earchive(): string {
 		return $this->series_earchive;
-	}
-
-	public function allow_generic_individual_vkn(): bool {
-		return $this->allow_generic_individual_vkn;
 	}
 
 	public function get_timeout(): int {

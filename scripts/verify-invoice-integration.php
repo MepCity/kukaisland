@@ -482,78 +482,233 @@ $report(
 );
 
 /* ========================================================================== */
-/* TEST 4 (audit item 2) - Generic individual VKN policy defaults to false     */
+/* TEST 4 - Individual e-Archive receiver contract (EDM support, in writing)   */
 /* ========================================================================== */
 
-$vkn_default_config = new Kuka_Island_Core_Invoice_Config( $ready_overrides );
-$vkn_explicit_true  = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'allow_generic_individual_vkn' => true ) ) );
-$vkn_truthy_string  = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'allow_generic_individual_vkn' => '1' ) ) );
-$vkn_explicit_false = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'allow_generic_individual_vkn' => false ) ) );
-
-$report(
-	'INVOICE_GENERIC_VKN_DEFAULT_FALSE',
-	! defined( 'KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN' ) && false === $vkn_default_config->allow_generic_individual_vkn(),
-	sprintf(
-		'constant_defined:%s|default_allow:%s',
-		defined( 'KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN' ) ? 'yes' : 'no',
-		$vkn_default_config->allow_generic_individual_vkn() ? 'yes' : 'no'
+/*
+ * EDM technical support confirmed the individual e-Arşiv recipient contract:
+ * the generic consumer TCKN 11111111111, with the buyer's REAL name from the
+ * WooCommerce billing fields in the UBL cac:Person block. So no TCKN is asked
+ * for at checkout -- and in exchange the name and the e-mail address are not
+ * optional, because a generic title such as "Nihai Tüketici" would be a
+ * fabricated party on a fiscal document and a missing address means a document
+ * the buyer never receives.
+ */
+$individual_order = kuka_create_test_order(
+	$test_run_id,
+	array_merge(
+		$billing_props,
+		array(
+			'total'      => '110.00',
+			'first_name' => 'Zeynep',
+			'last_name'  => 'Aydın',
+			'email'      => 'zeynep.aydin@example.com',
+		)
 	)
 );
+kuka_add_line( $individual_order, 'Test Ürün', '100.00', '100.00', 1, '10.00' );
+kuka_add_tax_rate( $individual_order, 1, 10, '10.00' );
+$individual_order->save();
 
-$report(
-	'INVOICE_GENERIC_VKN_STRICT_TRUE_ONLY',
-	true === $vkn_explicit_true->allow_generic_individual_vkn()
-	&& false === $vkn_truthy_string->allow_generic_individual_vkn()
-	&& false === $vkn_explicit_false->allow_generic_individual_vkn(),
-	sprintf(
-		'explicit_true:%s|truthy_string:%s|explicit_false:%s',
-		$vkn_explicit_true->allow_generic_individual_vkn() ? 'allow' : 'deny',
-		$vkn_truthy_string->allow_generic_individual_vkn() ? 'allow' : 'deny',
-		$vkn_explicit_false->allow_generic_individual_vkn() ? 'allow' : 'deny'
-	)
-);
-
-// Behavioural proof through the production mapper: an individual customer with
-// no TCKN is rejected by default and only accepted under the explicit policy.
-$vkn_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'total' => '110.00' ) ) );
-kuka_add_line( $vkn_order, 'Test Ürün', '100.00', '100.00', 1, '10.00' );
-kuka_add_tax_rate( $vkn_order, 1, 10, '10.00' );
-$vkn_order->save();
-
-$vkn_default_code = '';
+$individual_mapper = new Kuka_Island_Core_Invoice_Order_Mapper( $config );
+$individual_data   = null;
+$individual_error  = '';
 try {
-	( new Kuka_Island_Core_Invoice_Order_Mapper( $vkn_default_config ) )->map_order_to_invoice_data(
-		$vkn_order,
+	$individual_data = $individual_mapper->map_order_to_invoice_data(
+		wc_get_order( $individual_order->get_id() ),
 		Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE,
 		'EARSIVFATURA',
 		'',
-		'KUK2026000000001'
+		Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL
 	);
-} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
-	$vkn_default_code = $e->get_safe_error_code();
+} catch ( Throwable $t ) {
+	$individual_error = get_class( $t ) . ': ' . $t->getMessage();
 }
 
-$vkn_enabled_number = '';
+$individual_customer = (array) ( $individual_data['customer'] ?? array() );
+$individual_ubl      = '';
+if ( null !== $individual_data ) {
+	$individual_ubl = ( new Kuka_Island_Core_UBL_TR_Builder( $individual_data ) )->build_xml();
+}
+
+$individual_dom = new DOMDocument();
+if ( '' !== $individual_ubl ) {
+	$individual_dom->loadXML( $individual_ubl );
+}
+$individual_xp = new DOMXPath( $individual_dom );
+
+/**
+ * First text value at an XPath in the produced UBL, or '' when absent.
+ *
+ * @param DOMXPath $xp   Prepared XPath.
+ * @param string   $expr Expression.
+ */
+$ubl_text = static function ( DOMXPath $xp, string $expr ): string {
+	$nodes = $xp->query( $expr );
+
+	return ( false !== $nodes && $nodes->length > 0 ) ? trim( (string) $nodes->item( 0 )->nodeValue ) : '';
+};
+
+$individual_customer_scope = '//*[local-name()="AccountingCustomerParty"]/*[local-name()="Party"]';
+$ubl_tckn       = $ubl_text( $individual_xp, $individual_customer_scope . '/*[local-name()="PartyIdentification"]/*[local-name()="ID"]' );
+$ubl_first      = $ubl_text( $individual_xp, $individual_customer_scope . '/*[local-name()="Person"]/*[local-name()="FirstName"]' );
+$ubl_family     = $ubl_text( $individual_xp, $individual_customer_scope . '/*[local-name()="Person"]/*[local-name()="FamilyName"]' );
+$ubl_mail       = $ubl_text( $individual_xp, $individual_customer_scope . '/*[local-name()="Contact"]/*[local-name()="ElectronicMail"]' );
+$ubl_party_name = $ubl_text( $individual_xp, $individual_customer_scope . '/*[local-name()="PartyName"]/*[local-name()="Name"]' );
+$ubl_cbc_id     = $ubl_text( $individual_xp, '/*[local-name()="Invoice"]/*[local-name()="ID"]' );
+$id_scheme_node = $individual_xp->query( $individual_customer_scope . '/*[local-name()="PartyIdentification"]/*[local-name()="ID"]/@schemeID' );
+$ubl_id_scheme  = ( false !== $id_scheme_node && $id_scheme_node->length > 0 ) ? trim( (string) $id_scheme_node->item( 0 )->nodeValue ) : '';
+
+$report(
+	'INVOICE_INDIVIDUAL_EARCHIVE_RECEIVER_CONTRACT',
+	'' === $individual_error
+	&& Kuka_Island_Core_Invoice_Order_Mapper::GENERIC_INDIVIDUAL_TCKN === (string) ( $individual_customer['tax_number'] ?? '' )
+	&& '11111111111' === $ubl_tckn
+	&& 'TCKN' === $ubl_id_scheme
+	// The buyer's real name, exactly as WooCommerce recorded it.
+	&& 'Zeynep' === $ubl_first
+	&& 'Aydın' === $ubl_family
+	// And no generic party name standing in for it.
+	&& '' === $ubl_party_name
+	// The same address that goes into SendInvoiceRequest HEADER/TO.
+	&& 'zeynep.aydin@example.com' === $ubl_mail
+	&& 'zeynep.aydin@example.com' === (string) ( $individual_customer['email'] ?? '' )
+	// cbc:ID is the automatic-numbering request, not a number.
+	&& Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL === $ubl_cbc_id,
+	sprintf(
+		'measured:production_mapper_and_ubl|tckn:%s|id_scheme:%s|first_name:%s|family_name:%s|party_name:%s|electronic_mail:%s|cbc_id:%s|error:%s',
+		$ubl_tckn ?: 'none',
+		$ubl_id_scheme ?: 'none',
+		$ubl_first ?: 'ABSENT',
+		$ubl_family ?: 'ABSENT',
+		'' === $ubl_party_name ? 'none' : $ubl_party_name,
+		$ubl_mail ?: 'ABSENT',
+		$ubl_cbc_id ?: 'none',
+		'' === $individual_error ? 'none' : $individual_error
+	)
+);
+
+kuka_test_delete_order( $individual_order->get_id(), $test_run_id );
+
+// Each missing fact is refused by its own name, and produces no document.
+$receiver_gap_cases = array(
+	'no_first_name' => array( array( 'first_name' => '' ), 'missing_individual_name' ),
+	'no_last_name'  => array( array( 'last_name' => '' ), 'missing_individual_name' ),
+	'no_name_at_all' => array( array( 'first_name' => '', 'last_name' => '' ), 'missing_individual_name' ),
+	'no_email'      => array( array( 'email' => '' ), 'missing_customer_email' ),
+);
+
+/*
+ * A malformed address never reaches the mapper: WooCommerce itself refuses to
+ * store one on the order. Measured rather than assumed, because it is why the
+ * mapper's own is_email() check is a second line and not the only one.
+ */
+$malformed_email_refused = false;
 try {
-	$vkn_enabled_data   = ( new Kuka_Island_Core_Invoice_Order_Mapper( $vkn_explicit_true ) )->map_order_to_invoice_data(
-		$vkn_order,
-		Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE,
-		'EARSIVFATURA',
-		'',
-		'KUK2026000000001'
+	$malformed_probe = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'total' => '110.00' ) ) );
+	$malformed_probe->set_billing_email( 'not-an-address' );
+	kuka_test_delete_order( $malformed_probe->get_id(), $test_run_id );
+} catch ( WC_Data_Exception $e ) {
+	$malformed_email_refused = true;
+	if ( isset( $malformed_probe ) && $malformed_probe instanceof WC_Order ) {
+		kuka_test_delete_order( $malformed_probe->get_id(), $test_run_id );
+	}
+}
+
+$receiver_gap_ok      = true;
+$receiver_gap_details = array();
+foreach ( $receiver_gap_cases as $case => $spec ) {
+	$gap_order = kuka_create_test_order(
+		$test_run_id,
+		array_merge(
+			$billing_props,
+			array(
+				'total'      => '110.00',
+				'first_name' => 'Zeynep',
+				'last_name'  => 'Aydın',
+				'email'      => 'zeynep.aydin@example.com',
+			),
+			$spec[0]
+		)
 	);
-	$vkn_enabled_number = (string) $vkn_enabled_data['customer']['tax_number'];
-} catch ( Exception $e ) {
-	$vkn_enabled_number = 'exception:' . $e->getMessage();
+	kuka_add_line( $gap_order, 'Test Ürün', '100.00', '100.00', 1, '10.00' );
+	kuka_add_tax_rate( $gap_order, 1, 10, '10.00' );
+	$gap_order->save();
+
+	$gap_code = '';
+	$gap_built = false;
+	try {
+		$individual_mapper->map_order_to_invoice_data(
+			wc_get_order( $gap_order->get_id() ),
+			Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE,
+			'EARSIVFATURA',
+			'',
+			Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL
+		);
+		$gap_built = true;
+	} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+		$gap_code = $e->get_safe_error_code();
+	}
+
+	$hit = false === $gap_built && $spec[1] === $gap_code;
+	$receiver_gap_details[] = $case . '=' . ( $gap_code ?: ( $gap_built ? 'BUILT' : 'refused' ) );
+	if ( ! $hit ) {
+		$receiver_gap_ok = false;
+	}
+
+	kuka_test_delete_order( $gap_order->get_id(), $test_run_id );
+}
+
+// No generic consumer title anywhere in the module, and no checkout field
+// asking a retail customer for a TCKN.
+$receiver_module_files = (array) ( glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/*.php' ) ?: array() );
+$module_generic_titles = array();
+foreach ( $receiver_module_files as $receiver_module_file ) {
+	$receiver_module_source = (string) file_get_contents( $receiver_module_file );
+	foreach ( array( 'Nihai Tüketici', 'NIHAI TUKETICI', 'Nihai Tuketici', 'Final Consumer', 'Genel Müşteri' ) as $needle ) {
+		// A PHP string literal, not the word in a comment: the mapper's own
+		// docblock names the title to explain why it is never produced.
+		$hits = preg_match_all( '/[\'"]' . preg_quote( $needle, '/' ) . '[\'"]/u', $receiver_module_source );
+		if ( $hits > 0 ) {
+			$module_generic_titles[] = sprintf( '%s:%s(%d)', basename( $receiver_module_file ), $needle, $hits );
+		}
+	}
+}
+
+$checkout_files = array_merge(
+	(array) glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/*.php' ),
+	(array) glob( trailingslashit( WP_CONTENT_DIR ) . 'themes/kuka-island-child/*.php' ),
+	(array) glob( trailingslashit( WP_CONTENT_DIR ) . 'themes/kuka-island-child/inc/*.php' )
+);
+$checkout_tckn_fields = array();
+foreach ( $checkout_files as $checkout_file ) {
+	if ( ! is_readable( $checkout_file ) ) {
+		continue;
+	}
+	$checkout_source = (string) file_get_contents( $checkout_file );
+	// A checkout/billing field definition asking for a TCKN.
+	if ( preg_match( '/(woocommerce_checkout_fields|woocommerce_billing_fields|billing_tckn|_billing_tckn)/i', $checkout_source )
+		&& preg_match( '/tckn|kimlik\s*numaras/i', $checkout_source ) ) {
+		$checkout_tckn_fields[] = basename( $checkout_file );
+	}
 }
 
 $report(
-	'INVOICE_GENERIC_VKN_RUNTIME_BEHAVIOUR',
-	'missing_individual_tckn' === $vkn_default_code && '11111111111' === $vkn_enabled_number,
-	sprintf( 'default_error:%s|explicit_true_vkn:%s', $vkn_default_code ?: 'none', $vkn_enabled_number )
+	'INVOICE_INDIVIDUAL_RECEIVER_FAIL_CLOSED',
+	$receiver_gap_ok
+	&& true === $malformed_email_refused
+	&& array() === $module_generic_titles
+	&& array() === $checkout_tckn_fields,
+	sprintf(
+		'measured:production_mapper|cases:%d|%s|malformed_email_refused_by_woocommerce:%s|generic_titles:%s|checkout_tckn_fields:%s|checkout_files_scanned:%d',
+		count( $receiver_gap_cases ),
+		implode( ' ', $receiver_gap_details ),
+		$malformed_email_refused ? 'yes' : 'no',
+		empty( $module_generic_titles ) ? 'none' : implode( ',', $module_generic_titles ),
+		empty( $checkout_tckn_fields ) ? 'none' : implode( ',', $checkout_tckn_fields ),
+		count( $checkout_files )
+	) . sprintf( '|module_files_scanned:%d', count( $receiver_module_files ) )
 );
-
-kuka_test_delete_order( $vkn_order->get_id(), $test_run_id );
 
 /* ========================================================================== */
 /* TEST 5 (audit item 3) - Auto-send honours the full can_send_invoice contract */
@@ -639,10 +794,12 @@ final class Kuka_Island_Test_Tracking_Transport implements Kuka_Island_Core_SOAP
 			if ( $this->simulate_timeout_on_send ) {
 				throw new SoapFault( 'HTTP', 'Connection timed out after 30 seconds' );
 			}
+			// EDM assigns the number and returns it. INVOICE/@ID is never sent,
+			// so there is nothing here to echo back.
 			return array(
 				'INVOICE'        => array(
 					'UUID' => $parameters['INVOICE'][0]['UUID'] ?? 'uuid-123',
-					'ID'   => $parameters['INVOICE'][0]['ID'] ?? 'KUK-UNSET',
+					'ID'   => 'EDM2026000000042',
 				),
 				'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
 			);
@@ -1228,7 +1385,9 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 	$earchive_payload = array(
 		'trx_id'            => 4242,
 		'uuid'              => 'uuid-verify-0001',
-		'invoice_number'    => 'KUK2026000000042',
+		// The UBL carries EDM's automatic-numbering sentinel; nothing local is
+		// ever offered as the document number.
+		'invoice_number'    => Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL,
 		'invoice_serial'    => 'KUK',
 		'profile_id'        => 'EARSIVFATURA',
 		'invoice_type_code' => 'SATIS',
@@ -1236,6 +1395,7 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 		'payable_amount'    => '990.00',
 		'receiver_vkn'      => '11111111111',
 		'receiver_alias'    => '',
+		'customer_email'    => 'alici@example.com',
 		'ubl_xml'           => $raw_ubl,
 	);
 
@@ -1266,13 +1426,19 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 			'//*[local-name()="SENDER"]/@vkn'                                          => '1234567890',
 			'//*[local-name()="SENDER"]/@alias'                                        => 'urn:mail:defaultgb@kukaisland.com',
 			'//*[local-name()="RECEIVER"]/@vkn'                                        => '11111111111',
+			// e-Arşiv has no GİB mailbox: the alias attribute is omitted, not
+			// sent empty.
 			'//*[local-name()="RECEIVER"]/@alias'                                      => false,
 			'//*[local-name()="INVOICE"]/@TRXID'                                       => '4242',
 			'//*[local-name()="INVOICE"]/@UUID'                                        => 'uuid-verify-0001',
-			'//*[local-name()="INVOICE"]/@ID'                                          => 'KUK2026000000042',
+			// EDM assigns the number. @ID is never sent, and the sentinel is
+			// certainly not sent here.
+			'//*[local-name()="INVOICE"]/@ID'                                          => false,
 			'//*[local-name()="HEADER"]/*[local-name()="INVOICESERIAL_REQUESTED"]'      => 'KUK',
 			'//*[local-name()="HEADER"]/*[local-name()="EARCHIVE"]'                    => 'true',
-			'//*[local-name()="HEADER"]/*[local-name()="TO"]'                          => false,
+			// e-Arşiv: TO is the buyer's e-mail address, which is how EDM
+			// delivers the document.
+			'//*[local-name()="HEADER"]/*[local-name()="TO"]'                          => 'alici@example.com',
 			'//*[local-name()="INVOICE"]/*[local-name()="CONTENT"]'                    => true,
 		)
 	);
@@ -1306,11 +1472,15 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 		$soap_interceptor->last_request_xml,
 		array(
 			'//*[local-name()="SendInvoiceRequest"]'                              => true,
+			// e-Fatura alias behaviour is unchanged: the GİB mailbox goes in
+			// both RECEIVER/@alias and HEADER/TO, and the customer e-mail does
+			// not displace it.
 			'//*[local-name()="RECEIVER"]/@alias'                                 => 'urn:mail:defaultgb@acme.com',
 			'//*[local-name()="HEADER"]/*[local-name()="TO"]'                     => 'urn:mail:defaultgb@acme.com',
 			'//*[local-name()="HEADER"]/*[local-name()="PROFILEID"]'              => 'TICARIFATURA',
 			'//*[local-name()="HEADER"]/*[local-name()="EARCHIVE"]'               => 'false',
 			'//*[local-name()="HEADER"]/*[local-name()="INVOICESERIAL_REQUESTED"]' => 'KUK',
+			'//*[local-name()="INVOICE"]/@ID'                                     => false,
 		)
 	);
 	$report(
@@ -1522,10 +1692,15 @@ $report(
 	)
 );
 
-// The production pipeline must fail closed when EDM has assigned no number.
+/*
+ * The serial prefix is never guessed. It is chosen in the EDM portal and
+ * reaches the code only through the reviewed environment configuration, so a
+ * send attempted without one is fail-closed BLOCKED and never transmits.
+ */
+$no_series_config    = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'series_earchive' => '' ) ) );
 $numbering_transport = new Kuka_Island_Test_Tracking_Transport();
-$numbering_provider  = new Kuka_Island_Core_EDM_Provider( $config, $numbering_transport );
-$numbering_manager   = new Kuka_Island_Core_Invoice_Manager( $config, $numbering_provider );
+$numbering_provider  = new Kuka_Island_Core_EDM_Provider( $no_series_config, $numbering_transport );
+$numbering_manager   = new Kuka_Island_Core_Invoice_Manager( $no_series_config, $numbering_provider );
 
 $numbering_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'total' => '100.00' ) ) );
 kuka_add_line( $numbering_order, 'Numarasız Ürün', '100.00', '100.00', 0, '0.00' );
@@ -1541,16 +1716,36 @@ try {
 $numbering_order->read_meta_data( true );
 $numbering_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $numbering_order );
 
+// No three-character literal is hard-coded anywhere in the module.
+$series_literals = array();
+foreach ( (array) ( glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/*.php' ) ?: array() ) as $series_file ) {
+	$series_source = (string) file_get_contents( $series_file );
+	if ( preg_match_all( '/(get_series_einvoice|get_series_earchive)\s*\(\s*\)\s*\?\?\s*[\'"]/', $series_source ) > 0 ) {
+		$series_literals[] = basename( $series_file ) . ':series_default';
+	}
+	// A bare three-letter series assignment such as $series = 'KUK'.
+	if ( preg_match( '/\$series[a-z_]*\s*=\s*[\'"][A-Z0-9]{3}[\'"]/', $series_source ) ) {
+		$series_literals[] = basename( $series_file ) . ':series_literal';
+	}
+}
+
 $report(
-	'INVOICE_NUMBERING_FAIL_CLOSED_BLOCKED',
-	Kuka_Island_Core_Invoice_Numbering::ERROR_UNCONFIRMED === $numbering_code
+	'INVOICE_SERIES_FAIL_CLOSED_BLOCKED',
+	Kuka_Island_Core_Invoice_Numbering::ERROR_SERIES_UNCONFIGURED === $numbering_code
 	&& Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED === $numbering_status
-	&& 0 === ( $numbering_transport->calls['SendInvoice'] ?? 0 ),
+	&& 0 === ( $numbering_transport->calls['SendInvoice'] ?? 0 )
+	// The readiness gate also names the gap before anything is queued.
+	&& false === $no_series_config->can_send_invoice()
+	&& in_array( 'series_earchive', $no_series_config->get_send_readiness_gaps(), true )
+	&& array() === $series_literals,
 	sprintf(
-		'code:%s|status:%s|SendInvoice:%d',
+		'code:%s|status:%s|SendInvoice:%d|can_send_invoice:%s|readiness_gap:%s|hardcoded_series:%s',
 		$numbering_code ?: 'none',
 		$numbering_status,
-		$numbering_transport->calls['SendInvoice'] ?? 0
+		$numbering_transport->calls['SendInvoice'] ?? 0,
+		$no_series_config->can_send_invoice() ? 'YES' : 'no',
+		in_array( 'series_earchive', $no_series_config->get_send_readiness_gaps(), true ) ? 'series_earchive' : 'MISSING',
+		empty( $series_literals ) ? 'none' : implode( ',', $series_literals )
 	)
 );
 
@@ -1580,37 +1775,97 @@ try {
 }
 $report(
 	'INVOICE_MAPPER_REJECTS_EMPTY_NUMBER',
-	Kuka_Island_Core_Invoice_Numbering::ERROR_UNCONFIRMED === $mapper_empty_code,
+	Kuka_Island_Core_Invoice_Numbering::ERROR_NUMBER_NOT_ASSIGNED === $mapper_empty_code,
 	sprintf( 'code:%s', $mapper_empty_code ?: 'none' )
 );
 
 kuka_test_delete_order( $numbering_order->get_id(), $test_run_id );
 
-// A number left behind by the removed local generator carries no EDM
-// provenance and must never be treated as a fiscal identifier. Orders 967, 973,
-// 981 and 989 in this database all carry the same legacy value
-// (KUK2026000000777), which is exactly why a bare number is not trusted.
-$legacy_transport = new Kuka_Island_Test_Tracking_Transport();
-$legacy_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $legacy_transport ) );
-$legacy_order     = kuka_create_lock_order( $test_run_id, $billing_props, array( '_kuka_invoice_number' => 'KUK2026000000777' ) );
+/*
+ * A number left behind by the removed local generator carries no EDM provenance
+ * and must never be treated as a fiscal identifier. Orders 967, 973, 981 and 989
+ * in this database all carry the same legacy value (KUK2026000000777), which is
+ * exactly why a bare number is not trusted.
+ *
+ * Under the confirmed EDM contract the send no longer reads the order's number
+ * at all: cbc:ID carries the automatic-numbering sentinel, INVOICE/@ID is not
+ * sent, and the number recorded afterwards is the one EDM returned.
+ */
+$legacy_transport = new class() implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, int> */
+	public array $calls = array();
+	/** @var array<string, array<string, mixed>> Last request per operation. */
+	public array $requests = array();
 
-$legacy_code = '';
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->calls[ $operation ]    = ( $this->calls[ $operation ] ?? 0 ) + 1;
+		$this->requests[ $operation ] = $parameters;
+
+		if ( 'Login' === $operation ) {
+			return array( 'SESSION_ID' => 'session-legacy-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+
+		if ( 'SendInvoice' === $operation ) {
+			// EDM assigns the number and returns it. Deliberately unlike the
+			// legacy value on the order.
+			return array(
+				'INVOICE'        => array(
+					'UUID'   => $parameters['INVOICE'][0]['UUID'] ?? 'uuid-legacy',
+					'ID'     => 'EDM2026000000123',
+					'HEADER' => array( 'STATUS' => 'SEND - SUCCEED' ),
+				),
+				'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+			);
+		}
+
+		return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+	}
+};
+
+$legacy_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $legacy_transport ) );
+$legacy_order   = kuka_create_lock_order( $test_run_id, $billing_props, array( '_kuka_invoice_number' => 'KUK2026000000777' ) );
+
+$legacy_error = '';
 try {
 	$legacy_manager->process_order( $legacy_order );
-} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
-	$legacy_code = $e->get_safe_error_code();
+} catch ( Throwable $t ) {
+	$legacy_error = get_class( $t ) . ': ' . $t->getMessage();
 }
 $legacy_order->read_meta_data( true );
+$legacy_data    = Kuka_Island_Core_Invoice_Order_Store::get_invoice_data( $legacy_order );
+$legacy_request = (array) ( $legacy_transport->requests['SendInvoice'] ?? array() );
+$legacy_entry   = (array) ( $legacy_request['INVOICE'][0] ?? array() );
+$legacy_ubl     = (string) ( $legacy_entry['CONTENT'] ?? '' );
+
 $report(
 	'INVOICE_NUMBERING_REJECTS_LEGACY_NUMBER',
-	Kuka_Island_Core_Invoice_Numbering::ERROR_UNCONFIRMED === $legacy_code
-	&& Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED === Kuka_Island_Core_Invoice_Order_Store::get_status( $legacy_order )
-	&& 0 === ( $legacy_transport->calls['SendInvoice'] ?? 0 ),
+	'' === $legacy_error
+	&& 1 === ( $legacy_transport->calls['SendInvoice'] ?? 0 )
+	// The legacy value is not offered to EDM in any form.
+	&& ! array_key_exists( 'ID', $legacy_entry )
+	&& ! str_contains( $legacy_ubl, 'KUK2026000000777' )
+	// cbc:ID is the sentinel, not the legacy number.
+	&& str_contains( $legacy_ubl, '<cbc:ID>' . Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL . '</cbc:ID>' )
+	// And the number on the order afterwards is EDM's, with provenance.
+	&& 'EDM2026000000123' === $legacy_data['invoice_number']
+	&& Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM === $legacy_data['number_source'],
 	sprintf(
-		'code:%s|status:%s|SendInvoice:%d|seeded_number_without_provenance:yes',
-		$legacy_code ?: 'none',
-		Kuka_Island_Core_Invoice_Order_Store::get_status( $legacy_order ),
-		$legacy_transport->calls['SendInvoice'] ?? 0
+		'measured:production_send|SendInvoice:%d|soap_invoice_id:%s|legacy_value_in_ubl:%s|ubl_cbc_id_sentinel:%s|number_after:%s|number_source:%s|error:%s',
+		$legacy_transport->calls['SendInvoice'] ?? 0,
+		array_key_exists( 'ID', $legacy_entry ) ? 'PRESENT' : 'absent',
+		str_contains( $legacy_ubl, 'KUK2026000000777' ) ? 'YES' : 'no',
+		str_contains( $legacy_ubl, '<cbc:ID>' . Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL . '</cbc:ID>' ) ? 'yes' : 'no',
+		$legacy_data['invoice_number'] ?: 'none',
+		$legacy_data['number_source'] ?: 'none',
+		'' === $legacy_error ? 'none' : $legacy_error
 	)
 );
 kuka_test_delete_order( $legacy_order->get_id(), $test_run_id );
@@ -1644,7 +1899,8 @@ $report(
 	&& $happy_result->is_success()
 	&& 1 === ( $happy_transport->calls['SendInvoice'] ?? 0 )
 	&& Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM === $happy_data['number_source']
-	&& 'KUK2026000000042' === $happy_data['invoice_number'],
+	// The number is EDM's, from the response -- not the one seeded on the order.
+	&& 'EDM2026000000042' === $happy_data['invoice_number'],
 	sprintf(
 		'SendInvoice:%d|status:%s|number:%s|number_source:%s|error:%s',
 		$happy_transport->calls['SendInvoice'] ?? 0,
@@ -3082,7 +3338,9 @@ $terminal_details = array();
 foreach ( $terminal_cases as $case => $spec ) {
 	$transport = new Kuka_Island_Test_Status_Transport(
 		null,
-		array( 'INVOICE_STATUS' => array( array( 'UUID' => 'u', 'HEADER' => array( 'STATUS' => $spec[0] ) ) ) )
+		// An EDM-assigned ID is present, so a positive status may complete. The
+		// number-less case has its own test below.
+		array( 'INVOICE_STATUS' => array( array( 'UUID' => 'u', 'ID' => 'EDM2026000000900', 'HEADER' => array( 'STATUS' => $spec[0] ) ) ) )
 	);
 	$client   = new Kuka_Island_Core_EDM_Client( $config, $transport );
 	$lifecyc  = $client->get_invoice_status( 'u' )->get_status();
@@ -4900,7 +5158,7 @@ if ( $runner_available ) {
 	 */
 	$chain_exit_cases = array(
 		// name => [ mutation, expected status, expected fiscal attempts, expected poll actions ]
-		'permanent_pre_send'  => array( 'strip_number_source', Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED, 0, 0 ),
+		'permanent_pre_send'  => array( 'strip_billing_city', Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW, 0, 0 ),
 		'evidence_handover'   => array( 'timeout_on_send', Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, 1, 1 ),
 		'generic_exception'   => array( 'generic_on_send', Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN, 1, 1 ),
 		'auto_send_disabled'  => array( 'auto_send_off', Kuka_Island_Core_Invoice_Status::STATUS_NONE, 0, 0 ),
@@ -4957,11 +5215,12 @@ if ( $runner_available ) {
 		$chain_rival->get_var( $chain_rival->prepare( 'SELECT RELEASE_LOCK(%s)', $chain_lock ) );
 
 		switch ( $spec[0] ) {
-			case 'strip_number_source':
-				// EDM provenance gone -> fail-closed numbering, a PERMANENT
-				// pre-transmission error. Nothing is sent.
-				$chain_mid->delete_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE );
-				$chain_mid->save_meta_data();
+			case 'strip_billing_city':
+				// A mandatory receiver field gone -> the mapper raises a
+				// PERMANENT pre-transmission error, before mark_sending() and
+				// before any transmission.
+				$chain_mid->set_billing_city( '' );
+				$chain_mid->save();
 				break;
 
 			case 'timeout_on_send':
@@ -5587,6 +5846,429 @@ $report(
 
 kuka_test_delete_order( $paid_order->get_id(), $test_run_id );
 kuka_test_delete_order( $unpaid_order->get_id(), $test_run_id );
+
+/* ========================================================================== */
+/* EDM-confirmed numbering, delivery and failed-document recovery             */
+/* ========================================================================== */
+
+/**
+ * SendInvoice answers with a chosen STATUS and a chosen (or absent) ID.
+ */
+final class Kuka_Island_Test_Numbering_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, int> */
+	public array $calls = array();
+	/** @var array<string, array<string, mixed>> Last request per operation. */
+	public array $requests = array();
+	/** @var string STATUS literal for the SendInvoice answer. */
+	public string $status_literal = 'SEND - SUCCEED';
+	/** @var string|null ID to return, or null to omit the attribute entirely. */
+	public ?string $assigned_id = 'EDM2026000000777';
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->calls[ $operation ]    = ( $this->calls[ $operation ] ?? 0 ) + 1;
+		$this->requests[ $operation ] = $parameters;
+
+		if ( 'Login' === $operation ) {
+			return array( 'SESSION_ID' => 'session-numbering-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+
+		if ( 'SendInvoice' === $operation ) {
+			$invoice = array(
+				'UUID'   => $parameters['INVOICE'][0]['UUID'] ?? 'uuid-numbering',
+				'HEADER' => array( 'STATUS' => $this->status_literal ),
+			);
+			if ( null !== $this->assigned_id ) {
+				$invoice['ID'] = $this->assigned_id;
+			}
+
+			return array(
+				'INVOICE'        => $invoice,
+				'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+			);
+		}
+
+		if ( 'GetInvoiceStatus' === $operation ) {
+			$entry = array(
+				'UUID'   => $parameters['INVOICE']['UUID'] ?? 'uuid-numbering',
+				'HEADER' => array( 'STATUS' => $this->status_literal ),
+			);
+			if ( null !== $this->assigned_id ) {
+				$entry['ID'] = $this->assigned_id;
+			}
+
+			return array( 'INVOICE_STATUS' => array( $entry ) );
+		}
+
+		return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+	}
+}
+
+/*
+ * A positive STATUS is not a finished document if EDM has not numbered it. Such
+ * a response becomes a polling job so the number is picked up by the next
+ * GetInvoiceStatus, instead of the invoice being closed without one.
+ */
+$completion_cases = array(
+	// name => [ returned ID, expected lifecycle, expected persisted number ]
+	'assigned_number'  => array( 'EDM2026000000777', Kuka_Island_Core_Invoice_Status::STATUS_COMPLETED, 'EDM2026000000777' ),
+	'no_number'        => array( null, Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, '' ),
+	'sentinel_echoed'  => array( Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL, Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, '' ),
+	'empty_number'     => array( '', Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL, '' ),
+);
+
+$completion_ok      = true;
+$completion_details = array();
+$completion_sends   = 0;
+
+foreach ( $completion_cases as $case => $spec ) {
+	$completion_transport = new Kuka_Island_Test_Numbering_Transport();
+	$completion_transport->assigned_id = $spec[0];
+	$completion_manager  = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $completion_transport ) );
+	$completion_order    = kuka_create_lock_order( $test_run_id, $billing_props, array() );
+	$completion_order_id = (int) $completion_order->get_id();
+
+	try {
+		$completion_manager->process_order( $completion_order );
+	} catch ( Throwable $t ) {
+		unset( $t );
+	}
+
+	$completion_order->read_meta_data( true );
+	$completion_data = Kuka_Island_Core_Invoice_Order_Store::get_invoice_data( $completion_order );
+	$completion_sends += (int) ( $completion_transport->calls['SendInvoice'] ?? 0 );
+
+	$hit = $completion_data['status'] === (string) $spec[1]
+		&& $completion_data['invoice_number'] === (string) $spec[2]
+		&& 1 === (int) ( $completion_transport->calls['SendInvoice'] ?? 0 )
+		// A document with no number is never presented as successful.
+		&& ( '' !== (string) $spec[2] || ! Kuka_Island_Core_Invoice_Status::is_successful( $completion_data['status'] ) );
+
+	$completion_details[] = $case . '=' . $completion_data['status'] . '/' . ( '' === $completion_data['invoice_number'] ? 'no_number' : $completion_data['invoice_number'] );
+	if ( ! $hit ) {
+		$completion_ok = false;
+	}
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $completion_order_id );
+	kuka_test_delete_order( $completion_order_id, $test_run_id );
+}
+
+$report(
+	'INVOICE_COMPLETION_REQUIRES_ASSIGNED_NUMBER',
+	$completion_ok && count( $completion_cases ) === $completion_sends,
+	sprintf(
+		'measured:production_send|cases:%d|%s|SendInvoice=%d|sentinel:%s',
+		count( $completion_cases ),
+		implode( ' ', $completion_details ),
+		$completion_sends,
+		Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL
+	)
+);
+
+/*
+ * The sentinel is a request, not an identifier. It must never end up on an order
+ * as a document number -- not from the send path, and not from a direct store
+ * call either.
+ */
+$sentinel_transport = new Kuka_Island_Test_Numbering_Transport();
+$sentinel_transport->assigned_id = Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL;
+$sentinel_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $sentinel_transport ) );
+$sentinel_order   = kuka_create_lock_order( $test_run_id, $billing_props, array() );
+$sentinel_order_id = (int) $sentinel_order->get_id();
+
+try {
+	$sentinel_manager->process_order( $sentinel_order );
+} catch ( Throwable $t ) {
+	unset( $t );
+}
+
+$sentinel_order->read_meta_data( true );
+$sentinel_number = (string) $sentinel_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true );
+$sentinel_source = (string) $sentinel_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE, true );
+$sentinel_ubl    = (string) ( $sentinel_transport->requests['SendInvoice']['INVOICE'][0]['CONTENT'] ?? '' );
+$sentinel_entry  = (array) ( $sentinel_transport->requests['SendInvoice']['INVOICE'][0] ?? array() );
+
+// Captured before the probe below, which deliberately moves the status.
+$sentinel_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $sentinel_order );
+
+// A direct store call is refused too: the guard lives in one place.
+Kuka_Island_Core_Invoice_Order_Store::mark_sending( $sentinel_order, 'uuid-sentinel-probe', Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL, 'probe' );
+$sentinel_order->read_meta_data( true );
+$sentinel_after_direct = (string) $sentinel_order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true );
+
+// The whole order record, scanned for the literal.
+$sentinel_meta_hits = array();
+foreach ( (array) $sentinel_order->get_meta_data() as $meta_row ) {
+	$meta_value = $meta_row->value;
+	if ( is_scalar( $meta_value ) && Kuka_Island_Core_Invoice_Numbering::is_auto_number_sentinel( (string) $meta_value ) ) {
+		$sentinel_meta_hits[] = (string) $meta_row->key;
+	}
+}
+
+$report(
+	'INVOICE_SENTINEL_NEVER_PERSISTED',
+	// It IS what the submitted UBL asks with...
+	str_contains( $sentinel_ubl, '<cbc:ID>' . Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL . '</cbc:ID>' )
+	// ...and it is NOT sent as the SOAP attribute...
+	&& ! array_key_exists( 'ID', $sentinel_entry )
+	// ...and never recorded as a number, from either direction.
+	&& '' === $sentinel_number
+	&& '' === $sentinel_source
+	&& '' === $sentinel_after_direct
+	&& array() === $sentinel_meta_hits
+	// Echoed back by EDM it means "not numbered yet", so not completed.
+	&& Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL === $sentinel_status,
+	sprintf(
+		'measured:production_send_and_store|ubl_cbc_id:%s|soap_invoice_id:%s|order_number:%s|number_source:%s|after_direct_store_call:%s|order_meta_hits:%s|status:%s',
+		str_contains( $sentinel_ubl, '<cbc:ID>' . Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL . '</cbc:ID>' ) ? 'sentinel' : 'MISSING',
+		array_key_exists( 'ID', $sentinel_entry ) ? 'PRESENT' : 'absent',
+		'' === $sentinel_number ? 'none' : $sentinel_number,
+		'' === $sentinel_source ? 'none' : $sentinel_source,
+		'' === $sentinel_after_direct ? 'none' : $sentinel_after_direct,
+		empty( $sentinel_meta_hits ) ? 'none' : implode( ',', $sentinel_meta_hits ),
+		$sentinel_status
+	)
+);
+
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $sentinel_order_id );
+kuka_test_delete_order( $sentinel_order_id, $test_run_id );
+
+/*
+ * EDM delivers the e-Arşiv document from the address in HEADER/TO, which is the
+ * same address the UBL carries. There is no second EmailInvoice call, and the
+ * e-Fatura alias path is untouched.
+ */
+$delivery_cases = array(
+	'earchive' => array( Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE, 'EARSIVFATURA', '' ),
+	'einvoice' => array( Kuka_Island_Core_Invoice_Status::TYPE_EINVOICE, 'TICARIFATURA', 'urn:mail:defaultgb@acme.com' ),
+);
+
+$delivery_ok      = true;
+$delivery_details = array();
+$delivery_emails  = 0;
+
+foreach ( $delivery_cases as $case => $spec ) {
+	$delivery_transport = new Kuka_Island_Test_Numbering_Transport();
+	$delivery_client    = new Kuka_Island_Core_EDM_Client( $config, $delivery_transport );
+	$delivery_client->send_invoice(
+		array(
+			'trx_id'            => 9001,
+			'uuid'              => 'uuid-delivery-' . $case,
+			'invoice_serial'    => 'KUK',
+			'profile_id'        => $spec[1],
+			'invoice_type_code' => 'SATIS',
+			'issue_date'        => '2026-09-01',
+			'payable_amount'    => '110.00',
+			'receiver_vkn'      => '11111111111',
+			'receiver_alias'    => $spec[2],
+			'customer_email'    => 'alici@example.com',
+			'ubl_xml'           => '<Invoice/>',
+		)
+	);
+
+	$delivery_request = (array) ( $delivery_transport->requests['SendInvoice'] ?? array() );
+	$delivery_header  = (array) ( $delivery_request['INVOICE'][0]['HEADER'] ?? array() );
+	$delivery_recv    = (array) ( $delivery_request['RECEIVER'] ?? array() );
+	$delivery_to      = (string) ( $delivery_header['TO'] ?? '' );
+	$delivery_emails += (int) ( $delivery_transport->calls['EmailInvoice'] ?? 0 );
+
+	$expected_to = Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE === $spec[0] ? 'alici@example.com' : $spec[2];
+	$alias_sent  = array_key_exists( 'alias', $delivery_recv );
+
+	$hit = $delivery_to === $expected_to
+		// RECEIVER/@alias is an e-Fatura attribute. e-Arşiv omits it rather
+		// than sending an empty string.
+		&& $alias_sent === ( Kuka_Island_Core_Invoice_Status::TYPE_EINVOICE === $spec[0] )
+		&& 0 === (int) ( $delivery_transport->calls['EmailInvoice'] ?? 0 )
+		&& 0 === (int) ( $delivery_transport->calls['LoadInvoice'] ?? 0 );
+
+	$delivery_details[] = $case . '=TO:' . ( '' === $delivery_to ? 'absent' : $delivery_to ) . '/alias:' . ( $alias_sent ? (string) $delivery_recv['alias'] : 'omitted' );
+	if ( ! $hit ) {
+		$delivery_ok = false;
+	}
+}
+
+// Nothing on the send or poll path can even reach EmailInvoice.
+$email_call_sites = array();
+foreach ( array( 'class-invoice-manager.php', 'class-invoice-queue.php', 'class-invoice-status-poller.php', 'class-invoice-recovery.php', 'class-invoice-admin.php' ) as $email_scan_file ) {
+	$email_scan_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $email_scan_file;
+	if ( is_readable( $email_scan_path ) && preg_match( '/->\s*email_invoice\s*\(/', (string) file_get_contents( $email_scan_path ) ) ) {
+		$email_call_sites[] = $email_scan_file;
+	}
+}
+
+$report(
+	'INVOICE_EARCHIVE_DELIVERY_BY_EDM',
+	$delivery_ok
+	&& 0 === $delivery_emails
+	&& array() === $email_call_sites,
+	sprintf(
+		'measured:production_client|cases:%d|%s|EmailInvoice=%d|email_invoice_call_sites:%s',
+		count( $delivery_cases ),
+		implode( ' ', $delivery_details ),
+		$delivery_emails,
+		empty( $email_call_sites ) ? 'none' : implode( ',', $email_call_sites )
+	)
+);
+
+/*
+ * A document EDM refused is never resent, and never has its UUID or number
+ * reused. The replacement is an operator decision, it archives what it replaces,
+ * and a double click produces one document.
+ */
+$recovery_transport = new Kuka_Island_Test_Numbering_Transport();
+$recovery_transport->assigned_id = 'EDM2026000000999';
+$recovery_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $recovery_transport ) );
+$recovery_order   = kuka_create_lock_order(
+	$test_run_id,
+	$billing_props,
+	array(
+		Kuka_Island_Core_Invoice_Order_Store::META_STATUS                    => Kuka_Island_Core_Invoice_Status::STATUS_FAILED,
+		Kuka_Island_Core_Invoice_Order_Store::META_UUID                      => 'uuid-refused-document',
+		Kuka_Island_Core_Invoice_Order_Store::META_NUMBER                    => 'EDM2026000000111',
+		Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE             => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS                  => '1',
+		Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS         => 'SEND - FAILED',
+	)
+);
+$recovery_order_id = (int) $recovery_order->get_id();
+
+// Before anything: the refused document cannot be resent, force or not.
+$recovery_forced_error = '';
+try {
+	$recovery_manager->process_order( $recovery_order, true );
+} catch ( Throwable $t ) {
+	$recovery_forced_error = get_class( $t );
+}
+$recovery_order->read_meta_data( true );
+$recovery_sends_before_approval = (int) ( $recovery_transport->calls['SendInvoice'] ?? 0 );
+
+// Put the refused state back: the forced attempt above reconciled it.
+$recovery_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_FAILED );
+$recovery_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_UUID, 'uuid-refused-document' );
+$recovery_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, 'EDM2026000000111' );
+$recovery_order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE, Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM );
+$recovery_order->save_meta_data();
+
+$recovery_eligible = Kuka_Island_Core_Invoice_Recovery::is_eligible( wc_get_order( $recovery_order_id ) );
+
+// One approval.
+$recovery_first = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $recovery_order_id ) );
+$recovery_after_first = wc_get_order( $recovery_order_id );
+$recovery_archive_1   = Kuka_Island_Core_Invoice_Recovery::superseded_documents( $recovery_after_first );
+$recovery_evidence    = Kuka_Island_Core_Invoice_Manager::transmission_evidence( $recovery_after_first );
+
+// The second click, and a genuinely concurrent request holding the lock.
+$recovery_second = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $recovery_order_id ) );
+
+$recovery_rival = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$recovery_lock_held = '1' === (string) $recovery_rival->get_var( $recovery_rival->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_inv_recreate_' . $recovery_order_id ) );
+$recovery_concurrent = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $recovery_order_id ) );
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$recovery_rival->get_var( $recovery_rival->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_inv_recreate_' . $recovery_order_id ) );
+
+$recovery_archive_2 = Kuka_Island_Core_Invoice_Recovery::superseded_documents( wc_get_order( $recovery_order_id ) );
+
+// The replacement is then sent by the ordinary path, once.
+$recovery_send_error = '';
+try {
+	$recovery_manager->process_order( wc_get_order( $recovery_order_id ) );
+} catch ( Throwable $t ) {
+	$recovery_send_error = get_class( $t ) . ': ' . $t->getMessage();
+}
+
+$recovery_final     = wc_get_order( $recovery_order_id );
+$recovery_final_data = Kuka_Island_Core_Invoice_Order_Store::get_invoice_data( $recovery_final );
+$recovery_archive_3  = Kuka_Island_Core_Invoice_Recovery::superseded_documents( $recovery_final );
+$recovery_history    = (array) ( $recovery_final->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_HISTORY, true ) ?: array() );
+$recovery_audit_hit  = false;
+foreach ( $recovery_history as $entry ) {
+	$entry_message = (string) ( $entry['message'] ?? '' );
+	if ( str_contains( $entry_message, Kuka_Island_Core_Invoice_Recovery::ERROR_RECREATE_APPROVED )
+		&& str_contains( $entry_message, 'uuid-refused-document' )
+		&& str_contains( $entry_message, 'EDM2026000000111' ) ) {
+		$recovery_audit_hit = true;
+	}
+}
+
+// An order whose document was NOT refused cannot be recreated.
+$recovery_ineligible_order = kuka_create_lock_order(
+	$test_run_id,
+	$billing_props,
+	array(
+		Kuka_Island_Core_Invoice_Order_Store::META_STATUS => Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+		Kuka_Island_Core_Invoice_Order_Store::META_UUID   => 'uuid-in-flight-document',
+	)
+);
+$recovery_ineligible = Kuka_Island_Core_Invoice_Recovery::approve( $recovery_ineligible_order );
+$recovery_ineligible_order->read_meta_data( true );
+$recovery_ineligible_archive = Kuka_Island_Core_Invoice_Recovery::superseded_documents( $recovery_ineligible_order );
+
+$report(
+	'INVOICE_FAILED_DOCUMENT_OPERATOR_RECREATE',
+	// The refused document is not resent by a forced retry.
+	true === $recovery_eligible
+	&& 0 === $recovery_sends_before_approval
+	// One approval mints one new identity, and it is not the refused one.
+	&& Kuka_Island_Core_Invoice_Recovery::OUTCOME_APPROVED === $recovery_first['outcome']
+	&& '' !== $recovery_first['reserved_uuid']
+	&& 'uuid-refused-document' !== $recovery_first['reserved_uuid']
+	&& 1 === count( $recovery_archive_1 )
+	&& 'uuid-refused-document' === (string) ( $recovery_archive_1[0]['uuid'] ?? '' )
+	&& 'EDM2026000000111' === (string) ( $recovery_archive_1[0]['invoice_number'] ?? '' )
+	&& 'SEND - FAILED' === (string) ( $recovery_archive_1[0]['edm_status'] ?? '' )
+	// The replacement has not been transmitted, so the guard lets it be sent.
+	&& array() === $recovery_evidence
+	// A double click and a concurrent request add nothing.
+	&& Kuka_Island_Core_Invoice_Recovery::OUTCOME_ALREADY_APPROVED === $recovery_second['outcome']
+	&& $recovery_second['reserved_uuid'] === $recovery_first['reserved_uuid']
+	&& true === $recovery_lock_held
+	&& Kuka_Island_Core_Invoice_Recovery::OUTCOME_LOCK_CONTENDED === $recovery_concurrent['outcome']
+	&& 1 === count( $recovery_archive_2 )
+	// The replacement is sent once, with the reserved UUID and a NEW number.
+	&& '' === $recovery_send_error
+	&& 1 === (int) ( $recovery_transport->calls['SendInvoice'] ?? 0 )
+	&& $recovery_final_data['uuid'] === $recovery_first['reserved_uuid']
+	&& 'EDM2026000000999' === $recovery_final_data['invoice_number']
+	&& 'EDM2026000000111' !== $recovery_final_data['invoice_number']
+	// The refused document is still on the record, and the audit entry names it.
+	&& 1 === count( $recovery_archive_3 )
+	&& true === $recovery_audit_hit
+	// And an unresolved document is not recreatable at all.
+	&& Kuka_Island_Core_Invoice_Recovery::OUTCOME_NOT_ELIGIBLE === $recovery_ineligible['outcome']
+	&& array() === $recovery_ineligible_archive,
+	sprintf(
+		'measured:production_recovery_and_send|eligible:%s|forced_resend_SendInvoice:%d|first:%s|second:%s|concurrent:%s|archive_entries:%d/%d/%d|reserved_uuid_new:%s|final_uuid_is_reserved:%s|old_number:%s|new_number:%s|audit_names_old_document:%s|ineligible:%s|SendInvoice=%d|send_error:%s',
+		$recovery_eligible ? 'yes' : 'no',
+		$recovery_sends_before_approval,
+		(string) $recovery_first['outcome'],
+		(string) $recovery_second['outcome'],
+		(string) $recovery_concurrent['outcome'],
+		count( $recovery_archive_1 ),
+		count( $recovery_archive_2 ),
+		count( $recovery_archive_3 ),
+		'uuid-refused-document' !== $recovery_first['reserved_uuid'] ? 'yes' : 'no',
+		$recovery_final_data['uuid'] === $recovery_first['reserved_uuid'] ? 'yes' : 'no',
+		(string) ( $recovery_archive_3[0]['invoice_number'] ?? 'none' ),
+		$recovery_final_data['invoice_number'] ?: 'none',
+		$recovery_audit_hit ? 'yes' : 'no',
+		(string) $recovery_ineligible['outcome'],
+		$recovery_transport->calls['SendInvoice'] ?? 0,
+		'' === $recovery_send_error ? 'none' : $recovery_send_error
+	)
+);
+
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $recovery_order_id );
+kuka_test_delete_order( $recovery_order_id, $test_run_id );
+kuka_test_delete_order( $recovery_ineligible_order->get_id(), $test_run_id );
 
 /* ========================================================================== */
 /* REQUEST_HEADER contract and safe SOAP fault classification                  */

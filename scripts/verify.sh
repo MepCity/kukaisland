@@ -619,9 +619,14 @@ expect_invoice_line "Invoice config hides passwords and masks VKN" "INVOICE_CONF
 expect_invoice_line "Invoice live readiness validation" "INVOICE_LIVE_READINESS_VALIDATION=PASS|ready:no|missing_count:11"
 
 # Audit item 2: generic individual VKN policy defaults to false.
-expect_invoice_line "Generic individual VKN defaults to false" "INVOICE_GENERIC_VKN_DEFAULT_FALSE=PASS|constant_defined:no|default_allow:no"
-expect_invoice_line "Generic individual VKN needs literal true" "INVOICE_GENERIC_VKN_STRICT_TRUE_ONLY=PASS|explicit_true:allow|truthy_string:deny|explicit_false:deny"
-expect_invoice_line "Generic individual VKN runtime behaviour" "INVOICE_GENERIC_VKN_RUNTIME_BEHAVIOUR=PASS|default_error:missing_individual_tckn|explicit_true_vkn:11111111111"
+# EDM technical support confirmed the individual e-Arşiv recipient contract in
+# writing: the generic consumer TCKN 11111111111 with the buyer's REAL name from
+# the WooCommerce billing fields. No TCKN is asked for at checkout -- and in
+# exchange the name and the e-mail address are mandatory, because a generic
+# consumer title would be a fabricated party on a fiscal document and a missing
+# address means a document the buyer never receives.
+expect_invoice_line "the individual e-Archive receiver carries a real name" "INVOICE_INDIVIDUAL_EARCHIVE_RECEIVER_CONTRACT=PASS|measured:production_mapper_and_ubl|tckn:11111111111|id_scheme:TCKN|first_name:Zeynep|family_name:Aydın|party_name:none|electronic_mail:zeynep.aydin@example.com|cbc_id:ABC2009123456789|error:none"
+expect_invoice_match "a missing name or e-mail is fail-closed" "^INVOICE_INDIVIDUAL_RECEIVER_FAIL_CLOSED=PASS\\|measured:production_mapper\\|cases:4\\|no_first_name=missing_individual_name no_last_name=missing_individual_name no_name_at_all=missing_individual_name no_email=missing_customer_email\\|malformed_email_refused_by_woocommerce:yes\\|generic_titles:none\\|checkout_tckn_fields:none\\|"
 
 # Audit item 3: auto-send honours the whole can_send_invoice contract.
 # EDM document status contract, polling lifecycle and the internet-sales block.
@@ -704,7 +709,7 @@ expect_invoice_match "the queue retry counter is its own and clears on success" 
 # poller once transmission evidence exists, auto-send being switched off, and
 # a new chain starting from maybe_enqueue_order().
 expect_invoice_match "the queue retry counter survives no chain exit" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|measured:real_queue_worker_on_action_scheduler\\|cases:4\\|first_run_transient:retries:1/fiscal:0/pending:1\\|"
-expect_invoice_match "every chain exit leaves the counter absent" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|.*permanent_pre_send=blocked/retries:absent/send_pending:0/poll_pending:0 evidence_handover=send_uncertain/retries:absent/send_pending:0/poll_pending:1 generic_exception=send_uncertain/retries:absent/send_pending:0/poll_pending:1 auto_send_disabled=none/retries:absent/send_pending:0/poll_pending:0\\|fiscal_counter_untouched_by_queue:yes$"
+expect_invoice_match "every chain exit leaves the counter absent" "^INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT=PASS\\|.*permanent_pre_send=needs_manual_review/retries:absent/send_pending:0/poll_pending:0 evidence_handover=send_uncertain/retries:absent/send_pending:0/poll_pending:1 generic_exception=send_uncertain/retries:absent/send_pending:0/poll_pending:1 auto_send_disabled=none/retries:absent/send_pending:0/poll_pending:0\\|fiscal_counter_untouched_by_queue:yes$"
 expect_invoice_line "a new chain starts the counter at zero" "INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO=PASS|measured:real_enqueue_plus_real_queue_worker_on_action_scheduler|seeded:2|after_enqueue:cleared|status_after_enqueue:queued|actions_after_enqueue:1|first_transient_retries:1|send_actions_pending:1|SendInvoice=0|status_after_worker:queued|manual_status_rewrite:none"
 
 # THE REAL AUTOMATIC PATH. maybe_enqueue_order() writes STATUS_QUEUED and
@@ -771,7 +776,7 @@ expect_invoice_line "CheckCounter DOMXPath and counter_left" "INVOICE_SOAP_XPATH
 expect_invoice_line "CheckUser DOMXPath" "INVOICE_SOAP_XPATH_CHECK_USER=PASS|assertions:5|alias_parsed:urn:mail:defaultgb@acme.com|failed:none"
 expect_invoice_line "GetInvoiceSerial DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_SERIAL=PASS|assertions:6|serial_code:KUK|last_serial_used:42|failed:none"
 expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:15|single_base64_sha256_match:yes|error:none|failed:none"
-expect_invoice_line "SendInvoice e-Invoice DOMXPath" "INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=PASS|assertions:6|failed:none"
+expect_invoice_line "SendInvoice e-Invoice DOMXPath" "INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=PASS|assertions:7|failed:none"
 expect_invoice_line "GetInvoiceStatus DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_STATUS=PASS|assertions:9|parsed_status:completed|failed:none"
 expect_invoice_line "GetInvoice DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE=PASS|assertions:6|error:none|failed:none"
 expect_invoice_line "EmailInvoice DOMXPath" "INVOICE_SOAP_XPATH_EMAIL_INVOICE=PASS|assertions:6|error:none|failed:none"
@@ -780,11 +785,31 @@ expect_invoice_line "All SOAP ops went through the production client" "INVOICE_S
 
 # Audit item 4: no locally invented fiscal document numbers.
 expect_invoice_match "Local invoice numbering removed" "^INVOICE_NUMBER_LOCAL_GENERATION_REMOVED=PASS\|module_files_scanned:[0-9]{2,}\|mapper_generator_exists:no\|source_hits:none$"
-expect_invoice_line "Numbering is fail-closed BLOCKED" "INVOICE_NUMBERING_FAIL_CLOSED_BLOCKED=PASS|code:invoice_numbering_unconfirmed|status:blocked|SendInvoice:0"
+# The three-character serial prefix is chosen in the EDM portal and reaches the
+# code only through the reviewed environment configuration. Without one the send
+# path is fail-closed BLOCKED and nothing is transmitted.
+expect_invoice_line "Series is fail-closed BLOCKED until configured" "INVOICE_SERIES_FAIL_CLOSED_BLOCKED=PASS|code:invoice_series_unconfigured|status:blocked|SendInvoice:0|can_send_invoice:no|readiness_gap:series_earchive|hardcoded_series:none"
 expect_invoice_line "Queue worker preserves the blocked status" "INVOICE_NUMBERING_BLOCKED_STATUS_PRESERVED=PASS|status_after_queue_worker:blocked"
-expect_invoice_line "Mapper rejects an empty invoice number" "INVOICE_MAPPER_REJECTS_EMPTY_NUMBER=PASS|code:invoice_numbering_unconfirmed"
-expect_invoice_line "Legacy numbers without EDM provenance are rejected" "INVOICE_NUMBERING_REJECTS_LEGACY_NUMBER=PASS|code:invoice_numbering_unconfirmed|status:blocked|SendInvoice:0|seeded_number_without_provenance:yes"
-expect_invoice_line "A real send records the EDM number provenance" "INVOICE_SEND_RECORDS_EDM_PROVENANCE=PASS|SendInvoice:1|status:sent|number:KUK2026000000042|number_source:edm|error:none"
+expect_invoice_line "Mapper rejects an empty invoice number" "INVOICE_MAPPER_REJECTS_EMPTY_NUMBER=PASS|code:invoice_number_not_assigned"
+expect_invoice_line "Legacy numbers are never offered to EDM" "INVOICE_NUMBERING_REJECTS_LEGACY_NUMBER=PASS|measured:production_send|SendInvoice:1|soap_invoice_id:absent|legacy_value_in_ubl:no|ubl_cbc_id_sentinel:yes|number_after:EDM2026000000123|number_source:edm|error:none"
+expect_invoice_line "A real send records the EDM number provenance" "INVOICE_SEND_RECORDS_EDM_PROVENANCE=PASS|SendInvoice:1|status:sent|number:EDM2026000000042|number_source:edm|error:none"
+
+# EDM assigns the number: the submitted UBL cbc:ID carries the sentinel
+# ABC2009123456789, SendInvoiceRequest/INVOICE/@ID is not sent at all, the number
+# recorded afterwards is the one the response returned, and a positive status
+# with no number does not complete the invoice.
+expect_invoice_line "completion needs an EDM-assigned number" "INVOICE_COMPLETION_REQUIRES_ASSIGNED_NUMBER=PASS|measured:production_send|cases:4|assigned_number=completed/EDM2026000000777 no_number=pending_approval/no_number sentinel_echoed=pending_approval/no_number empty_number=pending_approval/no_number|SendInvoice=4|sentinel:ABC2009123456789"
+expect_invoice_line "the numbering sentinel is never persisted" "INVOICE_SENTINEL_NEVER_PERSISTED=PASS|measured:production_send_and_store|ubl_cbc_id:sentinel|soap_invoice_id:absent|order_number:none|number_source:none|after_direct_store_call:none|order_meta_hits:none|status:pending_approval"
+
+# EDM delivers the e-Arşiv document itself, from HEADER/TO -- the same address the
+# UBL carries. No EmailInvoice call exists on any path, and the e-Fatura alias
+# behaviour is untouched.
+expect_invoice_line "EDM delivers the e-Archive document itself" "INVOICE_EARCHIVE_DELIVERY_BY_EDM=PASS|measured:production_client|cases:2|earchive=TO:alici@example.com/alias:omitted einvoice=TO:urn:mail:defaultgb@acme.com/alias:urn:mail:defaultgb@acme.com|EmailInvoice=0|email_invoice_call_sites:none"
+
+# A document EDM refused is never resent and never has its UUID or number reused.
+# The replacement is an operator decision, it archives what it replaces, and a
+# double click or a concurrent request produces one document, not two.
+expect_invoice_line "a refused document is recreated, never resent" "INVOICE_FAILED_DOCUMENT_OPERATOR_RECREATE=PASS|measured:production_recovery_and_send|eligible:yes|forced_resend_SendInvoice:0|first:approved|second:already_approved|concurrent:lock_contended|archive_entries:1/1/1|reserved_uuid_new:yes|final_uuid_is_reserved:yes|old_number:EDM2026000000111|new_number:EDM2026000000999|audit_names_old_document:yes|ineligible:not_eligible|SendInvoice=1|send_error:none"
 
 # Audit item 5: fiscal fallbacks removed, fail-closed instead.
 expect_invoice_match "Fiscal fallbacks removed from production path" "^INVOICE_FISCAL_FALLBACKS_REMOVED=PASS\|module_files_scanned:[0-9]{2,}\|fallback_hits:none\|generic_vkn_occurrences:class-invoice-order-mapper\.php\(1\)$"
@@ -849,7 +874,7 @@ expect_sandbox_line "settle transitions are guarded" "SANDBOX_CLAIM_SETTLE_GUARD
 expect_sandbox_line "state write failure is never reported as recorded" "SANDBOX_CLAIM_STATE_WRITE_FAILURE_REPORTED=PASS|lock:yes|written:no|reason:state_persist_failed"
 expect_sandbox_line "sandbox harness leaves no temporary files" "SANDBOX_HARNESS_TEMP_CLEANED=PASS|temp_root_removed:yes"
 expect_sandbox_match "plugin gained no document-creating capability" "^SANDBOX_PLUGIN_HAS_NO_WRITE_CAPABILITY=PASS\\|module_files:[0-9]{2,}\\|hits:none$"
-expect_sandbox_line "production numbering guard untouched" "SANDBOX_NUMBERING_GUARD_UNTOUCHED=PASS|invoice_numbering_unconfirmed:present|provenance_required:present"
+expect_sandbox_line "production numbering guard untouched" "SANDBOX_NUMBERING_GUARD_UNTOUCHED=PASS|guards:4|missing:none"
 
 # Corrupt claim records, call classification and the driver write path.
 expect_sandbox_match "corrupt claim records are fail-closed" "^SANDBOX_STATE_CORRUPTION_FAIL_CLOSED=PASS\\|cases:11\\|missing_file=idle "
@@ -870,7 +895,7 @@ expect_sandbox_line "the endpoint is proved before Login" "SANDBOX_ENDPOINT_CHEC
 expect_sandbox_line "sandbox fixture identities need the proved endpoint, not the label" "SANDBOX_DEFAULTS_TEST_ENDPOINT_ONLY=PASS|test_label_and_verified_url:resolved|live_both:refused|test_label_live_url:refused|live_label_test_url:refused|live_with_override:refused|values_leaked:none|reason:sandbox_values_refused_without_verified_test_endpoint"
 expect_sandbox_line "sandbox overrides are format and safety checked" "SANDBOX_OVERRIDE_VALIDATION=PASS|cases:10|wrong:none"
 expect_sandbox_line "the PROFILEID written-confirmation gate is gone" "SANDBOX_PROFILE_CONFIRMATION_GATE_REMOVED=PASS|function_exists:no|credential_key:absent|sources_scanned:4|hits:none|sandbox_keys:2"
-expect_sandbox_match "sandbox defaults never reach production" "^SANDBOX_DEFAULTS_NOT_IN_PRODUCTION=PASS\\|module_files:[0-9]{2,}\\|sandbox_references:none\\|generic_receiver_still_policy_gated:yes$"
+expect_sandbox_match "sandbox defaults never reach production" "^SANDBOX_DEFAULTS_NOT_IN_PRODUCTION=PASS\\|module_files:[0-9]{2,}\\|sandbox_references:none\\|generic_tckn_declared_once:yes\\|extra_literal_copies:none$"
 expect_sandbox_line "serial selection is optional but never sloppy" "SANDBOX_SERIES_OPTIONAL=PASS|not_configured:omitted|not_configured_dark:omitted|registered:sent|unregistered:blocked|query_failed:blocked|bad_format_long:blocked|bad_format_lower:blocked|bad_format_symbol:blocked"
 expect_sandbox_line "LoadInvoice request shape is fixed" "SANDBOX_LOAD_REQUEST_SHAPE=PASS|no_series:generate_on_load=true,invoiceserial=absent,invoice_id=absent|with_series:generate_on_load=true,invoiceserial=present,invoice_id=absent"
 

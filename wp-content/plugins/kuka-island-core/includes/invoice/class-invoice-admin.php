@@ -21,6 +21,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 		add_action( 'add_meta_boxes', array( $this, 'add_meta_box' ), 20, 2 );
 		add_action( 'admin_post_kuka_invoice_requery', array( $this, 'handle_requery_action' ) );
 		add_action( 'admin_post_kuka_invoice_manual_send', array( $this, 'handle_manual_send_action' ) );
+		add_action( 'admin_post_kuka_invoice_recreate', array( $this, 'handle_recreate_action' ) );
 	}
 
 	public function add_meta_box( string $post_type_or_screen, $post_or_order = null ): void {
@@ -157,7 +158,46 @@ final class Kuka_Island_Core_Invoice_Admin {
 						</button>
 					</form>
 				<?php endif; ?>
+
+				<?php
+				/*
+				 * A document EDM refused can be replaced, but only by a person
+				 * asking for it. Nothing about this is automatic: the failed
+				 * document stays on the record and the replacement gets a new
+				 * UUID and a new EDM-assigned number.
+				 */
+				if ( $config->can_send_invoice() && Kuka_Island_Core_Invoice_Recovery::is_eligible( $order ) ) :
+					?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline;">
+						<?php wp_nonce_field( 'kuka_invoice_recreate_' . $order_id, '_kuka_inv_nonce' ); ?>
+						<input type="hidden" name="action" value="kuka_invoice_recreate">
+						<input type="hidden" name="order_id" value="<?php echo esc_attr( (string) $order_id ); ?>">
+						<button type="submit" class="button" style="font-size: 11px; padding: 0 8px; height: 26px; line-height: 24px;" onclick="return confirm('<?php esc_attr_e( 'EDM tarafından reddedilen belge yerine YENİ bir fatura belgesi oluşturulacak. Eski belge kayıtları silinmez. Onaylıyor musunuz?', 'kuka-island-core' ); ?>');">
+							<?php esc_html_e( 'Yeni Belge Olarak Yeniden Oluştur', 'kuka-island-core' ); ?>
+						</button>
+					</form>
+				<?php endif; ?>
 			</div>
+
+			<?php
+			$superseded_documents = Kuka_Island_Core_Invoice_Recovery::superseded_documents( $order );
+			if ( ! empty( $superseded_documents ) ) :
+				?>
+				<div style="margin-top: 10px; border-top: 1px solid #e5e7eb; padding-top: 8px; font-size: 11px; color: #4b5563;">
+					<strong><?php esc_html_e( 'Yerine Yeni Belge Oluşturulan Kayıtlar:', 'kuka-island-core' ); ?></strong>
+					<ul style="margin: 4px 0 0 14px;">
+						<?php foreach ( $superseded_documents as $superseded ) : ?>
+							<li>
+								<code><?php echo esc_html( (string) ( $superseded['invoice_number'] ?? '-' ) ); ?></code>
+								/ <code><?php echo esc_html( (string) ( $superseded['uuid'] ?? '-' ) ); ?></code>
+								<?php if ( ! empty( $superseded['edm_status'] ) ) : ?>
+									&mdash; <?php echo esc_html( (string) $superseded['edm_status'] ); ?>
+								<?php endif; ?>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -205,6 +245,41 @@ final class Kuka_Island_Core_Invoice_Admin {
 				} catch ( Exception $e ) {
 					// Handled by manager and store.
 				}
+			}
+		}
+
+		wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=wc-orders' ) );
+		exit;
+	}
+
+	/**
+	 * Operator-approved recreation of a document EDM refused.
+	 *
+	 * This transmits nothing. It records the refused document in the audit
+	 * archive, mints one new UUID for the replacement and leaves the ordinary
+	 * send path to run once more, with all of its usual gates.
+	 *
+	 * Kuka_Island_Core_Invoice_Recovery::approve() is idempotent and holds a
+	 * per-order advisory lock, so a double-clicked button produces one
+	 * replacement, not two.
+	 */
+	public function handle_recreate_action(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$order_id = absint( $_POST['order_id'] ?? 0 );
+		check_admin_referer( 'kuka_invoice_recreate_' . $order_id, '_kuka_inv_nonce' );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-core' ) );
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( $order instanceof WC_Order ) {
+			try {
+				Kuka_Island_Core_Invoice_Recovery::approve( $order );
+			} catch ( Throwable $recreate_error ) {
+				// Recorded on the order by the recovery flow itself; the
+				// exception text is not surfaced or stored.
+				unset( $recreate_error );
 			}
 		}
 
