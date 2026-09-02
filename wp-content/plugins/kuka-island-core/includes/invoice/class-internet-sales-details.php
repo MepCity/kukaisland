@@ -99,6 +99,8 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 	public const ERROR_CARRIER_VKN_INVALID = 'internet_sales_carrier_vkn_invalid';
 	/** The order shipped with more than one carrier. */
 	public const ERROR_CARRIER_MULTIPLE_PROVIDERS = 'internet_sales_carrier_multiple_providers';
+	/** A fulfilled shipment carries a date this code cannot read. */
+	public const ERROR_SHIPMENT_DATE_INVALID = 'internet_sales_shipment_date_invalid';
 	public const ERROR_WEB_ADDRESS_MISSING = 'internet_sales_web_address_missing';
 	public const ERROR_SHIPMENT_PARTIAL = 'internet_sales_shipment_partial';
 	public const ERROR_SHIPMENT_PENDING = 'internet_sales_shipment_pending';
@@ -344,6 +346,93 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 	}
 
 	/**
+	 * Parse a WooCommerce fulfillment timestamp, strictly, as UTC.
+	 *
+	 * Measured against WooCommerce 11.0.1 rather than assumed.
+	 * Fulfillment::set_date_fulfilled() runs its input through
+	 * normalize_date_to_utc(), which reads a zone-less string in wp_timezone()
+	 * and STORES the UTC equivalent; get_date_fulfilled() is documented as
+	 * returning "a UTC 'Y-m-d H:i:s' string", and the data store's own comment
+	 * says "DB values are already stored in UTC". Round-tripped here on this
+	 * install (PHP UTC, WordPress Europe/Istanbul):
+	 *
+	 *   set_date_fulfilled( '2026-09-02 23:30:00' )  ->  '2026-09-02 20:30:00'
+	 *   set_date_fulfilled( '2026-09-02 00:30:00' )  ->  '2026-09-01 21:30:00'
+	 *
+	 * So the raw value is UTC, and the day that belongs on the document is that
+	 * moment expressed in the SHOP's timezone.
+	 *
+	 * The old strtotime() reached the same answer here only because WordPress
+	 * happens to leave PHP's default timezone at UTC: the input zone was
+	 * inherited rather than stated. Any code calling date_default_timezone_set()
+	 * would have silently moved every handover date on a fiscal document, and
+	 * strtotime() would additionally accept loose input and answer with a
+	 * plausible wrong date. Both are stated explicitly now.
+	 *
+	 * Strict on purpose. A value that is not exactly the expected format, that
+	 * carries trailing data, or that names a day that does not exist is refused
+	 * rather than coerced.
+	 *
+	 * @param string $raw Raw date_fulfilled value, in UTC.
+	 * @return DateTimeImmutable|null Null when the value cannot be trusted.
+	 */
+	public static function parse_fulfillment_datetime( string $raw ): ?DateTimeImmutable {
+		$raw = trim( $raw );
+		if ( '' === $raw ) {
+			return null;
+		}
+
+		/*
+		 * The input zone is stated, never inherited from PHP's default. The
+		 * leading '!' resets every field the format does not name, so no part of
+		 * the current time can leak into the result.
+		 */
+		$parsed = DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $raw, new DateTimeZone( 'UTC' ) );
+		if ( ! $parsed instanceof DateTimeImmutable ) {
+			return null;
+		}
+
+		/*
+		 * PHP 8.2 changed getLastErrors() to return false rather than an array
+		 * of zero counts when nothing went wrong, so the array shape cannot be
+		 * assumed.
+		 */
+		$errors = DateTimeImmutable::getLastErrors();
+		if ( is_array( $errors )
+			&& ( ( (int) ( $errors['warning_count'] ?? 0 ) ) > 0 || ( (int) ( $errors['error_count'] ?? 0 ) ) > 0 ) ) {
+			return null;
+		}
+
+		// Round-trip: catches trailing data and a rolled-over impossible date
+		// such as 2026-02-30 even where the parser raises nothing. Compared
+		// before the zone shift, while the value is still the stored one.
+		if ( $parsed->format( 'Y-m-d H:i:s' ) !== $raw ) {
+			return null;
+		}
+
+		// The same instant, expressed where the shop lives.
+		return $parsed->setTimezone( wp_timezone() );
+	}
+
+	/**
+	 * The shop-local calendar day of a fulfillment timestamp.
+	 *
+	 * gonderimTarihi is xs:date, and the day is the day it was in the shop --
+	 * so a handover at 23:30 Istanbul is reported on that day even though the
+	 * value WooCommerce stored for it reads 20:30 the same date in UTC. Uses the
+	 * same parser as the comparison that picks the latest shipment, so the two
+	 * can never disagree.
+	 *
+	 * @param string $raw Raw date_fulfilled value, in UTC.
+	 * @return string 'Y-m-d', or '' when the value cannot be trusted.
+	 */
+	public static function fulfillment_calendar_day( string $raw ): string {
+		$parsed = self::parse_fulfillment_datetime( $raw );
+
+		return $parsed instanceof DateTimeImmutable ? $parsed->format( 'Y-m-d' ) : '';
+	}
+
+	/**
 	 * May a whole-order invoice be issued for this shipment state?
 	 *
 	 * A physical order is invoiced when it has ALL left, not when its payment
@@ -398,6 +487,7 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			return array(
 				'shipment_state'    => self::SHIPMENT_NONE,
 				'shipment_date'     => '',
+				'shipment_date_invalid' => false,
 				'provider_keys'     => array(),
 				'provider_label'    => '',
 				'fulfillment_count' => 0,
@@ -412,6 +502,7 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			return array(
 				'shipment_state'    => self::SHIPMENT_PENDING,
 				'shipment_date'     => '',
+				'shipment_date_invalid' => false,
 				'provider_keys'     => array(),
 				'provider_label'    => '',
 				'fulfillment_count' => 0,
@@ -431,9 +522,11 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 		}
 
 		$shipment_date   = '';
+		$shipment_moment = null;
 		$provider_label  = '';
 		$provider_keys   = array();
 		$fulfilled_count = 0;
+		$invalid_dates   = 0;
 
 		foreach ( $fulfillments as $fulfillment ) {
 			if ( ! is_object( $fulfillment ) || ! method_exists( $fulfillment, 'get_is_fulfilled' ) ) {
@@ -453,9 +546,24 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			}
 
 			$date = (string) ( $fulfillment->get_date_fulfilled() ?? '' );
-			if ( '' !== $date && ( '' === $shipment_date || strtotime( $date ) > strtotime( $shipment_date ) ) ) {
-				$shipment_date  = $date;
-				$provider_label = (string) call_user_func( array( $utils, 'resolve_provider_name' ), $fulfillment );
+			if ( '' === $date ) {
+				continue;
+			}
+
+			$moment = self::parse_fulfillment_datetime( $date );
+			if ( ! $moment instanceof DateTimeImmutable ) {
+				// A fulfilled shipment whose handover time cannot be read. Not
+				// skipped quietly: the caller fails the whole block closed.
+				++$invalid_dates;
+				continue;
+			}
+
+			// Compared as moments, not as strings, so two shipments either side
+			// of midnight order correctly.
+			if ( null === $shipment_moment || $moment > $shipment_moment ) {
+				$shipment_moment = $moment;
+				$shipment_date   = $date;
+				$provider_label  = (string) call_user_func( array( $utils, 'resolve_provider_name' ), $fulfillment );
 			}
 		}
 
@@ -464,6 +572,9 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 		return array(
 			'shipment_state'    => in_array( $state, array( self::SHIPMENT_COMPLETE, self::SHIPMENT_PARTIAL, self::SHIPMENT_PENDING ), true ) ? $state : self::SHIPMENT_PENDING,
 			'shipment_date'     => $shipment_date,
+			// True when a fulfilled shipment carried a date this code refuses to
+			// interpret. The caller must not invoice past it.
+			'shipment_date_invalid' => $invalid_dates > 0,
 			'provider_keys'     => $provider_keys,
 			// Display only. Never a fiscal identity.
 			'provider_label'    => $provider_label,
@@ -559,7 +670,18 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 		if ( '' === $vkn ) {
 			return $refused( self::ERROR_CARRIER_VKN_MISSING, $provider_key );
 		}
-		if ( 1 !== preg_match( '/^\d{10,11}$/', $vkn ) ) {
+		/*
+		 * Exactly ten digits. The serialisation always writes
+		 * gonderiTasiyan/tuzelKisi/vkn -- a legal person's tax number -- and an
+		 * eleven-digit value is a TCKN, which belongs to a natural person and
+		 * to the gercekKisi branch instead. Accepting eleven here would put a
+		 * citizen's identity number in a company's VKN field.
+		 *
+		 * Natural-person carriers are deliberately out of scope: supporting
+		 * them means an explicit identity type and the gercekKisi { tckn,
+		 * adiSoyadi } branch, not a wider pattern here.
+		 */
+		if ( 1 !== preg_match( '/^\d{10}$/', $vkn ) ) {
 			return $refused( self::ERROR_CARRIER_VKN_INVALID, $provider_key );
 		}
 		if ( '' === $title ) {

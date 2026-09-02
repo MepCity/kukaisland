@@ -1486,7 +1486,21 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 	// WSDL's INTERNETSALESDETAILS sequence has none.
 	$isd_nodes      = $send_xp->query( '//*[local-name()="INTERNETSALESDETAILS"]' );
 	$isd_node_count = false === $isd_nodes ? 0 : $isd_nodes->length;
+
+	/*
+	 * The carrier identity branch, counted on XML the real EDM WSDL produced.
+	 * gonderiTasiyan carries either tuzelKisi (a legal person, vkn + unvan) or
+	 * gercekKisi (a natural person, tckn + adiSoyadi). This integration models
+	 * only the legal person, so exactly one tuzelKisi and no gercekKisi.
+	 */
+	$isd_tuzel_query  = $send_xp->query( '//*[local-name()="gonderiTasiyan"]/*[local-name()="tuzelKisi"]' );
+	$isd_gercek_query = $send_xp->query( '//*[local-name()="gercekKisi"]' );
+	$isd_tuzel_nodes  = false === $isd_tuzel_query ? -1 : $isd_tuzel_query->length;
+	$isd_gercek_nodes = false === $isd_gercek_query ? -1 : $isd_gercek_query->length;
 	$isd_specified  = array();
+	// Kept for the ten-digit VKN contract test further down: these are the
+	// values the real WSDL serialiser actually placed in the request.
+	$GLOBALS['kuka_isd_xml_facts'] = array();
 	$all_send_nodes = $send_xp->query( '//*' );
 	if ( false !== $all_send_nodes ) {
 		foreach ( $all_send_nodes as $send_node ) {
@@ -1496,18 +1510,31 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 		}
 	}
 
+	$isd_vkn_query   = $send_xp->query( '//*[local-name()="tuzelKisi"]/*[local-name()="vkn"]' );
+	$isd_unvan_query = $send_xp->query( '//*[local-name()="tuzelKisi"]/*[local-name()="unvan"]' );
+	$GLOBALS['kuka_isd_xml_facts'] = array(
+		'vkn'          => ( false !== $isd_vkn_query && $isd_vkn_query->length > 0 ) ? trim( (string) $isd_vkn_query->item( 0 )->nodeValue ) : '',
+		'unvan'        => ( false !== $isd_unvan_query && $isd_unvan_query->length > 0 ) ? trim( (string) $isd_unvan_query->item( 0 )->nodeValue ) : '',
+		'tuzel_nodes'  => $isd_tuzel_nodes,
+		'gercek_nodes' => $isd_gercek_nodes,
+	);
+
 	$report(
 		'INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE',
 		$send_xpath['passed']
 		&& $single_base64_ok
 		&& '' === $send_error
 		&& 1 === $isd_node_count
+		&& 1 === $isd_tuzel_nodes
+		&& 0 === $isd_gercek_nodes
 		&& array() === $isd_specified,
 		sprintf(
-			'assertions:%d|single_base64_sha256_match:%s|internetsalesdetails_nodes:%d|specified_elements:%s|error:%s|failed:%s',
+			'assertions:%d|single_base64_sha256_match:%s|internetsalesdetails_nodes:%d|tuzelKisi_nodes:%d|gercekKisi_nodes:%d|specified_elements:%s|error:%s|failed:%s',
 			$send_xpath['count'] + 1,
 			$single_base64_ok ? 'yes' : 'no',
 			$isd_node_count,
+			$isd_tuzel_nodes,
+			$isd_gercek_nodes,
 			empty( $isd_specified ) ? 'none' : implode( ',', array_unique( $isd_specified ) ),
 			'' === $send_error ? 'none' : $send_error,
 			empty( $send_xpath['failed'] ) ? 'none' : implode( ' ; ', $send_xpath['failed'] )
@@ -7291,6 +7318,332 @@ if ( $runner_available
 			$dhl_label ?: 'none',
 			array() === $aras_by_label ? 'not_found' : 'FOUND',
 			$carrier_hint_unmapped
+		)
+	);
+
+
+	/* ---------------------------------------------------------------------- */
+	/* The handover date is the shop's calendar day, not PHP's                 */
+	/* ---------------------------------------------------------------------- */
+
+	/*
+	 * Measured, not assumed: Fulfillment::set_date_fulfilled() normalises its
+	 * input through normalize_date_to_utc() and get_date_fulfilled() returns a
+	 * UTC 'Y-m-d H:i:s' string. So the stored value is UTC and the day that
+	 * belongs on the document is that moment in the SHOP's timezone.
+	 *
+	 * The old strtotime() reached the right answer on this install only because
+	 * WordPress leaves PHP's default timezone at UTC -- the input zone was
+	 * inherited rather than stated, and strtotime() would also accept loose
+	 * input and answer with a plausible wrong date. Both are stated explicitly
+	 * now, and the whole point is measured through WooCommerce's own setter:
+	 * a LOCAL handover time in, the correct local calendar day out.
+	 */
+	$tz_roundtrip_cases = array(
+		// name => [ local handover time, expected stored UTC, expected day ]
+		'late_evening'        => array( '2026-09-02 23:30:00', '2026-09-02 20:30:00', '2026-09-02' ),
+		'just_after_midnight' => array( '2026-09-02 00:30:00', '2026-09-01 21:30:00', '2026-09-02' ),
+		'noon'                => array( '2026-09-02 12:00:00', '2026-09-02 09:00:00', '2026-09-02' ),
+		'last_second_of_day'  => array( '2026-09-02 23:59:59', '2026-09-02 20:59:59', '2026-09-02' ),
+		'first_second_of_day' => array( '2026-09-02 00:00:00', '2026-09-01 21:00:00', '2026-09-02' ),
+		// Istanbul is +03:00 all year, so a winter date behaves the same way.
+		'winter_date'         => array( '2026-01-15 23:30:00', '2026-01-15 20:30:00', '2026-01-15' ),
+	);
+
+	$tz_ok      = true;
+	$tz_details = array();
+	foreach ( $tz_roundtrip_cases as $case => $spec ) {
+		$probe = new $fulfil_class();
+		$probe->set_date_fulfilled( $spec[0] );
+		$stored = (string) ( $probe->get_date_fulfilled() ?? '' );
+		$day    = Kuka_Island_Core_Invoice_Manager::shipment_date_only( $stored );
+
+		if ( $stored !== $spec[1] || $day !== $spec[2] ) {
+			$tz_ok = false;
+		}
+		$tz_details[] = $case . '=' . $spec[0] . '->' . ( '' === $stored ? 'unstored' : $stored ) . '->' . ( '' === $day ? 'refused' : $day );
+	}
+
+	// Raw UTC boundary either side of local midnight.
+	$tz_boundary = array(
+		'utc_20_59_59' => array( '2026-09-02 20:59:59', '2026-09-02' ),
+		'utc_21_00_00' => array( '2026-09-02 21:00:00', '2026-09-03' ),
+	);
+	$tz_boundary_ok      = true;
+	$tz_boundary_details = array();
+	foreach ( $tz_boundary as $case => $spec ) {
+		$day = Kuka_Island_Core_Invoice_Manager::shipment_date_only( $spec[0] );
+		if ( $day !== $spec[1] ) {
+			$tz_boundary_ok = false;
+		}
+		$tz_boundary_details[] = $case . '=' . $day;
+	}
+
+	// Anything that is not exactly the stored format is refused, not coerced.
+	$tz_refusals = array( '', '2026-09-02', '2026-09-02T23:30:00', '2026-09-02 23:30:00 extra', '2026-02-30 10:00:00', '2026-13-01 10:00:00', 'not-a-date', '02-09-2026 23:30:00' );
+	$tz_refused  = 0;
+	foreach ( $tz_refusals as $bad ) {
+		if ( '' === Kuka_Island_Core_Invoice_Manager::shipment_date_only( $bad ) ) {
+			++$tz_refused;
+		}
+	}
+
+	// Two shipments either side of local midnight order as moments.
+	$before_midnight = Kuka_Island_Core_Internet_Sales_Details::parse_fulfillment_datetime( '2026-09-02 20:50:00' );
+	$after_midnight  = Kuka_Island_Core_Internet_Sales_Details::parse_fulfillment_datetime( '2026-09-02 21:10:00' );
+	$midnight_order  = ( $after_midnight instanceof DateTimeImmutable && $before_midnight instanceof DateTimeImmutable )
+		&& $after_midnight > $before_midnight
+		&& '2026-09-02' === $before_midnight->format( 'Y-m-d' )
+		&& '2026-09-03' === $after_midnight->format( 'Y-m-d' )
+		&& 1200 === ( $after_midnight->getTimestamp() - $before_midnight->getTimestamp() )
+		// The result is expressed where the shop lives.
+		&& '+03:00' === $before_midnight->format( 'P' );
+
+	// End to end: the day in the real request is this helper's answer for the
+	// date WooCommerce actually stored.
+	$tz_product = $make_shippable_product();
+	$tz_order   = $make_physical_order( $test_run_id, $billing_props, $tz_product, 1 );
+	$tz_id      = (int) $tz_order->get_id();
+	$tz_items   = $tz_order->get_items();
+	$tz_item    = reset( $tz_items );
+
+	$purge_fulfillments( $fulfil_store, $tz_id );
+	$fulfil_items( $fulfil_class, $tz_id, (int) $tz_item->get_id(), 1, 'dhl' );
+
+	$tz_stored_raw = '';
+	foreach ( (array) $fulfil_store->read_fulfillments( WC_Order::class, (string) $tz_id ) as $stored_fulfillment ) {
+		$tz_stored_raw = (string) ( $stored_fulfillment->get_date_fulfilled() ?? '' );
+	}
+
+	$tz_transport = new Kuka_Island_Test_Numbering_Transport();
+	$tz_transport->assigned_id = 'EDM2026000003000';
+	$tz_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $tz_transport ) );
+
+	$tz_send_error = '';
+	try {
+		$tz_manager->process_order( wc_get_order( $tz_id ) );
+	} catch ( Throwable $t ) {
+		$tz_send_error = get_class( $t ) . ': ' . $t->getMessage();
+	}
+
+	$tz_isd      = (array) ( $tz_transport->requests['SendInvoice']['INVOICE'][0]['HEADER']['INTERNETSALESDETAILS'] ?? array() );
+	$tz_soap_day = (string) ( $tz_isd['gonderiBilgileri']['gonderimTarihi'] ?? '' );
+	$tz_expected = Kuka_Island_Core_Invoice_Manager::shipment_date_only( $tz_stored_raw );
+	$tz_shop_day = (string) wp_date( 'Y-m-d' );
+	// The stored value really is UTC, so it differs from the shop clock.
+	$tz_stored_is_utc = $tz_stored_raw === gmdate( 'Y-m-d H:i:s', strtotime( $tz_stored_raw . ' UTC' ) )
+		&& substr( $tz_stored_raw, 11, 2 ) !== substr( (string) wp_date( 'H:i:s' ), 0, 2 );
+
+	$purge_fulfillments( $fulfil_store, $tz_id );
+	kuka_test_delete_order( $tz_id, $test_run_id );
+
+	/*
+	 * An unreadable stored date fails the whole block closed. Written straight
+	 * into the meta, because set_date_fulfilled() rejects a malformed value
+	 * outright -- this is the bad-import / hand-edited-row shape.
+	 */
+	$bad_date_product = $make_shippable_product();
+	$bad_date_order   = $make_physical_order( $test_run_id, $billing_props, $bad_date_product, 1 );
+	$bad_date_id      = (int) $bad_date_order->get_id();
+	$bad_date_items   = $bad_date_order->get_items();
+	$bad_date_item    = reset( $bad_date_items );
+
+	$purge_fulfillments( $fulfil_store, $bad_date_id );
+	$bad_fulfillment = $fulfil_items( $fulfil_class, $bad_date_id, (int) $bad_date_item->get_id(), 1, 'dhl' );
+	$bad_fulfillment->update_meta_data( '_date_fulfilled', 'not-a-date' );
+	$bad_fulfillment->save_meta_data();
+
+	$bad_date_raw = '';
+	foreach ( (array) $fulfil_store->read_fulfillments( WC_Order::class, (string) $bad_date_id ) as $stored_fulfillment ) {
+		$bad_date_raw = (string) ( $stored_fulfillment->get_date_fulfilled() ?? '' );
+	}
+
+	$bad_facts     = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $bad_date_id ) );
+	$bad_transport = new Kuka_Island_Test_Numbering_Transport();
+	$bad_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $bad_transport ) );
+
+	$bad_code = '';
+	try {
+		$bad_manager->process_order( wc_get_order( $bad_date_id ) );
+	} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+		$bad_code = $e->get_safe_error_code();
+	} catch ( Throwable $t ) {
+		$bad_code = get_class( $t );
+	}
+
+	$bad_reloaded = wc_get_order( $bad_date_id );
+	$bad_hint     = Kuka_Island_Core_Invoice_Admin::operator_hint( $bad_reloaded, $fulfil_config );
+
+	$report(
+		'INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE',
+		// The environment this is measured in really is the mismatched one.
+		'UTC' === date_default_timezone_get()
+		&& 'Europe/Istanbul' === wp_timezone()->getName()
+		// A local handover time round-trips to the correct local day.
+		&& $tz_ok
+		&& $tz_boundary_ok
+		&& count( $tz_refusals ) === $tz_refused
+		&& true === $midnight_order
+		// The real request carries the helper's answer for the stored value.
+		&& '' === $tz_send_error
+		&& '' !== $tz_stored_raw
+		&& '' !== $tz_soap_day
+		&& $tz_soap_day === $tz_expected
+		&& $tz_soap_day === $tz_shop_day
+		&& true === $tz_stored_is_utc
+		// An unreadable stored date is refused, not coerced to today.
+		&& 'not-a-date' === $bad_date_raw
+		&& true === ( $bad_facts['facts']['shipment_date_invalid'] ?? false )
+		&& Kuka_Island_Core_Invoice_Manager::ERROR_INTERNET_SALES_INCOMPLETE === $bad_code
+		&& 0 === (int) ( $bad_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $bad_transport->calls['LoadInvoice'] ?? 0 )
+		&& Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED === Kuka_Island_Core_Invoice_Order_Store::get_status( $bad_reloaded )
+		&& 'Kargoya verilme tarihi okunamadı; fatura oluşturulmadı.' === $bad_hint,
+		sprintf(
+			'measured:woocommerce_setter_roundtrip_and_real_send|php_tz:%s|wp_tz:%s|storage:utc|roundtrip_cases:%d|%s|boundary:%s|refused:%d/%d|midnight_ordering:%s|stored_raw:%s|soap_gonderimTarihi:%s|helper_day:%s|shop_today:%s|invalid_date:%s/SendInvoice=%d|status:%s|hint:%s',
+			date_default_timezone_get(),
+			wp_timezone()->getName(),
+			count( $tz_roundtrip_cases ),
+			implode( ' ', $tz_details ),
+			implode( ' ', $tz_boundary_details ),
+			$tz_refused,
+			count( $tz_refusals ),
+			$midnight_order ? 'correct' : 'WRONG',
+			$tz_stored_raw ?: 'none',
+			$tz_soap_day ?: 'none',
+			$tz_expected ?: 'none',
+			$tz_shop_day,
+			$bad_code ?: 'none',
+			$bad_transport->calls['SendInvoice'] ?? 0,
+			Kuka_Island_Core_Invoice_Order_Store::get_status( $bad_reloaded ),
+			$bad_hint
+		)
+	);
+
+	$purge_fulfillments( $fulfil_store, $bad_date_id );
+	kuka_test_delete_order( $bad_date_id, $test_run_id );
+
+	/* ---------------------------------------------------------------------- */
+	/* A legal-person carrier needs a ten-digit VKN, never a TCKN             */
+	/* ---------------------------------------------------------------------- */
+
+	/*
+	 * The serialisation always writes gonderiTasiyan/tuzelKisi/vkn, so what goes
+	 * there has to be a legal person's tax number: exactly ten digits. Eleven
+	 * digits is a TCKN, which identifies a natural person and belongs in the
+	 * gercekKisi branch -- deliberately not modelled this round.
+	 */
+	$vkn_cases = array(
+		'ten_digits'    => array( '1234567890', true ),
+		'eleven_digits' => array( '12345678901', false ),
+		'nine_digits'   => array( '123456789', false ),
+		'twelve_digits' => array( '123456789012', false ),
+		'with_letters'  => array( '12345678AB', false ),
+		'with_spaces'   => array( '123 456 789', false ),
+		'empty'         => array( '', false ),
+	);
+
+	$vkn_ok      = true;
+	$vkn_details = array();
+	foreach ( $vkn_cases as $case => $spec ) {
+		$case_conf = new Kuka_Island_Core_Invoice_Config(
+			array_merge(
+				$ready_overrides,
+				array(
+					'auto_send' => true,
+					'carriers'  => array( 'dhl' => array( 'vkn' => $spec[0], 'title' => $test_carrier_title ) ),
+				)
+			)
+		);
+		$resolved = Kuka_Island_Core_Internet_Sales_Details::resolve_carrier( $case_conf, array( 'dhl' ) );
+
+		$expected_error = '';
+		if ( false === $spec[1] ) {
+			$expected_error = '' === $spec[0]
+				? Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_VKN_MISSING
+				: Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_VKN_INVALID;
+		}
+
+		if ( $resolved['ok'] !== $spec[1] || $resolved['error'] !== $expected_error ) {
+			$vkn_ok = false;
+		}
+		$vkn_details[] = $case . '=' . ( $resolved['ok'] ? 'accepted' : ( $resolved['error'] ?: 'refused' ) );
+	}
+
+	// An eleven-digit value, on the real send path, transmits nothing.
+	$tckn_product = $make_shippable_product();
+	$tckn_order   = $make_physical_order( $test_run_id, $billing_props, $tckn_product, 1 );
+	$tckn_id      = (int) $tckn_order->get_id();
+	$tckn_items   = $tckn_order->get_items();
+	$tckn_item    = reset( $tckn_items );
+
+	$purge_fulfillments( $fulfil_store, $tckn_id );
+	$fulfil_items( $fulfil_class, $tckn_id, (int) $tckn_item->get_id(), 1, 'dhl' );
+
+	$tckn_config    = new Kuka_Island_Core_Invoice_Config(
+		array_merge(
+			$ready_overrides,
+			array(
+				'auto_send' => true,
+				// Eleven digits: a natural person's number in a legal person's slot.
+				'carriers'  => array( 'dhl' => array( 'vkn' => '12345678901', 'title' => $test_carrier_title ) ),
+			)
+		)
+	);
+	$tckn_transport = new Kuka_Island_Test_Numbering_Transport();
+	$tckn_manager   = new Kuka_Island_Core_Invoice_Manager( $tckn_config, new Kuka_Island_Core_EDM_Provider( $tckn_config, $tckn_transport ) );
+
+	$tckn_code = '';
+	try {
+		$tckn_manager->process_order( wc_get_order( $tckn_id ) );
+	} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+		$tckn_code = $e->get_safe_error_code();
+	} catch ( Throwable $t ) {
+		$tckn_code = get_class( $t );
+	}
+
+	$purge_fulfillments( $fulfil_store, $tckn_id );
+	kuka_test_delete_order( $tckn_id, $test_run_id );
+
+	/*
+	 * And the accepted ten-digit value lands in exactly the right node. Read off
+	 * the request the real-WSDL SoapClient serialised earlier in this run, so
+	 * the schema itself is what placed the elements.
+	 */
+	$isd_xml       = (array) ( $GLOBALS['kuka_isd_xml_facts'] ?? array() );
+	$xml_available = array() !== $isd_xml;
+	$xml_vkn       = (string) ( $isd_xml['vkn'] ?? '' );
+	$xml_unvan     = (string) ( $isd_xml['unvan'] ?? '' );
+	$xml_tuzel     = (int) ( $isd_xml['tuzel_nodes'] ?? -1 );
+	$xml_gercek    = (int) ( $isd_xml['gercek_nodes'] ?? -1 );
+
+	$report(
+		'INVOICE_LEGAL_CARRIER_REQUIRES_10_DIGIT_VKN',
+		$vkn_ok
+		// The eleven-digit case is specifically measured as refused, on the real
+		// send path, with nothing transmitted.
+		&& Kuka_Island_Core_Invoice_Manager::ERROR_INTERNET_SALES_INCOMPLETE === $tckn_code
+		&& 0 === (int) ( $tckn_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $tckn_transport->calls['LoadInvoice'] ?? 0 )
+		// The accepted value is in tuzelKisi/vkn, ten digits, with its unvan
+		// beside it, and the natural-person branch is not emitted at all.
+		&& true === $xml_available
+		&& 1 === preg_match( '/^\d{10}$/', $xml_vkn )
+		&& '9990001111' === $xml_vkn
+		&& 'TEST KARGO A.S. - GERCEK DEGIL' === $xml_unvan
+		&& 1 === $xml_tuzel
+		&& 0 === $xml_gercek,
+		sprintf(
+			'measured:production_resolver_real_send_and_real_wsdl|cases:%d|%s|eleven_digit_send:%s/SendInvoice=%d|xml_tuzel_vkn:%s|xml_vkn_digits:%d|xml_tuzel_unvan:%s|tuzelKisi_nodes:%d|gercekKisi_nodes:%d',
+			count( $vkn_cases ),
+			implode( ' ', $vkn_details ),
+			$tckn_code ?: 'none',
+			$tckn_transport->calls['SendInvoice'] ?? 0,
+			$xml_vkn ?: 'absent',
+			strlen( $xml_vkn ),
+			$xml_unvan ?: 'absent',
+			$xml_tuzel,
+			$xml_gercek
 		)
 	);
 

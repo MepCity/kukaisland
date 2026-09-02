@@ -108,6 +108,21 @@ final class Kuka_Island_Core_Invoice_Admin {
 					'' === $label ? __( 'Kargo firması', 'kuka-island-core' ) : $label
 				);
 			}
+
+			/*
+			 * The other thing that can stop a fully shipped order: a handover
+			 * time the code refuses to interpret. Reported here so the screen
+			 * names it instead of leaving the operator with a bare 'blocked'.
+			 */
+			$raw_shipment_date = trim( (string) ( $shipment['facts']['shipment_date'] ?? '' ) );
+			$date_unreadable   = true === ( $shipment['facts']['shipment_date_invalid'] ?? false )
+				|| ( '' !== $raw_shipment_date && '' === Kuka_Island_Core_Invoice_Manager::shipment_date_only( $raw_shipment_date ) );
+
+			if ( $date_unreadable ) {
+				return Kuka_Island_Core_Invoice_Manager::internet_sales_incomplete_message(
+					array( Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_DATE_INVALID )
+				);
+			}
 		}
 
 		return '';

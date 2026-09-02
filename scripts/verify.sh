@@ -753,6 +753,22 @@ expect_invoice_match "a display label is not a lookup key" "^INVOICE_CARRIER_IDE
 expect_invoice_match "the IssueDate is frozen at enqueue" "^INVOICE_ISSUE_DATE_FROZEN_AT_ENQUEUE=PASS\\|measured:production_send\\|order_created:2026-08-19\\|frozen_at_enqueue:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|ubl_issue_date:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|soap_issue_date:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|"
 expect_invoice_match "the IssueDate is not the order date and does not move" "^INVOICE_ISSUE_DATE_FROZEN_AT_ENQUEUE=PASS\\|.*\\|equals_order_created:no\\|reread:[0-9]{4}-[0-9]{2}-[0-9]{2}/frozen_now:no\\|gonderimTarihi:[0-9]{4}-[0-9]{2}-[0-9]{2}$"
 
+# The handover date is a fiscal statement, so its timezone is stated rather than
+# inherited. Measured through WooCommerce's OWN setter: date_fulfilled is
+# normalised to UTC on write and returned as UTC, so a handover at 23:30
+# Istanbul is stored as 20:30 the same date and must still be reported as that
+# day. strtotime() only happened to agree here because WordPress leaves PHP on
+# UTC; the parse now names UTC explicitly and refuses anything loose.
+expect_invoice_match "the handover date is the shop calendar day" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|measured:woocommerce_setter_roundtrip_and_real_send\\|php_tz:UTC\\|wp_tz:Europe/Istanbul\\|storage:utc\\|roundtrip_cases:6\\|late_evening=2026-09-02 23:30:00->2026-09-02 20:30:00->2026-09-02 just_after_midnight=2026-09-02 00:30:00->2026-09-01 21:30:00->2026-09-02 "
+expect_invoice_match "the local midnight boundary and loose input" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|.*\\|boundary:utc_20_59_59=2026-09-02 utc_21_00_00=2026-09-03\\|refused:8/8\\|midnight_ordering:correct\\|"
+expect_invoice_match "an unreadable handover date is fail-closed" "^INVOICE_FULFILLMENT_DATE_USES_SHOP_TIMEZONE=PASS\\|.*\\|invalid_date:internet_sales_details_incomplete/SendInvoice=0\\|status:blocked\\|hint:Kargoya verilme tarihi okunamadı; fatura oluşturulmadı\\.$"
+
+# gonderiTasiyan/tuzelKisi/vkn is a LEGAL person's tax number: exactly ten
+# digits. Eleven digits is a TCKN, which identifies a natural person and belongs
+# in the gercekKisi branch -- deliberately not modelled, so eleven is refused
+# rather than written into a company's VKN field.
+expect_invoice_line "a legal carrier needs a ten-digit VKN" "INVOICE_LEGAL_CARRIER_REQUIRES_10_DIGIT_VKN=PASS|measured:production_resolver_real_send_and_real_wsdl|cases:7|ten_digits=accepted eleven_digits=internet_sales_carrier_vkn_invalid nine_digits=internet_sales_carrier_vkn_invalid twelve_digits=internet_sales_carrier_vkn_invalid with_letters=internet_sales_carrier_vkn_invalid with_spaces=internet_sales_carrier_vkn_invalid empty=internet_sales_carrier_vkn_missing|eleven_digit_send:internet_sales_details_incomplete/SendInvoice=0|xml_tuzel_vkn:9990001111|xml_vkn_digits:10|xml_tuzel_unvan:TEST KARGO A.S. - GERCEK DEGIL|tuzelKisi_nodes:1|gercekKisi_nodes:0"
+
 expect_invoice_match "the fulfillment fixtures leave no products behind" "^INVOICE_FULFILLMENT_FIXTURES_CLEANED=PASS\\|product_residue:none\\|fixture_products_left:0\\|stale_purged_on_entry:[0-9]+$"
 
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
@@ -811,7 +827,7 @@ expect_invoice_line "GetInvoiceSerial DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_
 # 25 assertions now: the INTERNETSALESDETAILS block is serialised by a SoapClient
 # built from the real EDM WSDL, so a wrong element name, a field the schema does
 # not have, or a broken sequence would be dropped and these would fail.
-expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:25|single_base64_sha256_match:yes|internetsalesdetails_nodes:1|specified_elements:none|error:none|failed:none"
+expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:25|single_base64_sha256_match:yes|internetsalesdetails_nodes:1|tuzelKisi_nodes:1|gercekKisi_nodes:0|specified_elements:none|error:none|failed:none"
 expect_invoice_line "SendInvoice e-Invoice DOMXPath" "INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=PASS|assertions:7|failed:none"
 expect_invoice_line "GetInvoiceStatus DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_STATUS=PASS|assertions:9|parsed_status:completed|failed:none"
 expect_invoice_line "GetInvoice DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE=PASS|assertions:6|error:none|failed:none"

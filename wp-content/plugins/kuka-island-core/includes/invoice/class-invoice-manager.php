@@ -574,6 +574,21 @@ class Kuka_Island_Core_Invoice_Manager {
 		);
 
 		$errors = (array) $built['errors'];
+
+		/*
+		 * A fulfilled shipment whose handover time cannot be read must not turn
+		 * into a plausible wrong date, and must not silently become today or
+		 * the order date either. It is reported as its own refusal.
+		 */
+		$date_unreadable = true === ( $shipment_facts['shipment_date_invalid'] ?? false )
+			|| ( Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE === $shipment_state
+				&& '' !== trim( (string) ( $shipment_facts['shipment_date'] ?? '' ) )
+				&& '' === self::shipment_date_only( (string) $shipment_facts['shipment_date'] ) );
+
+		if ( $date_unreadable && ! in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_DATE_INVALID, $errors, true ) ) {
+			$errors[] = Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_DATE_INVALID;
+		}
+
 		if ( ! $carrier['ok'] && '' !== $carrier['error'] && ! in_array( $carrier['error'], $errors, true ) ) {
 			// The carrier's own refusal is more specific than build()'s "no VKN",
 			// so it is reported alongside rather than swallowed by it.
@@ -581,7 +596,7 @@ class Kuka_Island_Core_Invoice_Manager {
 		}
 
 		return array(
-			'ok'           => $carrier['ok'] && true === $built['ok'],
+			'ok'           => $carrier['ok'] && true === $built['ok'] && ! $date_unreadable,
 			'errors'       => array_values( array_unique( $errors ) ),
 			'details'      => (array) $built['details'],
 			'provider_key' => (string) $carrier['provider_key'],
@@ -603,22 +618,17 @@ class Kuka_Island_Core_Invoice_Manager {
 	}
 
 	/**
-	 * A WooCommerce fulfilled date reduced to the calendar day.
+	 * A WooCommerce fulfilled date reduced to its shop-local calendar day.
 	 *
-	 * gonderimTarihi is xs:date. Fulfillments store a datetime string; the day
-	 * is taken in the shop's timezone for the same reason the IssueDate is.
+	 * Delegates to the one strict parser, which is also what
+	 * Kuka_Island_Core_Internet_Sales_Details::read_shipment_facts() uses to
+	 * pick the latest shipment -- so the day reported and the shipment chosen
+	 * can never be derived differently.
 	 *
 	 * @param string $raw Raw fulfilled date.
 	 */
 	public static function shipment_date_only( string $raw ): string {
-		$raw = trim( $raw );
-		if ( '' === $raw ) {
-			return '';
-		}
-
-		$timestamp = strtotime( $raw );
-
-		return false === $timestamp ? '' : (string) wp_date( 'Y-m-d', $timestamp );
+		return Kuka_Island_Core_Internet_Sales_Details::fulfillment_calendar_day( $raw );
 	}
 
 	/**
@@ -656,6 +666,10 @@ class Kuka_Island_Core_Invoice_Manager {
 
 		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_MULTIPLE_PROVIDERS, $errors, true ) ) {
 			return __( 'Sipariş birden fazla kargo firmasıyla gönderilmiş; tek faturada tek taşıyıcı bildirilebildiği için manuel inceleme gerekiyor.', 'kuka-island-core' );
+		}
+
+		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_DATE_INVALID, $errors, true ) ) {
+			return __( 'Kargoya verilme tarihi okunamadı; fatura oluşturulmadı.', 'kuka-island-core' );
 		}
 
 		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_DATE_MISSING, $errors, true ) ) {
