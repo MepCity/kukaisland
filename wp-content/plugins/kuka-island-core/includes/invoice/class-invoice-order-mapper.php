@@ -218,8 +218,20 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 				__( 'Sipariş tarihi bulunamadığı için fatura oluşturulamaz.', 'kuka-island-core' )
 			);
 		}
-		$issue_date = $date_created->date( 'Y-m-d' );
-		$issue_time = $date_created->date( 'H:i:s' );
+		/*
+		 * The document's own date, frozen once, in the shop's timezone.
+		 *
+		 * It used to be the ORDER's creation date, which is a different fact: a
+		 * physical order is invoiced when the last shipment leaves, so dating
+		 * the invoice from when the customer placed the order -- or from when the
+		 * payment cleared -- would put a date on a fiscal document that is not
+		 * the day the document exists. The order's own date is still emitted, as
+		 * order_date, where it belongs.
+		 */
+		$frozen_issue = Kuka_Island_Core_Invoice_Order_Store::resolve_issue_date( $order );
+		$issue_date   = $frozen_issue['date'];
+		$issue_time   = $frozen_issue['time'];
+		$order_date   = $date_created->date( 'Y-m-d' );
 
 		return array(
 			'uuid'              => $uuid,
@@ -232,7 +244,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			'issue_time'        => $issue_time,
 			'currency'          => $currency,
 			'order_number'      => (string) $order->get_order_number(),
-			'order_date'        => $issue_date,
+			'order_date'        => $order_date,
 			'receiver_alias'    => $receiver_alias,
 			'notes'             => $notes,
 			'supplier'          => $supplier,

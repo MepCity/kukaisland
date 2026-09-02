@@ -45,6 +45,74 @@ final class Kuka_Island_Core_Invoice_Admin {
 	 *
 	 * @param WP_Post|WC_Order $post_or_order Order or post.
 	 */
+	/**
+	 * One short sentence telling whoever opens the order what is happening.
+	 *
+	 * Plain Turkish, no raw meta, no SOAP detail, no technical paragraph. Public
+	 * and static so the wording can be measured without rendering the panel.
+	 *
+	 * @param WC_Order                        $order  Order.
+	 * @param Kuka_Island_Core_Invoice_Config $config Invoice configuration.
+	 */
+	public static function operator_hint( WC_Order $order, Kuka_Island_Core_Invoice_Config $config ): string {
+		$status = Kuka_Island_Core_Invoice_Order_Store::get_status( $order );
+
+		if ( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $status ) {
+			return __( 'Fatura kuyruğa alındı.', 'kuka-island-core' );
+		}
+
+		if ( in_array(
+			$status,
+			array(
+				Kuka_Island_Core_Invoice_Status::STATUS_SENDING,
+				Kuka_Island_Core_Invoice_Status::STATUS_SENT,
+				Kuka_Island_Core_Invoice_Status::STATUS_PENDING_APPROVAL,
+				Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN,
+				Kuka_Island_Core_Invoice_Status::STATUS_RECONCILIATION_REQUIRED,
+			),
+			true
+		) ) {
+			return __( 'Fatura EDM durum sorgusunda.', 'kuka-island-core' );
+		}
+
+		if ( Kuka_Island_Core_Invoice_Status::is_terminal( $status ) ) {
+			return '';
+		}
+
+		$shipment = Kuka_Island_Core_Invoice_Manager::shipment_gate( $order );
+
+		if ( ! $shipment['ok'] ) {
+			return Kuka_Island_Core_Invoice_Manager::shipment_incomplete_message( (string) $shipment['state'] );
+		}
+
+		// Everything has shipped. The remaining thing that can stop the invoice
+		// is a carrier nobody has given a fiscal identity to.
+		if ( Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE === (string) $shipment['state'] ) {
+			$carrier = Kuka_Island_Core_Internet_Sales_Details::resolve_carrier(
+				$config,
+				(array) ( $shipment['facts']['provider_keys'] ?? array() )
+			);
+
+			if ( ! $carrier['ok'] ) {
+				if ( Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_MULTIPLE_PROVIDERS === $carrier['error'] ) {
+					return Kuka_Island_Core_Invoice_Manager::internet_sales_incomplete_message( array( $carrier['error'] ) );
+				}
+
+				// Display only, from WooCommerce's provider registry, so the
+				// sentence reads "DHL" and not "dhl".
+				$label = Kuka_Island_Core_Internet_Sales_Details::provider_display_label( (string) $carrier['provider_key'] );
+
+				return sprintf(
+					/* translators: %s: carrier display name */
+					__( '%s mali taşıyıcı bilgileri yapılandırılmamış.', 'kuka-island-core' ),
+					'' === $label ? __( 'Kargo firması', 'kuka-island-core' ) : $label
+				);
+			}
+		}
+
+		return '';
+	}
+
 	public function render_meta_box( $post_or_order ): void {
 		$order = $post_or_order instanceof WC_Order ? $post_or_order : wc_get_order( $post_or_order );
 		if ( ! $order instanceof WC_Order ) {
@@ -126,6 +194,15 @@ final class Kuka_Island_Core_Invoice_Admin {
 				</div>
 			<?php endif; ?>
 
+			<?php
+			$operator_hint = self::operator_hint( $order, $config );
+			if ( '' !== $operator_hint ) :
+				?>
+				<div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; color: #1e40af; font-size: 12px;">
+					<?php echo esc_html( $operator_hint ); ?>
+				</div>
+			<?php endif; ?>
+
 			<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
 				<?php if ( ! empty( $data['uuid'] ) ) : ?>
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline;">
@@ -147,8 +224,12 @@ final class Kuka_Island_Core_Invoice_Admin {
 				 * cannot happen -- the requery button above is the real action.
 				 */
 				$never_transmitted = array() === Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order );
+				// A physical order that has not all shipped cannot be invoiced,
+				// so the button is not offered. process_order() refuses it
+				// anyway; this keeps the screen from promising otherwise.
+				$shipment_ready = Kuka_Island_Core_Invoice_Manager::shipment_gate( $order )['ok'];
 				?>
-				<?php if ( $config->can_send_invoice() && $never_transmitted && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) : ?>
+				<?php if ( $config->can_send_invoice() && $never_transmitted && $shipment_ready && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) : ?>
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline;">
 						<?php wp_nonce_field( 'kuka_invoice_manual_send_' . $order_id, '_kuka_inv_nonce' ); ?>
 						<input type="hidden" name="action" value="kuka_invoice_manual_send">
@@ -239,7 +320,10 @@ final class Kuka_Island_Core_Invoice_Admin {
 			// The manager refuses a transmitted document anyway; this keeps the
 			// admin from even asking.
 			$never_transmitted = array() === Kuka_Island_Core_Invoice_Manager::transmission_evidence( $order );
-			if ( ! Kuka_Island_Core_Invoice_Status::is_terminal( $status ) && $never_transmitted && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) {
+			// The manager refuses an incompletely shipped order anyway; this
+			// keeps a direct endpoint call from even asking.
+			$shipment_ready = Kuka_Island_Core_Invoice_Manager::shipment_gate( $order )['ok'];
+			if ( ! Kuka_Island_Core_Invoice_Status::is_terminal( $status ) && $never_transmitted && $shipment_ready && Kuka_Island_Core_Invoice_Status::can_retry( $status ) ) {
 				try {
 					$this->manager->process_order( $order, true );
 				} catch ( Exception $e ) {

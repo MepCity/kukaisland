@@ -352,6 +352,29 @@ final class Kuka_Island_Core_EDM_Client {
 					$header['TO'] = $receiver_alias;
 				}
 
+				/*
+				 * WSDL: INVOICE/HEADER/INTERNETSALESDETAILS is an optional inline
+				 * complexType whose sequence is
+				 *   webAdresi (xs:string), odemeSekli (xs:string),
+				 *   odemeAracisiAdi (xs:string), odemeTarihi (xs:date),
+				 *   gonderiBilgileri {
+				 *     gonderimTarihi (xs:date, minOccurs=1),
+				 *     gonderiTasiyan { tuzelKisi { vkn, unvan } | gercekKisi { tckn, adiSoyadi } }
+				 *   }
+				 * There is no *Specified companion element anywhere in it, so
+				 * none is sent. The block is placed before
+				 * INVOICESERIAL_REQUESTED, which is the next element in the
+				 * HEADER sequence.
+				 *
+				 * Omitted entirely when the producer refused: an incomplete
+				 * internet-sales block is not sent half-filled, and the manager
+				 * stops before reaching here in that case.
+				 */
+				$internet_sales_details = (array) ( $payload['internet_sales_details'] ?? array() );
+				if ( array() !== $internet_sales_details ) {
+					$header['INTERNETSALESDETAILS'] = $internet_sales_details;
+				}
+
 				// WSDL: INVOICE/HEADER/INVOICESERIAL_REQUESTED (xs:token) binds the
 				// document to a serial registered at EDM through CreateSerial /
 				// GetInvoiceSerial.

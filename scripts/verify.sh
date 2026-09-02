@@ -725,6 +725,36 @@ expect_invoice_line "a queued order actually reaches SendInvoice" "INVOICE_AUTO_
 # consults, and may_start_transmission() is a separate question.
 expect_invoice_line "a queued order offers no re-send button" "INVOICE_QUEUED_STATUS_DOES_NOT_ENABLE_ADMIN_RESEND=PASS|measured:production_predicates_and_real_enqueue|can_retry(queued)=false|admin_offers_send=no|is_in_progress(queued)=true|may_start_transmission(queued)=true|duplicate_enqueue_actions=0"
 
+# A PHYSICAL order is invoiced when the goods leave, not when the money does.
+# Measured through WooCommerce's real Fulfillments datastore -- saving a
+# Fulfillment fires woocommerce_fulfillment_after_create (which updates the
+# order's aggregate status) and then woocommerce_fulfillment_after_fulfill, the
+# hook production listens on -- and through the real Action Scheduler runner.
+expect_invoice_match "shipment state gates the invoice" "^INVOICE_FULFILLMENT_GATES_THE_INVOICE=PASS\\|measured:real_fulfillments_datastore_and_action_scheduler\\|unshipped:unfulfilled/actions0\\|partial:partially_fulfilled/actions0\\|complete:fulfilled/actions1\\|status:queued\\|after_duplicate_event:1\\|worker_runs:1\\|SendInvoice=1\\|LoadInvoice=0\\|"
+expect_invoice_match "the sent block carries the shipment and carrier" "^INVOICE_FULFILLMENT_GATES_THE_INVOICE=PASS\\|.*\\|odemeSekli:ODEMEARACISI\\|carrier_vkn:9990001111\\|gonderimTarihi:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|"
+expect_invoice_match "the panel says what it is waiting for" "^INVOICE_FULFILLMENT_GATES_THE_INVOICE=PASS\\|.*\\|hint_unshipped:Fatura için siparişin tamamen kargoya verilmesi bekleniyor\\.\\|hint_partial:Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz\\.$"
+
+# A fulfillment taken back after the order was queued must stop the worker
+# before SendInvoice, and say so.
+expect_invoice_line "a reverted fulfillment stops the worker" "INVOICE_REVERTED_FULFILLMENT_STOPS_THE_WORKER=PASS|measured:real_fulfillments_datastore_and_action_scheduler|queued_actions:1|state_after_revert:unfulfilled|worker_runs:1|SendInvoice=0|status:blocked|error_code:shipment_not_complete|send_actions_pending:0"
+
+# The carrier's fiscal identity is looked up by WooCommerce's own provider key
+# from Fulfillment::get_shipment_provider(), never by the display label, and it
+# comes only from reviewed configuration. The test map is synthetic and is not a
+# claim about DHL: the courier's real VKN and legal title are facts nobody here
+# has.
+expect_invoice_match "the carrier is identified by provider key" "^INVOICE_CARRIER_IDENTITY_FROM_PROVIDER_KEY=PASS\\|measured:real_fulfillments_datastore_and_production_send\\|cases:6\\|dhl_configured=ok/send1 dhl_two_parcels=ok/send1 "
+expect_invoice_match "an unmapped or split carrier is fail-closed" "^INVOICE_CARRIER_IDENTITY_FROM_PROVIDER_KEY=PASS\\|.*unmapped_carrier=internet_sales_carrier_unmapped/send0 free_text_other=internet_sales_carrier_unmapped/send0 two_carriers=internet_sales_carrier_multiple_providers/send0 nothing_mapped=internet_sales_carrier_unmapped/send0\\|SendInvoice=2\\|"
+expect_invoice_match "a display label is not a lookup key" "^INVOICE_CARRIER_IDENTITY_FROM_PROVIDER_KEY=PASS\\|.*\\|provider_key:dhl\\|configured_keys:dhl\\|display_label:DHL\\|label_as_lookup_key:not_found\\|hint:DHL mali taşıyıcı bilgileri yapılandırılmamış\\.$"
+
+# The invoice date is the day the INVOICE is created -- the day the last shipment
+# left -- frozen once at enqueue so a worker retry submits the same date. The
+# order's own date is a different fact and is not reused.
+expect_invoice_match "the IssueDate is frozen at enqueue" "^INVOICE_ISSUE_DATE_FROZEN_AT_ENQUEUE=PASS\\|measured:production_send\\|order_created:2026-08-19\\|frozen_at_enqueue:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|ubl_issue_date:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|soap_issue_date:[0-9]{4}-[0-9]{2}-[0-9]{2}\\|"
+expect_invoice_match "the IssueDate is not the order date and does not move" "^INVOICE_ISSUE_DATE_FROZEN_AT_ENQUEUE=PASS\\|.*\\|equals_order_created:no\\|reread:[0-9]{4}-[0-9]{2}-[0-9]{2}/frozen_now:no\\|gonderimTarihi:[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+
+expect_invoice_match "the fulfillment fixtures leave no products behind" "^INVOICE_FULFILLMENT_FIXTURES_CLEANED=PASS\\|product_residue:none\\|fixture_products_left:0\\|stale_purged_on_entry:[0-9]+$"
+
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 
 # odemeSekli is a fiscal enumeration. Only ODEMEARACISI is confirmed, iyzico is
@@ -736,7 +766,10 @@ expect_invoice_match "unmapped gateways are refused by name" "^INVOICE_INTERNET_
 expect_invoice_match "ODEMEARACISI without a name is refused" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|.*intermediary_blank=internet_sales_payment_agent_missing "
 expect_invoice_match "a nonempty payment title never becomes odemeSekli" "^INVOICE_INTERNET_SALES_PAYMENT_CONTRACT=PASS\\|.*nonempty_titles_refused:7/7\\|odemeSekli:ODEMEARACISI\\|odemeAracisiAdi:iyzico\\|fiscal_literals:ODEMEARACISI\\|specified_keys:none\\|reads_title:no$"
 expect_invoice_line "the gateway id comes from WooCommerce, not the title" "INVOICE_INTERNET_SALES_GATEWAY_SOURCE=PASS|measured:real_order|gateway_id:iyzico|gateway_title:Banka/Kredi Kartı ile Öde|odemeSekli:ODEMEARACISI|odemeAracisiAdi:iyzico"
-expect_invoice_line "the internet-sales block is still not wired to a send" "INVOICE_INTERNET_SALES_NOT_WIRED_TO_SEND=PASS|files_scanned:6|references:none"
+# The producer is now ON the transmission path, at exactly one orchestration
+# point: the manager builds the block, the client serialises it. No other module
+# file produces or reshapes it.
+expect_invoice_line "the internet-sales block is wired at one point" "INVOICE_INTERNET_SALES_WIRED_AT_ONE_POINT=PASS|orchestration_points:class-invoice-manager.php,class-edm-client.php|stray_producers:none"
 expect_invoice_line "the payment date comes from get_date_paid" "INVOICE_INTERNET_SALES_PAYMENT_DATE_SOURCE=PASS|measured:real_orders|created:2026-08-01|paid:2026-08-05|equals_created:no|unpaid_date:empty|unpaid_build:refused"
 expect_invoice_match "the carrier identity is never invented" "^INVOICE_CARRIER_IDENTITY_NEVER_INVENTED=PASS\\|carrier_lookup_table:none\\|reader_emits_vkn:no\\|reader_emits_title:no\\|"
 
@@ -775,7 +808,10 @@ expect_invoice_line "Login without secret key DOMXPath" "INVOICE_SOAP_XPATH_LOGI
 expect_invoice_line "CheckCounter DOMXPath and counter_left" "INVOICE_SOAP_XPATH_CHECK_COUNTER=PASS|assertions:3|counter_left:1250|failed:none"
 expect_invoice_line "CheckUser DOMXPath" "INVOICE_SOAP_XPATH_CHECK_USER=PASS|assertions:5|alias_parsed:urn:mail:defaultgb@acme.com|failed:none"
 expect_invoice_line "GetInvoiceSerial DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_SERIAL=PASS|assertions:6|serial_code:KUK|last_serial_used:42|failed:none"
-expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:15|single_base64_sha256_match:yes|error:none|failed:none"
+# 25 assertions now: the INTERNETSALESDETAILS block is serialised by a SoapClient
+# built from the real EDM WSDL, so a wrong element name, a field the schema does
+# not have, or a broken sequence would be dropped and these would fail.
+expect_invoice_line "SendInvoice e-Archive DOMXPath and single base64" "INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:25|single_base64_sha256_match:yes|internetsalesdetails_nodes:1|specified_elements:none|error:none|failed:none"
 expect_invoice_line "SendInvoice e-Invoice DOMXPath" "INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=PASS|assertions:7|failed:none"
 expect_invoice_line "GetInvoiceStatus DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE_STATUS=PASS|assertions:9|parsed_status:completed|failed:none"
 expect_invoice_line "GetInvoice DOMXPath" "INVOICE_SOAP_XPATH_GET_INVOICE=PASS|assertions:6|error:none|failed:none"

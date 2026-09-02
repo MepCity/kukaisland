@@ -36,6 +36,8 @@ final class Kuka_Island_Core_Invoice_Config {
 	private bool $auto_send;
 	private int $timeout;
 	private string $custom_wsdl;
+	/** @var array<string, array{vkn: string, title: string}> */
+	private array $carriers;
 
 	public function __construct( array $overrides = array() ) {
 		$env_val = defined( 'KUKA_INVOICE_ENVIRONMENT' ) ? (string) KUKA_INVOICE_ENVIRONMENT : ( defined( 'KUKA_EDM_ENVIRONMENT' ) ? (string) KUKA_EDM_ENVIRONMENT : self::ENV_TEST );
@@ -63,6 +65,84 @@ final class Kuka_Island_Core_Invoice_Config {
 		$timeout_const   = defined( 'KUKA_EDM_TIMEOUT' ) ? (int) KUKA_EDM_TIMEOUT : 30;
 		$this->timeout   = max( 5, min( 120, (int) ( $overrides['timeout'] ?? $timeout_const ) ) );
 		$this->custom_wsdl = trim( (string) ( $overrides['custom_wsdl'] ?? ( defined( 'KUKA_EDM_WSDL' ) ? KUKA_EDM_WSDL : '' ) ) );
+
+		/*
+		 * Carrier fiscal identities, keyed by WooCommerce's own shipment
+		 * provider key ('dhl', 'aras-kargo', ...). Nothing here is guessed: a
+		 * provider key identifies a courier in WooCommerce's list, not a
+		 * taxpayer, so the VKN and legal title come only from reviewed
+		 * environment configuration -- KUKA_EDM_CARRIERS in wp-config -- or from
+		 * an explicit constructor override in a test.
+		 *
+		 * An unconfigured provider stays unconfigured. It is not defaulted, not
+		 * derived from the label, and not filled in from a lookup table.
+		 */
+		$this->carriers = self::normalize_carriers(
+			$overrides['carriers'] ?? ( defined( 'KUKA_EDM_CARRIERS' ) ? KUKA_EDM_CARRIERS : array() )
+		);
+	}
+
+	/**
+	 * Normalise a carrier map into provider_key => {vkn, title}.
+	 *
+	 * Keys are lower-cased and trimmed to match
+	 * Fulfillment::get_shipment_provider(). Entries that carry neither a VKN nor
+	 * a title are dropped, so a half-filled configuration reads as absent rather
+	 * than as present-but-broken.
+	 *
+	 * @param mixed $raw Raw configuration value.
+	 * @return array<string, array{vkn: string, title: string}>
+	 */
+	private static function normalize_carriers( $raw ): array {
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+
+		$carriers = array();
+		foreach ( $raw as $provider_key => $identity ) {
+			$key = strtolower( trim( (string) $provider_key ) );
+			if ( '' === $key || ! is_array( $identity ) ) {
+				continue;
+			}
+
+			$vkn   = trim( (string) ( $identity['vkn'] ?? '' ) );
+			$title = trim( (string) ( $identity['title'] ?? ( $identity['unvan'] ?? '' ) ) );
+
+			if ( '' === $vkn && '' === $title ) {
+				continue;
+			}
+
+			$carriers[ $key ] = array(
+				'vkn'   => $vkn,
+				'title' => $title,
+			);
+		}
+
+		return $carriers;
+	}
+
+	/**
+	 * The configured fiscal identity for a WooCommerce provider key.
+	 *
+	 * @param string $provider_key Fulfillment::get_shipment_provider() value.
+	 * @return array{vkn: string, title: string}|array{} Empty when unconfigured.
+	 */
+	public function get_carrier( string $provider_key ): array {
+		$key = strtolower( trim( $provider_key ) );
+
+		return $this->carriers[ $key ] ?? array();
+	}
+
+	/**
+	 * Provider keys that have a fiscal identity configured.
+	 *
+	 * @return array<int, string>
+	 */
+	public function get_configured_carrier_keys(): array {
+		$keys = array_keys( $this->carriers );
+		sort( $keys );
+
+		return $keys;
 	}
 
 	public function get_environment(): string {

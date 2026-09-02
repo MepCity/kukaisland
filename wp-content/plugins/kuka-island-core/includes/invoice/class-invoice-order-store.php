@@ -31,6 +31,17 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 	public const META_LAST_ERROR        = '_kuka_invoice_last_error';
 	public const META_ATTEMPTS          = '_kuka_invoice_attempts';
 	public const META_HISTORY           = '_kuka_invoice_history';
+	/**
+	 * The document's IssueDate, frozen once in the shop's timezone.
+	 *
+	 * The invoice date is the day the INVOICE is created, which for a physical
+	 * order is the day the last shipment left -- not the day the order was
+	 * placed and not the day the payment cleared. Freezing it means a worker
+	 * retry, a reconciliation or a poll days later still submits the same date.
+	 */
+	public const META_ISSUE_DATE        = '_kuka_invoice_issue_date';
+	/** Time of day recorded beside META_ISSUE_DATE, frozen with it. */
+	public const META_ISSUE_TIME        = '_kuka_invoice_issue_time';
 
 	/**
 	 * Append-only record of documents this order has superseded.
@@ -194,6 +205,48 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 	}
 
 	/**
+	 * The document's frozen IssueDate and IssueTime, freezing them on first ask.
+	 *
+	 * wp_date() is used, not gmdate(): a fiscal date is a calendar day in the
+	 * shop's own timezone, and an invoice created at 01:30 Istanbul time belongs
+	 * to that day, not to the previous UTC one.
+	 *
+	 * Idempotent by design. The first caller -- the queue at enqueue time, or
+	 * the manager on a direct send -- fixes the value, and every later caller
+	 * reads it back. A replacement document approved by the recovery flow gets a
+	 * fresh one, because the archive clears these keys with the rest of the old
+	 * document's live identity.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return array{date: string, time: string, frozen_now: bool}
+	 */
+	public static function resolve_issue_date( WC_Order $order ): array {
+		$date = trim( (string) $order->get_meta( self::META_ISSUE_DATE, true ) );
+		$time = trim( (string) $order->get_meta( self::META_ISSUE_TIME, true ) );
+
+		if ( 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+			return array(
+				'date'       => $date,
+				'time'       => 1 === preg_match( '/^\d{2}:\d{2}:\d{2}$/', $time ) ? $time : '00:00:00',
+				'frozen_now' => false,
+			);
+		}
+
+		$date = (string) wp_date( 'Y-m-d' );
+		$time = (string) wp_date( 'H:i:s' );
+
+		$order->update_meta_data( self::META_ISSUE_DATE, $date );
+		$order->update_meta_data( self::META_ISSUE_TIME, $time );
+		$order->save_meta_data();
+
+		return array(
+			'date'       => $date,
+			'time'       => $time,
+			'frozen_now' => true,
+		);
+	}
+
+	/**
 	 * Poll-state meta keys that belong to ONE document.
 	 *
 	 * Archived with the document they describe and removed from the live record,
@@ -256,6 +309,12 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 
 		// A stale replacement identity, if the previous attempt left one.
 		$order->delete_meta_data( Kuka_Island_Core_Invoice_Recovery::META_RESERVED_UUID );
+
+		// The refused document's IssueDate is archived above and cleared here,
+		// so the replacement is dated the day IT is created rather than
+		// inheriting the day its predecessor was.
+		$order->delete_meta_data( self::META_ISSUE_DATE );
+		$order->delete_meta_data( self::META_ISSUE_TIME );
 
 		/*
 		 * And the refused document's polling state. It is archived above, and it

@@ -91,6 +91,14 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 	public const ERROR_PAYMENT_METHOD_NOT_FISCAL = 'internet_sales_payment_method_not_fiscal';
 	/** ODEMEARACISI without the intermediary's name. */
 	public const ERROR_PAYMENT_AGENT_MISSING = 'internet_sales_payment_agent_missing';
+	/** The fulfilled shipment carries no WooCommerce provider key. */
+	public const ERROR_CARRIER_PROVIDER_MISSING = 'internet_sales_carrier_provider_missing';
+	/** The provider key has no reviewed fiscal identity configured. */
+	public const ERROR_CARRIER_UNMAPPED = 'internet_sales_carrier_unmapped';
+	/** The configured carrier VKN is not 10 or 11 digits. */
+	public const ERROR_CARRIER_VKN_INVALID = 'internet_sales_carrier_vkn_invalid';
+	/** The order shipped with more than one carrier. */
+	public const ERROR_CARRIER_MULTIPLE_PROVIDERS = 'internet_sales_carrier_multiple_providers';
 	public const ERROR_WEB_ADDRESS_MISSING = 'internet_sales_web_address_missing';
 	public const ERROR_SHIPMENT_PARTIAL = 'internet_sales_shipment_partial';
 	public const ERROR_SHIPMENT_PENDING = 'internet_sales_shipment_pending';
@@ -265,18 +273,28 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			$errors[] = self::ERROR_PAYMENT_DATE_MISSING;
 		}
 
+		/*
+		 * Key order is the WSDL's own sequence for the inline
+		 * INTERNETSALESDETAILS complexType:
+		 *   webAdresi, odemeSekli, odemeAracisiAdi, odemeTarihi, gonderiBilgileri
+		 * (gonderiBilgileri: gonderimTarihi, then gonderiTasiyan).
+		 * PHP's WSDL-driven SoapClient orders by the schema, but emitting the
+		 * array in sequence order keeps the producer readable against the
+		 * contract it serialises into.
+		 */
 		$details = array(
-			'webAdresi'   => $web_address,
-			'odemeSekli'  => $payment['odemeSekli'],
-			// xs:date. The WSDL has no odemeTarihiSpecified companion element,
-			// so none is emitted.
-			'odemeTarihi' => $payment_date,
+			'webAdresi'  => $web_address,
+			'odemeSekli' => $payment['odemeSekli'],
 		);
 
 		// Present exactly when the resolved literal calls for it.
 		if ( '' !== $payment['odemeAracisiAdi'] ) {
 			$details['odemeAracisiAdi'] = $payment['odemeAracisiAdi'];
 		}
+
+		// xs:date. The WSDL has no odemeTarihiSpecified companion element, so
+		// none is emitted.
+		$details['odemeTarihi'] = $payment_date;
 
 		switch ( $shipment_state ) {
 			case self::SHIPMENT_NONE:
@@ -326,15 +344,42 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 	}
 
 	/**
+	 * May a whole-order invoice be issued for this shipment state?
+	 *
+	 * A physical order is invoiced when it has ALL left, not when its payment
+	 * cleared: the internet-sales block states when the goods were handed over,
+	 * and a partial shipment has no such moment. An order with nothing to ship
+	 * has nothing to wait for.
+	 *
+	 * @param string $shipment_state One of the SHIPMENT_* constants.
+	 */
+	public static function is_invoiceable_shipment( string $shipment_state ): bool {
+		return in_array( $shipment_state, array( self::SHIPMENT_COMPLETE, self::SHIPMENT_NONE ), true );
+	}
+
+	/**
 	 * Read the shipment facts for an order from WooCommerce's real API.
 	 *
-	 * Returns labels and dates only. The carrier's VKN and title are NOT
-	 * derived here, because WooCommerce's Fulfillments data has no such fields:
-	 * the provider is a slug or a free-text name. They must be supplied from
-	 * reviewed configuration or the block stays refused.
+	 * Verified against WooCommerce 11.0.1:
+	 *   Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentUtils
+	 *     ::get_order_fulfillment_status() -> fulfilled | partially_fulfilled |
+	 *       unfulfilled | no_fulfillments (read from the order's
+	 *       _fulfillment_status meta)
+	 *   ...\Fulfillments\DataStore\FulfillmentsDataStore::read_fulfillments()
+	 *   ...\Fulfillments\Fulfillment::get_is_fulfilled(): bool
+	 *   ...\Fulfillments\Fulfillment::get_date_fulfilled(): ?string
+	 *   ...\Fulfillments\Fulfillment::get_shipment_provider(): ?string
+	 *
+	 * provider_keys are the raw WooCommerce provider keys of the FULFILLED
+	 * shipments -- 'dhl', 'aras-kargo' and so on. That key, not
+	 * resolve_provider_name()'s display label, is what a fiscal identity is
+	 * looked up by: the label is shop-editable text and carries no identity.
+	 *
+	 * shipment_date is the LATEST fulfilled date, which is the moment the order
+	 * as a whole left.
 	 *
 	 * @param WC_Order $order Order.
-	 * @return array{shipment_state: string, shipment_date: string, provider_label: string, fulfillment_count: int, api_available: bool}
+	 * @return array{shipment_state: string, shipment_date: string, provider_keys: array<int, string>, provider_label: string, fulfillment_count: int, fulfilled_count: int, api_available: bool}
 	 */
 	public static function read_shipment_facts( WC_Order $order ): array {
 		$utils      = '\Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentUtils';
@@ -353,8 +398,10 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			return array(
 				'shipment_state'    => self::SHIPMENT_NONE,
 				'shipment_date'     => '',
+				'provider_keys'     => array(),
 				'provider_label'    => '',
 				'fulfillment_count' => 0,
+				'fulfilled_count'   => 0,
 				'api_available'     => true,
 			);
 		}
@@ -365,8 +412,10 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			return array(
 				'shipment_state'    => self::SHIPMENT_PENDING,
 				'shipment_date'     => '',
+				'provider_keys'     => array(),
 				'provider_label'    => '',
 				'fulfillment_count' => 0,
+				'fulfilled_count'   => 0,
 				'api_available'     => false,
 			);
 		}
@@ -381,10 +430,11 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			$fulfillments = array();
 		}
 
-		// The handover date is the latest completed fulfillment: the moment the
-		// order as a whole left.
-		$shipment_date = '';
-		$provider      = '';
+		$shipment_date   = '';
+		$provider_label  = '';
+		$provider_keys   = array();
+		$fulfilled_count = 0;
+
 		foreach ( $fulfillments as $fulfillment ) {
 			if ( ! is_object( $fulfillment ) || ! method_exists( $fulfillment, 'get_is_fulfilled' ) ) {
 				continue;
@@ -392,19 +442,136 @@ final class Kuka_Island_Core_Internet_Sales_Details {
 			if ( ! $fulfillment->get_is_fulfilled() ) {
 				continue;
 			}
+
+			++$fulfilled_count;
+
+			$provider_key = method_exists( $fulfillment, 'get_shipment_provider' )
+				? strtolower( trim( (string) $fulfillment->get_shipment_provider() ) )
+				: '';
+			if ( '' !== $provider_key && ! in_array( $provider_key, $provider_keys, true ) ) {
+				$provider_keys[] = $provider_key;
+			}
+
 			$date = (string) ( $fulfillment->get_date_fulfilled() ?? '' );
 			if ( '' !== $date && ( '' === $shipment_date || strtotime( $date ) > strtotime( $shipment_date ) ) ) {
-				$shipment_date = $date;
-				$provider      = (string) call_user_func( array( $utils, 'resolve_provider_name' ), $fulfillment );
+				$shipment_date  = $date;
+				$provider_label = (string) call_user_func( array( $utils, 'resolve_provider_name' ), $fulfillment );
 			}
 		}
+
+		sort( $provider_keys );
 
 		return array(
 			'shipment_state'    => in_array( $state, array( self::SHIPMENT_COMPLETE, self::SHIPMENT_PARTIAL, self::SHIPMENT_PENDING ), true ) ? $state : self::SHIPMENT_PENDING,
 			'shipment_date'     => $shipment_date,
-			'provider_label'    => $provider,
+			'provider_keys'     => $provider_keys,
+			// Display only. Never a fiscal identity.
+			'provider_label'    => $provider_label,
 			'fulfillment_count' => count( $fulfillments ),
+			'fulfilled_count'   => $fulfilled_count,
 			'api_available'     => true,
+		);
+	}
+
+	/**
+	 * WooCommerce's own display name for a shipment provider key.
+	 *
+	 * DISPLAY ONLY. It is read from the provider registry so the order screen can
+	 * say "DHL" rather than "dhl", and it is never used to look up a fiscal
+	 * identity -- resolve_carrier() is keyed by
+	 * Fulfillment::get_shipment_provider() and by nothing else.
+	 *
+	 * @param string $provider_key Provider key.
+	 */
+	public static function provider_display_label( string $provider_key ): string {
+		$key = strtolower( trim( $provider_key ) );
+		if ( '' === $key ) {
+			return '';
+		}
+
+		$utils = '\Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentUtils';
+		if ( ! class_exists( $utils ) || ! method_exists( $utils, 'get_shipping_providers' ) ) {
+			return strtoupper( $key );
+		}
+
+		$providers = (array) call_user_func( array( $utils, 'get_shipping_providers' ) );
+		$provider  = $providers[ $key ] ?? null;
+
+		if ( is_object( $provider ) && method_exists( $provider, 'get_name' ) ) {
+			$name = trim( (string) $provider->get_name() );
+			if ( '' !== $name ) {
+				return $name;
+			}
+		}
+
+		return strtoupper( $key );
+	}
+
+	/**
+	 * Resolve the carrier's fiscal identity from the provider keys that shipped.
+	 *
+	 * The VKN and legal title are never inferred from the provider key or its
+	 * label: 'dhl' is WooCommerce's identifier for a courier, not a taxpayer.
+	 * They come only from the reviewed environment configuration, and a key with
+	 * no entry is refused by name -- including the free-text 'other' provider,
+	 * which is a box somebody typed into.
+	 *
+	 * More than one distinct carrier is refused rather than resolved. A single
+	 * whole-order invoice has one gonderiTasiyan, and picking the last or the
+	 * largest shipment would state something about the delivery that is not
+	 * true. Several fulfillments with the SAME provider are fine.
+	 *
+	 * @param Kuka_Island_Core_Invoice_Config $config        Invoice configuration.
+	 * @param array<int, string>              $provider_keys Distinct provider keys that shipped.
+	 * @return array{ok: bool, error: string, provider_key: string, vkn: string, title: string}
+	 */
+	public static function resolve_carrier( Kuka_Island_Core_Invoice_Config $config, array $provider_keys ): array {
+		$refused = static function ( string $error, string $provider_key = '' ): array {
+			return array(
+				'ok'           => false,
+				'error'        => $error,
+				'provider_key' => $provider_key,
+				'vkn'          => '',
+				'title'        => '',
+			);
+		};
+
+		$provider_keys = array_values( array_unique( array_filter( array_map( static fn( $key ): string => strtolower( trim( (string) $key ) ), $provider_keys ) ) ) );
+
+		if ( array() === $provider_keys ) {
+			return $refused( self::ERROR_CARRIER_PROVIDER_MISSING );
+		}
+
+		if ( count( $provider_keys ) > 1 ) {
+			return $refused( self::ERROR_CARRIER_MULTIPLE_PROVIDERS, implode( '+', $provider_keys ) );
+		}
+
+		$provider_key = $provider_keys[0];
+		$carrier      = $config->get_carrier( $provider_key );
+
+		if ( array() === $carrier ) {
+			return $refused( self::ERROR_CARRIER_UNMAPPED, $provider_key );
+		}
+
+		$vkn   = trim( (string) ( $carrier['vkn'] ?? '' ) );
+		$title = trim( (string) ( $carrier['title'] ?? '' ) );
+
+		if ( '' === $vkn ) {
+			return $refused( self::ERROR_CARRIER_VKN_MISSING, $provider_key );
+		}
+		if ( 1 !== preg_match( '/^\d{10,11}$/', $vkn ) ) {
+			return $refused( self::ERROR_CARRIER_VKN_INVALID, $provider_key );
+		}
+		if ( '' === $title ) {
+			return $refused( self::ERROR_CARRIER_TITLE_MISSING, $provider_key );
+		}
+
+		return array(
+			'ok'           => true,
+			'error'        => '',
+			'provider_key' => $provider_key,
+			'vkn'          => $vkn,
+			'title'        => $title,
 		);
 	}
 

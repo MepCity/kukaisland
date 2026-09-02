@@ -235,6 +235,9 @@ final class Kuka_Island_Core_Invoice_Recovery {
 			'invoice_number'  => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, true ) ),
 			'number_source'   => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE, true ) ),
 			'invoice_status'  => Kuka_Island_Core_Invoice_Order_Store::get_status( $order ),
+			// The refused document's own IssueDate, kept with it.
+			'issue_date'      => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ISSUE_DATE, true ) ),
+			'issue_time'      => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ISSUE_TIME, true ) ),
 			'edm_status'      => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS, true ) ),
 			'last_error'      => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true ) ),
 			'superseded_at'   => time(),

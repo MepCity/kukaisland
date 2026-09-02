@@ -56,6 +56,32 @@ class Kuka_Island_Core_Invoice_Manager {
 	/** A transmission was attempted and there is no UUID left to ask about. */
 	public const ERROR_RECONCILE_NO_UUID = 'post_transmission_uuid_missing';
 
+	/** A physical order whose goods have not all left yet. */
+	public const ERROR_SHIPMENT_INCOMPLETE = 'shipment_not_complete';
+	/** The internet-sales block could not be produced from observed facts. */
+	public const ERROR_INTERNET_SALES_INCOMPLETE = 'internet_sales_details_incomplete';
+
+	/**
+	 * Is this order's shipment far enough along to invoice the whole order?
+	 *
+	 * The single gate every entry point consults: the queue before it enqueues,
+	 * the worker before it sends, the order screen before it offers a button,
+	 * and process_order() itself so a direct call cannot go round them.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return array{ok: bool, state: string, facts: array<string, mixed>}
+	 */
+	public static function shipment_gate( WC_Order $order ): array {
+		$facts = Kuka_Island_Core_Internet_Sales_Details::read_shipment_facts( $order );
+		$state = (string) $facts['shipment_state'];
+
+		return array(
+			'ok'    => Kuka_Island_Core_Internet_Sales_Details::is_invoiceable_shipment( $state ),
+			'state' => $state,
+			'facts' => $facts,
+		);
+	}
+
 	/**
 	 * Persistent evidence that this order has already been through SendInvoice.
 	 *
@@ -285,6 +311,30 @@ class Kuka_Island_Core_Invoice_Manager {
 				);
 			}
 
+			/*
+			 * 6a. The shipment gate, re-taken on the record read inside the lock.
+			 *
+			 * A physical order is invoiced when it has ALL left. Checking it
+			 * again here is what makes an unfulfilled shipment fail closed even
+			 * when the order was queued while it still looked complete -- a
+			 * fulfillment reverted or edited after enqueue must not reach
+			 * SendInvoice.
+			 */
+			$shipment = self::shipment_gate( $fresh_order );
+			if ( ! $shipment['ok'] ) {
+				Kuka_Island_Core_Invoice_Order_Store::save_blocked(
+					$fresh_order,
+					self::ERROR_SHIPMENT_INCOMPLETE,
+					self::shipment_incomplete_message( $shipment['state'] )
+				);
+
+				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+					sprintf( 'Order shipment state %s is not invoiceable as a whole order.', $shipment['state'] ),
+					self::ERROR_SHIPMENT_INCOMPLETE,
+					self::shipment_incomplete_message( $shipment['state'] )
+				);
+			}
+
 			// 6. Determine document type and profile (e-Fatura vs e-Arşiv).
 			$routing = $this->resolve_routing( $fresh_order );
 
@@ -324,6 +374,26 @@ class Kuka_Island_Core_Invoice_Manager {
 			$ubl_builder = new Kuka_Island_Core_UBL_TR_Builder( $invoice_data );
 			$ubl_xml     = $ubl_builder->build_xml();
 
+			/*
+			 * 8a. The internet-sales block, from observed facts only. Every
+			 * refusal code is recorded so the order screen can say which fact is
+			 * missing, and nothing is transmitted until they are all present.
+			 */
+			$internet_sales = $this->build_internet_sales_details( $fresh_order, $invoice_data, $shipment['facts'] );
+			if ( ! $internet_sales['ok'] ) {
+				Kuka_Island_Core_Invoice_Order_Store::save_blocked(
+					$fresh_order,
+					self::ERROR_INTERNET_SALES_INCOMPLETE,
+					self::internet_sales_incomplete_message( $internet_sales['errors'] )
+				);
+
+				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+					sprintf( 'INTERNETSALESDETAILS is incomplete: %s.', implode( ',', $internet_sales['errors'] ) ),
+					self::ERROR_INTERNET_SALES_INCOMPLETE,
+					self::internet_sales_incomplete_message( $internet_sales['errors'] )
+				);
+			}
+
 			// Store in-progress status AND atomic UUID/number in a SINGLE atomic store operation BEFORE transmitting.
 			// The number argument is '' on purpose: nothing local may be recorded
 			// as this document's number, and the sentinel least of all.
@@ -350,6 +420,9 @@ class Kuka_Island_Core_Invoice_Manager {
 				// which is how EDM delivers the document. Same address as the
 				// UBL's cbc:ElectronicMail.
 				'customer_email'    => $invoice_data['customer']['email'],
+				'is_internet_sales' => true,
+				// Serialised into SendInvoiceRequest/INVOICE/HEADER/INTERNETSALESDETAILS.
+				'internet_sales_details' => $internet_sales['details'],
 				'ubl_xml'           => $ubl_xml,
 			);
 
@@ -447,6 +520,154 @@ class Kuka_Island_Core_Invoice_Manager {
 
 			return Kuka_Island_Core_Invoice_Status_Poller::record_scheduling_exception( $order );
 		}
+	}
+
+	/**
+	 * Collect the internet-sales facts from the real order and build the block.
+	 *
+	 * Every source is a verified read, never a derivation:
+	 *
+	 *   webAdresi       the shop's canonical HTTPS home address
+	 *   payment_gateway WC_Order::get_payment_method() -- the gateway id, never
+	 *                   its shop-editable checkout title
+	 *   odemeTarihi     WC_Order::get_date_paid(), with no fallback
+	 *   shipment state  WooCommerce Fulfillments, aggregated over the whole order
+	 *   shipment date   the LATEST fulfilled date, i.e. when the order finished
+	 *                   leaving
+	 *   carrier VKN /   only from the reviewed carrier configuration, looked up
+	 *   unvan           by Fulfillment::get_shipment_provider()
+	 *
+	 * @param WC_Order             $order          Order.
+	 * @param array<string, mixed> $invoice_data   Mapped invoice data.
+	 * @param array<string, mixed> $shipment_facts read_shipment_facts() output.
+	 * @return array{ok: bool, errors: array<int, string>, details: array<string, mixed>, provider_key: string}
+	 */
+	private function build_internet_sales_details( WC_Order $order, array $invoice_data, array $shipment_facts ): array {
+		$shipment_state = (string) ( $shipment_facts['shipment_state'] ?? Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PENDING );
+
+		$carrier = array(
+			'ok'           => true,
+			'error'        => '',
+			'provider_key' => '',
+			'vkn'          => '',
+			'title'        => '',
+		);
+
+		// A digital or service-only order has no carrier to identify.
+		if ( Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE === $shipment_state ) {
+			$carrier = Kuka_Island_Core_Internet_Sales_Details::resolve_carrier(
+				$this->config,
+				(array) ( $shipment_facts['provider_keys'] ?? array() )
+			);
+		}
+
+		$built = Kuka_Island_Core_Internet_Sales_Details::build(
+			array(
+				'web_address'     => self::shop_web_address(),
+				'payment_gateway' => Kuka_Island_Core_Internet_Sales_Details::read_payment_gateway( $order ),
+				'payment_date'    => Kuka_Island_Core_Internet_Sales_Details::read_payment_date( $order ),
+				'shipment_state'  => $shipment_state,
+				'shipment_date'   => self::shipment_date_only( (string) ( $shipment_facts['shipment_date'] ?? '' ) ),
+				'carrier_vkn'     => $carrier['vkn'],
+				'carrier_title'   => $carrier['title'],
+			)
+		);
+
+		$errors = (array) $built['errors'];
+		if ( ! $carrier['ok'] && '' !== $carrier['error'] && ! in_array( $carrier['error'], $errors, true ) ) {
+			// The carrier's own refusal is more specific than build()'s "no VKN",
+			// so it is reported alongside rather than swallowed by it.
+			$errors[] = $carrier['error'];
+		}
+
+		return array(
+			'ok'           => $carrier['ok'] && true === $built['ok'],
+			'errors'       => array_values( array_unique( $errors ) ),
+			'details'      => (array) $built['details'],
+			'provider_key' => (string) $carrier['provider_key'],
+		);
+	}
+
+	/**
+	 * The shop's canonical HTTPS address for webAdresi.
+	 */
+	public static function shop_web_address(): string {
+		$home = trim( (string) home_url( '/' ) );
+		if ( '' === $home ) {
+			return '';
+		}
+
+		// A fiscal document states where the sale happened; an http:// address
+		// for a shop served over TLS would misstate it.
+		return preg_replace( '#^http://#i', 'https://', untrailingslashit( $home ) );
+	}
+
+	/**
+	 * A WooCommerce fulfilled date reduced to the calendar day.
+	 *
+	 * gonderimTarihi is xs:date. Fulfillments store a datetime string; the day
+	 * is taken in the shop's timezone for the same reason the IssueDate is.
+	 *
+	 * @param string $raw Raw fulfilled date.
+	 */
+	public static function shipment_date_only( string $raw ): string {
+		$raw = trim( $raw );
+		if ( '' === $raw ) {
+			return '';
+		}
+
+		$timestamp = strtotime( $raw );
+
+		return false === $timestamp ? '' : (string) wp_date( 'Y-m-d', $timestamp );
+	}
+
+	/**
+	 * What the order screen is told while the goods have not all left.
+	 *
+	 * @param string $shipment_state One of the SHIPMENT_* constants.
+	 */
+	public static function shipment_incomplete_message( string $shipment_state ): string {
+		if ( Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PARTIAL === $shipment_state ) {
+			return __( 'Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz.', 'kuka-island-core' );
+		}
+
+		return __( 'Fatura için siparişin tamamen kargoya verilmesi bekleniyor.', 'kuka-island-core' );
+	}
+
+	/**
+	 * What the order screen is told when the internet-sales block is short a fact.
+	 *
+	 * Names the missing thing in plain Turkish. No raw meta, no SOAP detail.
+	 *
+	 * @param array<int, string> $errors Safe refusal codes from the producer.
+	 */
+	public static function internet_sales_incomplete_message( array $errors ): string {
+		$carrier_codes = array(
+			Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_UNMAPPED,
+			Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_VKN_MISSING,
+			Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_VKN_INVALID,
+			Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_TITLE_MISSING,
+			Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_PROVIDER_MISSING,
+		);
+
+		if ( array() !== array_intersect( $errors, $carrier_codes ) ) {
+			return __( 'Kargo firmasının mali bilgileri (VKN ve unvan) yapılandırılmamış; fatura oluşturulmadı.', 'kuka-island-core' );
+		}
+
+		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_MULTIPLE_PROVIDERS, $errors, true ) ) {
+			return __( 'Sipariş birden fazla kargo firmasıyla gönderilmiş; tek faturada tek taşıyıcı bildirilebildiği için manuel inceleme gerekiyor.', 'kuka-island-core' );
+		}
+
+		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_DATE_MISSING, $errors, true ) ) {
+			return __( 'Ödeme tarihi bulunamadı; fatura oluşturulmadı.', 'kuka-island-core' );
+		}
+
+		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, $errors, true )
+			|| in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING, $errors, true ) ) {
+			return __( 'Ödeme yöntemi için doğrulanmış mali karşılık tanımlı değil; fatura oluşturulmadı.', 'kuka-island-core' );
+		}
+
+		return __( 'İnternet satış bilgileri eksik olduğu için fatura oluşturulmadı.', 'kuka-island-core' );
 	}
 
 	/**

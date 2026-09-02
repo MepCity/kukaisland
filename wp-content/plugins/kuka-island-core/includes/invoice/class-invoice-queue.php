@@ -42,6 +42,17 @@ final class Kuka_Island_Core_Invoice_Queue {
 		add_action( 'woocommerce_order_status_processing', array( $this, 'maybe_enqueue_order' ), 20, 2 );
 		add_action( 'woocommerce_order_status_completed', array( $this, 'maybe_enqueue_order' ), 20, 2 );
 		add_action( 'woocommerce_order_refunded', array( $this, 'handle_order_refund' ), 20, 2 );
+
+		/*
+		 * WooCommerce 11.0.1 fires this from
+		 * Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore,
+		 * on both create and update, with the Fulfillment object as its only
+		 * argument. It is the stable point at which goods are recorded as having
+		 * left, which is when a physical order becomes invoiceable -- the
+		 * order-status hooks above fire when the PAYMENT settles, which is a
+		 * different fact.
+		 */
+		add_action( 'woocommerce_fulfillment_after_fulfill', array( $this, 'handle_fulfillment_fulfilled' ), 20, 1 );
 		add_action( self::ACTION_PROCESS_INVOICE, array( $this, 'process_queued_order' ), 10, 1 );
 	}
 
@@ -77,6 +88,18 @@ final class Kuka_Island_Core_Invoice_Queue {
 			return;
 		}
 
+		/*
+		 * The shipment gate, on every entry point rather than only on the
+		 * fulfillment hook. The order-status hooks fire on payment, and a
+		 * physical order paid today may not ship for a week; without this gate
+		 * they would queue it anyway and the worker would have to refuse it.
+		 * Kuka_Island_Core_Invoice_Manager::process_order() checks it again
+		 * inside its lock, so a direct call cannot bypass this either.
+		 */
+		if ( ! Kuka_Island_Core_Invoice_Manager::shipment_gate( $order )['ok'] ) {
+			return;
+		}
+
 		$current_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $order );
 		if ( Kuka_Island_Core_Invoice_Status::is_terminal( $current_status ) || Kuka_Island_Core_Invoice_Status::is_in_progress( $current_status ) ) {
 			return;
@@ -99,10 +122,57 @@ final class Kuka_Island_Core_Invoice_Queue {
 		// this one a shorter retry budget.
 		$this->clear_queue_retries( $order );
 
+		// The document's date is the day the invoice is created, and this is that
+		// day. Frozen once here so a worker retry days later submits the same
+		// date rather than the day it happened to run.
+		Kuka_Island_Core_Invoice_Order_Store::resolve_issue_date( $order );
+
 		// Mark status as queued.
 		Kuka_Island_Core_Invoice_Order_Store::set_status( $order, Kuka_Island_Core_Invoice_Status::STATUS_QUEUED, __( 'Fatura kuyruğa eklendi.', 'kuka-island-core' ) );
 
 		$this->schedule_action( $order_id );
+	}
+
+	/**
+	 * A shipment was recorded as fulfilled: reconsider the whole order.
+	 *
+	 * Only WC_Order fulfillments are ours. WooCommerce's Fulfillment entity is
+	 * addressed by type plus id, and get_entity_id() returns a string, so the
+	 * type is checked before the id is trusted as an order.
+	 *
+	 * The decision is never taken from THIS fulfillment: the aggregate state of
+	 * the whole order is recomputed, because one shipment leaving says nothing
+	 * about whether the rest has. maybe_enqueue_order() then applies the same
+	 * settlement, fixture, status and duplicate guards as every other entry
+	 * point, so a repeated event, two fulfillments completing together, or an
+	 * order-status hook firing as well all leave one send action.
+	 *
+	 * @param mixed $fulfillment WooCommerce Fulfillment object.
+	 */
+	public function handle_fulfillment_fulfilled( $fulfillment ): void {
+		if ( ! is_object( $fulfillment )
+			|| ! method_exists( $fulfillment, 'get_entity_type' )
+			|| ! method_exists( $fulfillment, 'get_entity_id' ) ) {
+			return;
+		}
+
+		if ( WC_Order::class !== $fulfillment->get_entity_type() ) {
+			return;
+		}
+
+		$order_id = absint( $fulfillment->get_entity_id() );
+		if ( $order_id <= 0 ) {
+			return;
+		}
+
+		// Read the live record: the fulfillment that fired this is already
+		// saved, and the aggregate status is read from the order.
+		$order = wc_get_order( $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$this->maybe_enqueue_order( $order_id, $order );
 	}
 
 	/**

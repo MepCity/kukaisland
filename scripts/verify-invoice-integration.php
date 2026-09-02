@@ -129,6 +129,7 @@ function kuka_create_test_order( string $run_id, array $props = array(), bool $m
 		'first_name'     => 'set_billing_first_name',
 		'last_name'      => 'set_billing_last_name',
 		'email'          => 'set_billing_email',
+		'paid_date'      => 'set_date_paid',
 		'address_1'      => 'set_billing_address_1',
 		'city'           => 'set_billing_city',
 		'postcode'       => 'set_billing_postcode',
@@ -400,6 +401,9 @@ $billing_props = array(
 	'first_name'     => 'Can',
 	'last_name'      => 'Yılmaz',
 	'email'          => 'can@example.com',
+	// A settled order has a payment date, and INTERNETSALESDETAILS reports it.
+	// Fixtures that must be UNPAID pass 'paid_date' => '' to skip the setter.
+	'paid_date'      => '2026-08-20 10:15:00',
 	'address_1'      => 'Caferağa Mah. Moda Cad. No:1',
 	'city'           => 'İstanbul',
 	'postcode'       => '34710',
@@ -1396,6 +1400,28 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 		'receiver_vkn'      => '11111111111',
 		'receiver_alias'    => '',
 		'customer_email'    => 'alici@example.com',
+		'is_internet_sales' => true,
+		/*
+		 * The internet-sales block, in the WSDL's own sequence for the inline
+		 * INTERNETSALESDETAILS complexType. Serialised below by a SoapClient
+		 * built from the real EDM WSDL, so a wrong element name or a field the
+		 * schema does not have would be dropped and the assertions would fail.
+		 */
+		'internet_sales_details' => array(
+			'webAdresi'        => 'https://kukaisland.com',
+			'odemeSekli'       => Kuka_Island_Core_Internet_Sales_Details::PAYMENT_INTERMEDIARY,
+			'odemeAracisiAdi'  => Kuka_Island_Core_Internet_Sales_Details::AGENT_IYZICO,
+			'odemeTarihi'      => '2026-08-30',
+			'gonderiBilgileri' => array(
+				'gonderimTarihi' => '2026-08-31',
+				'gonderiTasiyan' => array(
+					'tuzelKisi' => array(
+						'vkn'   => '9990001111',
+						'unvan' => 'TEST KARGO A.S. - GERCEK DEGIL',
+					),
+				),
+			),
+		),
 		'ubl_xml'           => $raw_ubl,
 	);
 
@@ -1440,16 +1466,49 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 			// delivers the document.
 			'//*[local-name()="HEADER"]/*[local-name()="TO"]'                          => 'alici@example.com',
 			'//*[local-name()="INVOICE"]/*[local-name()="CONTENT"]'                    => true,
+			// The internet-sales block, once, with its confirmed fiscal values.
+			'//*[local-name()="HEADER"]/*[local-name()="INTERNETSALESDETAILS"]'        => true,
+			'//*[local-name()="INTERNETSALESDETAILS"]/*[local-name()="webAdresi"]'     => 'https://kukaisland.com',
+			'//*[local-name()="INTERNETSALESDETAILS"]/*[local-name()="odemeSekli"]'    => 'ODEMEARACISI',
+			'//*[local-name()="INTERNETSALESDETAILS"]/*[local-name()="odemeAracisiAdi"]' => 'iyzico',
+			'//*[local-name()="INTERNETSALESDETAILS"]/*[local-name()="odemeTarihi"]'   => '2026-08-30',
+			'//*[local-name()="gonderiBilgileri"]/*[local-name()="gonderimTarihi"]'    => '2026-08-31',
+			'//*[local-name()="gonderiTasiyan"]/*[local-name()="tuzelKisi"]/*[local-name()="vkn"]' => '9990001111',
+			'//*[local-name()="gonderiTasiyan"]/*[local-name()="tuzelKisi"]/*[local-name()="unvan"]' => 'TEST KARGO A.S. - GERCEK DEGIL',
+			// A natural person carrier is not what shipped this, so its branch
+			// is absent rather than emitted empty.
+			'//*[local-name()="gonderiTasiyan"]/*[local-name()="gercekKisi"]'          => false,
+			'//*[local-name()="HEADER"]/*[local-name()="INTERNETSALES"]'               => 'true',
 		)
 	);
 
+	// Exactly one block, and no imaginary *Specified companion element -- the
+	// WSDL's INTERNETSALESDETAILS sequence has none.
+	$isd_nodes      = $send_xp->query( '//*[local-name()="INTERNETSALESDETAILS"]' );
+	$isd_node_count = false === $isd_nodes ? 0 : $isd_nodes->length;
+	$isd_specified  = array();
+	$all_send_nodes = $send_xp->query( '//*' );
+	if ( false !== $all_send_nodes ) {
+		foreach ( $all_send_nodes as $send_node ) {
+			if ( str_ends_with( (string) $send_node->localName, 'Specified' ) ) {
+				$isd_specified[] = (string) $send_node->localName;
+			}
+		}
+	}
+
 	$report(
 		'INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE',
-		$send_xpath['passed'] && $single_base64_ok && '' === $send_error,
+		$send_xpath['passed']
+		&& $single_base64_ok
+		&& '' === $send_error
+		&& 1 === $isd_node_count
+		&& array() === $isd_specified,
 		sprintf(
-			'assertions:%d|single_base64_sha256_match:%s|error:%s|failed:%s',
+			'assertions:%d|single_base64_sha256_match:%s|internetsalesdetails_nodes:%d|specified_elements:%s|error:%s|failed:%s',
 			$send_xpath['count'] + 1,
 			$single_base64_ok ? 'yes' : 'no',
+			$isd_node_count,
+			empty( $isd_specified ) ? 'none' : implode( ',', array_unique( $isd_specified ) ),
 			'' === $send_error ? 'none' : $send_error,
 			empty( $send_xpath['failed'] ) ? 'none' : implode( ' ; ', $send_xpath['failed'] )
 		)
@@ -5760,30 +5819,35 @@ $report(
 
 kuka_test_delete_order( $gateway_order->get_id(), $test_run_id );
 
-// The producer stays off the transmission path this round.
-$transmission_path_files = array(
-	'class-edm-client.php',
-	'class-edm-provider.php',
-	'class-invoice-manager.php',
-	'class-invoice-order-mapper.php',
-	'class-ubl-tr-builder.php',
-	'class-invoice-queue.php',
-);
-$isd_wiring = array();
-foreach ( $transmission_path_files as $file ) {
-	$path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $file;
-	if ( is_readable( $path ) && str_contains( (string) file_get_contents( $path ), 'Internet_Sales_Details' ) ) {
-		$isd_wiring[] = $file;
+// The producer is now ON the transmission path, at exactly one orchestration
+// point: the manager builds the block and hands it to the client, which
+// serialises it into SendInvoiceRequest/INVOICE/HEADER/INTERNETSALESDETAILS.
+$isd_orchestrators = array();
+foreach ( array( 'class-invoice-manager.php', 'class-edm-client.php' ) as $isd_file ) {
+	$isd_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $isd_file;
+	if ( is_readable( $isd_path ) && str_contains( (string) file_get_contents( $isd_path ), 'internet_sales_details' ) ) {
+		$isd_orchestrators[] = $isd_file;
+	}
+}
+
+// And nowhere else: the mapper, the UBL builder, the queue and the poller have
+// no business producing or reshaping a fiscal block.
+$isd_stray = array();
+foreach ( array( 'class-invoice-order-mapper.php', 'class-ubl-tr-builder.php', 'class-invoice-queue.php', 'class-invoice-status-poller.php' ) as $isd_file ) {
+	$isd_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $isd_file;
+	if ( is_readable( $isd_path ) && str_contains( (string) file_get_contents( $isd_path ), 'Internet_Sales_Details::build' ) ) {
+		$isd_stray[] = $isd_file;
 	}
 }
 
 $report(
-	'INVOICE_INTERNET_SALES_NOT_WIRED_TO_SEND',
-	array() === $isd_wiring,
+	'INVOICE_INTERNET_SALES_WIRED_AT_ONE_POINT',
+	array( 'class-invoice-manager.php', 'class-edm-client.php' ) === $isd_orchestrators
+	&& array() === $isd_stray,
 	sprintf(
-		'files_scanned:%d|references:%s',
-		count( $transmission_path_files ),
-		empty( $isd_wiring ) ? 'none' : implode( ',', $isd_wiring )
+		'orchestration_points:%s|stray_producers:%s',
+		empty( $isd_orchestrators ) ? 'NONE' : implode( ',', $isd_orchestrators ),
+		empty( $isd_stray ) ? 'none' : implode( ',', $isd_stray )
 	)
 );
 
@@ -5794,7 +5858,7 @@ $paid_order->set_date_created( '2026-08-01 09:00:00' );
 $paid_order->set_date_paid( '2026-08-05 14:30:00' );
 $paid_order->save();
 
-$unpaid_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'pending' ) ) );
+$unpaid_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'pending', 'paid_date' => '' ) ) );
 $unpaid_order->set_date_created( '2026-08-01 09:00:00' );
 $unpaid_order->save();
 
@@ -6667,6 +6731,595 @@ if ( $runner_available ) {
 	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $stale_poll_order_id );
 	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_poll_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
 	kuka_test_delete_order( $stale_poll_order_id, $test_run_id );
+}
+
+/* ========================================================================== */
+/* Physical orders are invoiced when the goods leave, not when the money does  */
+/* ========================================================================== */
+
+if ( $runner_available
+	&& class_exists( '\Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment' )
+	&& class_exists( '\Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore' ) ) {
+
+	/*
+	 * A synthetic carrier identity. It is NOT a claim about DHL: the courier's
+	 * real VKN and legal title are facts nobody here has, and inventing them is
+	 * exactly what the production code refuses to do. Production reads this map
+	 * only from reviewed environment configuration (KUKA_EDM_CARRIERS).
+	 */
+	$test_carrier_vkn   = '9990001111';
+	$test_carrier_title = 'TEST KARGO A.S. - GERCEK DEGIL';
+
+	$carrier_map      = array( 'dhl' => array( 'vkn' => $test_carrier_vkn, 'title' => $test_carrier_title ) );
+	$fulfil_config    = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'auto_send' => true, 'carriers' => $carrier_map ) ) );
+	$no_carrier_config = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'auto_send' => true ) ) );
+
+	$fulfil_store_class = '\Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore';
+	$fulfil_class       = '\Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment';
+	$fulfil_utils       = '\Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentUtils';
+	$fulfil_store       = wc_get_container()->get( $fulfil_store_class );
+
+	$GLOBALS['kuka_test_products'] = array();
+	$fulfil_product_title          = 'Kargo Testi Ürünü';
+
+	/*
+	 * Self-healing, ownership-checked purge of fixture products a crashed run
+	 * may have left behind. A published, priced product counts towards the
+	 * shop's own launch-readiness rows, so a leftover one does not just sit
+	 * there -- it changes an unrelated measurement. Matched by the distinctive
+	 * fixture title, and refused while any order item still references it.
+	 */
+	$purge_fixture_products = static function ( string $title ): array {
+		global $wpdb;
+
+		$purged = array();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$ids = (array) $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_title = %s", 'product', $title ) );
+
+		foreach ( $ids as $product_id ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$referenced = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM {$wpdb->prefix}woocommerce_order_itemmeta WHERE meta_key = %s AND meta_value = %d",
+					'_product_id',
+					(int) $product_id
+				)
+			);
+			if ( $referenced > 0 ) {
+				continue;
+			}
+
+			wp_delete_post( (int) $product_id, true );
+			$purged[] = (int) $product_id;
+		}
+
+		return $purged;
+	};
+
+	$stale_products_purged = $purge_fixture_products( $fulfil_product_title );
+
+	/**
+	 * A real shippable product, so needs_shipping() is genuinely true.
+	 */
+	$make_shippable_product = static function () use ( $fulfil_product_title ): WC_Product_Simple {
+		$product = new WC_Product_Simple();
+		$product->set_name( $fulfil_product_title );
+		$product->set_regular_price( '100' );
+		$product->set_virtual( false );
+		$product->save();
+
+		$GLOBALS['kuka_test_products'][] = (int) $product->get_id();
+
+		return $product;
+	};
+
+	/**
+	 * A settled physical order carrying $qty of one shippable product.
+	 *
+	 * @param string           $run_id  Isolation run ID.
+	 * @param array            $billing Billing props.
+	 * @param WC_Product       $product Shippable product.
+	 * @param int              $qty     Quantity.
+	 */
+	$make_physical_order = static function ( string $run_id, array $billing, WC_Product $product, int $qty = 2 ): WC_Order {
+		$order = kuka_create_test_order( $run_id, array_merge( $billing, array( 'total' => (string) ( 100 * $qty ) ) ) );
+		// Placed and paid before it shipped, which is the realistic shape and
+		// what makes "the invoice date is not the order date" measurable.
+		$order->set_date_created( '2026-08-19 09:00:00' );
+		$order->update_meta_data( '_billing_tax_number', '12345678901' );
+		$order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER, 'KUK2026000000042' );
+		$order->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE, Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM );
+
+		$item = new WC_Order_Item_Product();
+		$item->set_product( $product );
+		$item->set_quantity( $qty );
+		$item->set_subtotal( (string) ( 100 * $qty ) );
+		$item->set_total( (string) ( 100 * $qty ) );
+		$order->add_item( $item );
+		$order->save();
+
+		return wc_get_order( $order->get_id() );
+	};
+
+	/**
+	 * Create a REAL fulfillment through WooCommerce's own datastore.
+	 *
+	 * Saving it fires woocommerce_fulfillment_after_create (which updates the
+	 * order's aggregate _fulfillment_status) and then
+	 * woocommerce_fulfillment_after_fulfill -- the hook production listens on.
+	 *
+	 * @param string $fulfil_class Fulfillment class name.
+	 * @param int    $order_id     Order ID.
+	 * @param int    $item_id      Order item ID.
+	 * @param int    $qty          Quantity shipped.
+	 * @param string $provider     WooCommerce shipment provider key.
+	 */
+	$fulfil_items = static function ( string $fulfil_class, int $order_id, int $item_id, int $qty, string $provider ) {
+		$fulfillment = new $fulfil_class();
+		$fulfillment->set_entity_type( WC_Order::class );
+		$fulfillment->set_entity_id( (string) $order_id );
+		$fulfillment->set_items( array( array( 'item_id' => $item_id, 'qty' => $qty ) ) );
+		$fulfillment->set_shipment_provider( $provider );
+		$fulfillment->set_status( 'fulfilled' );
+		$fulfillment->save();
+
+		return $fulfillment;
+	};
+
+	/**
+	 * Remove every fulfillment an order has, and its send/poll actions.
+	 */
+	$purge_fulfillments = static function ( $fulfil_store, int $order_id ): void {
+		foreach ( (array) $fulfil_store->read_fulfillments( WC_Order::class, (string) $order_id ) as $existing ) {
+			try {
+				$fulfil_store->delete( $existing, array( 'force_delete' => true ) );
+			} catch ( Throwable $t ) {
+				unset( $t );
+			}
+		}
+
+		Kuka_Island_Core_Invoice_Status_Poller::unschedule( $order_id );
+		as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	};
+
+	/**
+	 * Pending send actions for one order.
+	 */
+	$send_pending_ids = static function ( int $order_id ): array {
+		return array_map(
+			'intval',
+			(array) as_get_scheduled_actions(
+				array(
+					'hook'     => Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE,
+					'args'     => array( 'order_id' => $order_id ),
+					'group'    => Kuka_Island_Core_Invoice_Status_Poller::GROUP,
+					'status'   => ActionScheduler_Store::STATUS_PENDING,
+					'per_page' => 50,
+					'orderby'  => 'none',
+				),
+				'ids'
+			)
+		);
+	};
+
+	/**
+	 * Install the production listeners for one queue instance only.
+	 */
+	$install_fulfil_listeners = static function ( Kuka_Island_Core_Invoice_Queue $queue ): array {
+		$saved = array(
+			'fulfil' => $GLOBALS['wp_filter']['woocommerce_fulfillment_after_fulfill'] ?? null,
+			'worker' => $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE ] ?? null,
+		);
+
+		remove_all_actions( 'woocommerce_fulfillment_after_fulfill' );
+		remove_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE );
+		// The two production callbacks, wired exactly as register() wires them.
+		add_action( 'woocommerce_fulfillment_after_fulfill', array( $queue, 'handle_fulfillment_fulfilled' ), 20, 1 );
+		add_action( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( $queue, 'process_queued_order' ), 10, 1 );
+
+		return $saved;
+	};
+
+	$restore_fulfil_listeners = static function ( array $saved ): void {
+		remove_all_actions( 'woocommerce_fulfillment_after_fulfill' );
+		remove_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE );
+		if ( null !== $saved['fulfil'] ) {
+			$GLOBALS['wp_filter']['woocommerce_fulfillment_after_fulfill'] = $saved['fulfil'];
+		}
+		if ( null !== $saved['worker'] ) {
+			$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE ] = $saved['worker'];
+		}
+	};
+
+	/* ---------------------------------------------------------------------- */
+	/* 1-3: nothing shipped, partially shipped, fully shipped                  */
+	/* ---------------------------------------------------------------------- */
+
+	$lifecycle_transport = new Kuka_Island_Test_Numbering_Transport();
+	$lifecycle_transport->assigned_id = 'EDM2026000002000';
+	$lifecycle_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $lifecycle_transport ) );
+	$lifecycle_queue     = new Kuka_Island_Core_Invoice_Queue( $lifecycle_manager );
+
+	$lifecycle_product = $make_shippable_product();
+	$lifecycle_order   = $make_physical_order( $test_run_id, $billing_props, $lifecycle_product, 2 );
+	$lifecycle_id      = (int) $lifecycle_order->get_id();
+	$lifecycle_items   = $lifecycle_order->get_items();
+	$lifecycle_item    = reset( $lifecycle_items );
+	$lifecycle_item_id = (int) $lifecycle_item->get_id();
+
+	$purge_fulfillments( $fulfil_store, $lifecycle_id );
+	$lifecycle_saved = $install_fulfil_listeners( $lifecycle_queue );
+
+	// (1) Paid, nothing shipped. The order-status hook path is exercised too.
+	$lifecycle_queue->maybe_enqueue_order( $lifecycle_id, wc_get_order( $lifecycle_id ) );
+	$state_unshipped   = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $lifecycle_id ) );
+	$actions_unshipped = count( $send_pending_ids( $lifecycle_id ) );
+	$hint_unshipped    = Kuka_Island_Core_Invoice_Admin::operator_hint( wc_get_order( $lifecycle_id ), $fulfil_config );
+
+	// (2) Half of it ships.
+	$fulfil_items( $fulfil_class, $lifecycle_id, $lifecycle_item_id, 1, 'dhl' );
+	$state_partial   = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $lifecycle_id ) );
+	$actions_partial = count( $send_pending_ids( $lifecycle_id ) );
+	$hint_partial    = Kuka_Island_Core_Invoice_Admin::operator_hint( wc_get_order( $lifecycle_id ), $fulfil_config );
+
+	// (3) The rest ships: the fulfillment hook enqueues exactly once.
+	$last_fulfillment = $fulfil_items( $fulfil_class, $lifecycle_id, $lifecycle_item_id, 1, 'dhl' );
+	$state_complete   = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $lifecycle_id ) );
+	$actions_complete = count( $send_pending_ids( $lifecycle_id ) );
+	$status_queued    = Kuka_Island_Core_Invoice_Order_Store::get_status( wc_get_order( $lifecycle_id ) );
+	$hint_queued      = Kuka_Island_Core_Invoice_Admin::operator_hint( wc_get_order( $lifecycle_id ), $fulfil_config );
+	$issue_at_enqueue = (string) wc_get_order( $lifecycle_id )->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_ISSUE_DATE, true );
+
+	// The same event again, plus the order-status entry point: still one action.
+	do_action( 'woocommerce_fulfillment_after_fulfill', $last_fulfillment );
+	$lifecycle_queue->maybe_enqueue_order( $lifecycle_id, wc_get_order( $lifecycle_id ) );
+	$actions_after_duplicate = count( $send_pending_ids( $lifecycle_id ) );
+
+	// The real worker runs it.
+	$lifecycle_runs = 0;
+	$lifecycle_pending = $send_pending_ids( $lifecycle_id );
+	if ( 1 === count( $lifecycle_pending ) ) {
+		ActionScheduler_QueueRunner::instance()->process_action( (int) $lifecycle_pending[0], 'kuka-verify' );
+		$lifecycle_runs = 1;
+	}
+
+	$restore_fulfil_listeners( $lifecycle_saved );
+
+	$lifecycle_final   = wc_get_order( $lifecycle_id );
+	$lifecycle_data    = Kuka_Island_Core_Invoice_Order_Store::get_invoice_data( $lifecycle_final );
+	$lifecycle_request = (array) ( $lifecycle_transport->requests['SendInvoice'] ?? array() );
+	$lifecycle_isd     = (array) ( $lifecycle_request['INVOICE'][0]['HEADER']['INTERNETSALESDETAILS'] ?? array() );
+	$lifecycle_ship    = (array) ( $lifecycle_isd['gonderiBilgileri'] ?? array() );
+
+	$report(
+		'INVOICE_FULFILLMENT_GATES_THE_INVOICE',
+		// (1) Paid but unshipped: no action, no send, and the screen says why.
+		Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PENDING === $state_unshipped['state']
+		&& false === $state_unshipped['ok']
+		&& 0 === $actions_unshipped
+		&& 'Fatura için siparişin tamamen kargoya verilmesi bekleniyor.' === $hint_unshipped
+		// (2) Partially shipped: still nothing, with its own message.
+		&& Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PARTIAL === $state_partial['state']
+		&& false === $state_partial['ok']
+		&& 0 === $actions_partial
+		&& 'Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz.' === $hint_partial
+		// (3) Fully shipped: exactly one action, from the fulfillment hook.
+		&& Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_COMPLETE === $state_complete['state']
+		&& true === $state_complete['ok']
+		&& 1 === $actions_complete
+		&& Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $status_queued
+		&& 'Fatura kuyruğa alındı.' === $hint_queued
+		// A repeat event and the order-status path add nothing.
+		&& 1 === $actions_after_duplicate
+		// The real worker sends once.
+		&& 1 === $lifecycle_runs
+		&& 1 === (int) ( $lifecycle_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $lifecycle_transport->calls['LoadInvoice'] ?? 0 )
+		&& 'EDM2026000002000' === $lifecycle_data['invoice_number']
+		// And the block it sent carries the shipment and the carrier.
+		&& 'ODEMEARACISI' === (string) ( $lifecycle_isd['odemeSekli'] ?? '' )
+		&& 'iyzico' === (string) ( $lifecycle_isd['odemeAracisiAdi'] ?? '' )
+		&& $test_carrier_vkn === (string) ( $lifecycle_ship['gonderiTasiyan']['tuzelKisi']['vkn'] ?? '' )
+		&& $test_carrier_title === (string) ( $lifecycle_ship['gonderiTasiyan']['tuzelKisi']['unvan'] ?? '' )
+		&& 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $lifecycle_ship['gonderimTarihi'] ?? '' ) ),
+		sprintf(
+			'measured:real_fulfillments_datastore_and_action_scheduler|unshipped:%s/actions%d|partial:%s/actions%d|complete:%s/actions%d|status:%s|after_duplicate_event:%d|worker_runs:%d|SendInvoice=%d|LoadInvoice=%d|number:%s|odemeSekli:%s|carrier_vkn:%s|gonderimTarihi:%s|hint_unshipped:%s|hint_partial:%s',
+			$state_unshipped['state'],
+			$actions_unshipped,
+			$state_partial['state'],
+			$actions_partial,
+			$state_complete['state'],
+			$actions_complete,
+			$status_queued,
+			$actions_after_duplicate,
+			$lifecycle_runs,
+			$lifecycle_transport->calls['SendInvoice'] ?? 0,
+			$lifecycle_transport->calls['LoadInvoice'] ?? 0,
+			$lifecycle_data['invoice_number'] ?: 'none',
+			(string) ( $lifecycle_isd['odemeSekli'] ?? 'absent' ),
+			(string) ( $lifecycle_ship['gonderiTasiyan']['tuzelKisi']['vkn'] ?? 'absent' ),
+			(string) ( $lifecycle_ship['gonderimTarihi'] ?? 'absent' ),
+			$hint_unshipped,
+			$hint_partial
+		)
+	);
+
+	/* ---------------------------------------------------------------------- */
+	/* 10: the IssueDate is the invoice's day, frozen, and not the order's      */
+	/* ---------------------------------------------------------------------- */
+
+	$issue_order_created = (string) wc_get_order( $lifecycle_id )->get_date_created()->date( 'Y-m-d' );
+	$issue_today         = (string) wp_date( 'Y-m-d' );
+	$issue_ubl           = (string) ( $lifecycle_request['INVOICE'][0]['CONTENT'] ?? '' );
+	$issue_in_ubl        = '';
+	if ( preg_match( '#<cbc:IssueDate>([^<]+)</cbc:IssueDate>#', $issue_ubl, $issue_match ) ) {
+		$issue_in_ubl = trim( $issue_match[1] );
+	}
+	$issue_soap = (string) ( $lifecycle_request['INVOICE'][0]['HEADER']['ISSUE_DATE'] ?? '' );
+
+	// A retry re-reads the frozen value rather than re-deriving it.
+	$issue_retry = Kuka_Island_Core_Invoice_Order_Store::resolve_issue_date( wc_get_order( $lifecycle_id ) );
+
+	$report(
+		'INVOICE_ISSUE_DATE_FROZEN_AT_ENQUEUE',
+		// Frozen at enqueue, in the shop's timezone, and it is today -- not the
+		// day the order was placed.
+		$issue_at_enqueue === $issue_today
+		&& $issue_in_ubl === $issue_today
+		&& $issue_soap === $issue_today
+		&& 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', $issue_at_enqueue )
+		// The order's own creation date is a different fact and is not reused.
+		&& $issue_order_created !== $issue_today
+		// A later read does not move it.
+		&& $issue_retry['date'] === $issue_at_enqueue
+		&& false === $issue_retry['frozen_now']
+		// And the shipment date is its own fact, from the fulfillment.
+		&& (string) ( $lifecycle_ship['gonderimTarihi'] ?? '' ) === $issue_today,
+		sprintf(
+			'measured:production_send|order_created:%s|frozen_at_enqueue:%s|ubl_issue_date:%s|soap_issue_date:%s|shop_today:%s|equals_order_created:%s|reread:%s/frozen_now:%s|gonderimTarihi:%s',
+			$issue_order_created,
+			$issue_at_enqueue ?: 'none',
+			$issue_in_ubl ?: 'none',
+			$issue_soap ?: 'none',
+			$issue_today,
+			$issue_order_created === $issue_at_enqueue ? 'YES' : 'no',
+			$issue_retry['date'],
+			$issue_retry['frozen_now'] ? 'YES' : 'no',
+			(string) ( $lifecycle_ship['gonderimTarihi'] ?? 'absent' )
+		)
+	);
+
+	$purge_fulfillments( $fulfil_store, $lifecycle_id );
+	kuka_test_delete_order( $lifecycle_id, $test_run_id );
+
+	/* ---------------------------------------------------------------------- */
+	/* 4: the fulfillment is reverted after the order was queued               */
+	/* ---------------------------------------------------------------------- */
+
+	$revert_transport = new Kuka_Island_Test_Numbering_Transport();
+	$revert_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $revert_transport ) );
+	$revert_queue     = new Kuka_Island_Core_Invoice_Queue( $revert_manager );
+
+	$revert_product = $make_shippable_product();
+	$revert_order   = $make_physical_order( $test_run_id, $billing_props, $revert_product, 1 );
+	$revert_id      = (int) $revert_order->get_id();
+	$revert_items   = $revert_order->get_items();
+	$revert_item    = reset( $revert_items );
+
+	$purge_fulfillments( $fulfil_store, $revert_id );
+	$revert_saved = $install_fulfil_listeners( $revert_queue );
+
+	$fulfil_items( $fulfil_class, $revert_id, (int) $revert_item->get_id(), 1, 'dhl' );
+	$revert_queued_actions = count( $send_pending_ids( $revert_id ) );
+
+	// The shipment is taken back before the worker gets to it.
+	foreach ( (array) $fulfil_store->read_fulfillments( WC_Order::class, (string) $revert_id ) as $to_revert ) {
+		$fulfil_store->delete( $to_revert, array( 'force_delete' => true ) );
+	}
+	$revert_state = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $revert_id ) );
+
+	$revert_pending = $send_pending_ids( $revert_id );
+	$revert_runs    = 0;
+	if ( 1 === count( $revert_pending ) ) {
+		ActionScheduler_QueueRunner::instance()->process_action( (int) $revert_pending[0], 'kuka-verify' );
+		$revert_runs = 1;
+	}
+
+	$restore_fulfil_listeners( $revert_saved );
+
+	$revert_final  = wc_get_order( $revert_id );
+	$revert_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $revert_final );
+	$revert_error  = (string) $revert_final->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true );
+
+	$report(
+		'INVOICE_REVERTED_FULFILLMENT_STOPS_THE_WORKER',
+		1 === $revert_queued_actions
+		&& false === $revert_state['ok']
+		&& 1 === $revert_runs
+		// Nothing was transmitted, and the order says why.
+		&& 0 === (int) ( $revert_transport->calls['SendInvoice'] ?? 0 )
+		&& 0 === (int) ( $revert_transport->calls['LoadInvoice'] ?? 0 )
+		&& Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED === $revert_status
+		&& Kuka_Island_Core_Invoice_Manager::ERROR_SHIPMENT_INCOMPLETE === $revert_error
+		&& 0 === count( $send_pending_ids( $revert_id ) ),
+		sprintf(
+			'measured:real_fulfillments_datastore_and_action_scheduler|queued_actions:%d|state_after_revert:%s|worker_runs:%d|SendInvoice=%d|status:%s|error_code:%s|send_actions_pending:%d',
+			$revert_queued_actions,
+			$revert_state['state'],
+			$revert_runs,
+			$revert_transport->calls['SendInvoice'] ?? 0,
+			$revert_status,
+			$revert_error ?: 'none',
+			count( $send_pending_ids( $revert_id ) )
+		)
+	);
+
+	$purge_fulfillments( $fulfil_store, $revert_id );
+	kuka_test_delete_order( $revert_id, $test_run_id );
+
+	/* ---------------------------------------------------------------------- */
+	/* 5-8: carrier identity                                                   */
+	/* ---------------------------------------------------------------------- */
+
+	$carrier_cases = array(
+		// name => [ list of [provider, qty], config, expected ok, expected error ]
+		'dhl_configured'   => array( array( array( 'dhl', 2 ) ), 'mapped', true, '' ),
+		'dhl_two_parcels'  => array( array( array( 'dhl', 1 ), array( 'dhl', 1 ) ), 'mapped', true, '' ),
+		'unmapped_carrier' => array( array( array( 'aras-kargo', 2 ) ), 'mapped', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_UNMAPPED ),
+		'free_text_other'  => array( array( array( 'other', 2 ) ), 'mapped', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_UNMAPPED ),
+		'two_carriers'     => array( array( array( 'dhl', 1 ), array( 'ups', 1 ) ), 'mapped', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_MULTIPLE_PROVIDERS ),
+		'nothing_mapped'   => array( array( array( 'dhl', 2 ) ), 'unmapped', false, Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_UNMAPPED ),
+	);
+
+	$carrier_ok      = true;
+	$carrier_details = array();
+	$carrier_sends   = 0;
+	$carrier_hint_unmapped = '';
+
+	foreach ( $carrier_cases as $case => $spec ) {
+		$case_config    = 'mapped' === $spec[1] ? $fulfil_config : $no_carrier_config;
+		$case_transport = new Kuka_Island_Test_Numbering_Transport();
+		$case_transport->assigned_id = 'EDM2026000002' . str_pad( (string) count( $carrier_details ), 3, '0', STR_PAD_LEFT );
+		$case_manager   = new Kuka_Island_Core_Invoice_Manager( $case_config, new Kuka_Island_Core_EDM_Provider( $case_config, $case_transport ) );
+
+		$case_product = $make_shippable_product();
+		$case_qty     = array_sum( array_map( static fn( array $parcel ): int => (int) $parcel[1], $spec[0] ) );
+		$case_order   = $make_physical_order( $test_run_id, $billing_props, $case_product, $case_qty );
+		$case_id      = (int) $case_order->get_id();
+		$case_items   = $case_order->get_items();
+		$case_item    = reset( $case_items );
+
+		$purge_fulfillments( $fulfil_store, $case_id );
+		// No listeners: this case measures the SEND path, not the enqueue path.
+		foreach ( $spec[0] as $parcel ) {
+			$fulfil_items( $fulfil_class, $case_id, (int) $case_item->get_id(), (int) $parcel[1], (string) $parcel[0] );
+		}
+
+		$case_facts   = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $case_id ) );
+		$case_carrier = Kuka_Island_Core_Internet_Sales_Details::resolve_carrier( $case_config, (array) $case_facts['facts']['provider_keys'] );
+
+		$case_error = '';
+		try {
+			$case_manager->process_order( wc_get_order( $case_id ) );
+		} catch ( Kuka_Island_Core_Invoice_Permanent_Exception $e ) {
+			$case_error = $e->get_safe_error_code();
+		} catch ( Throwable $t ) {
+			$case_error = get_class( $t );
+		}
+
+		$case_sends     = (int) ( $case_transport->calls['SendInvoice'] ?? 0 );
+		$carrier_sends += $case_sends;
+		$case_reloaded  = wc_get_order( $case_id );
+		$case_isd       = (array) ( $case_transport->requests['SendInvoice']['INVOICE'][0]['HEADER']['INTERNETSALESDETAILS'] ?? array() );
+		$case_vkn       = (string) ( $case_isd['gonderiBilgileri']['gonderiTasiyan']['tuzelKisi']['vkn'] ?? '' );
+
+		if ( 'nothing_mapped' === $case ) {
+			$carrier_hint_unmapped = Kuka_Island_Core_Invoice_Admin::operator_hint( $case_reloaded, $case_config );
+		}
+
+		$hit = $case_carrier['ok'] === $spec[2]
+			&& ( true === $spec[2] ? '' === $case_carrier['error'] : $spec[3] === $case_carrier['error'] )
+			&& ( true === $spec[2] ? 1 === $case_sends : 0 === $case_sends )
+			&& ( true === $spec[2]
+				? ( $test_carrier_vkn === $case_vkn && '' === $case_error )
+				: ( '' === $case_vkn && Kuka_Island_Core_Invoice_Manager::ERROR_INTERNET_SALES_INCOMPLETE === $case_error ) );
+
+		$carrier_details[] = $case . '=' . ( $case_carrier['ok'] ? 'ok/send' . $case_sends : ( $case_carrier['error'] . '/send' . $case_sends ) );
+		if ( ! $hit ) {
+			$carrier_ok = false;
+		}
+
+		$purge_fulfillments( $fulfil_store, $case_id );
+		kuka_test_delete_order( $case_id, $test_run_id );
+	}
+
+	// The provider KEY is what identity is looked up by, and WooCommerce's
+	// display label for it is not that key.
+	$dhl_label = '';
+	$dhl_key   = '';
+	if ( method_exists( $fulfil_utils, 'get_shipping_providers' ) ) {
+		$providers = (array) call_user_func( array( $fulfil_utils, 'get_shipping_providers' ) );
+		$dhl_entry = $providers['dhl'] ?? null;
+		if ( is_object( $dhl_entry ) && method_exists( $dhl_entry, 'get_name' ) ) {
+			$dhl_label = (string) $dhl_entry->get_name();
+			$dhl_key   = method_exists( $dhl_entry, 'get_key' ) ? (string) $dhl_entry->get_key() : '';
+		}
+	}
+
+	/*
+	 * DHL's display label happens to be its key in a different case, so it is
+	 * not the sharp example. Aras Kargo is: WooCommerce keys it 'aras-kargo' and
+	 * shows it as 'Aras Kargo', and the carrier map answers only to the key.
+	 */
+	$aras_config = new Kuka_Island_Core_Invoice_Config(
+		array_merge(
+			$ready_overrides,
+			array(
+				'auto_send' => true,
+				'carriers'  => array( 'aras-kargo' => array( 'vkn' => $test_carrier_vkn, 'title' => $test_carrier_title ) ),
+			)
+		)
+	);
+	$aras_label      = Kuka_Island_Core_Internet_Sales_Details::provider_display_label( 'aras-kargo' );
+	$aras_by_key     = $aras_config->get_carrier( 'aras-kargo' );
+	$aras_by_label   = $aras_config->get_carrier( $aras_label );
+
+	$report(
+		'INVOICE_CARRIER_IDENTITY_FROM_PROVIDER_KEY',
+		$carrier_ok
+		// Only the two accepted cases transmitted anything.
+		&& 2 === $carrier_sends
+		// WooCommerce's own key for DHL is exactly 'dhl'...
+		&& 'dhl' === $dhl_key
+		&& array() !== $fulfil_config->get_carrier( 'dhl' )
+		&& array( 'dhl' ) === $fulfil_config->get_configured_carrier_keys()
+		// ...and a display label is not a lookup key: Aras Kargo resolves by
+		// 'aras-kargo' and not by 'Aras Kargo'.
+		&& 'DHL' === $dhl_label
+		&& 'Aras Kargo' === $aras_label
+		&& array() !== $aras_by_key
+		&& array() === $aras_by_label
+		// A carrier with no reviewed identity says so, in plain Turkish.
+		&& 'DHL mali taşıyıcı bilgileri yapılandırılmamış.' === $carrier_hint_unmapped,
+		sprintf(
+			'measured:real_fulfillments_datastore_and_production_send|cases:%d|%s|SendInvoice=%d|provider_key:%s|configured_keys:%s|display_label:%s|label_as_lookup_key:%s|hint:%s',
+			count( $carrier_cases ),
+			implode( ' ', $carrier_details ),
+			$carrier_sends,
+			$dhl_key ?: 'none',
+			implode( ',', $fulfil_config->get_configured_carrier_keys() ),
+			$dhl_label ?: 'none',
+			array() === $aras_by_label ? 'not_found' : 'FOUND',
+			$carrier_hint_unmapped
+		)
+	);
+
+	// Every product this section created goes away with it, and the sweep is run
+	// again so nothing with the fixture title survives the script either way.
+	$product_residue = array();
+	foreach ( (array) $GLOBALS['kuka_test_products'] as $product_id ) {
+		wp_delete_post( (int) $product_id, true );
+		if ( null !== get_post( (int) $product_id ) ) {
+			$product_residue[] = (int) $product_id;
+		}
+	}
+	$GLOBALS['kuka_test_products'] = array();
+	$purge_fixture_products( $fulfil_product_title );
+
+	global $wpdb;
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$fixture_products_left = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = %s AND post_title = %s", 'product', $fulfil_product_title ) );
+
+	$report(
+		'INVOICE_FULFILLMENT_FIXTURES_CLEANED',
+		array() === $product_residue && 0 === $fixture_products_left,
+		sprintf(
+			'product_residue:%s|fixture_products_left:%d|stale_purged_on_entry:%d',
+			empty( $product_residue ) ? 'none' : implode( ',', $product_residue ),
+			$fixture_products_left,
+			count( $stale_products_purged )
+		)
+	);
 }
 
 /* ========================================================================== */
