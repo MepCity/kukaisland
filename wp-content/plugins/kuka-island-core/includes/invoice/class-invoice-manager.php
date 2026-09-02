@@ -401,13 +401,6 @@ class Kuka_Island_Core_Invoice_Manager {
 			 */
 			$this->start_status_polling( $fresh_order );
 
-			/*
-			 * A replacement identity approved by an operator has now been used.
-			 * Releasing the reservation keeps a later document from silently
-			 * inheriting a UUID a person minted for this one.
-			 */
-			Kuka_Island_Core_Invoice_Recovery::clear_reservation( $fresh_order );
-
 			if ( $order !== $fresh_order ) {
 				$order->read_meta_data( true );
 			}

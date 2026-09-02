@@ -6270,6 +6270,405 @@ Kuka_Island_Core_Invoice_Status_Poller::unschedule( $recovery_order_id );
 kuka_test_delete_order( $recovery_order_id, $test_run_id );
 kuka_test_delete_order( $recovery_ineligible_order->get_id(), $test_run_id );
 
+/* -------------------------------------------------------------------------- */
+/* A spent replacement identity never blocks the next recreation              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * SendInvoice that can be made to fail the way a lost network does.
+ */
+final class Kuka_Island_Test_Recovery_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, int> */
+	public array $calls = array();
+	/** @var bool Raise the timeout the client classifies as transient. */
+	public bool $timeout_on_send = false;
+	/** @var string STATUS literal for a successful SendInvoice. */
+	public string $send_status = 'SEND - SUCCEED';
+	/** @var string|null ID EDM assigns, or null to omit it. */
+	public ?string $assigned_id = 'EDM2026000001000';
+	/** @var string STATUS literal for GetInvoiceStatus. */
+	public string $status_literal = 'PACKAGE - PROCESSING';
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+
+		if ( 'Login' === $operation ) {
+			return array( 'SESSION_ID' => 'session-recovery-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+
+		if ( 'SendInvoice' === $operation ) {
+			if ( $this->timeout_on_send ) {
+				throw new SoapFault( 'HTTP', 'Connection timed out after 30 seconds' );
+			}
+
+			$invoice = array(
+				'UUID'   => $parameters['INVOICE'][0]['UUID'] ?? 'uuid-recovery',
+				'HEADER' => array( 'STATUS' => $this->send_status ),
+			);
+			if ( null !== $this->assigned_id ) {
+				$invoice['ID'] = $this->assigned_id;
+			}
+
+			return array(
+				'INVOICE'        => $invoice,
+				'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+			);
+		}
+
+		if ( 'GetInvoiceStatus' === $operation ) {
+			return array(
+				'INVOICE_STATUS' => array(
+					array(
+						'UUID'   => $parameters['INVOICE']['UUID'] ?? 'uuid-recovery',
+						'HEADER' => array( 'STATUS' => $this->status_literal ),
+					),
+				),
+			);
+		}
+
+		return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+	}
+}
+
+/**
+ * Seed an order whose document EDM refused.
+ *
+ * @param string               $run_id   Isolation run ID.
+ * @param array<string, mixed> $billing  Billing props.
+ * @param string               $uuid     Refused document UUID.
+ * @param string               $number   Refused document number.
+ * @param array<string, mixed> $extra    Extra meta.
+ */
+$make_refused_order = static function ( string $run_id, array $billing, string $uuid, string $number, array $extra = array() ): WC_Order {
+	return kuka_create_lock_order(
+		$run_id,
+		$billing,
+		array_merge(
+			array(
+				Kuka_Island_Core_Invoice_Order_Store::META_STATUS            => Kuka_Island_Core_Invoice_Status::STATUS_FAILED,
+				Kuka_Island_Core_Invoice_Order_Store::META_UUID              => $uuid,
+				Kuka_Island_Core_Invoice_Order_Store::META_NUMBER            => $number,
+				Kuka_Island_Core_Invoice_Order_Store::META_NUMBER_SOURCE     => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+				Kuka_Island_Core_Invoice_Order_Store::META_ATTEMPTS          => '1',
+				Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS => 'SEND - FAILED',
+			),
+			$extra
+		)
+	);
+};
+
+/*
+ * The reservation is spent by mark_sending(), in the same write that records the
+ * live UUID. It used to be released only after the provider answered, so a
+ * SendInvoice that threw left the reservation next to the UUID it had already
+ * become -- and approve() then read that as "a replacement is still waiting",
+ * refusing to mint one for the document that had just failed.
+ */
+$spent_transport = new Kuka_Island_Test_Recovery_Transport();
+$spent_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $spent_transport ) );
+$spent_order     = $make_refused_order( $test_run_id, $billing_props, 'uuid-refused-generation-1', 'EDM2026000000001' );
+$spent_order_id  = (int) $spent_order->get_id();
+
+$spent_first = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $spent_order_id ) );
+
+// The replacement's transmission is lost on the wire.
+$spent_transport->timeout_on_send = true;
+$spent_send_error = '';
+try {
+	$spent_manager->process_order( wc_get_order( $spent_order_id ) );
+} catch ( Throwable $t ) {
+	$spent_send_error = get_class( $t );
+}
+
+$spent_after      = wc_get_order( $spent_order_id );
+$spent_live_uuid  = (string) $spent_after->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_UUID, true );
+$spent_reserved   = Kuka_Island_Core_Invoice_Recovery::reserved_uuid( $spent_after );
+$spent_status     = Kuka_Island_Core_Invoice_Order_Store::get_status( $spent_after );
+$spent_sends      = (int) ( $spent_transport->calls['SendInvoice'] ?? 0 );
+
+// The poll then finds out the replacement was refused too.
+$spent_after->update_meta_data( Kuka_Island_Core_Invoice_Order_Store::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_FAILED );
+$spent_after->update_meta_data( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS, 'SEND - FAILED' );
+$spent_after->save_meta_data();
+
+$spent_second = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $spent_order_id ) );
+// And the same call again is still idempotent.
+$spent_second_again = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $spent_order_id ) );
+
+$spent_archive = Kuka_Island_Core_Invoice_Recovery::superseded_documents( wc_get_order( $spent_order_id ) );
+$spent_archived_uuids = array_map( static fn( array $entry ): string => (string) ( $entry['uuid'] ?? '' ), $spent_archive );
+$spent_sends_total = (int) ( $spent_transport->calls['SendInvoice'] ?? 0 );
+
+$report(
+	'INVOICE_RECOVERY_SPENT_RESERVATION_DOES_NOT_BLOCK',
+	Kuka_Island_Core_Invoice_Recovery::OUTCOME_APPROVED === $spent_first['outcome']
+	// The lost transmission still used the approved identity...
+	&& '' !== $spent_first['reserved_uuid']
+	&& $spent_live_uuid === $spent_first['reserved_uuid']
+	&& Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN === $spent_status
+	// ...and the reservation is gone, even though the provider threw.
+	&& '' === $spent_reserved
+	&& 1 === $spent_sends
+	// The replacement's own failure can then be recreated in turn.
+	&& Kuka_Island_Core_Invoice_Recovery::OUTCOME_APPROVED === $spent_second['outcome']
+	&& 2 === (int) $spent_second['generation']
+	&& $spent_second['reserved_uuid'] !== $spent_first['reserved_uuid']
+	&& 'uuid-refused-generation-1' !== $spent_second['reserved_uuid']
+	// Repeating that call changes nothing.
+	&& Kuka_Island_Core_Invoice_Recovery::OUTCOME_ALREADY_APPROVED === $spent_second_again['outcome']
+	&& $spent_second_again['reserved_uuid'] === $spent_second['reserved_uuid']
+	// Both refused documents are on the record, and neither identifier came back.
+	&& array( 'uuid-refused-generation-1', $spent_first['reserved_uuid'] ) === $spent_archived_uuids
+	// No blind resend at any point.
+	&& 1 === $spent_sends_total,
+	sprintf(
+		'measured:production_recovery_and_send|first:%s|live_uuid_is_reserved:%s|status_after_exception:%s|reservation_after_exception:%s|send_threw:%s|second:%s|generation:%d|new_uuid_differs:%s|repeat:%s|archived_uuids:%d|SendInvoice=%d',
+		(string) $spent_first['outcome'],
+		$spent_live_uuid === $spent_first['reserved_uuid'] ? 'yes' : 'no',
+		$spent_status,
+		'' === $spent_reserved ? 'consumed' : 'STALE',
+		'' === $spent_send_error ? 'no' : $spent_send_error,
+		(string) $spent_second['outcome'],
+		(int) $spent_second['generation'],
+		$spent_second['reserved_uuid'] !== $spent_first['reserved_uuid'] ? 'yes' : 'no',
+		(string) $spent_second_again['outcome'],
+		count( $spent_archived_uuids ),
+		$spent_sends_total
+	)
+);
+
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $spent_order_id );
+kuka_test_delete_order( $spent_order_id, $test_run_id );
+
+/*
+ * The crash-like record: a live UUID and a reservation present at once, which is
+ * what a process killed between the two writes would leave. The live evidence is
+ * the truth; the reservation is stale and must not lock the flow.
+ */
+$crash_order = $make_refused_order(
+	$test_run_id,
+	$billing_props,
+	'uuid-crash-live-document',
+	'EDM2026000000002',
+	array(
+		Kuka_Island_Core_Invoice_Recovery::META_RESERVED_UUID => 'uuid-crash-stale-reservation',
+		Kuka_Island_Core_Invoice_Recovery::META_GENERATION    => '1',
+	)
+);
+$crash_order_id = (int) $crash_order->get_id();
+
+$crash_result  = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $crash_order_id ) );
+$crash_archive = Kuka_Island_Core_Invoice_Recovery::superseded_documents( wc_get_order( $crash_order_id ) );
+
+$report(
+	'INVOICE_RECOVERY_STALE_RESERVATION_IS_NOT_A_PENDING_APPROVAL',
+	// Not already_approved: the stale reservation is ignored.
+	Kuka_Island_Core_Invoice_Recovery::OUTCOME_APPROVED === $crash_result['outcome']
+	&& 2 === (int) $crash_result['generation']
+	// And the new identity is neither the live one nor the stale one.
+	&& 'uuid-crash-live-document' !== $crash_result['reserved_uuid']
+	&& 'uuid-crash-stale-reservation' !== $crash_result['reserved_uuid']
+	&& 1 === count( $crash_archive )
+	&& 'uuid-crash-live-document' === (string) ( $crash_archive[0]['uuid'] ?? '' ),
+	sprintf(
+		'measured:production_recovery|fixture:live_uuid+stale_reservation|outcome:%s|generation:%d|new_uuid_is_live:%s|new_uuid_is_stale:%s|archived_uuid:%s',
+		(string) $crash_result['outcome'],
+		(int) $crash_result['generation'],
+		'uuid-crash-live-document' === $crash_result['reserved_uuid'] ? 'YES' : 'no',
+		'uuid-crash-stale-reservation' === $crash_result['reserved_uuid'] ? 'YES' : 'no',
+		(string) ( $crash_archive[0]['uuid'] ?? 'none' )
+	)
+);
+
+kuka_test_delete_order( $crash_order_id, $test_run_id );
+
+/*
+ * The replacement must not inherit the refused document's polling budget. The
+ * attempt and elapsed caps live in META_POLL_ATTEMPTS and META_POLL_STARTED_AT,
+ * which Kuka_Island_Core_Invoice_Status_Poller::start() only initialises when
+ * they are absent -- so a spent budget would make the replacement give up on its
+ * first query. The EDM side signals describe the old document and must not read
+ * as the new one's either.
+ */
+if ( $runner_available ) {
+	$stale_poll_transport = new Kuka_Island_Test_Recovery_Transport();
+	$stale_poll_transport->assigned_id    = 'EDM2026000001111';
+	// The replacement is accepted but not yet described, so it stays in flight.
+	$stale_poll_transport->send_status    = '';
+	$stale_poll_transport->status_literal = 'PACKAGE - PROCESSING';
+	$stale_poll_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $stale_poll_transport ) );
+	$stale_poll_poller  = new Kuka_Island_Core_Invoice_Status_Poller( $stale_poll_manager );
+
+	$old_started_at   = time() - ( Kuka_Island_Core_Invoice_Status_Poller::MAX_ELAPSED + 3600 );
+	$stale_poll_order = $make_refused_order(
+		$test_run_id,
+		$billing_props,
+		'uuid-old-polled-document',
+		'EDM2026000000003',
+		array(
+			// A fully spent budget, and every side signal the old document left.
+			Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS           => (string) Kuka_Island_Core_Invoice_Status_Poller::MAX_ATTEMPTS,
+			Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT         => (string) $old_started_at,
+			Kuka_Island_Core_Invoice_Status_Poller::META_RESPONSE_CODE           => '500',
+			Kuka_Island_Core_Invoice_Status_Poller::META_EARCHIVE_REPORT_STATUS  => 'NOT_REPORTED',
+			Kuka_Island_Core_Invoice_Status_Poller::META_GIB_STATUS_CODE         => '-1',
+			Kuka_Island_Core_Invoice_Status_Poller::META_LAST_SCHEDULE_OUTCOME   => Kuka_Island_Core_Invoice_Status_Poller::SCHEDULE_CREATED,
+		)
+	);
+	$stale_poll_order_id = (int) $stale_poll_order->get_id();
+
+	// A query booked for the refused document, and a send action that must be
+	// left alone.
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $stale_poll_order_id );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_poll_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	Kuka_Island_Core_Invoice_Status_Poller::schedule_query( $stale_poll_order_id, 300 );
+	as_schedule_single_action( time() + 600, Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_poll_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+
+	$stale_poll_before_poll = count( $poll_pending_ids( $stale_poll_order_id ) );
+	$stale_poll_before_send = count(
+		(array) as_get_scheduled_actions(
+			array(
+				'hook'     => Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE,
+				'args'     => array( 'order_id' => $stale_poll_order_id ),
+				'group'    => Kuka_Island_Core_Invoice_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 50,
+				'orderby'  => 'none',
+			),
+			'ids'
+		)
+	);
+
+	$approved_at         = time();
+	$stale_poll_approval = Kuka_Island_Core_Invoice_Recovery::approve( wc_get_order( $stale_poll_order_id ) );
+
+	$after_approval      = wc_get_order( $stale_poll_order_id );
+	$live_poll_meta      = array();
+	foreach ( Kuka_Island_Core_Invoice_Order_Store::superseded_poll_meta_keys() as $poll_meta_key ) {
+		$live_value = trim( (string) $after_approval->get_meta( $poll_meta_key, true ) );
+		if ( '' !== $live_value ) {
+			$live_poll_meta[] = $poll_meta_key . '=' . $live_value;
+		}
+	}
+	$stale_poll_after_poll = count( $poll_pending_ids( $stale_poll_order_id ) );
+	$stale_poll_after_send = count(
+		(array) as_get_scheduled_actions(
+			array(
+				'hook'     => Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE,
+				'args'     => array( 'order_id' => $stale_poll_order_id ),
+				'group'    => Kuka_Island_Core_Invoice_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 50,
+				'orderby'  => 'none',
+			),
+			'ids'
+		)
+	);
+
+	$archived_poll_state = (array) ( Kuka_Island_Core_Invoice_Recovery::superseded_documents( $after_approval )[0]['poll_state'] ?? array() );
+
+	// Send the replacement through the production path.
+	$stale_poll_saved = $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] ?? null;
+	remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+	$stale_poll_poller->register();
+
+	$stale_poll_send_error = '';
+	try {
+		$stale_poll_manager->process_order( wc_get_order( $stale_poll_order_id ) );
+	} catch ( Throwable $t ) {
+		$stale_poll_send_error = get_class( $t ) . ': ' . $t->getMessage();
+	}
+
+	$after_send        = wc_get_order( $stale_poll_order_id );
+	$new_attempts      = (string) $after_send->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS, true );
+	$new_started_at    = (int) $after_send->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT, true );
+	$new_status        = Kuka_Island_Core_Invoice_Order_Store::get_status( $after_send );
+	$booked_after_send = $poll_pending_ids( $stale_poll_order_id );
+
+	// The replacement's first query really runs, and books its follow-up.
+	$first_query_ran = false;
+	if ( 1 === count( $booked_after_send ) ) {
+		ActionScheduler_QueueRunner::instance()->process_action( (int) $booked_after_send[0], 'kuka-verify' );
+		$first_query_ran = true;
+	}
+
+	remove_all_actions( Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS );
+	if ( null !== $stale_poll_saved ) {
+		$GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] = $stale_poll_saved;
+	}
+
+	$after_query        = wc_get_order( $stale_poll_order_id );
+	$attempts_after_run = (string) $after_query->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS, true );
+	$booked_after_run   = count( $poll_pending_ids( $stale_poll_order_id ) );
+	$edm_status_after   = (string) $after_query->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS, true );
+
+	$report(
+		'INVOICE_RECOVERY_NEW_DOCUMENT_FRESH_POLL_BUDGET',
+		Kuka_Island_Core_Invoice_Recovery::OUTCOME_APPROVED === $stale_poll_approval['outcome']
+		// The refused document's polling state is off the live record...
+		&& array() === $live_poll_meta
+		// ...and kept with the document it describes.
+		&& (string) Kuka_Island_Core_Invoice_Status_Poller::MAX_ATTEMPTS === (string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS ] ?? '' )
+		&& (string) $old_started_at === (string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT ] ?? '' )
+		&& 'SEND - FAILED' === (string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS ] ?? '' )
+		&& '500' === (string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_RESPONSE_CODE ] ?? '' )
+		&& '-1' === (string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_GIB_STATUS_CODE ] ?? '' )
+		// Only this order's poll hook was cancelled; the send action stands.
+		&& 1 === $stale_poll_before_poll
+		&& 0 === $stale_poll_after_poll
+		&& 1 === $stale_poll_before_send
+		&& 1 === $stale_poll_after_send
+		// The replacement was sent once and is in flight.
+		&& '' === $stale_poll_send_error
+		&& 1 === (int) ( $stale_poll_transport->calls['SendInvoice'] ?? 0 )
+		&& Kuka_Island_Core_Invoice_Status::STATUS_SENT === $new_status
+		// Its budget starts from zero, with a fresh clock.
+		&& '0' === $new_attempts
+		&& $new_started_at >= $approved_at
+		&& $new_started_at > $old_started_at
+		// One query booked, which really ran and booked its own follow-up.
+		&& 1 === count( $booked_after_send )
+		&& true === $first_query_ran
+		&& '1' === $attempts_after_run
+		&& 1 === $booked_after_run
+		// And the answer recorded is the replacement's, not the old document's.
+		&& 'PACKAGE - PROCESSING' === $edm_status_after,
+		sprintf(
+			'measured:production_recovery_send_and_runner|outcome:%s|live_poll_meta:%s|archived_attempts:%s|archived_started_at:%s|archived_edm_status:%s|poll_actions:%d->%d|send_actions:%d->%d|SendInvoice=%d|status:%s|new_attempts:%s|new_started_at_fresh:%s|booked_after_send:%d|attempts_after_run:%s|booked_after_run:%d|edm_status_after:%s|send_error:%s',
+			(string) $stale_poll_approval['outcome'],
+			empty( $live_poll_meta ) ? 'none' : implode( ',', $live_poll_meta ),
+			(string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS ] ?? 'none' ),
+			(string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT ] ?? 'none' ),
+			(string) ( $archived_poll_state[ Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS ] ?? 'none' ),
+			$stale_poll_before_poll,
+			$stale_poll_after_poll,
+			$stale_poll_before_send,
+			$stale_poll_after_send,
+			$stale_poll_transport->calls['SendInvoice'] ?? 0,
+			$new_status,
+			'' === $new_attempts ? 'absent' : $new_attempts,
+			$new_started_at >= $approved_at ? 'yes' : 'no',
+			count( $booked_after_send ),
+			'' === $attempts_after_run ? 'absent' : $attempts_after_run,
+			$booked_after_run,
+			$edm_status_after ?: 'none',
+			'' === $stale_poll_send_error ? 'none' : $stale_poll_send_error
+		)
+	);
+
+	Kuka_Island_Core_Invoice_Status_Poller::unschedule( $stale_poll_order_id );
+	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $stale_poll_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
+	kuka_test_delete_order( $stale_poll_order_id, $test_run_id );
+}
+
 /* ========================================================================== */
 /* REQUEST_HEADER contract and safe SOAP fault classification                  */
 /* ========================================================================== */

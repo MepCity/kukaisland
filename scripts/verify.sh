@@ -809,6 +809,24 @@ expect_invoice_line "EDM delivers the e-Archive document itself" "INVOICE_EARCHI
 # A document EDM refused is never resent and never has its UUID or number reused.
 # The replacement is an operator decision, it archives what it replaces, and a
 # double click or a concurrent request produces one document, not two.
+# The replacement identity is spent by mark_sending(), in the same atomic write
+# that records the live UUID -- not after the provider answers. A SendInvoice
+# that throws, or a process killed mid-call, used to leave the reservation next
+# to the UUID it had already become, and approve() then read that as "a
+# replacement is still waiting", refusing to mint one for the document that had
+# just failed. Live transmission evidence now outranks the reservation.
+expect_invoice_line "a spent reservation does not block the next recreation" "INVOICE_RECOVERY_SPENT_RESERVATION_DOES_NOT_BLOCK=PASS|measured:production_recovery_and_send|first:approved|live_uuid_is_reserved:yes|status_after_exception:send_uncertain|reservation_after_exception:consumed|send_threw:Kuka_Island_Core_Invoice_Transient_Exception|second:approved|generation:2|new_uuid_differs:yes|repeat:already_approved|archived_uuids:2|SendInvoice=1"
+expect_invoice_line "a stale reservation is not a pending approval" "INVOICE_RECOVERY_STALE_RESERVATION_IS_NOT_A_PENDING_APPROVAL=PASS|measured:production_recovery|fixture:live_uuid+stale_reservation|outcome:approved|generation:2|new_uuid_is_live:no|new_uuid_is_stale:no|archived_uuid:uuid-crash-live-document"
+
+# And the replacement starts from a clean polling budget. The refused document's
+# attempt/elapsed clock and its EDM side signals are archived with it and removed
+# from the live record, so a spent budget cannot make the replacement give up on
+# its first query. Only this order's poll hook is cancelled; the send action
+# stands.
+expect_invoice_match "the replacement gets a fresh poll budget" "^INVOICE_RECOVERY_NEW_DOCUMENT_FRESH_POLL_BUDGET=PASS\\|measured:production_recovery_send_and_runner\\|outcome:approved\\|live_poll_meta:none\\|archived_attempts:12\\|archived_started_at:[0-9]{10}\\|archived_edm_status:SEND - FAILED\\|"
+expect_invoice_match "only the poll hook is cancelled by a recreation" "^INVOICE_RECOVERY_NEW_DOCUMENT_FRESH_POLL_BUDGET=PASS\\|.*\\|poll_actions:1->0\\|send_actions:1->1\\|SendInvoice=1\\|status:sent\\|"
+expect_invoice_match "the replacement polls from zero and books its follow-up" "^INVOICE_RECOVERY_NEW_DOCUMENT_FRESH_POLL_BUDGET=PASS\\|.*\\|new_attempts:0\\|new_started_at_fresh:yes\\|booked_after_send:1\\|attempts_after_run:1\\|booked_after_run:1\\|edm_status_after:PACKAGE - PROCESSING\\|send_error:none$"
+
 expect_invoice_line "a refused document is recreated, never resent" "INVOICE_FAILED_DOCUMENT_OPERATOR_RECREATE=PASS|measured:production_recovery_and_send|eligible:yes|forced_resend_SendInvoice:0|first:approved|second:already_approved|concurrent:lock_contended|archive_entries:1/1/1|reserved_uuid_new:yes|final_uuid_is_reserved:yes|old_number:EDM2026000000111|new_number:EDM2026000000999|audit_names_old_document:yes|ineligible:not_eligible|SendInvoice=1|send_error:none"
 
 # Audit item 5: fiscal fallbacks removed, fail-closed instead.

@@ -30,6 +30,13 @@
  * evidence for the NEW document only, so the ordinary send path may run exactly
  * once more, with every gate it normally has.
  *
+ * The reservation is spent by Kuka_Island_Core_Invoice_Order_Store::mark_sending(),
+ * in the same atomic write that records the live UUID -- not after the provider
+ * answers. A SendInvoice that throws, or a process killed mid-call, therefore
+ * cannot leave a consumed reservation behind; and if one is found next to a live
+ * UUID anyway, approve() treats the live evidence as the truth and the
+ * reservation as stale.
+ *
  * @package Kuka_Island_Core
  */
 
@@ -138,9 +145,23 @@ final class Kuka_Island_Core_Invoice_Recovery {
 
 			$generation = (int) $fresh->get_meta( self::META_GENERATION, true );
 			$reserved   = self::reserved_uuid( $fresh );
+			$evidence   = Kuka_Island_Core_Invoice_Manager::transmission_evidence( $fresh );
 
-			if ( '' !== $reserved ) {
-				// Idempotent: a replacement is already waiting to be sent, so
+			/*
+			 * A reservation only means "a replacement is waiting to be sent"
+			 * while nothing has been transmitted under it. Once the live UUID
+			 * exists the identity is spent, whatever the reservation still says
+			 * -- mark_sending() removes it in the same atomic write, but a
+			 * process killed between the two, or a record restored from an
+			 * older copy, can still present both at once. Reading that as a
+			 * pending approval is what locked the recovery flow: the document
+			 * that had actually just failed could never be replaced.
+			 *
+			 * So the live evidence is checked first, and a reservation standing
+			 * beside it is simply stale.
+			 */
+			if ( array() === $evidence && '' !== $reserved ) {
+				// Idempotent: the replacement really has not been sent yet, so
 				// the answer is the identity that was already minted.
 				return self::outcome( self::OUTCOME_ALREADY_APPROVED, $reserved, array(), $generation );
 			}
@@ -174,6 +195,14 @@ final class Kuka_Island_Core_Invoice_Recovery {
 				self::approved_message()
 			);
 
+			/*
+			 * A query still booked for the refused document would run against a
+			 * UUID that is no longer live. Only this order's ACTION_QUERY_STATUS
+			 * is cancelled -- the send queue's ACTION_PROCESS_INVOICE and every
+			 * other action are left exactly as they are.
+			 */
+			Kuka_Island_Core_Invoice_Status_Poller::unschedule( $order_id );
+
 			$fresh->update_meta_data( self::META_RESERVED_UUID, $new_uuid );
 			$fresh->update_meta_data( self::META_GENERATION, (string) $generation );
 			$fresh->save_meta_data();
@@ -195,24 +224,6 @@ final class Kuka_Island_Core_Invoice_Recovery {
 	}
 
 	/**
-	 * Forget the reservation once the replacement has been transmitted.
-	 *
-	 * Called from the manager after the send outcome is persisted, so a later
-	 * document does not silently inherit an identity a person approved for this
-	 * one.
-	 *
-	 * @param WC_Order $order WooCommerce order.
-	 */
-	public static function clear_reservation( WC_Order $order ): void {
-		if ( '' === self::reserved_uuid( $order ) ) {
-			return;
-		}
-
-		$order->delete_meta_data( self::META_RESERVED_UUID );
-		$order->save_meta_data();
-	}
-
-	/**
 	 * What the failed document was, before it is replaced.
 	 *
 	 * @param WC_Order $order WooCommerce order.
@@ -227,7 +238,27 @@ final class Kuka_Island_Core_Invoice_Recovery {
 			'edm_status'      => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS, true ) ),
 			'last_error'      => trim( (string) $order->get_meta( Kuka_Island_Core_Invoice_Order_Store::META_LAST_ERROR, true ) ),
 			'superseded_at'   => time(),
+			// The refused document's own polling state, kept with it. It is
+			// removed from the live record so a replacement inherits neither its
+			// spent attempt budget nor its EDM side signals.
+			'poll_state'      => self::poll_state_snapshot( $order ),
 		);
+	}
+
+	/**
+	 * The polling meta a document leaves behind, as an archive entry.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return array<string, string>
+	 */
+	private static function poll_state_snapshot( WC_Order $order ): array {
+		$snapshot = array();
+
+		foreach ( Kuka_Island_Core_Invoice_Order_Store::superseded_poll_meta_keys() as $poll_meta_key ) {
+			$snapshot[ $poll_meta_key ] = trim( (string) $order->get_meta( $poll_meta_key, true ) );
+		}
+
+		return $snapshot;
 	}
 
 	/**

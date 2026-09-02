@@ -104,6 +104,18 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 		$order->update_meta_data( self::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_SENDING );
 		$order->update_meta_data( self::META_UUID, $uuid );
 
+		/*
+		 * Writing the live UUID is what spends an operator-approved replacement
+		 * identity, so the reservation goes in the SAME atomic write.
+		 *
+		 * Releasing it after the provider returned was not safe: a SendInvoice
+		 * that threw, or a process killed mid-call, left the reservation next to
+		 * a live UUID it had already become. Recovery::approve() then read that
+		 * leftover as "a replacement is still waiting to be sent" and refused to
+		 * mint one for the document that had actually just failed.
+		 */
+		$order->delete_meta_data( Kuka_Island_Core_Invoice_Recovery::META_RESERVED_UUID );
+
 		// Pre-transmission there is no document number to record: the UBL asks
 		// EDM to assign one. write_edm_number() refuses the sentinel, so even a
 		// caller that passed it cannot leave it on the order.
@@ -182,6 +194,27 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 	}
 
 	/**
+	 * Poll-state meta keys that belong to ONE document.
+	 *
+	 * Archived with the document they describe and removed from the live record,
+	 * so a replacement starts from a clean budget and carries no side signal
+	 * from the document it replaced.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function superseded_poll_meta_keys(): array {
+		return array(
+			Kuka_Island_Core_Invoice_Status_Poller::META_POLL_ATTEMPTS,
+			Kuka_Island_Core_Invoice_Status_Poller::META_POLL_STARTED_AT,
+			Kuka_Island_Core_Invoice_Status_Poller::META_LAST_EDM_STATUS,
+			Kuka_Island_Core_Invoice_Status_Poller::META_RESPONSE_CODE,
+			Kuka_Island_Core_Invoice_Status_Poller::META_EARCHIVE_REPORT_STATUS,
+			Kuka_Island_Core_Invoice_Status_Poller::META_GIB_STATUS_CODE,
+			Kuka_Island_Core_Invoice_Status_Poller::META_LAST_SCHEDULE_OUTCOME,
+		);
+	}
+
+	/**
 	 * Move a refused document into the audit archive and free the send path.
 	 *
 	 * Append-only: the failed document's UUID, EDM-assigned number, status and
@@ -220,6 +253,22 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 		$order->delete_meta_data( self::META_NUMBER_SOURCE );
 		$order->delete_meta_data( self::META_SENT_AT );
 		$order->update_meta_data( self::META_ATTEMPTS, 0 );
+
+		// A stale replacement identity, if the previous attempt left one.
+		$order->delete_meta_data( Kuka_Island_Core_Invoice_Recovery::META_RESERVED_UUID );
+
+		/*
+		 * And the refused document's polling state. It is archived above, and it
+		 * must not stay live: META_POLL_STARTED_AT and META_POLL_ATTEMPTS are the
+		 * attempt and elapsed budget Kuka_Island_Core_Invoice_Status_Poller::start()
+		 * only initialises when they are absent, so a replacement would inherit a
+		 * spent budget and give up on its first query. The EDM side signals
+		 * (STATUS, RESPONSE_CODE, EARCHIVE_REPORT_STATUS, GIB_STATUS_CODE) describe
+		 * the OLD document and would be read as the new one's.
+		 */
+		foreach ( self::superseded_poll_meta_keys() as $poll_meta_key ) {
+			$order->delete_meta_data( $poll_meta_key );
+		}
 
 		$order->update_meta_data( self::META_STATUS, Kuka_Island_Core_Invoice_Status::STATUS_NONE );
 		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
