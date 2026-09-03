@@ -29,6 +29,9 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | `createOrder` başarılı, `createbarcode` değil: sipariş `order_created` çıkmazında kalıyordu | Yalnız barkod aşamasını sürdüren ayrı operatör işlemi eklendi (K-15) |
 | 2026-09-03 | Başarısız durum sorgusu deneme sayacını artırmıyordu; hata zincirinde tavan hiç dolmuyordu | Sayaç tek merkeze taşındı, gerçek Action Scheduler ile ölçüldü (K-16) |
 | 2026-09-03 | "Taşıyıcıdan bağımsız" iddiası kaynakta doğru değildi; registry testi ikinci kez DHL ekliyordu | Sözleşme genişletildi, gerçek sahte ikinci adaptörle ölçüldü (K-17) |
+| 2026-09-03 | İptal ve güncelleme kilitsizdi; iptal yalnız `reconcile_required` durumunu engelliyordu | Tek mutation kilidi, kilit içinde taze okuma, izin listesi ve `already_cancelled` (K-18) |
+| 2026-09-03 | `make verify` izin listesi kararını gerçek runner'ı çalıştırıp `head -n 1` ile alıyordu; PHP'yi durduran şey SIGPIPE zamanlamasıydı | Açık çevrimdışı mod `--check-script`; süreç/ağ/kimlik okuması 0 ölçüldü (K-19) |
+| 2026-09-03 | Suite temizliği, kendisinin oluşturmadığı CBS önbellek satırlarını da siliyordu | Anlık görüntü + bayt bayt geri yükleme; ölçüm "korundu, kalıntı 0" (K-20) |
 
 ---
 
@@ -421,6 +424,13 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `cancel()` içindeki `$confirmed_by` değişkeni.
   İki dal da aynı sorguya gidiyorsa hata geri gelmiştir. Sonuç satırındaki
   `confirmed_by:` alanı hangi sorgunun kanıt sayıldığını söyler.
+- **Bu kayıt tamamlanmamıştı (K-18):** doğrulama nesnesi düzeltildi ama
+  `cancel()` hâlâ **kilitsizdi** ve yalnız `reconcile_required` durumunu
+  engelliyordu. İki eşzamanlı basış iki iptal yazımı gönderebiliyor,
+  `cancelled` durumundaki bir sipariş yeniden iptal edilebiliyordu. Dalın hangi
+  nesneyi seçtiği artık **durum**dan gelir, `shipment_id`'nin dolu olup
+  olmamasından değil: `shipment_created` fakat boş `shipment_id` durumunda eski
+  kod `cancel_order` gönderiyordu — yine yanlış nesne. Bkz. K-18.
 
 ---
 
@@ -446,7 +456,8 @@ geçmez.
     liste delik vermez.
   - Durum, `create_shipment()` ile **aynı** advisory lock içinde yeniden
     okunur. İki kapı üst üste binmez; çift tıklamada ikinci sahip
-    `shipment_created` görüp durur.
+    `shipment_created` görüp durur. (K-18 ile bu kilit `kuka_ship_mutate_<id>`
+    adını aldı ve güncelleme ile iptali de kapsıyor.)
   - `createbarcode` `uncertain` dönerse tekrar edilmez; salt-okunur mutabakata
     devredilir (K-10 kuralı aynen geçerli).
   - Kendi nonce alanı (`kuka_shipping_resume_<id>`) ve bağımsız yetki kontrolü
@@ -506,6 +517,10 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `run()` içinde sayacın nereden geldiği. Çağrı
   öncesi bir anlık görüntüden `+1` hesaplanıyorsa hata geri gelmiştir. Mali ve
   fatura sayaçları bu değişiklikten etkilenmez; bunlar ayrı modüldedir.
+- **Not (K-20 turu):** `poll_exhausted` ve başarısız sorgu mesajları deneme
+  numarasını taşıdığı için msgid'leri değişti; çeviri kataloğu bu yüzden
+  yeniden üretildi ve `SHIPPING_POT_CATALOG` ölçümü kaynakla katalogun birebir
+  örtüştüğünü sayıyor.
 
 ---
 
@@ -561,3 +576,174 @@ geçmez.
   bağımlılık sessizce geri döner.
 - **Not:** Bu düzeltme Ö-03'ü **kapatmaz**. Hangi değerin gerçek takip numarası
   olduğu hâlâ ölçülmemiştir; değişen tek şey, cevabın nereden sorulduğudur.
+- **Bu kayıt tamamlanmamıştı (K-18):** ortak `preflight()` metodu oluşturma
+  politikasını (kapıda ödeme) da içeriyordu, bu yüzden güncelleme ve iptali ona
+  bağlamak COD siparişini geri alınamaz hâle getirirdi. Kapı ikiye ayrıldı.
+  Ayrıca `update_shipment()` ve `cancel()` o metottan hiç geçmiyordu: çalışma
+  kapısı kapalıyken bile taşıyıcıya yazabiliyorlardı. Bkz. K-18.
+
+---
+
+## K-18 — Mutation kilidi ve terminal durum idempotency'si
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Sipariş ekranında `Taşıyıcı kaydını iptal et` düğmesine iki kez
+  hızlı basıldığında taşıyıcıya iki `cancelshipment` gidiyor. Ya da: iptal
+  başarıyla tamamlandıktan sonra aynı düğme üçüncü kez basıldığında yine bir
+  iptal yazımı gidiyor. Ya da: iptal başarılıyken gecikmiş bir `updateshipment`
+  artık var olmayan bir kayda gönderiliyor.
+- **Kesin kök neden:** Advisory kilidi yalnız **oluşturma** yolu alıyordu
+  (`kuka_ship_create_<id>`). `cancel()` ve `update_shipment()` hiç kilit
+  almıyor, durumu çağrı **öncesinde** alınmış anlık görüntüden okuyordu.
+  Üstüne, `cancel()` yalnız `reconcile_required` durumunu engelliyordu — yani
+  `cancelled`, `delivered`, `absent_confirmed`, `none` ve tanımadığı her durum
+  yazma yapabiliyordu. `update_shipment()` isteği durum kontrolünden **önce**
+  kuruyordu.
+- **Uygulanan düzeltme:**
+  1. Kilit tek aile: `kuka_ship_mutate_<id>`. Oluşturma, barkod sürdürme,
+     güncelleme ve iptal aynı anahtarı alır. Kilidi alamayan `lock_contended`
+     ile hemen döner.
+  2. Durum, `shipment_id` ve referans **kilit içinde** yeniden okunur; taşıyıcı
+     isteği o okumadan kurulur.
+  3. Yazabilen durumlar **izin listesi**dir, yasak listesi değil.
+     `cancel()`: `order_created` → `cancelorder`, `shipment_created` + dolu
+     `shipment_id` → `cancelshipment`. `update_shipment()`: aynı iki durum.
+     Diğer her şey 0 yazma.
+  4. `cancelled` durumu ayrı ve sabit bir kodla döner: `already_cancelled`.
+  5. `shipment_created` fakat `shipment_id` boş → `not_cancellable`. Gönderi
+     var, numarası bilinmiyor; onun yerine **siparişi** iptal etmek yanlış
+     nesneye istek göndermek olurdu (bkz. K-14).
+- **Neden izin listesi:** yasak listesi, durum makinesine yeni bir değer
+  eklendiği ilk anda delik verir. Tanımadığı bir durumda yazan bir iptal, bu
+  modüldeki en pahalı hata sınıfıdır.
+- **Neden gerçek ikinci MySQL oturumu:** advisory kilit **bağlantı başına**
+  tutulur. Tek bağlantıda yapılan iki ardışık PHP çağrısı kilidi özyinelemeli
+  alır ve hiçbir şey ölçmez. Ölçüm ikinci bir `wpdb` örneği açar ve iki farklı
+  `CONNECTION_ID()` olduğunu kanıtlamadan devam etmez.
+- **Kanıt:**
+  `SHIPPING_SECOND_DB_SESSION=PASS|separate:yes`,
+  `SHIPPING_MUTATION_LOCK_IS_ONE_FAMILY=PASS|create:lock_contended|resume:lock_contended|update:lock_contended|cancel:lock_contended|carrier_writes:0`,
+  `SHIPPING_CANCEL_SERIALISED_AND_IDEMPOTENT=PASS|concurrent_call:lock_contended|writes_while_lock_held:0|second:already_cancelled|stale_handle:already_cancelled|total_carrier_writes:1`,
+  `SHIPPING_CANCEL_REFUSES_EVERY_OTHER_STATE=PASS|states_checked:9|wrong:none|carrier_writes:0`,
+  `SHIPPING_UPDATE_SERIALISED_AND_FRESH=PASS|late_update_from_stale_handle:nothing_to_update|total_updates:1`,
+  `SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE=PASS|states_checked:8|carrier_writes:0`
+- **Ayrıca:** ortak güvenlik kapısı ikiye ayrıldı.
+  `carrier_gate()` (taşıyıcı/runtime/ortam/kimlik) **her** operasyonun,
+  `create_policy()` (kapıda ödeme) yalnız oluşturma ve barkod sürdürmenin
+  sınırıdır. Kapıda ödeme kontrolünü iptale de uygulamak COD siparişini geri
+  alınamaz hâle getirirdi. Altı yazmanın tamamı `guarded_write()` boğazından
+  geçer ve o boğaz kapıyı **yazmadan hemen önce yeniden** sorar; giriş kontrolü
+  kilitten önceydi ve arada eklenti devre dışı bırakılabilir.
+  Kanıt: `SHIPPING_MUTATION_GATE_SHARED=PASS|doors:create+resume+update+cancel|conditions:3|wrong:none`,
+  `SHIPPING_GATE_RECHECKED_UNDER_LOCK=PASS|doors:4|create:credentials_missing(checks:2,writes:0)|...`,
+  `SHIPPING_RUNTIME_GATE_CLOSED_MIDFLIGHT=PASS|carrier_writes:0`
+- **İlgili dosyalar:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`carrier_gate`, `create_policy`, `gate_closed_now`, `guarded_write`,
+  `cancel`, `update_shipment`, `cancel_refusal_message`,
+  `update_refusal_message`),
+  `SHIP/includes/shipping/class-shipment-admin.php` (düğme koşulları)
+- **Tekrar yaşanırsa ilk bak:** `cancel()` ve `update_shipment()` içinde
+  `acquire_lock` çağrısının var olup olmadığı, ve durum kontrolünün `wc_get_order()`
+  yeniden okumasından **sonra** gelip gelmediği. Bir de `$carrier->` ile
+  başlayan yazma çağrılarının hepsinin `guarded_write()` içinde olup olmadığı:
+  `grep -nE '\\$carrier->(create|update|cancel)' ` altı satır vermeli ve altısı
+  da closure içinde olmalı.
+
+---
+
+## K-19 — Çevrimdışı doğrulama SIGPIPE'a güvenmemeli
+
+- **Tarih:** 2026-09-03
+- **Belirti:** `make verify` çıktısında kargo bloğu yeşil, fakat kimlikler
+  yerindeyken koşu taşıyıcıya gerçekten bağlanmış olabilir. Belirtisi yok —
+  bu kaydın konusu tam olarak **belirtisi olmayan** bir risktir.
+- **Kesin kök neden:** `verify.sh`, izin listesi kararını almak için gerçek
+  komutu çalıştırıp çıktısının yalnız ilk satırını okuyordu:
+
+  ```sh
+  ./scripts/dhl-test-run.sh test-dhl-sandbox.php | head -n 1
+  ```
+
+  `dhl-test-run.sh` `DHL_TEST_RUN=STARTING` satırını basar, sonra
+  `exec docker compose run ...` yapar. `head -n 1` ilk satırı alıp çıkar, boru
+  kapanır ve docker istemcisi EPIPE ile ölür. **Konteynerin PHP'si çalışmaz —
+  ama bunu sağlayan şey bir kural değil, zamanlamadır.** Daha yavaş bir okuyucu
+  ya da daha hızlı bir konteyner, `make verify`'ı gerçek bir Identity çağrısına
+  ve CBS il listesi okumasına götürürdü.
+- **Ölçülen:** Aynı boru düzeneği zararsız bir işaretleyici betikle kuruldu.
+  Boru açıkken işaretleyici yazıldı; `head -n 1` ile boru kapanınca yazılmadı.
+  Yani bugünkü davranış güvenliydi, garanti değildi.
+- **Uygulanan düzeltme:** `dhl-test-run.sh` içine açık bir çevrimdışı mod:
+  `--check-script=<ad>`. Yalnız izin listesi kararını döndürür; kimlik
+  dosyasını okumaz, `stat`'lamaz, mount etmez, Docker başlatmaz, PHP
+  çalıştırmaz, ağa çıkmaz. Karar `allowlist_reason()` fonksiyonundan gelir ve
+  enforce eden yol **aynı fonksiyonu** kullanır, bu yüzden çevrimdışı cevap
+  uygulanan cevaptan sapamaz. Operatör komutunun davranışı değişmedi.
+- **Nasıl kanıtlanıyor:** `scripts/verify-dhl-runner-offline.sh`
+  `docker`, `docker-compose`, `php`, `wp`, `curl`, `wget` ve `nc` için
+  işaretleyici yazan shim'lerle `PATH`'i öne alır ve **kimlikleri 4/4 mevcut
+  gösteren** geçici bir fixture altında çalıştırır: hiçbir shim çağrılmıyor.
+  Önce bir **pozitif kontrol** çalışır — shim'ler kasten aynı `PATH` üzerinden
+  çağrılır ve işaretleyicinin gerçekten yazıldığı doğrulanır. Aksi hâlde hiç
+  danışılmayan bir `PATH`, hiçbir şey başlatmayan bir sarmalayıcıyla aynı sessiz
+  PASS'i üretirdi.
+  İkinci fixture kimlik dizinini `000` yapar — dosyaya dokunmak isteyen kod
+  hata verirdi; mod aynı cevabı veriyor. Fixture'daki sahte nöbetçi değer
+  çıktıda hiç görünmüyor. Operatörün gerçek dosyası bu ölçümlerin hiçbirinde
+  kullanılmaz: her koşu için `XDG_CONFIG_HOME` geçici bir dizine bakar.
+- **Kanıt:**
+  `DHL_RUNNER_OFFLINE=PASS|mode:offline_allowlist_check|allowlisted_answered:yes|refusals:8/8|credentials_4of4_fixture:yes|credential_value_in_output:no|answer_identical_with_unreadable_credential_dir:yes|processes_launched:0|network_calls:0`,
+  `DHL_RUNNER_ENFORCED_REFUSALS=PASS|refused:5/5|processes_launched:0|operator_command_unchanged:yes`,
+  `DHL_RUNNER_ALLOWLIST=mode:offline_allowlist_check|leaks:0|allowlisted_decision:yes|credentials_read:no|docker_started:no|php_started:no|network_calls:0|write_tool_refusals:4/4`
+- **İlgili dosyalar:** `scripts/dhl-test-run.sh` (`allowlist_reason`,
+  `--check-script`), `scripts/verify-dhl-runner-offline.sh`,
+  `scripts/verify.sh`
+- **Not:** EDM runner'ında (`scripts/edm-test-run.sh`) **aynı desen duruyor**.
+  Bu tur yalnız DHL sınırını düzeltti; EDM tarafı ayrı bir iştir.
+- **Tekrar yaşanırsa ilk bak:** `verify.sh` içinde `dhl-test-run.sh` çağrısının
+  `--check-script=` ile mi yapıldığı. Boruya bağlı bir `head -n 1` görürsen
+  hata geri gelmiştir.
+
+---
+
+## K-20 — Test, önceden var olan önbelleği silmemeli
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Doğrulama koşusundan sonra `wp_options` içindeki dört
+  `kuka_dhl_cbs*` transient kaydı yok. Kimse silmeyi istemedi.
+- **Kesin kök neden:** Her senaryo adres çözmeden **önce**
+  `Address_Resolver::purge_cache()` çağırır — doğru bir davranış, çünkü dolu bir
+  önbellek mock'un `/getcities` çağrısını hiç yapmamasına ve çağrı sayaçlarının
+  anlamını kaybetmesine yol açar. Fakat suite'in temizlik bloğu da aynı purge'ü
+  çağırıyordu, yani koşu **kendisinin oluşturmadığı** satırları da siliyordu.
+  Silinen veriler mock kaynaklıydı (1 il / 1 ilçe), ama bu tesadüftü: gerçek 81
+  illik bir liste de aynı şekilde silinirdi.
+- **Uygulanan düzeltme:** Suite artık **ödünç alıyor**.
+  1. İlk adres çözümünden önce `kuka_dhl_cbs*` option satırlarının tamamı
+     anlık görüntüye alınır: `option_name`, `option_value`, `autoload` —
+     timeout eşlik satırları dahil.
+  2. Sonunda geri yüklenir. Hâlâ var olan satır `UPDATE` edilir (silinip
+     yeniden yazılmaz), eksik satır `INSERT` edilir, anlık görüntüde olmayan
+     satır **koşunun kendi kalıntısıdır** ve silinir. Nesne önbelleği anahtarları
+     da düşürülür, yoksa aynı süreçte sonraki `get_transient()` az önce
+     değiştirilen değeri döndürürdü.
+  3. Ölçüm "kalan kayıt 0" değil, **"önceden var olan korundu, koşuya ait
+     kalıntı 0"**.
+- **Neden pozitif kontrol gerekti:** bugünkü anlık görüntü boş olabilir ve boş
+  bir anlık görüntünün geri yüklenmesi hiçbir şey kanıtlamaz. Bu yüzden ayrı bir
+  ölçüm nöbetçi bir değer **eker**, gerçek bir senaryonun üzerine yazmasına izin
+  verir, geri yükler ve değerin bayt bayt döndüğünü doğrular.
+- **Kanıt:**
+  `SHIPPING_CBS_CACHE_PRESERVED=PASS|control:planted_then_overwritten_then_restored|overwritten_by_run:yes|value_and_timeout_rows:2|fingerprint_recovered:yes|value_identical:yes|bytes_identical:yes`
+  ve `SHIPPING_FIXTURES_REMOVED=PASS|...|cache_keyset_identical:yes|cache_fingerprint_identical:yes|run_owned_cache_residue:N`
+- **`option_id` neden parmak izinde yok:** silinip yeniden yazılan bir transient
+  yeni bir satır kimliğine düşer ama aynı değeri taşır. Mağazanın hiç okumadığı
+  bir tanımlayıcı, korunması gereken şeyin parçası değildir. Parmak izi ad,
+  değer ve `autoload` üzerinden alınır.
+- **Önceki koşuda silinen dört satır geri getirilmedi:** içerikleri mock
+  kaynaklıydı ve uydurma önbellek verisi yazmak, silmekten daha kötüdür. Bir
+  günlük TTL'li bu önbellek ilk gerçek çağrıda kendini yeniden kurar.
+- **İlgili dosya:** `scripts/verify-shipping-automation.php`
+  (`kuka_ship_cbs_rows`, `kuka_ship_cbs_fingerprint`, `kuka_ship_cbs_restore`)
+- **Tekrar yaşanırsa ilk bak:** temizlik bloğunda `purge_cache()` çağrısı olup
+  olmadığı. Orada bir purge görürsen, koşu yine mağazanın verisini siliyor.

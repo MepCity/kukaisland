@@ -202,7 +202,21 @@ final class Kuka_Island_Shipping_Admin {
 			$this->action_button( $order_id, 'kuka_shipping_requery', __( 'Kargo durumunu sorgula', 'kuka-island-shipping-automation' ) );
 		}
 
-		if ( in_array( $data['state'], array( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED, Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED ), true ) ) {
+		/*
+		 * The screen offers exactly what the manager will accept, including the
+		 * shipment-id condition: a record that says a shipment exists without
+		 * saying which one cannot be addressed, so neither button appears. A
+		 * button that leads only to a refusal teaches an operator to distrust
+		 * the panel.
+		 */
+		$mutable = null !== $carrier
+			&& $carrier->get_readiness()['ready']
+			&& (
+				Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state']
+				|| ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $data['state'] && '' !== $data['shipment_id'] )
+			);
+
+		if ( $mutable ) {
 			$this->action_button( $order_id, 'kuka_shipping_update', __( 'Taşıyıcı kaydını güncelle', 'kuka-island-shipping-automation' ) );
 			$this->action_button( $order_id, 'kuka_shipping_cancel', __( 'Taşıyıcı kaydını iptal et', 'kuka-island-shipping-automation' ) );
 		}

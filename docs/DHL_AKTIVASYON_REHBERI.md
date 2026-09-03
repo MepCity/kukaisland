@@ -131,6 +131,18 @@ okur. Yazma yoluna kod seviyesinde erişimi yoktur.
 ./scripts/dhl-test-run.sh test-dhl-sandbox.php
 ```
 
+Bu, kimlik dosyasını salt-okunur mount eder ve taşıyıcıya **gerçekten**
+bağlanır. `make verify` bu komutu hiçbir koşulda çalıştırmaz; izin listesi
+kararına ihtiyaç duyduğunda çevrimdışı modu kullanır:
+
+```bash
+./scripts/dhl-test-run.sh --check-script=test-dhl-sandbox.php
+```
+
+Çevrimdışı mod yalnız "bu ad izin listesinde mi?" sorusunu yanıtlar. Kimlik
+dosyasını okumaz, mount etmez, Docker başlatmaz, PHP çalıştırmaz, ağa çıkmaz.
+Aşama 3'te **birinci** komutu kullanın; ikincisi bir teşhis aracıdır.
+
 Beklenen:
 
 ```

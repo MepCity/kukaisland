@@ -14,29 +14,47 @@
  * -- not this code -- turns back into an attempt. If the read itself cannot
  * answer, the order stays in reconciliation and nothing is sent at all.
  *
- * THE LOCK. Every path that could create something takes a MySQL advisory lock
- * keyed by order id, and does not queue behind it: a caller that cannot take the
- * lock returns immediately, because two workers both waiting to create the same
- * shipment is the exact scenario the lock exists to prevent. The lock is
- * cross-process, which an in-PHP flag would not be.
+ * THE LOCK. EVERY state-changing path -- create, barcode resume, amend, cancel
+ * -- takes the same MySQL advisory lock keyed by order id, and does not queue
+ * behind it: a caller that cannot take the lock returns immediately, because two
+ * workers both waiting to mutate the same shipment is the exact scenario the
+ * lock exists to prevent. The lock is cross-process, which an in-PHP flag would
+ * not be.
  *
  * THE STATE CHECK IS INSIDE THE LOCK. Reading the state before taking the lock
  * would be a check-then-act race: two requests can both read 'none' and both
- * proceed. The state is therefore re-read after the lock is held.
+ * proceed. State, shipment id and reference are therefore all re-read after the
+ * lock is held, and the request is built from that reading.
  *
- * TWO DOORS, ONE LOCK. create_shipment() begins at createOrder;
- * resume_barcode() begins at createbarcode and can never reach createOrder.
- * They share the lock and each accepts a disjoint set of states, so an order
- * whose carrier order exists but whose barcode does not can be finished without
- * the order ever being registered twice.
+ * TWO LAYERS OF GATE. carrier_gate() is the boundary EVERY carrier operation
+ * crosses: carrier registered, runtime gate open, environment not blocked,
+ * credentials complete. create_policy() carries what only creation is subject
+ * to -- cash on delivery. Keeping them apart matters: applying the COD refusal
+ * to cancellation would make a COD order impossible to un-book.
+ *
+ * ONE CHOKE POINT FOR WRITES. create_order, create_barcode, update_order,
+ * update_shipment, cancel_order and cancel_shipment all reach the carrier
+ * through guarded_write(), which asks the gate AGAIN immediately beforehand.
+ * The admission check happened before the lock; the plugin can be deactivated
+ * in between, and that is precisely what the runtime gate is for.
+ *
+ * FOUR DOORS, ONE LOCK. create_shipment() begins at createOrder;
+ * resume_barcode() begins at createbarcode and can never reach createOrder;
+ * update_shipment() and cancel() each accept exactly two states and write
+ * nothing from any other. The state sets are disjoint per door and the lock is
+ * shared, so an order whose carrier order exists but whose barcode does not can
+ * be finished without the order ever being registered twice, and a cancellation
+ * cannot overlap the create it would be undoing.
  *
  * A CANCELLATION IS CONFIRMED BY READING THE OBJECT THAT WAS CANCELLED. Not by
- * the carrier's acknowledgement, and not by reading a different object: see
- * cancel().
+ * the carrier's acknowledgement, and not by reading a different object. It is
+ * also idempotent: an order already in 'cancelled' answers 'already_cancelled'
+ * and sends nothing. See cancel().
  *
  * NOTHING RUNS BY ITSELF. There is no order-status hook, no checkout hook and
- * no cron entry that calls create_shipment() or resume_barcode(). Both are
- * reached from the order screen's explicit buttons and from nowhere else.
+ * no cron entry that calls create_shipment(), resume_barcode(),
+ * update_shipment() or cancel(). All four are reached from the order screen's
+ * explicit buttons and from nowhere else.
  *
  * @package Kuka_Island_Shipping_Automation
  */
@@ -45,7 +63,17 @@ defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Shipping_Manager {
 
-	private const CREATE_LOCK_PREFIX = 'kuka_ship_create_';
+	/**
+	 * The advisory lock every state-changing carrier operation takes.
+	 *
+	 * ONE FAMILY, ONE KEY PER ORDER. Creation, barcode resume, amendment and
+	 * cancellation all take this same key, so they cannot interleave: a cancel
+	 * that lands while a create is halfway through would otherwise cancel a
+	 * record the create is still writing, and two cancels would send two
+	 * cancellations. Named for what it protects rather than for the first caller
+	 * that needed it -- it was 'kuka_ship_create_' while only creation held it.
+	 */
+	private const MUTATION_LOCK_PREFIX = 'kuka_ship_mutate_';
 
 	/**
 	 * Configuration name that selects the carrier this shop books with.
@@ -127,19 +155,72 @@ final class Kuka_Island_Shipping_Manager {
 	/* Creation                                                                */
 	/* ---------------------------------------------------------------------- */
 
+	/* ---------------------------------------------------------------------- */
+	/* The safety boundary every carrier write crosses                         */
+	/* ---------------------------------------------------------------------- */
+
 	/**
-	 * The gates every operator action that WRITES at the carrier shares.
+	 * Is the carrier contactable AT THIS INSTANT?
 	 *
-	 * Extracted so the barcode-resume door cannot accidentally have fewer of
-	 * them than the create door: a second copy of five checks is a second copy
-	 * that drifts. Every refusal here happens BEFORE any network call and is
-	 * recorded on the order.
+	 * Three conditions, and each of them can change while an operation is in
+	 * flight: an operator deactivates the plugin, an administrator switches the
+	 * environment, a constant is removed from wp-config.php. So this is not a
+	 * one-off admission check -- it is a predicate, cheap enough to ask twice,
+	 * and gate_closed_now() is asked again immediately before every write.
+	 *
+	 * The runtime gate is read straight from the options table on every call
+	 * (see Runtime_Gate::is_disabled), which is what makes a second reading
+	 * meaningful rather than a cached repeat of the first.
+	 *
+	 * @param Kuka_Island_Shipping_Carrier_Interface $carrier Carrier.
+	 * @return array{code: string, message: string} Empty when the gate is open.
+	 */
+	private function gate_closed_now( Kuka_Island_Shipping_Carrier_Interface $carrier ): array {
+		if ( Kuka_Island_Shipping_Runtime_Gate::is_disabled() ) {
+			return array(
+				'code'    => Kuka_Island_Shipping_Runtime_Gate::CODE,
+				'message' => Kuka_Island_Shipping_Runtime_Gate::message(),
+			);
+		}
+
+		$readiness = $carrier->get_readiness();
+
+		if ( $readiness['live_blocked'] ) {
+			return array(
+				'code'    => 'live_environment_blocked',
+				'message' => __( 'Canlı ortam bloke: resmî üretim uçları doğrulanmadı. Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
+			);
+		}
+
+		if ( ! $readiness['ready'] ) {
+			return array(
+				'code'    => 'credentials_missing',
+				'message' => sprintf(
+					/* translators: %s: comma separated configuration field names. */
+					__( 'Kargo kimlik yapılandırması eksik (%s). Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
+					implode( ', ', $readiness['gaps'] )
+				),
+			);
+		}
+
+		return array();
+	}
+
+	/**
+	 * LAYER ONE: the gate EVERY carrier operation shares.
+	 *
+	 * Carrier registered, runtime gate open, environment not blocked,
+	 * credentials complete. Nothing about creation is decided here, which is
+	 * the point: the previous version of this method also applied the cash-on-
+	 * delivery refusal, so wiring cancellation through it would have made a COD
+	 * order impossible to CANCEL -- refusing to undo a booking is not a safety
+	 * property, it is a trapped parcel.
 	 *
 	 * @param WC_Order $order       Order.
 	 * @param string   $carrier_key Carrier key, '' for the default.
 	 * @return array{carrier: ?Kuka_Island_Shipping_Carrier_Interface, refusal: array<string, mixed>}
 	 */
-	private function preflight( WC_Order $order, string $carrier_key ): array {
+	private function carrier_gate( WC_Order $order, string $carrier_key ): array {
 		$carrier_key = '' !== $carrier_key ? $carrier_key : $this->default_carrier_key();
 		$carrier     = $this->registry->get( $carrier_key );
 
@@ -150,52 +231,77 @@ final class Kuka_Island_Shipping_Manager {
 			);
 		}
 
-		if ( Kuka_Island_Shipping_Runtime_Gate::is_disabled() ) {
+		$closed = $this->gate_closed_now( $carrier );
+
+		if ( array() !== $closed ) {
 			return array(
 				'carrier' => $carrier,
-				'refusal' => $this->refuse( $order, Kuka_Island_Shipping_Runtime_Gate::CODE, Kuka_Island_Shipping_Runtime_Gate::message() ),
-			);
-		}
-
-		$readiness = $carrier->get_readiness();
-
-		if ( $readiness['live_blocked'] ) {
-			return array(
-				'carrier' => $carrier,
-				'refusal' => $this->refuse(
-					$order,
-					'live_environment_blocked',
-					__( 'Canlı ortam bloke: resmî üretim uçları doğrulanmadı. Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' )
-				),
-			);
-		}
-
-		if ( ! $readiness['ready'] ) {
-			return array(
-				'carrier' => $carrier,
-				'refusal' => $this->refuse(
-					$order,
-					'credentials_missing',
-					sprintf(
-						/* translators: %s: comma separated configuration field names. */
-						__( 'Kargo kimlik yapılandırması eksik (%s). Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
-						implode( ', ', $readiness['gaps'] )
-					)
-				),
-			);
-		}
-
-		$cod = self::cod_gate( $order );
-
-		if ( ! $cod['ok'] ) {
-			return array(
-				'carrier' => $carrier,
-				'refusal' => $this->refuse( $order, 'cod_not_supported', $cod['message'] ),
+				'refusal' => $this->refuse( $order, $closed['code'], $closed['message'] ),
 			);
 		}
 
 		return array(
 			'carrier' => $carrier,
+			'refusal' => array(),
+		);
+	}
+
+	/**
+	 * LAYER TWO: the policy only CREATION and BARCODE RESUME are subject to.
+	 *
+	 * Cash on delivery belongs here and nowhere else. The dangerous case is a
+	 * COD order being SHIPPED as if it were prepaid; cancelling or amending a
+	 * COD booking is not dangerous, it is the remedy.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return array<string, mixed> Empty when creation may proceed.
+	 */
+	private function create_policy( WC_Order $order ): array {
+		$cod = self::cod_gate( $order );
+
+		if ( ! $cod['ok'] ) {
+			return $this->refuse( $order, 'cod_not_supported', $cod['message'] );
+		}
+
+		return array();
+	}
+
+	/**
+	 * Perform ONE carrier write, and only while the gate is still open.
+	 *
+	 * THE SINGLE CHOKE POINT. create_order, create_barcode, update_order,
+	 * update_shipment, cancel_order and cancel_shipment all reach the carrier
+	 * through here and through nowhere else, so "every write is gated" is a
+	 * property of one function rather than of six call sites that have to stay
+	 * in agreement.
+	 *
+	 * WHY THE GATE IS ASKED AGAIN. The admission check happened before the
+	 * advisory lock was taken and before the order was re-read. Between those
+	 * two moments an operator can deactivate the plugin -- which is exactly the
+	 * scenario Runtime_Gate exists for -- and a caller that only checked on the
+	 * way in would then send the request anyway. The re-check is the last thing
+	 * that happens before the carrier is contacted.
+	 *
+	 * @param WC_Order                               $order   Order.
+	 * @param Kuka_Island_Shipping_Carrier_Interface $carrier Carrier.
+	 * @param callable                               $write   Returns Kuka_Island_Shipping_Result.
+	 * @return array{result: ?Kuka_Island_Shipping_Result, refusal: array<string, string>}
+	 */
+	private function guarded_write( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, callable $write ): array {
+		$closed = $this->gate_closed_now( $carrier );
+
+		if ( array() !== $closed ) {
+			Kuka_Island_Shipping_Order_Store::save_blocked( $order, $closed['code'], $closed['message'] );
+			$this->note( $order, $closed['message'] );
+
+			return array(
+				'result'  => null,
+				'refusal' => $closed,
+			);
+		}
+
+		return array(
+			'result'  => $write(),
 			'refusal' => array(),
 		);
 	}
@@ -208,15 +314,21 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	public function create_shipment( WC_Order $order, string $carrier_key = '' ): array {
-		$preflight = $this->preflight( $order, $carrier_key );
+		$gate = $this->carrier_gate( $order, $carrier_key );
 
-		if ( array() !== $preflight['refusal'] ) {
-			return $preflight['refusal'];
+		if ( array() !== $gate['refusal'] ) {
+			return $gate['refusal'];
 		}
 
-		$carrier = $preflight['carrier'];
+		$policy = $this->create_policy( $order );
 
-		if ( ! $this->acquire_lock( self::CREATE_LOCK_PREFIX . $order->get_id() ) ) {
+		if ( array() !== $policy ) {
+			return $policy;
+		}
+
+		$carrier = $gate['carrier'];
+
+		if ( ! $this->acquire_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() ) ) {
 			// Somebody else holds it. Not queued behind, and nothing recorded:
 			// the other holder is the one whose outcome counts.
 			return array(
@@ -246,7 +358,7 @@ final class Kuka_Island_Shipping_Manager {
 
 			return $this->run_creation( $order, $carrier );
 		} finally {
-			$this->release_lock( self::CREATE_LOCK_PREFIX . $order->get_id() );
+			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
 		}
 	}
 
@@ -283,7 +395,23 @@ final class Kuka_Island_Shipping_Manager {
 			|| Kuka_Island_Shipping_Order_Store::STATE_BLOCKED === $state
 			|| Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED === $state ) {
 
-			$created = $carrier->create_order( $shipment );
+			$guarded = $this->guarded_write(
+				$order,
+				$carrier,
+				static fn (): Kuka_Island_Shipping_Result => $carrier->create_order( $shipment )
+			);
+
+			if ( array() !== $guarded['refusal'] ) {
+				return array(
+					'ok'      => false,
+					'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+					'code'    => $guarded['refusal']['code'],
+					'message' => $guarded['refusal']['message'],
+					'detail'  => '',
+				);
+			}
+
+			$created = $guarded['result'];
 
 			if ( $created->is_uncertain() ) {
 				return $this->handle_uncertain( $order, $carrier, $reference, $created );
@@ -314,7 +442,23 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	private function run_barcode( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, array $shipment ): array {
-		$barcoded = $carrier->create_barcode( $shipment );
+		$guarded = $this->guarded_write(
+			$order,
+			$carrier,
+			static fn (): Kuka_Island_Shipping_Result => $carrier->create_barcode( $shipment )
+		);
+
+		if ( array() !== $guarded['refusal'] ) {
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+				'code'    => $guarded['refusal']['code'],
+				'message' => $guarded['refusal']['message'],
+				'detail'  => '',
+			);
+		}
+
+		$barcoded = $guarded['result'];
 
 		if ( $barcoded->is_uncertain() ) {
 			return $this->handle_uncertain( $order, $carrier, $reference, $barcoded );
@@ -375,15 +519,21 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	public function resume_barcode( WC_Order $order, string $carrier_key = '' ): array {
-		$preflight = $this->preflight( $order, $carrier_key );
+		$gate = $this->carrier_gate( $order, $carrier_key );
 
-		if ( array() !== $preflight['refusal'] ) {
-			return $preflight['refusal'];
+		if ( array() !== $gate['refusal'] ) {
+			return $gate['refusal'];
 		}
 
-		$carrier = $preflight['carrier'];
+		$policy = $this->create_policy( $order );
 
-		if ( ! $this->acquire_lock( self::CREATE_LOCK_PREFIX . $order->get_id() ) ) {
+		if ( array() !== $policy ) {
+			return $policy;
+		}
+
+		$carrier = $gate['carrier'];
+
+		if ( ! $this->acquire_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() ) ) {
 			return array(
 				'ok'      => false,
 				'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
@@ -428,7 +578,7 @@ final class Kuka_Island_Shipping_Manager {
 
 			return $this->run_barcode( $order, $carrier, $reference, $request['shipment'] );
 		} finally {
-			$this->release_lock( self::CREATE_LOCK_PREFIX . $order->get_id() );
+			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
 		}
 	}
 
@@ -733,153 +883,257 @@ final class Kuka_Island_Shipping_Manager {
 	/**
 	 * Amend the registered order or the shipment, whichever exists.
 	 *
+	 * UNDER THE MUTATION LOCK, AND FROM A STATE READ INSIDE IT. This method
+	 * used to take no lock and to build its request from a snapshot taken
+	 * before any check: an amendment could therefore be sent while a create was
+	 * still running, or after a cancellation had already succeeded -- a request
+	 * addressed to a record that no longer exists, sent because the caller was
+	 * looking at a moment that had passed.
+	 *
+	 * EXACTLY TWO STATES WRITE. order_created amends the registered order;
+	 * shipment_created with a known shipment id amends the shipment. Every
+	 * other state, the empty shipment id included, makes no call at all.
+	 *
+	 * No cash-on-delivery refusal here: amending a COD order is not shipping
+	 * one. That gate belongs to creation.
+	 *
 	 * @param WC_Order $order       Order.
 	 * @param string   $carrier_key Carrier key, '' for the default.
 	 * @return array{ok: bool, code: string, message: string, detail: string}
 	 */
 	public function update_shipment( WC_Order $order, string $carrier_key = '' ): array {
-		$carrier = $this->registry->get( '' !== $carrier_key ? $carrier_key : $this->default_carrier_key() );
+		$gate = $this->carrier_gate( $order, $carrier_key );
 
-		if ( null === $carrier ) {
-			return $this->simple( false, 'carrier_not_registered', __( 'Bu kargo firması kayıtlı değil.', 'kuka-island-shipping-automation' ) );
+		if ( array() !== $gate['refusal'] ) {
+			return $this->simple( false, (string) $gate['refusal']['code'], (string) $gate['refusal']['message'] );
 		}
 
-		$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
-		$reference = (string) $data['reference'];
-		$request   = $this->build_request( $order, $carrier, $reference );
+		$carrier = $gate['carrier'];
 
-		if ( ! $request['ok'] ) {
-			return $this->simple( false, $request['code'], $request['message'] );
-		}
-
-		$shipment = $request['shipment'];
-
-		if ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $data['state'] && '' !== $data['shipment_id'] ) {
-			$shipment['shipment_id'] = $data['shipment_id'];
-			$result                  = $carrier->update_shipment( $shipment );
-		} elseif ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state'] ) {
-			$result = $carrier->update_order( $shipment );
-		} else {
+		if ( ! $this->acquire_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() ) ) {
 			return $this->simple(
 				false,
-				'nothing_to_update',
-				__( 'Bu siparişte güncellenebilecek bir taşıyıcı kaydı yok.', 'kuka-island-shipping-automation' )
+				'lock_contended',
+				__( 'Bu sipariş için başka bir kargo işlemi sürüyor. Yeni çağrı yapılmadı.', 'kuka-island-shipping-automation' )
 			);
 		}
 
-		if ( $result->is_uncertain() ) {
-			Kuka_Island_Shipping_Order_Store::save_uncertain( $order, $result->get_operation(), $result->get_safe_error_code() );
-			$this->note( $order, __( 'Güncelleme belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+		try {
+			// Re-read INSIDE the lock. State, shipment id and reference all
+			// come from this reading and from no earlier one.
+			$order     = wc_get_order( $order->get_id() ) ?: $order;
+			$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+			$reference = (string) $data['reference'];
 
-			return $this->simple( false, $result->get_safe_error_code(), __( 'Güncelleme belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
+				return $this->simple( false, 'no_reference', __( 'Bu siparişte taşıyıcı referansı yok.', 'kuka-island-shipping-automation' ) );
+			}
+
+			$amends_shipment = Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $data['state']
+				&& '' !== $data['shipment_id'];
+			$amends_order    = Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state'];
+
+			if ( ! $amends_shipment && ! $amends_order ) {
+				return $this->simple(
+					false,
+					'nothing_to_update',
+					self::update_refusal_message( (string) $data['state'], '' === $data['shipment_id'] )
+				);
+			}
+
+			$request = $this->build_request( $order, $carrier, $reference );
+
+			if ( ! $request['ok'] ) {
+				return $this->simple( false, (string) $request['code'], (string) $request['message'] );
+			}
+
+			$shipment = $request['shipment'];
+
+			if ( $amends_shipment ) {
+				$shipment['shipment_id'] = $data['shipment_id'];
+				$guarded                 = $this->guarded_write(
+					$order,
+					$carrier,
+					static fn (): Kuka_Island_Shipping_Result => $carrier->update_shipment( $shipment )
+				);
+			} else {
+				$guarded = $this->guarded_write(
+					$order,
+					$carrier,
+					static fn (): Kuka_Island_Shipping_Result => $carrier->update_order( $shipment )
+				);
+			}
+
+			if ( array() !== $guarded['refusal'] ) {
+				return $this->simple( false, $guarded['refusal']['code'], $guarded['refusal']['message'] );
+			}
+
+			$result = $guarded['result'];
+
+			if ( $result->is_uncertain() ) {
+				Kuka_Island_Shipping_Order_Store::save_uncertain( $order, $result->get_operation(), $result->get_safe_error_code() );
+				$this->note( $order, __( 'Güncelleme belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+
+				return $this->simple( false, $result->get_safe_error_code(), __( 'Güncelleme belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			}
+
+			if ( ! $result->is_success() ) {
+				Kuka_Island_Shipping_Order_Store::save_failure( $order, $result->get_operation(), $result->get_safe_error_code(), __( 'Güncelleme reddedildi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+
+				return $this->simple( false, $result->get_safe_error_code(), __( 'Güncelleme reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			}
+
+			$this->note( $order, __( 'Taşıyıcı kaydı güncellendi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+
+			return $this->simple( true, '', __( 'Taşıyıcı kaydı güncellendi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+		} finally {
+			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
 		}
-
-		if ( ! $result->is_success() ) {
-			Kuka_Island_Shipping_Order_Store::save_failure( $order, $result->get_operation(), $result->get_safe_error_code(), __( 'Güncelleme reddedildi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
-
-			return $this->simple( false, $result->get_safe_error_code(), __( 'Güncelleme reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
-		}
-
-		$this->note( $order, __( 'Taşıyıcı kaydı güncellendi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
-
-		return $this->simple( true, '', __( 'Taşıyıcı kaydı güncellendi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
 	}
 
 	/**
 	 * Cancel the shipment, or the registered order when no shipment exists.
 	 *
-	 * THE CONFIRMING READ MUST ASK ABOUT THE OBJECT THAT WAS CANCELLED. Both
-	 * branches used to be confirmed with read_shipment(), and on the ORDER
-	 * branch that is not a confirmation at all: no shipment was ever created
-	 * under this reference, so getshipment answers not_found whether the
-	 * cancellation worked or not. A cancelorder the carrier acknowledged but
-	 * did not perform was therefore written down as `cancelled`, the status
-	 * chain was unscheduled, and a live carrier order stopped being watched by
-	 * anybody. The read now follows the write: shipment for cancelshipment,
-	 * order for cancelorder.
+	 * SERIALISED, IDEMPOTENT AND CONFIRMED. Three separate properties, and each
+	 * of them was missing.
 	 *
-	 * AN ACKNOWLEDGEMENT IS NOT EVIDENCE. A 200 on the cancel call moves
-	 * nothing on its own. Only not_found from the matching read moves the state,
-	 * and a read that says "still there" or cannot answer at all leaves the
-	 * order exactly where it was -- which keeps the parcel being tracked.
+	 * SERIALISED. The mutation lock is taken and the order is re-read inside it.
+	 * Without the lock two concurrent presses both read 'shipment_created' and
+	 * both sent cancelshipment: two cancellations for one parcel, and the second
+	 * one answering "already cancelled" is the harmless outcome, not the
+	 * guaranteed one.
 	 *
-	 * AN UNCERTAIN CANCELLATION IS NOT REPEATED. It lands in
-	 * STATE_RECONCILE_REQUIRED, and this method refuses to run again from
-	 * there: a second cancel would be a second write against a state nobody has
-	 * established. The read-only reconciliation is the only way out.
+	 * IDEMPOTENT. Exactly two states may write -- order_created cancels the
+	 * ORDER, shipment_created with a known shipment id cancels the SHIPMENT.
+	 * Everything else makes no call: an order that is already cancelled answers
+	 * 'already_cancelled', and 'none', 'blocked', 'absent_confirmed',
+	 * 'delivered', 'manual_review', 'reconcile_required' and any value this
+	 * version has never heard of answer 'not_cancellable'. Refusing by an
+	 * allow-list rather than by a deny-list is the difference: a deny-list grows
+	 * a hole the first time a state is added.
+	 *
+	 * A shipment_created record with an EMPTY shipment id is refused too. A
+	 * shipment exists but its identifier is unknown, so nothing can address it
+	 * -- and cancelling the ORDER instead would send a request about the wrong
+	 * object, which is the mistake this method already had once.
+	 *
+	 * CONFIRMED BY READING THE OBJECT THAT WAS CANCELLED. The carrier's
+	 * "canceled" is an acknowledgement, not evidence. cancel_shipment is proved
+	 * by read_shipment, cancel_order by read_order, and only not_found moves the
+	 * state. A read that says "still there", or cannot answer, leaves the order
+	 * where it was -- which keeps the parcel being tracked.
+	 *
+	 * AN UNCERTAIN CANCELLATION IS NEVER REPEATED. It lands in
+	 * reconcile_required, which is not in the allow-list above, so the next
+	 * press -- concurrent or minutes later -- writes nothing.
 	 *
 	 * @param WC_Order $order       Order.
 	 * @param string   $carrier_key Carrier key, '' for the default.
 	 * @return array{ok: bool, code: string, message: string, detail: string}
 	 */
 	public function cancel( WC_Order $order, string $carrier_key = '' ): array {
-		$carrier = $this->registry->get( '' !== $carrier_key ? $carrier_key : $this->default_carrier_key() );
+		$gate = $this->carrier_gate( $order, $carrier_key );
 
-		if ( null === $carrier ) {
-			return $this->simple( false, 'carrier_not_registered', __( 'Bu kargo firması kayıtlı değil.', 'kuka-island-shipping-automation' ) );
+		if ( array() !== $gate['refusal'] ) {
+			return $this->simple( false, (string) $gate['refusal']['code'], (string) $gate['refusal']['message'] );
 		}
 
-		$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
-		$reference = (string) $data['reference'];
+		$carrier = $gate['carrier'];
 
-		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			return $this->simple( false, 'no_reference', __( 'Bu siparişte taşıyıcı referansı yok.', 'kuka-island-shipping-automation' ) );
-		}
-
-		if ( Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $data['state'] ) {
+		if ( ! $this->acquire_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() ) ) {
+			// Somebody else is mutating this order. Not queued behind: two
+			// callers waiting to cancel the same parcel is the scenario the
+			// lock exists to prevent.
 			return $this->simple(
 				false,
-				'reconcile_required',
-				__( 'Bu siparişte belirsiz bir taşıyıcı yanıtı var. İptal tekrarlanmadı; önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' )
+				'lock_contended',
+				__( 'Bu sipariş için başka bir kargo işlemi sürüyor. Yeni çağrı yapılmadı.', 'kuka-island-shipping-automation' )
 			);
 		}
 
-		// WHICH object is cancelled decides WHICH read confirms it.
-		if ( '' !== $data['shipment_id'] ) {
-			$result       = $carrier->cancel_shipment( $reference, (string) $data['shipment_id'] );
-			$confirmed_by = 'read_shipment';
-		} else {
-			$result       = $carrier->cancel_order( $reference );
-			$confirmed_by = 'read_order';
-		}
+		try {
+			// Re-read INSIDE the lock. A caller that waited for the lock is
+			// looking at a state the previous holder may have just changed.
+			$order     = wc_get_order( $order->get_id() ) ?: $order;
+			$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+			$reference = (string) $data['reference'];
 
-		if ( $result->is_uncertain() ) {
-			Kuka_Island_Shipping_Order_Store::save_uncertain( $order, $result->get_operation(), $result->get_safe_error_code() );
-			$this->note( $order, __( 'İptal belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+			if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
+				return $this->simple( false, 'no_reference', __( 'Bu siparişte taşıyıcı referansı yok.', 'kuka-island-shipping-automation' ) );
+			}
 
-			return $this->simple( false, $result->get_safe_error_code(), __( 'İptal belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
-		}
+			if ( Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $data['state'] ) {
+				return $this->simple(
+					false,
+					'already_cancelled',
+					__( 'Bu siparişin taşıyıcı kaydı zaten iptal edilmiş ve iptal sorguyla doğrulanmıştı. Yeni iptal çağrısı yapılmadı.', 'kuka-island-shipping-automation' )
+				);
+			}
 
-		if ( ! $result->is_success() ) {
-			Kuka_Island_Shipping_Order_Store::save_failure( $order, $result->get_operation(), $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+			// WHICH object is cancelled decides WHICH read confirms it.
+			if ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $data['state'] && '' !== $data['shipment_id'] ) {
+				$shipment_id  = (string) $data['shipment_id'];
+				$confirmed_by = 'read_shipment';
+				$write        = static fn (): Kuka_Island_Shipping_Result => $carrier->cancel_shipment( $reference, $shipment_id );
+			} elseif ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state'] ) {
+				$confirmed_by = 'read_order';
+				$write        = static fn (): Kuka_Island_Shipping_Result => $carrier->cancel_order( $reference );
+			} else {
+				return $this->simple(
+					false,
+					'not_cancellable',
+					self::cancel_refusal_message( (string) $data['state'], '' === $data['shipment_id'] )
+				);
+			}
 
-			return $this->simple( false, $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
-		}
+			$guarded = $this->guarded_write( $order, $carrier, $write );
 
-		$confirm = 'read_shipment' === $confirmed_by
-			? $carrier->read_shipment( $reference )
-			: $carrier->read_order( $reference );
+			if ( array() !== $guarded['refusal'] ) {
+				return $this->simple( false, $guarded['refusal']['code'], $guarded['refusal']['message'] );
+			}
 
-		$detail = $confirm->to_safe_line() . '|confirmed_by:' . $confirmed_by;
+			$result = $guarded['result'];
 
-		if ( 'not_found' === $confirm->get_safe_error_code() ) {
-			Kuka_Island_Shipping_Order_Store::set_state(
+			if ( $result->is_uncertain() ) {
+				Kuka_Island_Shipping_Order_Store::save_uncertain( $order, $result->get_operation(), $result->get_safe_error_code() );
+				$this->note( $order, __( 'İptal belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+
+				return $this->simple( false, $result->get_safe_error_code(), __( 'İptal belirsiz sonuçlandı; tekrar denenmedi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			}
+
+			if ( ! $result->is_success() ) {
+				Kuka_Island_Shipping_Order_Store::save_failure( $order, $result->get_operation(), $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+
+				return $this->simple( false, $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			}
+
+			$confirm = 'read_shipment' === $confirmed_by
+				? $carrier->read_shipment( $reference )
+				: $carrier->read_order( $reference );
+
+			$detail = $confirm->to_safe_line() . '|confirmed_by:' . $confirmed_by;
+
+			if ( 'not_found' === $confirm->get_safe_error_code() ) {
+				Kuka_Island_Shipping_Order_Store::set_state(
+					$order,
+					Kuka_Island_Shipping_Order_Store::STATE_CANCELLED,
+					__( 'Taşıyıcı kaydı iptal edildi ve iptal salt-okunur sorguyla doğrulandı.', 'kuka-island-shipping-automation' )
+				);
+				Kuka_Island_Shipping_Status_Poller::cancel_queries( (int) $order->get_id() );
+				$this->note( $order, __( 'Kargo kaydı iptal edildi (sorguyla doğrulandı).', 'kuka-island-shipping-automation' ) . ' ' . $detail );
+
+				return $this->simple( true, '', __( 'Kargo kaydı iptal edildi.', 'kuka-island-shipping-automation' ), $detail );
+			}
+
+			$this->note(
 				$order,
-				Kuka_Island_Shipping_Order_Store::STATE_CANCELLED,
-				__( 'Taşıyıcı kaydı iptal edildi ve iptal salt-okunur sorguyla doğrulandı.', 'kuka-island-shipping-automation' )
+				__( 'Taşıyıcı iptali kabul etti fakat doğrulama sorgusu kaydın hâlâ var olduğunu ya da cevapsız kaldığını gösterdi. Durum değiştirilmedi.', 'kuka-island-shipping-automation' ) . ' ' . $detail
 			);
-			Kuka_Island_Shipping_Status_Poller::cancel_queries( (int) $order->get_id() );
-			$this->note( $order, __( 'Kargo kaydı iptal edildi (sorguyla doğrulandı).', 'kuka-island-shipping-automation' ) . ' ' . $detail );
 
-			return $this->simple( true, '', __( 'Kargo kaydı iptal edildi.', 'kuka-island-shipping-automation' ), $detail );
+			return $this->simple( false, 'cancel_unconfirmed', __( 'İptal doğrulanamadı; durum değiştirilmedi.', 'kuka-island-shipping-automation' ), $detail );
+		} finally {
+			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
 		}
-
-		$this->note(
-			$order,
-			__( 'Taşıyıcı iptali kabul etti fakat doğrulama sorgusu kaydın hâlâ var olduğunu ya da cevapsız kaldığını gösterdi. Durum değiştirilmedi.', 'kuka-island-shipping-automation' ) . ' ' . $detail
-		);
-
-		return $this->simple( false, 'cancel_unconfirmed', __( 'İptal doğrulanamadı; durum değiştirilmedi.', 'kuka-island-shipping-automation' ), $detail );
 	}
 
 	/* ---------------------------------------------------------------------- */
@@ -1155,6 +1409,52 @@ final class Kuka_Island_Shipping_Manager {
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor. Barkod aşaması sürdürülmedi.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED          => __( 'Bu siparişin taşıyıcı kaydı iptal edilmiş. Barkod aşaması sürdürülmedi.', 'kuka-island-shipping-automation' ),
 			default                                                    => __( 'Bu siparişte taşıyıcıda bekleyen bir sipariş kaydı yok; sürdürülecek bir barkod aşaması bulunmuyor.', 'kuka-island-shipping-automation' ),
+		};
+	}
+
+	/**
+	 * Operator-facing sentence for a state a cancellation cannot be sent from.
+	 *
+	 * Public and static so the exact wording can be asserted without an admin
+	 * screen, exactly like state_message() and resume_refusal_message().
+	 *
+	 * @param string $state             State read inside the lock.
+	 * @param bool   $shipment_id_empty True when the record says a shipment
+	 *                                  exists but does not say which.
+	 */
+	public static function cancel_refusal_message( string $state, bool $shipment_id_empty = false ): string {
+		if ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $state && $shipment_id_empty ) {
+			return __( 'Bu siparişte gönderi var fakat gönderi numarası bilinmiyor; iptal edilecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' );
+		}
+
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_NONE               => __( 'Bu siparişte taşıyıcı kaydı yok; iptal edilecek bir şey bulunmuyor.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_BLOCKED            => __( 'Bu sipariş için taşıyıcıya hiç çağrı yapılmadı; iptal edilecek bir kayıt yok.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; iptal edilecek bir şey yok.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Bu siparişte belirsiz bir taşıyıcı yanıtı var. İptal tekrarlanmadı; önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Bu sipariş teslim edilmiş. Teslim edilmiş bir gönderi iptal edilmez; iade süreci ayrıdır.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor. İptal otomatik yapılmaz.', 'kuka-island-shipping-automation' ),
+			default                                                    => __( 'Bu siparişin durumu iptal için tanınmıyor; hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
+		};
+	}
+
+	/**
+	 * Operator-facing sentence for a state an amendment cannot be sent from.
+	 *
+	 * @param string $state             State read inside the lock.
+	 * @param bool   $shipment_id_empty True when the shipment id is unknown.
+	 */
+	public static function update_refusal_message( string $state, bool $shipment_id_empty = false ): string {
+		if ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $state && $shipment_id_empty ) {
+			return __( 'Bu siparişte gönderi var fakat gönderi numarası bilinmiyor; güncellenecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' );
+		}
+
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED          => __( 'Bu siparişin taşıyıcı kaydı iptal edilmiş; güncellenecek bir kayıt yok.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Bu siparişte belirsiz bir taşıyıcı yanıtı var. Güncelleme yapılmadı; önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Bu sipariş teslim edilmiş; taşıyıcı kaydı güncellenmedi.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor; taşıyıcı kaydı güncellenmedi.', 'kuka-island-shipping-automation' ),
+			default                                                    => __( 'Bu siparişte güncellenebilecek bir taşıyıcı kaydı yok.', 'kuka-island-shipping-automation' ),
 		};
 	}
 

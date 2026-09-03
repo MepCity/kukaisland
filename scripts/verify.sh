@@ -141,23 +141,35 @@ shipping_lifecycle=$(./scripts/verify-shipping-activation-lifecycle.sh)
 printf '%s\n' "$shipping_lifecycle"
 
 # The DHL credential mount must be reachable only by the single allow-listed
-# read-only script, exactly as the EDM one is. A refusal reason of
-# credentials_file_absent counts as a leak here, because it means the script
-# name was accepted before the credential gate was reached.
+# read-only script.
+#
+# The decision is taken OFFLINE, through --check-script. The previous version of
+# this block ran the REAL command and read only its first line through
+# `head -n 1`: the container's PHP was prevented from starting by the closed
+# pipe, which is a SIGPIPE race rather than a rule. With a credential file in
+# place, a slower reader or a faster container would have made `make verify`
+# authenticate against the carrier and read its city lists. --check-script
+# answers from the script name alone -- no credential read, no Docker, no PHP,
+# no network -- and shares the allow-list function with the enforced path, so
+# the offline answer cannot drift from the enforced one.
 dhl_runner_leaks=0
 for dhl_bad_script in 'dhl-sandbox-shipment.php' '../scripts/test-dhl-sandbox.php' '/etc/passwd' 'sub/test-dhl-sandbox.php' 'test-dhl-sandbox.php;id' 'verify.php' 'TEST-DHL-SANDBOX.PHP' ''; do
-  dhl_runner_out=$(./scripts/dhl-test-run.sh "$dhl_bad_script" 2>&1 | head -n 1 || true)
+  dhl_runner_out=$(./scripts/dhl-test-run.sh --check-script="$dhl_bad_script" 2>&1)
   case "$dhl_runner_out" in
-    DHL_TEST_RUN=BLOCKED*credentials_file_absent*) dhl_runner_leaks=$((dhl_runner_leaks + 1)) ;;
-    DHL_TEST_RUN=BLOCKED*) ;;
+    DHL_TEST_RUN=CHECK*allow_listed:no*credentials_read:no*docker_started:no*php_started:no*network_calls:0) ;;
     *) dhl_runner_leaks=$((dhl_runner_leaks + 1)) ;;
   esac
 done
-dhl_runner_allowlisted=$(./scripts/dhl-test-run.sh 'test-dhl-sandbox.php' 2>&1 | head -n 1 || true)
+dhl_runner_allowlisted=$(./scripts/dhl-test-run.sh --check-script='test-dhl-sandbox.php' 2>&1)
 case "$dhl_runner_allowlisted" in
-  DHL_TEST_RUN=STARTING*|DHL_TEST_RUN=BLOCKED*credentials_file_absent*) dhl_runner_allowlist_ok=yes ;;
+  DHL_TEST_RUN=CHECK*allow_listed:yes*reason:allow_listed*credentials_read:no*docker_started:no*php_started:no*network_calls:0) dhl_runner_allowlist_ok=yes ;;
   *) dhl_runner_allowlist_ok=no ;;
 esac
+
+# And the offline mode is proved to launch nothing, with shims standing in for
+# docker, php, wp and curl and with a credentials-present fixture in place.
+dhl_runner_offline=$(./scripts/verify-dhl-runner-offline.sh 2>&1 || true)
+printf '%s\n' "$dhl_runner_offline"
 
 # The write tool must refuse without the exact confirmation phrase, and must
 # make no call while refusing.
@@ -170,7 +182,7 @@ for dhl_write_args in '--order=1' '--order=1 --confirm=evet' '--confirm=TEK-SAND
     *) ;;
   esac
 done
-printf 'DHL_RUNNER_ALLOWLIST=leaks:%s|allowlisted_reaches_credential_gate:%s|write_tool_refusals:%s/4\n' \
+printf 'DHL_RUNNER_ALLOWLIST=mode:offline_allowlist_check|leaks:%s|allowlisted_decision:%s|credentials_read:no|docker_started:no|php_started:no|network_calls:0|write_tool_refusals:%s/4\n' \
   "$dhl_runner_leaks" "$dhl_runner_allowlist_ok" "$dhl_write_refusals"
 
 shipping_post_keyset=$(invoice_keyset_line)
@@ -411,7 +423,7 @@ expect_sandbox_line() {
 expect_shipping_match() {
   label=$1
   pattern=$2
-  if printf '%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" | grep -Eq "$pattern"; then
+  if printf '%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" "$dhl_runner_offline" | grep -Eq "$pattern"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected pattern $pattern)" >&2
@@ -824,7 +836,7 @@ expect_shipping_match "a second carrier is added through the registry filter alo
 expect_shipping_match "cancelling a shipment is confirmed by reading the shipment" "^SHIPPING_CANCEL_SHIPMENT_BRANCH=PASS\\|branch:shipment\\|cancelshipment_calls:1\\|cancelorder_calls:0\\|getshipment_calls:1\\|getorder_calls:0\\|state:cancelled\\|confirmed_by:read_shipment$"
 expect_shipping_match "cancelling a registered order is confirmed by reading the order" "^SHIPPING_CANCEL_ORDER_BRANCH=PASS\\|branch:order\\|state_before:order_created\\|shipment_id_before:none\\|cancelorder_calls:1\\|cancelshipment_calls:0\\|getorder_calls:1\\|getshipment_calls:0\\|state:cancelled\\|confirmed_by:read_order$"
 expect_shipping_match "an absent shipment never proves a cancelled order" "^SHIPPING_CANCEL_ORDER_NOT_CANCELLED_ON_SHIPMENT_404=PASS\\|cancel_order:success\\|read_shipment:not_found\\|read_order:present\\|cancelorder_calls:1\\|getorder_calls:1\\|getshipment_calls:0\\|code:cancel_unconfirmed\\|state:order_created\\|cancelled_written:no$"
-expect_shipping_match "an uncertain cancellation is never repeated" "^SHIPPING_CANCEL_UNCERTAIN_NOT_REPEATED=PASS\\|first_code:timeout\\|state:reconcile_required\\|second_code:reconcile_required\\|cancelshipment_calls:1$"
+expect_shipping_match "an uncertain cancellation is never repeated" "^SHIPPING_CANCEL_UNCERTAIN_NOT_REPEATED=PASS\\|first_code:timeout\\|state:reconcile_required\\|second_code:not_cancellable\\|cancelshipment_calls:1$"
 
 # The way out of order_created: the barcode stage, and only the barcode stage.
 expect_shipping_match "the barcode stage resumes without registering a second order" "^SHIPPING_RESUME_ORDER_CREATED=PASS\\|state_before:order_created\\|create_again_code:already_in_progress\\|createOrder_calls_during_resume:0\\|createbarcode_calls_during_resume:1\\|state_after:shipment_created\\|shipment_id:stored\\|second_press_code:not_resumable\\|second_press_writes:0$"
@@ -844,7 +856,25 @@ expect_shipping_match "the default carrier comes from configuration and fails cl
 expect_shipping_match "the carrier-agnostic core names no adapter class or constant" "^SHIPPING_CORE_NAMES_NO_ADAPTER=PASS\\|files:8\\|dhl_class_or_constant_references:0\\|comments_stripped:yes\\|scan_control_positive:yes$"
 
 expect_shipping_match "the behavioural suite makes no real carrier request" "^SHIPPING_NO_REAL_CARRIER_REQUEST=PASS\\|guard:pre_http_request\\|carrier_host:mngkargo.com.tr\\|real_requests_attempted:0\\|transport:mock_only$"
-expect_shipping_match "the behavioural suite removes its fixtures, its notes and its cache" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0\\|cbs_cache_entries_left:0$"
+# Every carrier write crosses one boundary, and crosses it twice.
+expect_shipping_match "one shared gate refuses every write door before the network" "^SHIPPING_MUTATION_GATE_SHARED=PASS\\|doors:create\\+resume\\+update\\+cancel\\|conditions:3\\|wrong:none\\|carrier_not_registered:writes:0\\|live_environment_blocked:writes:0\\|credentials_missing:writes:0$"
+expect_shipping_match "cash on delivery blocks a booking without trapping one" "^SHIPPING_COD_DOES_NOT_TRAP_A_BOOKING=PASS\\|payment_method:cod\\|cod_gate_closed:yes\\|create:cod_not_supported\\|resume:cod_not_supported\\|create_writes:0\\|update:allowed\\|update_writes:1\\|cancel:allowed\\|cancel_writes:1\\|state:cancelled$"
+expect_shipping_match "the gate is asked again with the lock held" "^SHIPPING_GATE_RECHECKED_UNDER_LOCK=PASS\\|doors:4\\|wrong:none\\|create:credentials_missing\\(checks:2,writes:0\\)\\|resume:credentials_missing\\(checks:2,writes:0\\)\\|update:credentials_missing\\(checks:2,writes:0\\)\\|cancel:credentials_missing\\(checks:2,writes:0\\)$"
+expect_shipping_match "closing the runtime gate mid-flight stops the write" "^SHIPPING_RUNTIME_GATE_CLOSED_MIDFLIGHT=PASS\\|closed_after:lock_held_and_request_built\\|code:shipping_runtime_disabled\\|carrier_writes:0\\|gate_was_closed:yes\\|gate_restored:yes$"
+
+# Concurrency, measured with a genuinely separate MySQL connection.
+expect_shipping_match "the concurrency measurements use a second MySQL session" "^SHIPPING_SECOND_DB_SESSION=PASS\\|own_connection_id:present\\|second_connection_id:present\\|separate:yes$"
+expect_shipping_match "create, resume, update and cancel share one lock family" "^SHIPPING_MUTATION_LOCK_IS_ONE_FAMILY=PASS\\|lock_key:kuka_ship_mutate_<order>\\|held_by:second_mysql_session\\|create:lock_contended\\|resume:lock_contended\\|update:lock_contended\\|cancel:lock_contended\\|carrier_writes:0$"
+expect_shipping_match "two concurrent cancellations send exactly one" "^SHIPPING_CANCEL_SERIALISED_AND_IDEMPOTENT=PASS\\|concurrent_call:lock_contended\\|writes_while_lock_held:0\\|first:cancelled\\|state:cancelled\\|second:already_cancelled\\|stale_handle:already_cancelled\\|total_carrier_writes:1\\|cancel_shipment:1\\|cancel_order:0\\|confirmed_by:read_shipment\\(1\\)$"
+expect_shipping_match "every state but the two cancellable ones sends nothing" "^SHIPPING_CANCEL_REFUSES_EVERY_OTHER_STATE=PASS\\|states_checked:9\\|wrong:none\\|carrier_writes:0\\|unknown_state_refused:yes\\|shipment_created_without_id_refused:yes$"
+expect_shipping_match "an amendment is serialised and built from a fresh reading" "^SHIPPING_UPDATE_SERIALISED_AND_FRESH=PASS\\|concurrent_call:lock_contended\\|writes_while_lock_held:0\\|first:updated\\|update_shipment:1\\|update_order:0\\|state_after_cancel:cancelled\\|late_update_from_stale_handle:nothing_to_update\\|total_updates:1$"
+expect_shipping_match "every state but the two amendable ones sends nothing" "^SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE=PASS\\|states_checked:8\\|wrong:none\\|carrier_writes:0$"
+
+# The translation catalogue is generated from the source, and matches it.
+expect_shipping_match "the translation catalogue matches the source exactly" "^SHIPPING_POT_CATALOG=PASS\\|pot:readable\\|source_literals:[0-9]+\\|catalog_msgids:[0-9]+\\|missing_from_catalog:0\\|stale_in_catalog:0\\|required_new_strings:15/15\\|retired_hardcoded_carrier_string:removed$"
+
+expect_shipping_match "the behavioural suite removes its fixtures and its notes and preserves the cache" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0\\|pre_existing_cache_rows:[0-9]+\\|cache_keyset_identical:yes\\|cache_fingerprint_identical:yes\\|run_owned_cache_residue:[0-9]+$"
+expect_shipping_match "a pre-existing carrier reference cache survives the run byte for byte" "^SHIPPING_CBS_CACHE_PRESERVED=PASS\\|control:planted_then_overwritten_then_restored\\|overwritten_by_run:yes\\|value_and_timeout_rows:2\\|.*fingerprint_recovered:yes\\|value_identical:yes\\|bytes_identical:yes$"
 expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIFY=PASS$"
 
 # Activation and deactivation, driven for real through WP-CLI.
@@ -854,8 +884,12 @@ expect_shipping_match "deactivation unloads everything, closes the gate and keep
 expect_shipping_match "the shipping lifecycle test restores the state it found" "^SHIPPING_LIFECYCLE_RESTORED=PASS\\|plugin:inactive\\|gate_option:no\\|active_plugins_identical:yes\\|"
 expect_shipping_match "the shipping lifecycle suite passes as a whole" "^SHIPPING_LIFECYCLE=PASS$"
 
-expect_value "the DHL credential mount is reachable only by the allow-listed script" "$dhl_runner_leaks" "0"
-expect_value "the allow-listed DHL script reaches the credential gate" "$dhl_runner_allowlist_ok" "yes"
+expect_value "the DHL allow-list refuses every other script name, offline" "$dhl_runner_leaks" "0"
+expect_value "the DHL allow-list decision is taken without starting anything" "$dhl_runner_allowlist_ok" "yes"
+expect_shipping_match "the process-detection shims actually detect a launch" "^DHL_RUNNER_SHIM_CONTROL=PASS\\|shims_invoked_on_purpose:3\\|marker_lines:3\\|detection_works:yes$"
+expect_shipping_match "the offline allow-list mode launches no process and reads no credential" "^DHL_RUNNER_OFFLINE=PASS\\|mode:offline_allowlist_check\\|allowlisted_answered:yes\\|refusals:8/8\\|credentials_4of4_fixture:yes\\|credential_value_in_output:no\\|answer_identical_with_unreadable_credential_dir:yes\\|processes_launched:0\\|"
+expect_shipping_match "the enforced DHL runner still refuses the same names" "^DHL_RUNNER_ENFORCED_REFUSALS=PASS\\|refused:5/5\\|processes_launched:0\\|operator_command_unchanged:yes$"
+expect_shipping_match "the offline runner suite passes as a whole" "^DHL_RUNNER_OFFLINE_SUITE=PASS$"
 expect_value "the DHL write tool refuses every unconfirmed invocation" "$dhl_write_refusals" "4"
 expect_value "the shipping suites leave the order tables exactly as they found them" "$shipping_isolation" "SHIPPING_DB_ISOLATION=keyset_match:yes"
 

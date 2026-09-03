@@ -52,6 +52,34 @@ Taşıyıcıya özgü hiçbir bilgi `Manager` ve üstüne çıkmaz. `Manager` `'
 `'sender'`, `'to_address'` gibi anlamsal jeton kullanır; bunları `3`, `1`, `1`
 sayılarına çevirmek adaptörün işidir.
 
+### 2.1 Yazma sınırı: iki katman, tek boğaz
+
+Taşıyıcıya yazan **altı** operasyon vardır: `create_order`, `create_barcode`,
+`update_order`, `update_shipment`, `cancel_order`, `cancel_shipment`.
+
+**Katman 1 — `Manager::carrier_gate()`.** Her taşıyıcı operasyonunun geçtiği
+ortak sınır: taşıyıcı kayıtlı mı, çalışma kapısı açık mı, ortam bloke değil mi,
+kimlikler tam mı. Bunlardan biri sağlanmıyorsa dış çağrı sayısı **0**'dır.
+
+**Katman 2 — `Manager::create_policy()`.** Yalnız **oluşturma** ve **barkod
+sürdürme** işlemlerinin tabi olduğu iş kuralı: kapıda ödeme. Bu kural bilinçli
+olarak katman 1'in dışındadır. Kapıda ödeme kontrolünü iptale de uygulamak, COD
+siparişini **geri alınamaz** hâle getirirdi; tehlikeli olan COD siparişini
+peşin gibi kargolamaktır, iptal etmek çözümdür.
+
+**Tek boğaz — `Manager::guarded_write()`.** Altı yazmanın tamamı bu metottan
+geçer ve başka hiçbir yerden geçmez. Metot, taşıyıcıya dokunmadan **hemen önce**
+katman 1'i yeniden sorar. Giriş kontrolü kilit alınmadan önce yapılmıştı; o
+noktayla yazma arasında operatör eklentiyi devre dışı bırakabilir — çalışma
+kapısı tam olarak bu senaryo için vardır. `Runtime_Gate::is_disabled()` her
+çağrıda option tablosundan doğrudan okur, bu yüzden ikinci okuma birincinin
+tekrarı değildir.
+
+Ölçüm: `SHIPPING_MUTATION_GATE_SHARED` (dört kapı × üç koşul, yazma 0) ve
+`SHIPPING_GATE_RECHECKED_UNDER_LOCK` (dört kapıda `readiness` sorgusu 2, yazma
+0), `SHIPPING_RUNTIME_GATE_CLOSED_MIDFLIGHT` (kapı kilit altındayken kapanıyor,
+yazma 0).
+
 **İkinci kargo firması eklemek** için tek gereken:
 `Kuka_Island_Shipping_Carrier_Interface` uygulayan bir sınıf yazmak ve
 `kuka_island_shipping_carriers` filtresine eklemek. Core, Manager, Order Store,
@@ -260,31 +288,76 @@ gövdesi okunamayan 2xx, 409, 429, 5xx, 3xx ve beklenmeyen durum kodları.
 
 Yokluk **kanıtlanır**; timeout yokluk kanıtı değildir.
 
-### 7.1 İptal doğrulaması
+### 7.1 İptal: serileştirilmiş, idempotent, doğrulanmış
 
-Taşıyıcının "iptal edildi" cevabı **kanıt değildir**; yalnız bir alındıdır.
-Durum ancak **yazmanın hedefi olan nesnenin** salt-okunur sorgusu `not_found`
-derse değişir:
+**Serileştirilmiş.** `cancel()` mutation kilidini alır ve durumu kilit içinde
+yeniden okur. Kilit olmadan iki eşzamanlı basış ikisi de `shipment_created`
+okuyup iki `cancelshipment` gönderiyordu. Kilidi alamayan çağrı **beklemez**,
+`lock_contended` ile döner.
 
-| Yapılan yazma | Doğrulayan sorgu |
+**İdempotent.** Yazabilen **tam olarak iki** durum vardır:
+
+| Kilit içinde okunan durum | Gönderilen yazma | Doğrulayan sorgu |
+| --- | --- | --- |
+| `order_created` | `cancelorder` | `getorder` |
+| `shipment_created` **ve** `shipment_id` dolu | `cancelshipment` | `getshipment` |
+
+Diğer her durumda dış çağrı **0**'dır:
+
+| Durum | Kod |
 | --- | --- |
-| `cancelshipment` (sipariş metasında `shipment_id` var) | `getshipment` |
-| `cancelorder` (yalnız sipariş kaydı var) | `getorder` |
+| `cancelled` | `already_cancelled` |
+| `none`, `blocked`, `absent_confirmed`, `reconcile_required`, `delivered`, `manual_review`, tanımsız | `not_cancellable` |
+| `shipment_created` fakat `shipment_id` boş | `not_cancellable` |
 
-Sorgu "hâlâ var" derse veya hiç cevap veremezse durum **değişmez**, sorgu
-zinciri iptal edilmez ve sonuç `cancel_unconfirmed` olur.
+Son satır önemlidir: gönderi vardır ama numarası bilinmiyorsa adreslenecek kayıt
+yoktur, ve **onun yerine siparişi iptal etmek** yanlış nesneye istek göndermek
+olur — bu modülün bir kez yaptığı hata tam olarak buydu.
+
+Reddetme bir **izin listesiyle** yapılır, yasak listesiyle değil: yasak listesi,
+yeni bir durum eklendiği ilk anda delik verir.
+
+**Doğrulanmış.** Taşıyıcının "iptal edildi" cevabı **kanıt değildir**; yalnız
+bir alındıdır. Durum ancak **yazmanın hedefi olan nesnenin** salt-okunur sorgusu
+`not_found` derse değişir. Sorgu "hâlâ var" derse veya hiç cevap veremezse durum
+**değişmez**, sorgu zinciri iptal edilmez ve sonuç `cancel_unconfirmed` olur.
 
 İptal `uncertain` dönerse durum `reconcile_required` olur ve **iptal
-tekrarlanmaz**: `cancel()` bu durumdan `reconcile_required` koduyla döner.
-Çıkış yalnız salt-okunur mutabakattır.
+tekrarlanmaz**: o durum izin listesinde olmadığı için sonraki basış — eşzamanlı
+ya da dakikalar sonra — `not_cancellable` ile hiçbir şey göndermez. Çıkış yalnız
+salt-okunur mutabakattır.
+
+### 7.2 Güncelleme: aynı kilit, aynı tazelik kuralı
+
+`update_shipment()` de mutation kilidini alır ve durumu, `shipment_id`'yi ve
+referansı kilit içinde yeniden okur; istek **o okumadan** kurulur. Yazabilen iki
+durum vardır — `order_created` → `updateorder`, `shipment_created` + dolu
+`shipment_id` → `updateshipment` — diğer her durumda kod `nothing_to_update` ve
+dış çağrı 0'dır.
+
+Bu, "gecikmiş güncelleme" senaryosunu kapatır: iptal başarıyla tamamlandıktan
+sonra, iptalden **önce** alınmış bir sipariş nesnesiyle çağrılan güncelleme,
+kilit içindeki taze okuma `cancelled` gördüğü için gönderilmez.
+
+Ölçüm: `SHIPPING_CANCEL_SERIALISED_AND_IDEMPOTENT`,
+`SHIPPING_CANCEL_REFUSES_EVERY_OTHER_STATE`,
+`SHIPPING_UPDATE_SERIALISED_AND_FRESH`,
+`SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE`. Eşzamanlılık ölçümleri **gerçek
+ikinci MySQL oturumu** kullanır (`SHIPPING_SECOND_DB_SESSION` iki farklı
+`CONNECTION_ID()` olduğunu kanıtlar); advisory lock bağlantı başına tutulduğu
+için tek bağlantıda yapılan iki ardışık çağrı eşzamanlılık kanıtı değildir.
 
 ## 8. Eşzamanlılık
 
-- Oluşturma yolu sipariş başına MySQL advisory lock alır
-  (`GET_LOCK('kuka_ship_create_<id>', 0)`). Kilidi alamayan **beklemez**,
-  hemen döner.
-- Durum kontrolü kilit **alındıktan sonra** tekrar okunur; kilit öncesi okunan
-  değer geçmiş bir ana aittir.
+- **Durumu değiştiren her yol** sipariş başına aynı MySQL advisory kilidini alır
+  (`GET_LOCK('kuka_ship_mutate_<id>', 0)`): `create_shipment()`,
+  `resume_barcode()`, `update_shipment()` ve `cancel()`. Kilidi alamayan
+  **beklemez**, `lock_contended` ile hemen döner. Tek aile olması gerekir: bir
+  iptalin, geri aldığı oluşturmayla üst üste binmemesi bununla sağlanır.
+  (Kilit adı yalnız oluşturma tuttuğu sürece `kuka_ship_create_` idi.)
+- Durum, `shipment_id` ve referans kilit **alındıktan sonra** tekrar okunur;
+  kilit öncesi okunan değer geçmiş bir ana aittir. Taşıyıcı isteği o okumadan
+  kurulur.
 - Sorgu planlaması ayrı bir kilit kullanır
   (`kuka_ship_query_<id>`) ve kilit içinde yalnız `STATUS_PENDING` action'lar
   sayılır. `as_has_scheduled_action()` çalışan action'ı da saydığı için
@@ -445,6 +518,7 @@ tarafından mutabakatlandığı, mağazaya nasıl ulaştığı ve bu arada WooCo
 | `scripts/verify-shipping-passive-contract.php` | pasif teslim + manuel yol + çekmece koruması |
 | `scripts/verify-shipping-automation.php` | 30 davranış ölçümü, mock transport |
 | `scripts/verify-shipping-activation-lifecycle.sh` | gerçek `wp plugin activate/deactivate` |
+| `scripts/verify-dhl-runner-offline.sh` | runner'ın çevrimdışı izin listesi modu hiçbir süreç başlatmıyor |
 | `scripts/verify-deploy-package.sh` | paket içeriği |
 | `scripts/test-dhl-sandbox.php` | salt-okunur Identity + CBS bağlantısı |
 | `scripts/dhl-sandbox-shipment.php` | onaylı tek sandbox gönderisi: oluştur, sorgula, iptal |
@@ -460,6 +534,15 @@ Son iki satır **`make verify` kapsamında değildir** ve olamaz:
 - `scripts/test-dhl-sandbox.php` gerçek Identity ve CBS uçlarına bağlanır. Bu,
   repo dışındaki kimlik dosyasını okumayı gerektirir. Yalnız operatör
   çalıştırır: `./scripts/dhl-test-run.sh test-dhl-sandbox.php`. Salt-okunurdur.
+
+  `make verify` bu betiği **hiçbir koşulda başlatmaz**. İzin listesi kararına
+  ihtiyacı vardır, kararı da `./scripts/dhl-test-run.sh --check-script=<ad>`
+  ile **çevrimdışı** alır: kimlik dosyasını okumaz, `stat`'lamaz, mount etmez,
+  Docker başlatmaz, PHP çalıştırmaz, ağa çıkmaz. Karar fonksiyonu enforce eden
+  yolla **aynıdır**, bu yüzden çevrimdışı cevap uygulanan cevaptan sapamaz.
+  Önceki sürüm kararı gerçek komutu çalıştırıp çıktısının yalnız ilk satırını
+  `head -n 1` ile okuyarak alıyordu: konteynerin PHP'sini durduran şey kapanan
+  borunun SIGPIPE'ıydı, bir kural değil.
 - `scripts/dhl-sandbox-shipment.php` sandbox'ta **gerçekten gönderi
   oluşturur**. Operatörün o tura ait açık onayı ve tam onay ifadesi olmadan
   çalışmaz: `./scripts/dhl-sandbox-run.sh --order=<id>
