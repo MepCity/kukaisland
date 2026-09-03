@@ -139,12 +139,59 @@ final class Kuka_Island_Shipping_Order_Store {
 	public const STATE_BLOCKED             = 'blocked';
 
 	/**
+	 * The ONLY states from which createOrder may be sent.
+	 *
+	 * AN ALLOW-LIST, AND THE HOLE IT CLOSES WAS EXACTLY THE DENY-LIST. This
+	 * used to be states_blocking_create(): a list of states that refuse, with
+	 * everything else -- including everything a later version might add --
+	 * falling through to the create path. STATE_CANCELLED was not on it. So an
+	 * order whose shipment had been cancelled AND PROVED cancelled passed the
+	 * create door, skipped the createOrder branch (its state was not 'none'),
+	 * and dropped straight into run_barcode(): a createbarcode against a
+	 * cancelled record, with no createOrder behind it in this life of the
+	 * order.
+	 *
+	 *   none              nothing has been attempted
+	 *   blocked           a local refusal, nothing was ever sent
+	 *   absent_confirmed  two reads PROVED nothing exists under this reference
+	 *
+	 * Those three, and nothing else. Not 'cancelled', not 'delivered', not
+	 * 'manual_review', not any of the three protected states, and not a value
+	 * this version has never heard of.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function states_allowing_create_order(): array {
+		return array(
+			self::STATE_NONE,
+			self::STATE_BLOCKED,
+			self::STATE_ABSENT_CONFIRMED,
+		);
+	}
+
+	/**
+	 * The ONLY state from which createbarcode may be sent.
+	 *
+	 * Exactly one: the carrier confirmed an ORDER and no shipment exists for it
+	 * yet. Reached either by a createOrder that has just succeeded inside
+	 * run_creation(), or deliberately by Manager::resume_barcode().
+	 *
+	 * @return array<int, string>
+	 */
+	public static function states_allowing_create_barcode(): array {
+		return array(
+			self::STATE_ORDER_CREATED,
+		);
+	}
+
+	/**
 	 * States in which a create call is forbidden because something may already
 	 * exist at the carrier under this order's reference.
 	 *
-	 * STATE_RECONCILE_REQUIRED is the important entry: it is precisely the state
-	 * where nobody knows, and "nobody knows" must never be resolved by sending
-	 * the create again.
+	 * KEPT FOR THE OPERATOR-FACING DISTINCTION ONLY. The decision is taken by
+	 * states_allowing_create_order() above; this list separates "something is
+	 * already in progress at the carrier" from "this state is not a create
+	 * state at all", so the refusal can say which. It is never the gate.
 	 *
 	 * @return array<int, string>
 	 */
@@ -593,6 +640,18 @@ final class Kuka_Island_Shipping_Order_Store {
 			self::STATE_ORDER_CREATED,
 			self::STATE_SHIPMENT_CREATED,
 			self::STATE_RECONCILE_REQUIRED,
+			/*
+			 * THE TWO PROTECTED STATES WERE MISSING, AND THEY ARE THE STRONGEST
+			 * EVIDENCE THERE IS. An order only reaches them because
+			 * begin_mutation() wrote an intent immediately before a request
+			 * went out -- a cancellation or an amendment addressed to some
+			 * carrier under this reference. Without them, a record in one of
+			 * those states with no provider fell through to the shop's current
+			 * default, which is how a cancellation reaches a courier that never
+			 * had the parcel.
+			 */
+			self::STATE_CANCEL_RECONCILE_REQUIRED,
+			self::STATE_UPDATE_RECONCILE_REQUIRED,
 			self::STATE_ABSENT_CONFIRMED,
 			self::STATE_DELIVERED,
 			self::STATE_MANUAL_REVIEW,
@@ -600,6 +659,17 @@ final class Kuka_Island_Shipping_Order_Store {
 		);
 
 		if ( in_array( self::get_state( $order ), $evidence_states, true ) ) {
+			return true;
+		}
+
+		/*
+		 * And the intent record itself, whatever the state says. It exists only
+		 * between begin_mutation() and the outcome that settles it, so its mere
+		 * presence means a request was started against a carrier -- even on a
+		 * record whose state was later overwritten by something this module did
+		 * not write.
+		 */
+		if ( array() !== self::pending_mutation( $order ) ) {
 			return true;
 		}
 

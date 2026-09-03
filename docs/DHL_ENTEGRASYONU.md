@@ -74,34 +74,60 @@ kendi metasındadır (`_kuka_shipping_provider`) ve tek bir yerden çözülür:
 tek başına var olması kanıt değildir** — referans yerel olarak, hiçbir şey
 gönderilmeden basılır.
 
-**Sabitleme geçerli istekten sonra, ilk yazmadan hemen önce, tek save içinde.**
-Sıra şudur:
+**Sabitleme geçerli istekten sonra, ilk yazmadan hemen önce, tek save içinde —
+ve tek başına yeterli değildir.** Sıra şudur:
 
 1. Mutation kilidi alınır.
 2. Taze sipariş üzerinden sahiplik/varsayılan taşıyıcı çözülür.
 3. Referans yalnız **yerel olarak** hazırlanır (`prepare_reference()`, hiçbir
    şey yazmaz).
 4. `build_request()` ve bütün yerel doğrulamalar tamamlanır.
-5. Kapı yeniden kontrol edilir; **açıksa** provider + referans + referans
-   geçmişi tek save ile sabitlenir (`begin_carrier_session()`).
-6. Yazma yapılır.
+5. Kapı yeniden kontrol edilir; **açıksa** `Order_Store::begin_mutation()`
+   çağrılır: provider + referans + referans geçmişi **ve** siparişin o
+   operasyona ait korumalı durumu **ve** ne yapılacağını tarif eden kalıcı
+   intent kaydı **tek save** ile yazılır.
+6. Aynı metot siparişi **veritabanından taze olarak geri okur** ve kritik
+   alanların tamamını `!==` ile karşılaştırır.
+7. Doğrulama `ok` dönerse — ve yalnız o zaman — yazma yapılır.
 
-5 ve 6 arasında hiçbir yerel başarısızlık yolu yoktur: pin
-`guarded_write()`'ın `$before_write` argümanı olarak, kapı kontrolünden sonra ve
-istekten hemen önce çalışır.
+6 ve 7 arasında hiçbir yerel başarısızlık yolu yoktur ve 5'in sonucu
+kontrol edilmeden 7'ye geçilemez: `guarded_write()`'ın dördüncü argümanı
+**zorunludur** ve `begin_mutation()`'ın verdiği doğrulamayı döndürür (§2.2).
+
+**"Provider ve referansı sabitlemek yeterlidir" ifadesi yanlıştı ve
+kaldırılmıştır.** Provider anahtarı bir yazmanın *kime* ait olduğunu söyler;
+*başladığını* söylemez. `states_blocking_create()` durum üzerinden karar
+verirdi, durum ise cevap geldikten sonra yazılıyordu — cevap hiç gelmezse
+(fatal, OOM, deploy, kopan veritabanı bağlantısı) yazan kod yolu hiç çalışmaz ve
+sipariş `none` durumunda kalırdı. Bu yüzden 5'te **durum da** taşınır: bkz. §7.0
+ve K-29.
 
 Neden 4'ten önce değil: adresi eşleşmeyen bir sipariş — hiçbir taşıyıcıya çağrı
 yapılmamış, tamamen yerel bir başarısızlık — eskiden kendisini hiç duymamış bir
 kuryeye kalıcı olarak bağlanmış hâlde çıkıyordu ve başka bir kuryeye
-verilemiyordu. Neden 6'dan sonra değil: timeout olan bir `createOrder` kimin
+verilemiyordu. Neden 7'den sonra değil: timeout olan bir `createOrder` kimin
 sorulduğunu kaydetmemiş olurdu (K-21).
 
-`Order_Store::begin_carrier_session()` provider'ı, referansı ve referans
-geçmişini birlikte yazar. Provider eskiden yalnız `save_order_created()`
-tarafından, yani taşıyıcının **onayladığı** bir `createOrder`dan sonra
-yazılıyordu; timeout olan bir `createOrder` bu yüzden kimin sorulduğunu
-kaydetmeden `reconcile_required`da bırakıyor, mutabakat da o an varsayılan olan
-taşıyıcıyı okuyordu. Sabitleme önce yapıldığı için pin timeout'tan sağ çıkar.
+Provider eskiden yalnız `save_order_created()` tarafından, yani taşıyıcının
+**onayladığı** bir `createOrder`dan sonra yazılıyordu; timeout olan bir
+`createOrder` bu yüzden kimin sorulduğunu kaydetmeden `reconcile_required`da
+bırakıyor, mutabakat da o an varsayılan olan taşıyıcıyı okuyordu. Sabitleme
+önce yapıldığı için pin timeout'tan sağ çıkar — ve intent kaydı süreç
+ölümünden de sağ çıkar.
+
+**Taşıyıcı kanıtı nedir.** `has_carrier_evidence()` "bu referans altında
+**bir** taşıyıcıya istek gönderilmiş mi?" sorusunu cevaplar, ve kanıt listesi şu
+durumları içerir: `order_created`, `shipment_created`, `reconcile_required`,
+`cancel_reconciliation_required`, `update_reconciliation_required`,
+`absent_confirmed`, `delivered`, `manual_review`, `cancelled` — artı **dolu bir
+`pending_mutation` kaydı**, durum ne derse desin. Çıplak bir referans kanıt
+**değildir**: `prepare_reference()` onu yerel olarak, hiçbir şey gönderilmeden
+üretir.
+
+İki korumalı durum bu listeye sonradan eklendi (K-37) ve en güçlü kanıttır:
+bir sipariş oraya yalnız `begin_mutation()` üzerinden girer. Eksik oldukları
+sürece, sahipsiz bir "iptal sonucu doğrulanıyor" kaydı mağazanın **güncel**
+varsayılan taşıyıcısına düşüyordu.
 
 **Üzerine yazılmaz.** Zaten yazılı bir provider, çağrıcı ne gönderirse
 göndersin olduğu gibi kalır. Canlı bir siparişi başka bir kuryeye yöneltmek bu
@@ -391,6 +417,37 @@ yönetim ekranında `admin_post_kuka_shipping_resume`.
 - Kendi nonce alanı vardır (`kuka_shipping_resume_<sipariş-id>`); oluşturma
   düğmesinin nonce'u burada doğrulanmaz. Yetki kontrolü (`manage_woocommerce`)
   bu işlem için bağımsız olarak yapılır.
+
+### 6.2 Oluşturma kapıları bir izin listesidir
+
+Taşıyıcıda kayıt yaratan **iki** operasyon vardır ve her birinin izin verilen
+durumları `Order_Store` içinde tek merkezde yazılıdır:
+
+| Operasyon | İzin veren durumlar | Liste |
+| --- | --- | --- |
+| `createOrder` | `none`, `blocked`, `absent_confirmed` | `states_allowing_create_order()` |
+| `createbarcode` | yalnız `order_created` | `states_allowing_create_barcode()` |
+
+Bu listeleri **dört** yer sorar ve dördü de aynı cevabı alır: create kapısı
+(`create_shipment()`, kilit içinde), `run_creation()`'ın createOrder dalı,
+`run_creation()`'ın barkod aşamasına **geçişi** (durum yeniden okunarak), ve
+yönetim panelindeki düğme. Listede olmayan her durumda — `cancelled`,
+`delivered`, `manual_review`, üç korumalı durum, ve bu sürümün hiç duymadığı bir
+değer dâhil — dış yazma **0**'dır.
+
+**Neden izin listesi.** Burası eskiden bir yasak listesiydi
+(`states_blocking_create()`) ve `cancelled` o listede yoktu. İptali
+**kanıtlanmış** bir sipariş kapıyı geçiyor, `run_creation()`'ın createOrder dalı
+durumu kabul etmediği için atlanıyor, ve metot koşulsuz `run_barcode()` ile
+bitiyordu: taşıyıcının iptal ettiği kayda `createbarcode`. Bilinmeyen bir durum
+da aynı yoldan düşüyordu. Yasak listesi, yeni bir durum eklendiği ilk anda delik
+verir; `states_blocking_create()` artık yalnız ret **mesajını** seçer ve hiçbir
+yerde kapı değildir.
+
+Ölçüm: `SHIPPING_CANCELLED_RECORD_IS_FAIL_CLOSED` (gerçek create → gerçek iptal
+→ salt-okunur kanıt → taze sipariş + taze Manager + taze adaptör: dört kapı,
+sıfır çağrı) ve `SHIPPING_CREATE_DOORS_ARE_AN_ALLOWLIST` (12 durum × 2 aksiyon,
+hangi kapının açıldığı ölçülüyor, allow-list dışında hiçbiri).
 
 ## 7. Belirsizlik kuralı
 

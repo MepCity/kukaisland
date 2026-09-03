@@ -560,10 +560,10 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 
 ---
 
-## 15.1 Kargo otomasyonu — beş turda öğrenilenler
+## 15.1 Kargo otomasyonu — altı turda öğrenilenler
 
-EDM gibi, kargo da **ayrı** bir eklenti. **Beş** bağımsız düzeltme turu geçti ve
-her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu sıralamanın kendisi
+EDM gibi, kargo da **ayrı** bir eklenti. **Altı** bağımsız düzeltme turu geçti
+ve her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu sıralamanın kendisi
 ders: her tur bir önceki turun "tamam" dediği yeri ölçtü.
 
 **Tur 1 — akış boşlukları.** İptal doğrulaması yanlış nesneyi sorguluyordu
@@ -604,7 +604,18 @@ altıncı kusuru açığa çıkardı: yalnız pasif eklentide gözlemlenebilen �
 FAIL raporlayıp, `set -e` yüzünden **bütün kargo doğrulamasını** kesiyordu.
 Bkz. K-29…K-36.
 
-### Altı tekrarlayan ders
+**Tur 6 — izin listesi, sahipsiz kanıt, ve kanonik doğrulama.** Beşinci tur
+kapıyı istek gitmeden önce kapatmıştı, fakat create kapısı hâlâ bir **yasak
+listesi** soruyordu ve `cancelled` o listede yoktu: iptali kanıtlanmış bir
+sipariş kapıyı geçiyor, `createOrder` dalı atlanıyor, ve `run_creation()`
+koşulsuz olarak `run_barcode()` ile bitiyordu — taşıyıcının iptal ettiği kayda
+`createbarcode`. `has_carrier_evidence()` de iki korumalı durumu ve intent
+kaydını kanıt saymadığı için sahipsiz bir "iptal doğrulanıyor" kaydı mağazanın
+güncel varsayılan taşıyıcısına düşüyordu. Ve kanonik doğrulamanın kendisi
+çalışmıyordu: EDM pasifken gerçek `make verify` exit 2 veriyordu. Bkz.
+K-37…K-39.
+
+### Yedi tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"
    demesi, iptalin uygulandığını söylemez. Bir yazma taşıyıcıya ulaştıysa
@@ -631,7 +642,13 @@ Bkz. K-29…K-36.
    Cevapsız ölçüm gerekçesiyle atlanır, garantinin nerede ölçüldüğünü söyler, ve
    yerine her iki durumda sorulabilen bir soru konur. Suite'i "her durumu kabul
    et" diye gevşetmek ise garantiyi tamamen kaybetmektir (K-36).
-6. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
+6. **Yasak listesi, yeni bir durum eklendiği ilk anda delik verir.** Bir dış
+   yazmaya izin veren kapı bir **izin listesi** olmak zorundadır: "şu üç durum"
+   demek, "bu yedi durum hariç" demekten farklıdır, çünkü ikincisi sekizinci
+   durumu sessizce içeri alır. Bu modülde iki kez oldu — `cancelled` create
+   kapısında, iki korumalı durum sahiplik kanıtında — ve ikisinde de eksik olan
+   şey yeni eklenmiş bir durumdu (K-37, K-38).
+7. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
    `uncertain` bir `Result` bile koda geri dönmüş demektir: kayıt tutabilecek
    bir kod yolu çalıştı. Çökme öyle değildir. Bu yüzden korumanın tamamı
    **istek gitmeden önce diske yazılmış** olana dayanır, ve ölçüm de bunu

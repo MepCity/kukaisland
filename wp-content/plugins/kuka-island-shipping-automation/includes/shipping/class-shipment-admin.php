@@ -197,10 +197,16 @@ final class Kuka_Island_Shipping_Admin {
 			return;
 		}
 
+		/*
+		 * The SAME allow-list the manager decides on. Offering a button the
+		 * manager will refuse is how an operator learns to distrust the screen
+		 * -- and this one used to be offered on a cancelled order, because it
+		 * asked a deny-list that STATE_CANCELLED was missing from.
+		 */
 		$creatable = null !== $carrier
 			&& $carrier->get_readiness()['ready']
 			&& Kuka_Island_Shipping_Manager::cod_gate( $order )['ok']
-			&& ! in_array( $data['state'], Kuka_Island_Shipping_Order_Store::states_blocking_create(), true );
+			&& in_array( $data['state'], Kuka_Island_Shipping_Order_Store::states_allowing_create_order(), true );
 
 		if ( $creatable ) {
 			$this->action_button( $order_id, 'kuka_shipping_create', self::create_button_label( $carrier ) );

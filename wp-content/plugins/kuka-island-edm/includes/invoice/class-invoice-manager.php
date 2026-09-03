@@ -15,10 +15,41 @@ class Kuka_Island_Core_Invoice_Manager {
 	private Kuka_Island_Core_Invoice_Provider_Interface $provider;
 	private Kuka_Island_Core_Invoice_Order_Mapper $mapper;
 
-	public function __construct( ?Kuka_Island_Core_Invoice_Config $config = null, ?Kuka_Island_Core_Invoice_Provider_Interface $provider = null ) {
+	/**
+	 * The deactivation gate this manager consults before transmitting.
+	 *
+	 * DEFAULTS TO THE REAL GATE, and every production construction site takes
+	 * that default -- class-invoice.php, Invoice_Admin, Invoice_Queue and
+	 * Invoice_Status_Poller all construct the manager with no gate argument, so
+	 * the option-backed gate is what runs in production and nothing about its
+	 * behaviour changed.
+	 *
+	 * The argument exists because the offline behaviour suite has to drive the
+	 * send path against a mock transport, and with the EDM plugin delivered
+	 * INACTIVE the real gate is legitimately closed: it refused before the
+	 * transport was reached, so 21 mock-based measurements failed for a reason
+	 * that had nothing to do with what they measure. The alternative was for
+	 * the suite to write to the site's own option, which is a live setting this
+	 * module may not touch on a test's behalf.
+	 *
+	 * So a test states its precondition by handing in an explicitly open gate,
+	 * in one visible place. The gate's OWN measurement
+	 * (EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND) constructs this manager
+	 * WITHOUT the argument, so the real gate's closed and open behaviour is
+	 * still what that test proves.
+	 */
+	private Kuka_Island_Core_Invoice_Transmission_Gate $gate;
+
+	public function __construct( ?Kuka_Island_Core_Invoice_Config $config = null, ?Kuka_Island_Core_Invoice_Provider_Interface $provider = null, ?Kuka_Island_Core_Invoice_Transmission_Gate $gate = null ) {
 		$this->config   = $config ?? new Kuka_Island_Core_Invoice_Config();
 		$this->provider = $provider ?? new Kuka_Island_Core_EDM_Provider( $this->config );
 		$this->mapper   = new Kuka_Island_Core_Invoice_Order_Mapper( $this->config );
+		$this->gate     = $gate ?? new Kuka_Island_Core_Invoice_Runtime_Gate();
+	}
+
+	/** Which gate this manager will consult. Exposed so a suite can measure it. */
+	public function get_transmission_gate(): Kuka_Island_Core_Invoice_Transmission_Gate {
+		return $this->gate;
 	}
 
 	public function get_config(): Kuka_Island_Core_Invoice_Config {
@@ -413,11 +444,11 @@ class Kuka_Island_Core_Invoice_Manager {
 			 * one: retrying while the plugin is off would fail identically, and
 			 * the order keeps the status it had.
 			 */
-			if ( Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled() ) {
+			if ( $this->gate->is_closed() ) {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'EDM plugin is deactivated; transmission refused before any state was written.',
 					self::ERROR_RUNTIME_DISABLED,
-					Kuka_Island_Core_Invoice_Runtime_Gate::message()
+					$this->gate->closed_message()
 				);
 			}
 

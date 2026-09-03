@@ -39,6 +39,120 @@ $note = static function ( string $line ): void {
 };
 
 /* ========================================================================== */
+/* The one live setting this run touches, and a shutdown coordinator for it     */
+/* ========================================================================== */
+
+/*
+ * EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND has to open the REAL gate for one
+ * control send, because a closed-gate measurement with no open-gate control
+ * proves nothing. That means this run writes the site's own run-gate option --
+ * the ONLY live setting it touches -- and the residue it could leave is the
+ * worst one in this repository: EDM transmission ENABLED on a site whose
+ * operator deactivated the plugin.
+ *
+ * An inline restore is not enough, because it only runs when the script gets
+ * that far. This snapshot is taken before any measurement, the row is restored
+ * on EVERY exit including a fatal or a WP_CLI::error(), and a restoration that
+ * does not match byte-for-byte makes the run FAIL -- from inside the shutdown
+ * handler, so it cannot be reported as a pass.
+ *
+ * The row, not just the value: option_value AND autoload AND existence.
+ * Re-creating a deleted option with autoload=yes would put the gate into every
+ * request's option snapshot, which is precisely what the gate must never be.
+ */
+$kuka_gate_option_row = static function (): array {
+	global $wpdb;
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$row = $wpdb->get_row(
+		$wpdb->prepare(
+			"SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+			Kuka_Island_Core_Invoice_Runtime_Gate::OPTION
+		),
+		ARRAY_A
+	);
+
+	if ( null === $row ) {
+		return array(
+			'exists'   => 'no',
+			'value'    => '',
+			'autoload' => '',
+		);
+	}
+
+	return array(
+		'exists'   => 'yes',
+		'value'    => (string) $row['option_value'],
+		'autoload' => (string) $row['autoload'],
+	);
+};
+
+$kuka_gate_row_before = $kuka_gate_option_row();
+$kuka_gate_restored   = array();
+
+register_shutdown_function(
+	static function () use ( $kuka_gate_option_row, $kuka_gate_row_before, &$kuka_gate_restored ): void {
+		global $wpdb;
+
+		if ( 'yes' === $kuka_gate_row_before['exists'] ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query(
+				$wpdb->prepare(
+					"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)
+					 ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), autoload = VALUES(autoload)",
+					Kuka_Island_Core_Invoice_Runtime_Gate::OPTION,
+					$kuka_gate_row_before['value'],
+					$kuka_gate_row_before['autoload']
+				)
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name = %s",
+					Kuka_Island_Core_Invoice_Runtime_Gate::OPTION
+				)
+			);
+		}
+
+		wp_cache_delete( Kuka_Island_Core_Invoice_Runtime_Gate::OPTION, 'options' );
+		wp_cache_delete( 'alloptions', 'options' );
+
+		$after              = $kuka_gate_option_row();
+		$kuka_gate_restored = $after;
+
+		if ( $after === $kuka_gate_row_before ) {
+			WP_CLI::line(
+				sprintf(
+					'EDM_RUNTIME_OPTION_RESTORED=PASS|measured:options_table_row|exists:%s|value_len:%d|autoload:%s|byte_equivalent:yes',
+					$after['exists'],
+					strlen( $after['value'] ),
+					'' === $after['autoload'] ? 'absent' : $after['autoload']
+				)
+			);
+
+			return;
+		}
+
+		// Non-zero, decided here: a run that could not put the gate back must
+		// never be reported as a pass, whatever the measurements said.
+		WP_CLI::line(
+			sprintf(
+				'EDM_RUNTIME_OPTION_RESTORED=FAIL|measured:options_table_row|before:%s/%s/%s|after:%s/%s/%s',
+				$kuka_gate_row_before['exists'],
+				(string) strlen( $kuka_gate_row_before['value'] ),
+				'' === $kuka_gate_row_before['autoload'] ? 'absent' : $kuka_gate_row_before['autoload'],
+				$after['exists'],
+				(string) strlen( $after['value'] ),
+				'' === $after['autoload'] ? 'absent' : $after['autoload']
+			)
+		);
+
+		exit( 1 );
+	}
+);
+
+/* ========================================================================== */
 /* Harness: run-scoped, DB-discoverable fixtures with a 4-state cleanup machine */
 /* ========================================================================== */
 
@@ -914,6 +1028,85 @@ $report(
 );
 
 /* ========================================================================== */
+/* The deactivation gate, stated by the tests instead of written to the site    */
+/* ========================================================================== */
+
+/**
+ * A gate that is explicitly OPEN, for measurements that drive the send path.
+ *
+ * WHY THIS EXISTS. The EDM plugin ships INACTIVE, and deactivation writes the
+ * run gate's option, so on a delivered install the real gate is legitimately
+ * CLOSED. Invoice_Manager reads it immediately before transmitting -- which is
+ * the whole point of the gate -- so every measurement below that drives the
+ * send path against a mock transport was refused before the transport was
+ * reached: 21 of them failed for a reason that had nothing to do with what they
+ * measure, and because this script exits non-zero, `make verify` stopped there.
+ *
+ * The two ways out were: write to the site's own option for the duration of the
+ * run, or let each test state its own precondition. The first is a live setting
+ * this suite has no business changing on a test's behalf -- and a run that dies
+ * between the write and the restore leaves EDM transmission ENABLED on a site
+ * whose operator deactivated it, which is the worst residue this repository
+ * could produce. So the tests state it, here, in one visible place.
+ *
+ * WHAT THIS DOES NOT DO. It does not touch the option, the plugin or the
+ * production default. Invoice_Manager still defaults to the real gate, every
+ * production construction site takes that default, and the gate's own
+ * measurement (EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND) constructs the
+ * manager WITHOUT a gate argument -- so the closed/open behaviour of the real,
+ * option-backed gate is still what that test proves, on this very run.
+ */
+final class Kuka_Island_Test_Open_Transmission_Gate implements Kuka_Island_Core_Invoice_Transmission_Gate {
+
+	/** How many times a measurement asked. Proves the seam is really consulted. */
+	public int $asked = 0;
+
+	public function is_closed(): bool {
+		++$this->asked;
+
+		return false;
+	}
+
+	public function closed_message(): string {
+		return 'test gate is open';
+	}
+}
+
+/**
+ * A gate that is explicitly CLOSED, so the seam can be measured in the
+ * direction that matters: injecting a gate must not be able to WEAKEN the
+ * check. A closed injected gate has to refuse exactly as the real one does.
+ */
+final class Kuka_Island_Test_Closed_Transmission_Gate implements Kuka_Island_Core_Invoice_Transmission_Gate {
+
+	public int $asked = 0;
+
+	public function is_closed(): bool {
+		++$this->asked;
+
+		return true;
+	}
+
+	public function closed_message(): string {
+		return 'test gate is closed';
+	}
+}
+
+/**
+ * The manager every offline behaviour measurement uses.
+ *
+ * Identical to the production manager in every respect except the gate, which
+ * is stated open. Anything that needs the REAL gate constructs
+ * Kuka_Island_Core_Invoice_Manager directly and passes no third argument.
+ *
+ * @param Kuka_Island_Core_Invoice_Config|null             $config   Config.
+ * @param Kuka_Island_Core_Invoice_Provider_Interface|null $provider Provider.
+ */
+function kuka_invoice_test_manager( ?Kuka_Island_Core_Invoice_Config $config = null, ?Kuka_Island_Core_Invoice_Provider_Interface $provider = null ): Kuka_Island_Core_Invoice_Manager {
+	return new Kuka_Island_Core_Invoice_Manager( $config, $provider, new Kuka_Island_Test_Open_Transmission_Gate() );
+}
+
+/* ========================================================================== */
 /* TEST 6 (audit items 1 + 10) - Fixture guard on the real runtime path        */
 /* ========================================================================== */
 
@@ -1088,7 +1281,7 @@ $report(
 
 $guard_transport = new Kuka_Island_Test_Tracking_Transport();
 $guard_provider  = new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $guard_transport );
-$guard_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, $guard_provider );
+$guard_manager   = kuka_invoice_test_manager( $auto_send_ready, $guard_provider );
 $guard_queue     = new Kuka_Island_Core_Invoice_Queue( $guard_manager );
 
 // A fixture-marked order on the exact automatic-send entry point.
@@ -2111,7 +2304,7 @@ $report(
 $no_series_config    = new Kuka_Island_Core_Invoice_Config( array_merge( $ready_overrides, array( 'series_earchive' => '' ) ) );
 $numbering_transport = new Kuka_Island_Test_Tracking_Transport();
 $numbering_provider  = new Kuka_Island_Core_EDM_Provider( $no_series_config, $numbering_transport );
-$numbering_manager   = new Kuka_Island_Core_Invoice_Manager( $no_series_config, $numbering_provider );
+$numbering_manager   = kuka_invoice_test_manager( $no_series_config, $numbering_provider );
 
 $numbering_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'total' => '100.00' ) ) );
 kuka_add_line( $numbering_order, 'Numarasız Ürün', '100.00', '100.00', 0, '0.00' );
@@ -2241,7 +2434,7 @@ $legacy_transport = new class() implements Kuka_Island_Core_SOAP_Transport_Inter
 	}
 };
 
-$legacy_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $legacy_transport ) );
+$legacy_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $legacy_transport ) );
 $legacy_order   = kuka_create_lock_order( $test_run_id, $billing_props, array( '_kuka_invoice_number' => 'KUK2026000000777' ) );
 
 $legacy_error = '';
@@ -2284,7 +2477,7 @@ kuka_test_delete_order( $legacy_order->get_id(), $test_run_id );
 // Happy path: with an EDM-assigned number the production pipeline sends exactly
 // once and records the provenance of the fiscal number.
 $happy_transport = new Kuka_Island_Test_Tracking_Transport();
-$happy_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $happy_transport ) );
+$happy_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $happy_transport ) );
 $happy_order     = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -2355,8 +2548,15 @@ Kuka_Island_Core_Invoice_Runtime_Gate::disable();
 $gate_closed_reads_disabled = Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled();
 
 $blocked_transport = new Kuka_Island_Test_Tracking_Transport();
-$blocked_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $blocked_transport ) );
-$blocked_order     = $gate_setup( $test_run_id );
+
+/*
+ * THE PRODUCTION DEFAULT, DELIBERATELY. No third argument: this manager gets
+ * Kuka_Island_Core_Invoice_Runtime_Gate, which reads the options table past the
+ * object cache. Handing this one a test gate would make the whole measurement
+ * circular -- it would be proving that a stub returns what the stub returns.
+ */
+$blocked_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $blocked_transport ) );
+$blocked_order   = $gate_setup( $test_run_id );
 
 $blocked_code  = '';
 $blocked_error = '';
@@ -2385,8 +2585,10 @@ Kuka_Island_Core_Invoice_Runtime_Gate::enable();
 $gate_open_reads_enabled = ! Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled();
 
 $control_transport = new Kuka_Island_Test_Tracking_Transport();
-$control_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $control_transport ) );
-$control_order     = $gate_setup( $test_run_id );
+// The production default again: the control has to open the SAME gate that
+// blocked the send above, otherwise (a) proved nothing.
+$control_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $control_transport ) );
+$control_order   = $gate_setup( $test_run_id );
 
 $control_error = '';
 try {
@@ -2425,7 +2627,7 @@ $report(
 	&& '' === $control_error
 	&& $sees_change_midrequest,
 	sprintf(
-		'measured:production_manager_and_tracking_transport|gate_closed_SendInvoice:%d|error_code:%s|uuid_written:%s|status_after:%s|gate_open_SendInvoice:%d|sees_change_past_object_cache:%s|control_error:%s|unexpected:%s',
+		'measured:production_manager_default_gate_and_tracking_transport|gate_closed_SendInvoice:%d|error_code:%s|uuid_written:%s|status_after:%s|gate_open_SendInvoice:%d|sees_change_past_object_cache:%s|control_error:%s|unexpected:%s',
 		$blocked_transport->calls['SendInvoice'] ?? 0,
 		'' === $blocked_code ? 'none' : $blocked_code,
 		$blocked_uuid_absent ? 'no' : 'YES',
@@ -2438,6 +2640,108 @@ $report(
 );
 
 kuka_test_delete_order( $blocked_order->get_id(), $test_run_id );
+
+/* --- The gate seam itself: default real, injectable, never weakening ------ */
+
+/*
+ * The seam that lets the offline suite drive the send path has to be measured,
+ * or it becomes the hole it was meant not to be. Three questions:
+ *
+ *   1. Is the PRODUCTION default the real, option-backed gate? Asked of an
+ *      object, not of the source.
+ *   2. Is an injected gate actually consulted, or is there a second hidden
+ *      check the argument does not reach?
+ *   3. Can an injected gate WEAKEN the refusal? A closed one must refuse
+ *      exactly as the real one does -- same error code, no UUID, no send.
+ *
+ * Plus a source count: no production construction site may pass a gate.
+ */
+$seam_default_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, new Kuka_Island_Test_Tracking_Transport() ) );
+$seam_default_is_real = $seam_default_manager->get_transmission_gate() instanceof Kuka_Island_Core_Invoice_Runtime_Gate;
+
+$seam_open_gate      = new Kuka_Island_Test_Open_Transmission_Gate();
+$seam_open_transport = new Kuka_Island_Test_Tracking_Transport();
+$seam_open_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $seam_open_transport ), $seam_open_gate );
+$seam_open_order     = $gate_setup( $test_run_id );
+
+$seam_open_error = '';
+try {
+	$seam_open_manager->process_order( $seam_open_order );
+} catch ( Throwable $t ) {
+	$seam_open_error = get_class( $t ) . ': ' . $t->getMessage();
+}
+
+$seam_closed_gate      = new Kuka_Island_Test_Closed_Transmission_Gate();
+$seam_closed_transport = new Kuka_Island_Test_Tracking_Transport();
+$seam_closed_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $seam_closed_transport ), $seam_closed_gate );
+$seam_closed_order     = $gate_setup( $test_run_id );
+
+$seam_closed_code = '';
+try {
+	$seam_closed_manager->process_order( $seam_closed_order );
+} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
+	$seam_closed_code = $e->get_safe_error_code();
+}
+
+$seam_closed_order->read_meta_data( true );
+$seam_closed_data = Kuka_Island_Core_Invoice_Order_Store::get_invoice_data( $seam_closed_order );
+
+// No production construction site may hand the manager a gate.
+$seam_production_sites = 0;
+foreach (
+	array(
+		'includes/class-invoice.php',
+		'includes/invoice/class-invoice-admin.php',
+		'includes/invoice/class-invoice-queue.php',
+		'includes/invoice/class-invoice-status-poller.php',
+		'includes/invoice/class-invoice-recovery.php',
+	) as $seam_file
+) {
+	$seam_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/' . $seam_file;
+
+	if ( ! is_readable( $seam_path ) ) {
+		continue;
+	}
+
+	$seam_source = (string) file_get_contents( $seam_path );
+
+	preg_match_all( '/new Kuka_Island_Core_Invoice_Manager\(([^;]*)\)/', $seam_source, $seam_matches );
+
+	foreach ( (array) ( $seam_matches[1] ?? array() ) as $seam_args ) {
+		if ( str_contains( (string) $seam_args, 'Gate' ) ) {
+			++$seam_production_sites;
+		}
+	}
+}
+
+$report(
+	'EDM_TRANSMISSION_GATE_SEAM',
+	$seam_default_is_real
+	&& '' === $seam_open_error
+	&& $seam_open_gate->asked > 0
+	&& 1 === ( $seam_open_transport->calls['SendInvoice'] ?? 0 )
+	&& $seam_closed_gate->asked > 0
+	&& Kuka_Island_Core_Invoice_Manager::ERROR_RUNTIME_DISABLED === $seam_closed_code
+	&& 0 === ( $seam_closed_transport->calls['SendInvoice'] ?? 0 )
+	&& '' === (string) ( $seam_closed_data['uuid'] ?? '' )
+	&& 'sending' !== (string) ( $seam_closed_data['status'] ?? '' )
+	&& 0 === $seam_production_sites,
+	sprintf(
+		'measured:constructed_objects_and_real_send_path|production_default:%s|open_gate_consulted:%d|open_gate_SendInvoice:%d|closed_gate_consulted:%d|closed_gate_code:%s|closed_gate_SendInvoice:%d|closed_gate_uuid:%s|production_sites_passing_a_gate:%d|open_error:%s',
+		$seam_default_is_real ? 'Kuka_Island_Core_Invoice_Runtime_Gate' : 'WRONG',
+		$seam_open_gate->asked,
+		$seam_open_transport->calls['SendInvoice'] ?? 0,
+		$seam_closed_gate->asked,
+		'' === $seam_closed_code ? 'none' : $seam_closed_code,
+		$seam_closed_transport->calls['SendInvoice'] ?? 0,
+		'' === (string) ( $seam_closed_data['uuid'] ?? '' ) ? 'absent' : 'WRITTEN',
+		$seam_production_sites,
+		'' === $seam_open_error ? 'none' : $seam_open_error
+	)
+);
+
+kuka_test_delete_order( $seam_open_order->get_id(), $test_run_id );
+kuka_test_delete_order( $seam_closed_order->get_id(), $test_run_id );
 kuka_test_delete_order( $control_order->get_id(), $test_run_id );
 
 /* --- The dependency notice names the plugin that is actually missing ------ */
@@ -2551,7 +2855,7 @@ $report(
 // e-Arşiv routing must not invent a recipient mailbox alias.
 $routing_transport = new Kuka_Island_Test_Tracking_Transport();
 $routing_provider  = new Kuka_Island_Core_EDM_Provider( $config, $routing_transport );
-$routing_manager   = new Kuka_Island_Core_Invoice_Manager( $config, $routing_provider );
+$routing_manager   = kuka_invoice_test_manager( $config, $routing_provider );
 
 $individual_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'total' => '100.00' ) ) );
 $individual_order->update_meta_data( '_billing_tax_number', '12345678901' );
@@ -3371,7 +3675,7 @@ $lock_scenarios = array(
 
 foreach ( $lock_scenarios as $test_name => $seed_status ) {
 	$transport = new Kuka_Island_Test_Tracking_Transport();
-	$manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $transport ) );
+	$manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $transport ) );
 	$order     = kuka_create_lock_order(
 		$test_run_id,
 		$billing_props,
@@ -3409,7 +3713,7 @@ foreach ( $lock_scenarios as $test_name => $seed_status ) {
 // instead of sending again (total SendInvoice stays 1).
 $drop_transport = new Kuka_Island_Test_Tracking_Transport();
 $drop_transport->simulate_timeout_on_send = true;
-$drop_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $drop_transport ) );
+$drop_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $drop_transport ) );
 $drop_order   = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -3458,7 +3762,7 @@ kuka_test_delete_order( $drop_order->get_id(), $test_run_id );
 // Reconciliation also fails -> SendInvoice stays blocked.
 $recon_transport = new Kuka_Island_Test_Tracking_Transport();
 $recon_transport->simulate_timeout_on_status = true;
-$recon_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $recon_transport ) );
+$recon_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $recon_transport ) );
 $recon_order   = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -3487,7 +3791,7 @@ kuka_test_delete_order( $recon_order->get_id(), $test_run_id );
 
 // Terminal completed invoices can never be re-sent, even with force=true.
 $terminal_transport = new Kuka_Island_Test_Tracking_Transport();
-$terminal_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $terminal_transport ) );
+$terminal_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $terminal_transport ) );
 $terminal_order     = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -3525,7 +3829,7 @@ $refund_order = kuka_create_lock_order(
 	)
 );
 
-( new Kuka_Island_Core_Invoice_Queue( new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, new Kuka_Island_Test_Tracking_Transport() ) ) ) )
+( new Kuka_Island_Core_Invoice_Queue( kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, new Kuka_Island_Test_Tracking_Transport() ) ) ) )
 	->handle_order_refund( $refund_order->get_id(), 1 );
 
 $refund_note_found = false;
@@ -4034,7 +4338,7 @@ $poll_transport = new Kuka_Island_Test_Status_Transport(
 	array( 'INVOICE_STATUS' => array( array( 'UUID' => 'uuid-poll-fixture', 'HEADER' => array( 'STATUS' => 'SEND - SUCCEED' ) ) ) )
 );
 $poll_provider = new Kuka_Island_Core_EDM_Provider( $config, $poll_transport );
-$poll_manager  = new Kuka_Island_Core_Invoice_Manager( $config, $poll_provider );
+$poll_manager  = kuka_invoice_test_manager( $config, $poll_provider );
 $poller        = new Kuka_Island_Core_Invoice_Status_Poller( $poll_manager );
 
 $poller->poll_order( $poll_order->get_id() );
@@ -4173,7 +4477,7 @@ foreach ( $autostart_cases as $case => $spec ) {
 		$transport = new Kuka_Island_Test_Status_Transport( $spec[1], null );
 	}
 
-	$case_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $transport ) );
+	$case_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $transport ) );
 	$case_order   = kuka_create_lock_order(
 		$test_run_id,
 		$billing_props,
@@ -4318,7 +4622,7 @@ if ( ! $runner_available ) {
 	$runner_order->save();
 	$runner_order_id = (int) $runner_order->get_id();
 
-	$runner_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $scripted_transport ) );
+	$runner_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $scripted_transport ) );
 	$runner_poller  = new Kuka_Island_Core_Invoice_Status_Poller( $runner_manager );
 
 	// Only the mock-backed poller may answer this action, so no production
@@ -4578,7 +4882,7 @@ $forbidden_needles = array( 'SoapFault', 'Exception', 'Stack trace', 'PASSWORD',
  * booked and nothing on the order to say so.
  */
 $fail_transport = new Kuka_Island_Test_Tracking_Transport();
-$fail_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $fail_transport ) );
+$fail_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $fail_transport ) );
 $fail_order     = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -4756,7 +5060,7 @@ if ( $runner_available ) {
 	$followup_order_id    = (int) $followup_order->get_id();
 	$followup_notes_before = count( wc_get_order_notes( array( 'order_id' => $followup_order_id ) ) );
 
-	$followup_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $followup_transport ) );
+	$followup_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $followup_transport ) );
 	$followup_poller  = new Kuka_Island_Core_Invoice_Status_Poller( $followup_manager );
 
 	$followup_saved = $GLOBALS['wp_filter'][ Kuka_Island_Core_Invoice_Status_Poller::ACTION_QUERY_STATUS ] ?? null;
@@ -4932,7 +5236,7 @@ if ( $runner_available ) {
 
 	foreach ( $giveup_cases as $case => $spec ) {
 		$giveup_transport = new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - PROCESSING' );
-		$giveup_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $giveup_transport ) );
+		$giveup_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $giveup_transport ) );
 		$giveup_poller    = new Kuka_Island_Core_Invoice_Status_Poller( $giveup_manager );
 
 		$giveup_order = kuka_create_test_order( $test_run_id, array_merge( $billing_props, array( 'status' => 'processing' ) ) );
@@ -5116,7 +5420,7 @@ foreach ( $guard_matrix as $case => $spec ) {
 		default        => new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - PROCESSING', true ),
 	};
 
-	$guard_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $guard_transport ) );
+	$guard_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $guard_transport ) );
 	$guard_order   = kuka_create_lock_order(
 		$test_run_id,
 		$billing_props,
@@ -5184,7 +5488,7 @@ $report(
  * document.
  */
 $unknown_transport = new Kuka_Island_Test_Status_Literal_Transport( 'PROCESS SUCCESS NOTE' );
-$unknown_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $unknown_transport ) );
+$unknown_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $unknown_transport ) );
 $unknown_order     = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -5282,7 +5586,7 @@ $presend_sends   = 0;
 
 foreach ( $presend_cases as $case => $seed_status ) {
 	$presend_transport = new Kuka_Island_Test_Tracking_Transport();
-	$presend_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $presend_transport ) );
+	$presend_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $presend_transport ) );
 	$presend_order     = kuka_create_lock_order(
 		$test_run_id,
 		$billing_props,
@@ -5437,7 +5741,7 @@ if ( $runner_available ) {
 	 */
 	$qto_transport = new Kuka_Island_Test_Tracking_Transport();
 	$qto_transport->simulate_timeout_on_send = true;
-	$qto_manager = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qto_transport ) );
+	$qto_manager = kuka_invoice_test_manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qto_transport ) );
 	$qto_queue   = new Kuka_Island_Core_Invoice_Queue( $qto_manager );
 	$qto_order   = kuka_create_lock_order(
 		$test_run_id,
@@ -5497,7 +5801,7 @@ if ( $runner_available ) {
 	 * the manager's reconciliation_required with needs_manual_review.
 	 */
 	$qrf_transport = new Kuka_Island_Test_Status_Literal_Transport( 'PACKAGE - PROCESSING', true );
-	$qrf_manager   = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qrf_transport ) );
+	$qrf_manager   = kuka_invoice_test_manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qrf_transport ) );
 	$qrf_queue     = new Kuka_Island_Core_Invoice_Queue( $qrf_manager );
 	$qrf_order     = kuka_create_lock_order(
 		$test_run_id,
@@ -5567,7 +5871,7 @@ if ( $runner_available ) {
 	 * exactly the case that should still be retried -- and still stop.
 	 */
 	$qrc_transport = new Kuka_Island_Test_Tracking_Transport();
-	$qrc_manager   = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qrc_transport ) );
+	$qrc_manager   = kuka_invoice_test_manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qrc_transport ) );
 	$qrc_queue     = new Kuka_Island_Core_Invoice_Queue( $qrc_manager );
 	$qrc_order     = kuka_create_lock_order(
 		$test_run_id,
@@ -5626,7 +5930,7 @@ if ( $runner_available ) {
 	 * run succeed, and the count goes away.
 	 */
 	$qcc_transport = new Kuka_Island_Test_Tracking_Transport();
-	$qcc_manager   = new Kuka_Island_Core_Invoice_Manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qcc_transport ) );
+	$qcc_manager   = kuka_invoice_test_manager( $queue_config, new Kuka_Island_Core_EDM_Provider( $queue_config, $qcc_transport ) );
 	$qcc_queue     = new Kuka_Island_Core_Invoice_Queue( $qcc_manager );
 	$qcc_order     = kuka_create_lock_order(
 		$test_run_id,
@@ -5784,7 +6088,7 @@ if ( $runner_available ) {
 		$chain_transport->timeout_on_send = false;
 		$chain_transport->generic_on_send = false;
 
-		$chain_manager = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $chain_transport ) );
+		$chain_manager = kuka_invoice_test_manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $chain_transport ) );
 		$chain_queue   = new Kuka_Island_Core_Invoice_Queue( $chain_manager );
 		$chain_order   = kuka_create_lock_order(
 			$test_run_id,
@@ -5844,7 +6148,7 @@ if ( $runner_available ) {
 			case 'auto_send_off':
 				// The same order, a worker whose config now says auto-send is
 				// off. It owns nothing further and must leave nothing behind.
-				$off_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $chain_transport ) );
+				$off_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $chain_transport ) );
 				$restore_queue_worker( $chain_saved );
 				$chain_saved = $install_queue_worker( new Kuka_Island_Core_Invoice_Queue( $off_manager ) );
 				break;
@@ -5896,7 +6200,7 @@ if ( $runner_available ) {
 	 * is where a chain begins, so that is where the slate is wiped.
 	 */
 	$stale_transport = new Kuka_Island_Test_Tracking_Transport();
-	$stale_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $stale_transport ) );
+	$stale_manager   = kuka_invoice_test_manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $stale_transport ) );
 	$stale_queue     = new Kuka_Island_Core_Invoice_Queue( $stale_manager );
 	$stale_order     = kuka_create_lock_order(
 		$test_run_id,
@@ -5989,7 +6293,7 @@ if ( $runner_available ) {
 	 * used.
 	 */
 	$e2e_transport = new Kuka_Island_Test_Tracking_Transport();
-	$e2e_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $e2e_transport ) );
+	$e2e_manager   = kuka_invoice_test_manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $e2e_transport ) );
 	$e2e_queue     = new Kuka_Island_Core_Invoice_Queue( $e2e_manager );
 	$e2e_order     = kuka_create_lock_order(
 		$test_run_id,
@@ -6094,7 +6398,7 @@ if ( $runner_available ) {
 
 	// The duplicate-enqueue guard still recognises a queued order.
 	$queued_enqueue_transport = new Kuka_Island_Test_Tracking_Transport();
-	$queued_enqueue_manager   = new Kuka_Island_Core_Invoice_Manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $queued_enqueue_transport ) );
+	$queued_enqueue_manager   = kuka_invoice_test_manager( $auto_send_ready, new Kuka_Island_Core_EDM_Provider( $auto_send_ready, $queued_enqueue_transport ) );
 	$queued_enqueue_queue     = new Kuka_Island_Core_Invoice_Queue( $queued_enqueue_manager );
 	as_unschedule_all_actions( Kuka_Island_Core_Invoice_Queue::ACTION_PROCESS_INVOICE, array( 'order_id' => $queued_order_id ), Kuka_Island_Core_Invoice_Status_Poller::GROUP );
 	$queued_enqueue_queue->maybe_enqueue_order( $queued_order_id, wc_get_order( $queued_order_id ) );
@@ -6546,7 +6850,7 @@ $completion_sends   = 0;
 foreach ( $completion_cases as $case => $spec ) {
 	$completion_transport = new Kuka_Island_Test_Numbering_Transport();
 	$completion_transport->assigned_id = $spec[0];
-	$completion_manager  = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $completion_transport ) );
+	$completion_manager  = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $completion_transport ) );
 	$completion_order    = kuka_create_lock_order( $test_run_id, $billing_props, array() );
 	$completion_order_id = (int) $completion_order->get_id();
 
@@ -6594,7 +6898,7 @@ $report(
  */
 $sentinel_transport = new Kuka_Island_Test_Numbering_Transport();
 $sentinel_transport->assigned_id = Kuka_Island_Core_Invoice_Numbering::AUTO_NUMBER_SENTINEL;
-$sentinel_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $sentinel_transport ) );
+$sentinel_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $sentinel_transport ) );
 $sentinel_order   = kuka_create_lock_order( $test_run_id, $billing_props, array() );
 $sentinel_order_id = (int) $sentinel_order->get_id();
 
@@ -6740,7 +7044,7 @@ $report(
  */
 $recovery_transport = new Kuka_Island_Test_Numbering_Transport();
 $recovery_transport->assigned_id = 'EDM2026000000999';
-$recovery_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $recovery_transport ) );
+$recovery_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $recovery_transport ) );
 $recovery_order   = kuka_create_lock_order(
 	$test_run_id,
 	$billing_props,
@@ -6988,7 +7292,7 @@ $make_refused_order = static function ( string $run_id, array $billing, string $
  * refusing to mint one for the document that had just failed.
  */
 $spent_transport = new Kuka_Island_Test_Recovery_Transport();
-$spent_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $spent_transport ) );
+$spent_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $spent_transport ) );
 $spent_order     = $make_refused_order( $test_run_id, $billing_props, 'uuid-refused-generation-1', 'EDM2026000000001' );
 $spent_order_id  = (int) $spent_order->get_id();
 
@@ -7119,7 +7423,7 @@ if ( $runner_available ) {
 	// The replacement is accepted but not yet described, so it stays in flight.
 	$stale_poll_transport->send_status    = '';
 	$stale_poll_transport->status_literal = 'PACKAGE - PROCESSING';
-	$stale_poll_manager = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $stale_poll_transport ) );
+	$stale_poll_manager = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $stale_poll_transport ) );
 	$stale_poll_poller  = new Kuka_Island_Core_Invoice_Status_Poller( $stale_poll_manager );
 
 	$old_started_at   = time() - ( Kuka_Island_Core_Invoice_Status_Poller::MAX_ELAPSED + 3600 );
@@ -7488,7 +7792,7 @@ if ( $runner_available
 
 	$lifecycle_transport = new Kuka_Island_Test_Numbering_Transport();
 	$lifecycle_transport->assigned_id = 'EDM2026000002000';
-	$lifecycle_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $lifecycle_transport ) );
+	$lifecycle_manager   = kuka_invoice_test_manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $lifecycle_transport ) );
 	$lifecycle_queue     = new Kuka_Island_Core_Invoice_Queue( $lifecycle_manager );
 
 	$lifecycle_product = $make_shippable_product();
@@ -7648,7 +7952,7 @@ if ( $runner_available
 	/* ---------------------------------------------------------------------- */
 
 	$revert_transport = new Kuka_Island_Test_Numbering_Transport();
-	$revert_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $revert_transport ) );
+	$revert_manager   = kuka_invoice_test_manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $revert_transport ) );
 	$revert_queue     = new Kuka_Island_Core_Invoice_Queue( $revert_manager );
 
 	$revert_product = $make_shippable_product();
@@ -7731,7 +8035,7 @@ if ( $runner_available
 		$case_config    = 'mapped' === $spec[1] ? $fulfil_config : $no_carrier_config;
 		$case_transport = new Kuka_Island_Test_Numbering_Transport();
 		$case_transport->assigned_id = 'EDM2026000002' . str_pad( (string) count( $carrier_details ), 3, '0', STR_PAD_LEFT );
-		$case_manager   = new Kuka_Island_Core_Invoice_Manager( $case_config, new Kuka_Island_Core_EDM_Provider( $case_config, $case_transport ) );
+		$case_manager   = kuka_invoice_test_manager( $case_config, new Kuka_Island_Core_EDM_Provider( $case_config, $case_transport ) );
 
 		$case_product = $make_shippable_product();
 		$case_qty     = array_sum( array_map( static fn( array $parcel ): int => (int) $parcel[1], $spec[0] ) );
@@ -7973,7 +8277,7 @@ if ( $runner_available
 
 	$tz_transport = new Kuka_Island_Test_Numbering_Transport();
 	$tz_transport->assigned_id = 'EDM2026000003000';
-	$tz_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $tz_transport ) );
+	$tz_manager   = kuka_invoice_test_manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $tz_transport ) );
 
 	$tz_send_error = '';
 	try {
@@ -8016,7 +8320,7 @@ if ( $runner_available
 
 	$bad_facts     = Kuka_Island_Core_Invoice_Manager::shipment_gate( wc_get_order( $bad_date_id ) );
 	$bad_transport = new Kuka_Island_Test_Numbering_Transport();
-	$bad_manager   = new Kuka_Island_Core_Invoice_Manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $bad_transport ) );
+	$bad_manager   = kuka_invoice_test_manager( $fulfil_config, new Kuka_Island_Core_EDM_Provider( $fulfil_config, $bad_transport ) );
 
 	$bad_code = '';
 	try {
@@ -8152,7 +8456,7 @@ if ( $runner_available
 		)
 	);
 	$tckn_transport = new Kuka_Island_Test_Numbering_Transport();
-	$tckn_manager   = new Kuka_Island_Core_Invoice_Manager( $tckn_config, new Kuka_Island_Core_EDM_Provider( $tckn_config, $tckn_transport ) );
+	$tckn_manager   = kuka_invoice_test_manager( $tckn_config, new Kuka_Island_Core_EDM_Provider( $tckn_config, $tckn_transport ) );
 
 	$tckn_code = '';
 	try {
@@ -8300,7 +8604,7 @@ final class Kuka_Island_Test_Session_Expiry_Transport implements Kuka_Island_Cor
 
 // A transmission: the fault must NOT be retried, so SendInvoice stays at one.
 $expiry_send_transport = new Kuka_Island_Test_Session_Expiry_Transport( 'SendInvoice' );
-$expiry_send_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $expiry_send_transport ) );
+$expiry_send_manager   = kuka_invoice_test_manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $expiry_send_transport ) );
 $expiry_send_order     = kuka_create_lock_order( $test_run_id, $billing_props, array() );
 $expiry_send_order_id  = (int) $expiry_send_order->get_id();
 

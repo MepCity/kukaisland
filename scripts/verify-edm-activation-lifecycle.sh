@@ -82,8 +82,24 @@ trap restore EXIT HUP INT TERM
 core_status=$(wpx plugin list --field=status --name=kuka-island-core | tr -d '\r\n' || true)
 wc_status=$(wpx plugin list --field=status --name=woocommerce | tr -d '\r\n' || true)
 
-if [ "$core_status" = 'active' ] && [ "$wc_status" = 'active' ] && [ "$start_status" = 'inactive' ] && [ "$start_gate_present" = 'no' ]; then
-  note "EDM_LIFECYCLE_START=PASS|measured:wp_cli|edm:$start_status|core:$core_status|woocommerce:$wc_status|gate_option:absent|invoice_meta_rows:$start_invoice_meta|edm_actions:$start_edm_actions"
+# WHAT THIS ASSERTS, AND WHAT IT ONLY RECORDS.
+#
+# It used to demand that the plugin start INACTIVE with the run-gate option
+# ABSENT -- a pristine install that has never been deactivated. That is not the
+# delivery state of a site whose operator has deactivated the plugin: a closed
+# gate is the CORRECT companion of an inactive plugin, so this line failed for
+# doing the right thing, and it took the whole suite down with it while
+# ACTIVATION, DEACTIVATION and RESTORED all passed.
+#
+# The starting plugin state and gate row are now RECORDED. What is asserted is
+# what this suite needs in order to mean anything: Core and WooCommerce are
+# active, so the activation and deactivation measured below are measuring THIS
+# module and not a missing dependency. Whatever the starting state was is then
+# restored exactly -- see restore() above and EDM_LIFECYCLE_RESTORED below,
+# which compares plugin state, gate existence, gate VALUE, active_plugins and
+# the invoice meta count.
+if [ "$core_status" = 'active' ] && [ "$wc_status" = 'active' ]; then
+  note "EDM_LIFECYCLE_START=PASS|measured:wp_cli|edm:$start_status|core:$core_status|woocommerce:$wc_status|gate_option:$start_gate_present|invoice_meta_rows:$start_invoice_meta|edm_actions:$start_edm_actions|starting_state:recorded_not_asserted"
 else
   fail "EDM_LIFECYCLE_START=FAIL|edm:$start_status|core:$core_status|woocommerce:$wc_status|gate_option:$start_gate_present|invoice_meta_rows:$start_invoice_meta"
 fi
@@ -232,15 +248,24 @@ else
   end_gate_present='no'
 fi
 end_active_plugins=$(wpx option get active_plugins --format=json | tr -d '\r\n' || true)
+
+# The VALUE too, not only whether the row exists. Putting a closed gate back as
+# an open one would leave EDM transmission enabled on a site whose operator
+# deactivated the plugin -- the one residue this suite must never produce.
+if [ "$end_gate_present" = 'yes' ]; then
+  end_gate_value=$(wpx option get "$GATE_OPTION" | tr -d '\r\n' || true)
+else
+  end_gate_value=''
+fi
 end_invoice_meta=$(wpx eval 'global $wpdb; echo (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}wc_orders_meta WHERE meta_key LIKE \"_kuka_invoice%\"" );' | tr -d '\r\n' || echo 'x')
 
 same_plugins='no'
 [ "$start_active_plugins" = "$end_active_plugins" ] && same_plugins='yes'
 
-if [ "$end_status" = "$start_status" ] && [ "$end_gate_present" = "$start_gate_present" ] && [ "$same_plugins" = 'yes' ] && [ "$end_invoice_meta" = "$start_invoice_meta" ]; then
-  note "EDM_LIFECYCLE_RESTORED=PASS|measured:wp_cli|edm:$end_status|gate_option:$end_gate_present|active_plugins_identical:yes|invoice_meta_rows:$end_invoice_meta|edm_network_operations:0|sandbox_state_touched:no"
+if [ "$end_status" = "$start_status" ] && [ "$end_gate_present" = "$start_gate_present" ] && [ "$end_gate_value" = "$start_gate_value" ] && [ "$same_plugins" = 'yes' ] && [ "$end_invoice_meta" = "$start_invoice_meta" ]; then
+  note "EDM_LIFECYCLE_RESTORED=PASS|measured:wp_cli|edm:$end_status|gate_option:$end_gate_present|gate_value_identical:yes|active_plugins_identical:yes|invoice_meta_rows:$end_invoice_meta|edm_network_operations:0|sandbox_state_touched:no"
 else
-  fail "EDM_LIFECYCLE_RESTORED=FAIL|edm:$start_status->$end_status|gate_option:$start_gate_present->$end_gate_present|active_plugins_identical:$same_plugins|invoice_meta:$start_invoice_meta->$end_invoice_meta"
+  fail "EDM_LIFECYCLE_RESTORED=FAIL|edm:$start_status->$end_status|gate_option:$start_gate_present->$end_gate_present|gate_value_identical:$( [ "$end_gate_value" = "$start_gate_value" ] && echo yes || echo no )|active_plugins_identical:$same_plugins|invoice_meta:$start_invoice_meta->$end_invoice_meta"
 fi
 
 if [ "$failures" -ne 0 ]; then

@@ -8,7 +8,7 @@ Bu dosya bu modülde çalışan agent için **bağlayıcıdır**. Buradaki kural
 Kod değiştirmeden önce, sırayla:
 
 1. `docs/EDM_BAKIM_HAFIZASI.md` — doğrulanmış kök nedenler ve "tekrar
-   yaşanırsa ilk bak" kayıtları. Buradaki 27 kaydın çoğu, bir kez yanlış
+   yaşanırsa ilk bak" kayıtları. Buradaki 29 kaydın çoğu, bir kez yanlış
    yapılmış ve ölçümle düzeltilmiş şeylerdir.
 2. `docs/EDM_AKTIVASYON_REHBERI.md` — hangi seviyede ne yapılabilir.
 3. `docs/EDM_ENTEGRASYONU.md` — güncel teknik sözleşme.

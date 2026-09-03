@@ -35,8 +35,81 @@ hızla gitmesi içindir.
 | 2026-09-03 | EDM teknik destek, reddin TCKN'li alıcıdaki `cac:Person` element sırasından geldiğini bildirdi | `Person`, `Contact` sonrasına taşındı (K-05) |
 | 2026-09-03 | Düzeltilmiş tek `SendInvoice` EDM tarafından kabul edildi ve numaralandı | Son ölçülen durum `PACKAGE - PROCESSING`; belge var fakat terminal başarı henüz görülmedi (K-16, K-17) |
 | 2026-09-03 | Entegrasyon Core'dan ayrıldı | `kuka-island-edm` ayrı, varsayılan pasif eklenti oldu; manuel süreç korunuyor (K-18, K-19, K-24) |
+| 2026-09-03 | EDM pasif teslim durumunda gerçek `make verify` exit 2; 21 mock ölçümü kapalı çalışma kapısında düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-28) |
+| 2026-09-03 | Lifecycle suite'i başlangıç durumunun "hiç deaktive edilmemiş kurulum" olmasını dayatıyordu | Başlangıç durumu kaydediliyor, dayatılmıyor; geri yükleme kontrolü kapı **değerini** de karşılaştırıyor (K-29) |
 | Tüm süreç | Sandbox yazma araçlarında “bir daha deneyelim” ve test PASS'ini gerçek EDM sonucu sanma riski tekrarlandı | Kalıcı claim/reset sözleşmesi, byte-katı endpoint/kimlik girişi ve üç ayrı kanıt düzeyi yazıldı (K-25, K-26, K-27) |
 
+
+---
+
+## K-28 — Pasif teslimde gerçek `make verify` çalışmıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Teslim durumunda (EDM pasif) gerçek `make verify` **exit 2**.
+  `verify-invoice-integration.php` içindeki mock tabanlı **21** ölçüm
+  `edm_runtime_disabled` ile düşüyor, betik sıfırdan farklı dönüyor ve
+  `verify.sh` `set -eu` ile çalıştığı için sonraki bütün bloklar (kargo dâhil)
+  hiç koşmuyor.
+- **Kesin kök neden:** Deaktivasyon kalıcı çalışma kapısı option'ını yazar ve
+  `Invoice_Manager::process_order()` bu kapıyı gönderimden **hemen önce** okur;
+  kapının varlık sebebi tam olarak budur (K-19). Teslim durumunda kapı doğru
+  şekilde kapalıdır, dolayısıyla ölçümler mock transport'a hiç ulaşamıyordu.
+  Ölçümler yanlış değildi — **ön koşulları söylenmemişti**.
+- **Uygulanan düzeltme:** `class-invoice-runtime-gate.php` içinde
+  `Kuka_Island_Core_Invoice_Transmission_Gate` arayüzü tanımlandı (gerçek kapının
+  yanında, çünkü sözleşme ve kanonik uygulama tek kavramdır ve dosyanın her
+  `require_once`'u ikisini birlikte getirir). `Invoice_Manager` üçüncü, isteğe
+  bağlı bir kapı argümanı aldı; **varsayılan gerçek kapıdır** ve bütün üretim
+  çağrı siteleri varsayılanı kullanır. Offline ölçümler ön koşullarını tek bir
+  görünür yerde belirtir: `kuka_invoice_test_manager()` + açık test kapısı.
+- **Kapının kendi testi değişmedi.** `EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND`
+  manager'ı **argüman vermeden** kurar, yani gerçek option tabanlı kapının
+  kapalı/açık davranışını ölçmeye devam eder.
+- **Seam'in kendisi de ölçülüyor.** `EDM_TRANSMISSION_GATE_SEAM`: üretim
+  varsayılanı gerçek kapı mı, enjekte edilen kapı gerçekten sorguluyor mu, ve
+  **enjekte edilen kapalı bir kapı reddi zayıflatabiliyor mu** (hayır: aynı hata
+  kodu, UUID yok, gönderim yok). Ayrıca hiçbir üretim çağrı sitesinin kapı
+  geçirmediği sayılıyor: `production_sites_passing_a_gate:0`.
+- **Ek koruma:** Kapının kendi testi bir kontrol gönderimi için gerçek kapıyı
+  bir an açmak zorundadır — koşunun dokunduğu **tek canlı ayar**. Option satırı
+  (varlık + değer + autoload) ölçümlerden önce anlık görüntüye alınır,
+  `register_shutdown_function` ile **her** çıkışta (fatal ve `WP_CLI::error()`
+  dâhil) birebir geri yazılır, ve eşleşmezse shutdown handler `exit(1)` ile
+  koşuyu başarısız yapar: `EDM_RUNTIME_OPTION_RESTORED=PASS|byte_equivalent:yes`.
+- **İlgili dosya:** `includes/invoice/class-invoice-runtime-gate.php`,
+  `includes/invoice/class-invoice-manager.php`,
+  `scripts/verify-invoice-integration.php`
+- **Tekrar yaşanırsa ilk bak:** `EDM_TRANSMISSION_GATE_SEAM`'in
+  `production_sites_passing_a_gate` değeri. 0 değilse bir üretim yolu test
+  kapısıyla kurulmuş demektir ve üretim kapısı artık ölçülmüyor.
+
+---
+
+## K-29 — Lifecycle suite'i "hiç deaktive edilmemiş kurulum" dayatıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** `EDM_LIFECYCLE_START=FAIL|...|gate_option:yes`, ve tek bu satır
+  yüzünden `EDM_LIFECYCLE=FAIL|failures:1` — oysa `ACTIVATION`,
+  `DEACTIVATION` ve `RESTORED` üçü de PASS.
+- **Kesin kök neden:** Başlangıç kontrolü eklentinin pasif **ve** çalışma kapısı
+  option'ının **yok** olmasını istiyordu. Bu, hiç deaktive edilmemiş bir kurulum
+  demektir. Operatörü eklentiyi devre dışı bırakmış bir sitede kapının kapalı
+  olması **doğru** davranıştır (K-19): satır, doğru olan şey için başarısız
+  oluyordu.
+- **Uygulanan düzeltme:** Başlangıç eklenti durumu ve kapı satırı **kaydediliyor**
+  (`starting_state:recorded_not_asserted`); dayatılan tek şey Core ve
+  WooCommerce'in etkin olması — aşağıdaki aktivasyon/deaktivasyon turu ancak o
+  zaman bu modülü ölçer. Geri yükleme kontrolü ise **sıkılaştırıldı**: artık
+  kapı option'ının yalnız varlığını değil **değerini** de karşılaştırıyor
+  (`gate_value_identical:yes`), çünkü kapalı bir kapıyı açık olarak geri yazmak
+  bu suite'in üretebileceği en kötü artıktır.
+- **Kanıt:** `EDM_LIFECYCLE=PASS`, `EDM_LIFECYCLE_RESTORED=PASS|gate_option:yes|gate_value_identical:yes|active_plugins_identical:yes`,
+  ve gerçek `make verify` iki kez exit 0 — EDM pasif kalarak.
+- **İlgili dosya:** `scripts/verify-edm-activation-lifecycle.sh`,
+  `scripts/verify.sh`
+- **Tekrar yaşanırsa ilk bak:** Bir ölçüm site **durumunu** mu yoksa
+  **davranışı** mı dayatıyor. Başlangıç durumunu dayatan bir kontrol, o durumdan
+  meşru şekilde çıkıldığı gün suite'i kilitler.
 ---
 
 ## K-01 — Yanlış test endpoint'i

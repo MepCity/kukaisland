@@ -48,6 +48,9 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | `fields_match()` iki tarafı da `trim()` ediyordu; "birebir" iddiası yanlıştı | Tek kanonik biçim gönderim öncesi uygulanıyor, karşılaştırmada sıfır tolerans (K-34) |
 | 2026-09-03 | "Planlı durum sorgusu doğrulanmamış iptali izleyen tek şeydir" yorumu doğru değildi | Yorum düzeltildi; belge ve sipariş ekranı bunun **manuel** mutabakat olduğunu yazıyor (K-35) |
 | 2026-09-03 | Eklenti etkinleştirilince pasif sözleşme suite'i sıfırdan farklı dönüyor ve `set -e` bütün kargo doğrulamasını kesiyordu | Cevaplanamaz üç ölçüm gerekçeli `SKIPPED`; yerlerine her iki durumda sorulabilen iki ölçüm (K-36) |
+| 2026-09-03 | `has_carrier_evidence()` iki korumalı durumu ve intent kaydını kanıt saymıyordu; sahipsiz bir iptal-bekleyen kayıt varsayılan taşıyıcıya düşüyordu | Kanıt listesine iki durum + dolu `pending_mutation` eklendi (K-37) |
+| 2026-09-03 | İptali kanıtlanmış bir sipariş üzerinden `createbarcode` gönderilebiliyordu; create kapısı deny-list soruyordu ve `cancelled` listede yoktu | Tek merkezî allow-list: createOrder 3 durum, createbarcode 1 durum; barkod aşaması ayrıca kapılandı (K-38) |
+| 2026-09-03 | EDM pasifken gerçek `make verify` exit 2; 21 mock ölçümü `edm_runtime_disabled` ile düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-39) |
 
 ---
 
@@ -820,10 +823,18 @@ geçmez.
     yapılmamış → varsayılan, ve ilk yazmadan önce sabitlenir).
   - Açıkça verilen `carrier_key` kayıtlı provider ile çelişirse
     `shipment_provider_mismatch`; dış çağrı 0, siparişin provider'ı değişmez.
-  - `Order_Store::begin_carrier_session()` provider'ı, referansı ve referans
-    geçmişini **tek save** içinde, ilk dış yazmadan önce yazar. Pin bu yüzden
-    timeout'tan sağ çıkar. `save_order_created()` artık yalnız alan boşsa yazar;
-    mutabakat siparişin sahibini değiştiremez.
+  - `Order_Store::begin_mutation()` provider'ı, referansı, referans geçmişini,
+    operasyona ait **korumalı durumu** ve kalıcı **intent kaydını** tek save
+    içinde, ilk dış yazmadan önce yazar; sonra siparişi veritabanından taze
+    okuyup birebir doğrular ve doğrulama geçmezse yazma hiç yapılmaz. Pin bu
+    yüzden timeout'tan, intent ise süreç ölümünden sağ çıkar (K-29, K-30).
+    `save_order_created()` artık yalnız alan boşsa yazar; mutabakat siparişin
+    sahibini değiştiremez.
+  - `has_carrier_evidence()` kanıt listesine `cancel_reconciliation_required`,
+    `update_reconciliation_required` ve **dolu bir `pending_mutation` kaydı** de
+    dâhildir (K-37). Bunlar `begin_mutation()` olmadan oluşamaz, dolayısıyla
+    provider'sız bulunmaları varsayılana düşme gerekçesi değil, en güçlü
+    fail-closed gerekçesidir.
   - Yönetim paneli `carrier_ownership()` sorar. Bu metot **yan etkisiz** olmak
     zorundadır: `resolve_carrier()` reddi siparişe kaydeder ve not düşer, ve bir
     sayfa render'ı her yüklemede not bırakamaz.
@@ -842,7 +853,7 @@ geçmez.
   `SHIPPING_ADMIN_USES_STORED_PROVIDER=PASS|pinned_order:kuka-pinned-kargo(order)|untouched_order:kuka-other-kargo(default)|render_wrote_notes:0`
 - **İlgili dosyalar:**
   `SHIP/includes/shipping/class-shipment-order-store.php`
-  (`provider`, `has_carrier_evidence`, `begin_carrier_session`,
+  (`provider`, `has_carrier_evidence`, `begin_mutation`,
   `save_order_created`),
   `SHIP/includes/shipping/class-shipment-manager.php`
   (`carrier_ownership`, `resolve_carrier`, `admit`, tüm giriş noktaları),
@@ -1058,6 +1069,8 @@ geçmez.
 - **Kesin kök neden:** K-21'in sırası şuydu:
   `begin_carrier_session()` → `build_request()` → `guarded_write()`. Pin,
   tamamen yerel olan adres/mapping doğrulamasından **önce** yapılıyordu.
+  (`begin_carrier_session()` K-29 ile kaldırıldı; yerine `begin_mutation()`
+  geldi ve sıra aşağıdaki hâliyle korunuyor.)
 - **Uygulanan düzeltme:** Sıra tersine çevrildi ve pin yazmayla atomik hâle
   getirildi:
   1. Kilit alınır. 2. Sahiplik/varsayılan çözülür. 3. Referans yalnız yerel
@@ -1076,13 +1089,13 @@ geçmez.
   `SHIPPING_PROVIDER_PINNED_BEFORE_FIRST_WRITE`,
   `SHIPPING_UNCERTAIN_CREATE_RETAINS_PROVIDER`
 - **İlgili dosyalar:** `SHIP/includes/shipping/class-shipment-order-store.php`
-  (`prepare_reference`, `begin_carrier_session`),
+  (`prepare_reference`, `begin_mutation`),
   `SHIP/includes/shipping/class-shipment-manager.php`
-  (`guarded_write` `$before_write`, `run_creation`, `run_barcode`,
-  `resume_barcode`)
-- **Tekrar yaşanırsa ilk bak:** `run_creation()` içinde
-  `begin_carrier_session()` çağrısının nerede olduğu. `build_request()`'ten
-  önce görürsen hata geri gelmiştir; `guarded_write()`'ın içinde değilse arada
+  (`guarded_write`'ın zorunlu dördüncü argümanı, `intent_writer`,
+  `run_creation`, `run_barcode`, `resume_barcode`)
+- **Tekrar yaşanırsa ilk bak:** `run_creation()` içinde `begin_mutation()`
+  çağrısının nerede olduğu. `build_request()`'ten önce görürsen hata geri
+  gelmiştir; `guarded_write()`'ın dördüncü argümanı olarak verilmemişse arada
   bir başarısızlık penceresi var.
 
 ---
@@ -1411,6 +1424,124 @@ geçmez.
   **başarısız** mı olduğu. İkisi aynı şey değildir ve cevapsız olanı FAIL
   raporlamak, kendisinden sonraki bütün ölçümleri de öldürür. Cevapsız ölçüm
   gerekçesiyle atlanır ve garanti nerede ölçülüyorsa oraya işaret eder.
+
+---
+
+## K-37 — Korumalı durumlar taşıyıcı kanıtı sayılmıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Durumu `cancel_reconciliation_required` olan, provider'ı boş bir
+  sipariş. `carrier_ownership()` `shipment_provider_missing` demiyor, mağazanın
+  **güncel varsayılan** taşıyıcısını döndürüyor. İkinci bir kurye eklenmişse
+  iptal doğrulaması o kuryeye gidiyor ve onun "kayıt yok" cevabı iptalin kanıtı
+  sayılıyor.
+- **Kesin kök neden:** `has_carrier_evidence()`'ın kanıt listesi K-21'de
+  yazılmıştı ve K-24/K-25'te eklenen iki korumalı durum listeye hiç girmemişti.
+  `pending_mutation` kaydı da hiç sorulmuyordu. Oysa bir sipariş bu durumlara
+  **yalnız** `begin_mutation()` üzerinden girer, yani bu referans altında bir
+  taşıyıcıya istek gönderilmiş olduğunun en güçlü kanıtıdır.
+- **Uygulanan düzeltme:** Kanıt listesine `STATE_CANCEL_RECONCILE_REQUIRED` ve
+  `STATE_UPDATE_RECONCILE_REQUIRED` eklendi; ayrıca durum ne derse desin **dolu
+  bir `pending_mutation`** tek başına kanıt sayılıyor — o kayıt yalnız
+  `begin_mutation()` ile onu kapatan sonuç arasında var olur.
+- **Kanıt:** `SHIPPING_ORPHANED_PROTECTED_STATE_FAILS_CLOSED` — üç vaka
+  (iki korumalı durum + yalnız intent kaydı), her birinde altı kapı
+  `shipment_provider_missing`, iki adaptörün de teması **0**.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`has_carrier_evidence`)
+- **Tekrar yaşanırsa ilk bak:** Yeni bir durum eklendiğinde kanıt listesine de
+  eklendi mi. Liste bir deny-list değil, "bu durum yalnız bir dış istekten sonra
+  oluşabilir mi" sorusunun cevabıdır.
+
+---
+
+## K-38 — İptal edilmiş sipariş üzerinden barkod oluşturulabiliyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Gönderisi iptal edilmiş ve iptali **salt-okunur sorguyla
+  doğrulanmış** bir siparişte `gönderi oluştur` basılıyor. `createOrder`
+  gönderilmiyor ama `createbarcode` gönderiliyor: taşıyıcının zaten iptal ettiği
+  kayda barkod isteği, arkasında bu sipariş ömründe hiç `createOrder` olmadan.
+  Aynı sipariş üzerinden `updateshipment` ve `cancelshipment` da açılıyordu.
+- **Kesin kök neden:** İki ayrı yerde aynı hata. Create kapısı bir **deny-list**
+  soruyordu (`states_blocking_create()`) ve `STATE_CANCELLED` o listede yoktu —
+  yasak listeleri, yeni bir durum eklendiği ilk anda delik verir. Kapıyı geçen
+  çağrı `run_creation()`'a giriyor, oradaki `createOrder` dalı durumu kabul
+  etmediği için atlanıyor, ve metot **koşulsuz** olarak `run_barcode()` ile
+  bitiyordu. Yani "createOrder dalına girmeyen her durum" doğrudan barkod
+  yoluna düşüyordu; bilinmeyen bir durum da aynı şekilde düşüyordu.
+- **Uygulanan düzeltme:** Tek merkezî **allow-list**, `Order_Store` içinde:
+  `states_allowing_create_order()` = `none`, `blocked`, `absent_confirmed`;
+  `states_allowing_create_barcode()` = yalnız `order_created`. Create kapısı,
+  `run_creation()`'ın createOrder dalı, `run_creation()`'ın **barkod geçişi**
+  (durum yeniden okunarak) ve yönetim panelindeki düğme — dördü de aynı listeyi
+  sorar. `states_blocking_create()` yalnız ret **mesajını** seçmek için kaldı;
+  artık hiçbir yerde kapı değildir.
+- **Kanıt:** `SHIPPING_CANCELLED_RECORD_IS_FAIL_CLOSED` — gerçek create, gerçek
+  iptal, salt-okunur kanıt, sonra **taze `WC_Order` + taze `Manager` + taze
+  adaptör**: `createOrder:0|createbarcode:0|update:0|cancel:0|reads:0`, durum
+  `cancelled`, intent yok, dört kapının dördü de gerekçeli ret.
+  `SHIPPING_CREATE_DOORS_ARE_AN_ALLOWLIST` — 12 durum × 2 aksiyon, hangi
+  **kapının açıldığı** ölçülüyor (adaptör her iki create işlemini ağdan önce
+  reddediyor), allow-list dışında hiçbir durum hiçbir kapıya ulaşmıyor,
+  taşıyıcı yazması 0. Düzeltme geri alınarak ölçüldü: eski kodda aynı testler
+  `createbarcode:1` ve `cancelled/create=>barcode:1` ile **FAIL** veriyor,
+  ayrıca bilinmeyen durum da barkod kapısına düşüyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`states_allowing_create_order`, `states_allowing_create_barcode`),
+  `SHIP/includes/shipping/class-shipment-manager.php` (`create_shipment`,
+  `run_creation`, `create_refusal_message`),
+  `SHIP/includes/shipping/class-shipment-admin.php` (`render_meta_box`)
+- **Tekrar yaşanırsa ilk bak:** `run_creation()`'ın sonu. `return
+  $this->run_barcode(...)` bir durum kontrolü olmadan duruyorsa hata geri
+  gelmiştir. Ve herhangi bir kapı `states_blocking_create()` ile karar veriyorsa
+  o kapı bir deny-list'e dönmüş demektir.
+
+---
+
+## K-39 — Gerçek `make verify` EDM pasifken çalışmıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Teslim durumunda (EDM pasif, kargo etkin) gerçek `make verify`
+  **exit 2**. `verify-invoice-integration.php` içindeki mock tabanlı 21 ölçüm
+  `edm_runtime_disabled` ile düşüyor, betik sıfırdan farklı dönüyor ve
+  `set -eu` yüzünden kargo bloğuna hiç ulaşılmıyor.
+- **Kesin kök neden:** EDM deaktivasyonu kalıcı çalışma kapısı option'ını yazar
+  ve `Invoice_Manager::process_order()` bu kapıyı gönderimden hemen önce
+  okur — kapının varlık sebebi tam olarak budur. Teslim durumunda kapı doğru
+  şekilde **kapalı**dır, dolayısıyla mock transport'a hiç ulaşılamıyordu.
+  Ölçümler yanlış değildi; ön koşulları söylenmemişti.
+- **Uygulanan düzeltme:** `Invoice_Manager`'a üçüncü, isteğe bağlı bir
+  `Kuka_Island_Core_Invoice_Transmission_Gate` argümanı. **Varsayılan gerçek
+  kapıdır** ve bütün üretim çağrı siteleri (`class-invoice.php`,
+  `Invoice_Admin`, `Invoice_Queue`, `Invoice_Status_Poller`) varsayılanı
+  kullanır; üretim davranışı değişmedi. Offline ölçümler ön koşullarını tek bir
+  görünür yerde belirtir (`kuka_invoice_test_manager()` + açık test kapısı).
+  Kapının **kendi** ölçümü (`EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND`)
+  argümanı **vermez**, yani gerçek option tabanlı kapının kapalı/açık
+  davranışını ölçmeye devam eder.
+- **Ek koruma:** O ölçüm bir kontrol gönderimi için gerçek kapıyı bir an
+  açmak zorundadır. Bu, koşunun dokunduğu **tek canlı ayar**dır, ve bırakabileceği
+  artık bu depodaki en kötüsüdür: operatörünün pasifleştirdiği bir sitede EDM
+  gönderiminin **açık** kalması. Bu yüzden option satırı (varlık + değer +
+  autoload) ölçümlerden önce anlık görüntüye alınır, `register_shutdown_function`
+  ile **her** çıkışta (fatal ve `WP_CLI::error()` dâhil) birebir geri yazılır, ve
+  geri yükleme byte olarak eşleşmezse shutdown handler `exit(1)` ile koşuyu
+  başarısız yapar.
+- **Kanıt:** `EDM_TRANSMISSION_GATE_SEAM=PASS|production_default:Kuka_Island_Core_Invoice_Runtime_Gate|open_gate_consulted:1|open_gate_SendInvoice:1|closed_gate_consulted:1|closed_gate_code:edm_runtime_disabled|closed_gate_SendInvoice:0|closed_gate_uuid:absent|production_sites_passing_a_gate:0`
+  — enjekte edilen kapalı bir kapı gerçek kapı gibi reddediyor, yani seam
+  kontrolü **zayıflatamıyor**. `EDM_RUNTIME_OPTION_RESTORED=PASS|byte_equivalent:yes`.
+  Ve gerçek `make verify` iki kez **exit 0**, EDM pasif kalarak.
+- **İlgili dosya:**
+  `wp-content/plugins/kuka-island-edm/includes/invoice/class-invoice-runtime-gate.php`
+  (arayüz + gerçek kapı),
+  `.../class-invoice-manager.php` (üçüncü argüman, `get_transmission_gate`),
+  `scripts/verify-invoice-integration.php` (test kapıları, fabrika, shutdown
+  coordinator)
+- **Tekrar yaşanırsa ilk bak:** Bir üretim çağrı sitesinin `Invoice_Manager`'a
+  kapı geçirip geçirmediği — `EDM_TRANSMISSION_GATE_SEAM` bunu sayar ve 0
+  olmak zorundadır. Ve ölçümün ön koşulunu site option'ını yazarak sağlayan bir
+  kod eklenirse, shutdown coordinator'ın hâlâ orada olduğu.
 
 ---
 

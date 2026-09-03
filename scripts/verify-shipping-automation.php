@@ -255,6 +255,21 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	 */
 	public int $local_refusals = 0;
 
+	/**
+	 * The same count, per operation.
+	 *
+	 * Which DOOR opened is a different question from whether anything was
+	 * sent, and the create-path allow-list needs the first one: "state X never
+	 * reaches createbarcode" cannot be measured from a total.
+	 *
+	 * @var array<string, int>
+	 */
+	public array $refusals = array();
+
+	public function count_refused( string $operation ): int {
+		return (int) ( $this->refusals[ $operation ] ?? 0 );
+	}
+
 	/** Record a WRITE, running the injected hooks around it. */
 	private function record_write( string $operation ): void {
 		$scripted = $this->results[ $operation ] ?? null;
@@ -264,6 +279,8 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 			// on_write hook (which represents the request starting) does not
 			// fire and no write is recorded.
 			++$this->local_refusals;
+
+			$this->refusals[ $operation ] = $this->count_refused( $operation ) + 1;
 
 			return;
 		}
@@ -330,6 +347,8 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 
 	public function reset_counters(): void {
 		$this->calls            = array();
+		$this->refusals         = array();
+		$this->local_refusals   = 0;
 		$this->readiness_checks = 0;
 	}
 
@@ -3823,6 +3842,9 @@ $pot_required = array(
 	'Güncelleme isteği taşıyıcıya gönderildi, uygulandığı alan bazında doğrulanmadı. Otomatik durum sorgusu bu durumu ÇÖZMEZ; doğrulamayı "Mutabakat" düğmesiyle siz başlatmalısınız. Yeni güncelleme gönderilmez, iptal hâlâ yapılabilir.',
 	'%s değeri tanınmadı; DHL adaptörü güvenli tarafta kapatıldı. Geçerli değerler: 1/true/yes/on veya 0/false/no/off (boşluksuz, küçük harf).',
 	'Bu siparişte doğrulanmayı bekleyen bir güncelleme var ve güncellemenin hangi kayda gönderildiği okunamadı; iptal edilecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı.',
+	// The create path's allow-list refusals.
+	'Bu siparişin taşıyıcı kaydı iptal edilmiş ve iptal sorguyla doğrulanmıştı. İptal edilmiş bir kayıt üzerinden gönderi ya da barkod oluşturulmaz; yeni kargo ayrı ve açık bir işlemdir.',
+	'Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; yeniden oluşturma açık bir işlemdir.',
 );
 
 $pot_required_missing = array();
@@ -7125,7 +7147,314 @@ if ( $intent_db instanceof wpdb ) {
 }
 
 /* ========================================================================== */
-/* 53. Cleanup and verdict                                                     */
+/* 53. A cancelled record is fail-closed for create AND for barcode            */
+/* ========================================================================== */
+
+/*
+ * THE HOLE THIS SECTION EXISTS FOR. The create door asked a DENY-list --
+ * states_blocking_create() -- and STATE_CANCELLED was not on it. So a cancelled
+ * order passed the door; run_creation() then found a state its createOrder
+ * branch did not accept, skipped the branch, and fell through to run_barcode().
+ * The result was a createbarcode against a record the carrier had already
+ * cancelled and a read had PROVED cancelled, with no createOrder behind it.
+ *
+ * The whole path is driven here: real create, real cancel, real read-only
+ * proof, then a fresh order object and a fresh Manager over a fresh adapter --
+ * an adapter whose every operation would SUCCEED, so a single call of any kind
+ * would show up.
+ */
+
+$cancelled_fixture = kuka_ship_cancel_fixture();
+$cancelled_id      = (int) $cancelled_fixture['order']->get_id();
+
+$cancelled_first  = $cancelled_fixture['manager']->cancel( wc_get_order( $cancelled_id ) );
+$cancelled_proved = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $cancelled_id ) );
+$cancelled_intent = Kuka_Island_Shipping_Order_Store::pending_mutation( wc_get_order( $cancelled_id ) );
+
+// A different process would look exactly like this: nothing remembered.
+kuka_ship_forget_order( $cancelled_id );
+
+$cancelled_adapter = new Kuka_Shipping_Fake_Carrier();
+$cancelled_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $cancelled_adapter ) ) );
+
+$cancelled_create = $cancelled_manager->create_shipment( wc_get_order( $cancelled_id ) );
+$cancelled_resume = $cancelled_manager->resume_barcode( wc_get_order( $cancelled_id ) );
+$cancelled_update = $cancelled_manager->update_shipment( wc_get_order( $cancelled_id ) );
+$cancelled_cancel = $cancelled_manager->cancel( wc_get_order( $cancelled_id ) );
+
+$cancelled_after  = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $cancelled_id ) );
+$cancelled_after_intent = Kuka_Island_Shipping_Order_Store::pending_mutation( wc_get_order( $cancelled_id ) );
+
+$report(
+	'SHIPPING_CANCELLED_RECORD_IS_FAIL_CLOSED',
+	// The setup actually reached a PROVED cancellation.
+	Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $cancelled_proved
+		&& $cancelled_first['ok']
+		&& array() === $cancelled_intent
+		// Not one external call of any kind, from any of the four doors.
+		&& 0 === $cancelled_adapter->count_for( 'create_order' )
+		&& 0 === $cancelled_adapter->count_for( 'create_barcode' )
+		&& 0 === $cancelled_adapter->count_for( 'update_order' )
+		&& 0 === $cancelled_adapter->count_for( 'update_shipment' )
+		&& 0 === $cancelled_adapter->count_for( 'cancel_order' )
+		&& 0 === $cancelled_adapter->count_for( 'cancel_shipment' )
+		&& 0 === $cancelled_adapter->write_calls()
+		&& 0 === $cancelled_adapter->read_calls()
+		// Each door refuses with a code that names the reason.
+		&& ! $cancelled_create['ok']
+		&& 'not_creatable' === (string) $cancelled_create['code']
+		&& str_contains( (string) $cancelled_create['message'], 'iptal' )
+		&& ! $cancelled_resume['ok']
+		&& 'not_resumable' === (string) $cancelled_resume['code']
+		&& ! $cancelled_update['ok']
+		&& 'nothing_to_update' === (string) $cancelled_update['code']
+		&& ! $cancelled_cancel['ok']
+		&& 'already_cancelled' === (string) $cancelled_cancel['code']
+		// And nothing was written to the record either.
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $cancelled_after
+		&& array() === $cancelled_after_intent,
+	sprintf(
+		'measured:real_manager_fresh_order_and_fresh_adapter|cancel_proved_by:read_only_query|createOrder:%d|createbarcode:%d|update:%d|cancel:%d|reads:%d|create_code:%s|resume_code:%s|update_code:%s|cancel_code:%s|state:%s|pending_mutation:%s',
+		$cancelled_adapter->count_for( 'create_order' ),
+		$cancelled_adapter->count_for( 'create_barcode' ),
+		$cancelled_adapter->count_for( 'update_order' ) + $cancelled_adapter->count_for( 'update_shipment' ),
+		$cancelled_adapter->count_for( 'cancel_order' ) + $cancelled_adapter->count_for( 'cancel_shipment' ),
+		$cancelled_adapter->read_calls(),
+		(string) $cancelled_create['code'],
+		(string) $cancelled_resume['code'],
+		(string) $cancelled_update['code'],
+		(string) $cancelled_cancel['code'],
+		$cancelled_after,
+		array() === $cancelled_after_intent ? 'absent' : 'PRESENT'
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $cancelled_id ) );
+
+/* --- and the whole state table, both doors, with a positive control ------ */
+
+/*
+ * Every state this version knows, plus one it has never heard of. The adapter
+ * refuses both create operations BEFORE the network, so an allow-listed state
+ * shows up as a refusal on that operation and a non-allow-listed one shows up
+ * as nothing at all -- which makes the table a measurement of WHICH DOOR
+ * OPENED rather than of what came back.
+ *
+ * The positive control matters as much as the refusals: a table where nothing
+ * ever reaches a door would pass while the create path was broken.
+ */
+
+$door_states = array(
+	Kuka_Island_Shipping_Order_Store::STATE_NONE,
+	Kuka_Island_Shipping_Order_Store::STATE_BLOCKED,
+	Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED,
+	Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
+	Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED,
+	Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED,
+	Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED,
+	Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED,
+	Kuka_Island_Shipping_Order_Store::STATE_DELIVERED,
+	Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+	Kuka_Island_Shipping_Order_Store::STATE_CANCELLED,
+	'a-state-this-version-never-heard-of',
+);
+
+$door_adapter = new Kuka_Shipping_Fake_Carrier();
+$door_adapter->results['create_order']   = Kuka_Island_Shipping_Result::local_refusal( 'create_order', 'payload_incomplete' );
+$door_adapter->results['create_barcode'] = Kuka_Island_Shipping_Result::local_refusal( 'create_barcode', 'payload_incomplete' );
+
+$door_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $door_adapter ) ) );
+$door_order   = kuka_ship_fixture_order();
+$door_id      = (int) $door_order->get_id();
+
+// Pin the owner and mint a reference, so ownership is never the thing refusing.
+$door_manager->create_shipment( wc_get_order( $door_id ) );
+$door_adapter->reset_counters();
+
+$door_wrong = array();
+
+foreach ( $door_states as $door_state ) {
+	foreach ( array( 'create', 'resume' ) as $door_action ) {
+		$door_fresh = wc_get_order( $door_id );
+		Kuka_Island_Shipping_Order_Store::set_state( $door_fresh, (string) $door_state );
+		$door_fresh->update_meta_data( Kuka_Island_Shipping_Order_Store::META_PENDING_MUTATION, array() );
+		$door_fresh->update_meta_data( Kuka_Island_Shipping_Order_Store::META_SHIPMENT_ID, 'FAKE-SHIP-1' );
+		$door_fresh->save_meta_data();
+		kuka_ship_forget_order( $door_id );
+
+		$door_adapter->reset_counters();
+
+		if ( 'create' === $door_action ) {
+			$door_manager->create_shipment( wc_get_order( $door_id ) );
+			$door_expected_order   = in_array( $door_state, Kuka_Island_Shipping_Order_Store::states_allowing_create_order(), true ) ? 1 : 0;
+			$door_expected_barcode = 0;
+		} else {
+			$door_manager->resume_barcode( wc_get_order( $door_id ) );
+			$door_expected_order   = 0;
+			$door_expected_barcode = in_array( $door_state, Kuka_Island_Shipping_Order_Store::states_allowing_create_barcode(), true ) ? 1 : 0;
+		}
+
+		if ( $door_expected_order !== $door_adapter->count_refused( 'create_order' )
+			|| $door_expected_barcode !== $door_adapter->count_refused( 'create_barcode' )
+			|| 0 !== $door_adapter->write_calls() ) {
+
+			$door_wrong[] = sprintf(
+				'%s/%s=>order:%d/barcode:%d/writes:%d',
+				(string) $door_state,
+				$door_action,
+				$door_adapter->count_refused( 'create_order' ),
+				$door_adapter->count_refused( 'create_barcode' ),
+				$door_adapter->write_calls()
+			);
+		}
+	}
+}
+
+$report(
+	'SHIPPING_CREATE_DOORS_ARE_AN_ALLOWLIST',
+	array() === $door_wrong
+		&& 3 === count( Kuka_Island_Shipping_Order_Store::states_allowing_create_order() )
+		&& 1 === count( Kuka_Island_Shipping_Order_Store::states_allowing_create_barcode() ),
+	sprintf(
+		'measured:which_door_opened|states:%d|actions:2|createOrder_allowed_from:%s|createbarcode_allowed_from:%s|wrong:%s|carrier_writes:0',
+		count( $door_states ),
+		implode( '+', Kuka_Island_Shipping_Order_Store::states_allowing_create_order() ),
+		implode( '+', Kuka_Island_Shipping_Order_Store::states_allowing_create_barcode() ),
+		array() === $door_wrong ? 'none' : implode( ',', $door_wrong )
+	)
+);
+
+kuka_ship_purge_actions( $door_id );
+kuka_ship_destroy_order( wc_get_order( $door_id ) );
+
+/* ========================================================================== */
+/* 54. A protected state with no owner is refused, never guessed               */
+/* ========================================================================== */
+
+/*
+ * has_carrier_evidence() answers "was SOME carrier addressed under this
+ * reference?", and a record that answers yes with no provider stored must fail
+ * closed rather than fall back to the shop's default. The two protected states
+ * were MISSING from its evidence list, and they are the strongest evidence
+ * there is: an order only reaches them because begin_mutation() wrote an intent
+ * immediately before a request went out. Without them, an ownerless record in
+ * cancel_reconciliation_required was handed to whatever the shop now calls its
+ * default -- which is how a cancellation reaches a courier that never had the
+ * parcel.
+ *
+ * The pending-mutation record is evidence in its own right, whatever the state
+ * says, because it exists only between begin_mutation() and the outcome that
+ * settles it.
+ */
+
+$orphan_cases = array(
+	'cancel_reconciliation_required' => static function ( WC_Order $order ): void {
+		Kuka_Island_Shipping_Order_Store::set_state( $order, Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED );
+	},
+	'update_reconciliation_required' => static function ( WC_Order $order ): void {
+		Kuka_Island_Shipping_Order_Store::set_state( $order, Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED );
+	},
+	'pending_mutation_only'          => static function ( WC_Order $order ): void {
+		// A state that is NOT evidence on its own, plus an intent record.
+		Kuka_Island_Shipping_Order_Store::set_state( $order, Kuka_Island_Shipping_Order_Store::STATE_BLOCKED );
+		$order->update_meta_data(
+			Kuka_Island_Shipping_Order_Store::META_PENDING_MUTATION,
+			array(
+				'mutation_id'    => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+				'kind'           => Kuka_Island_Shipping_Order_Store::MUTATION_CANCEL,
+				'operation'      => 'cancel_shipment',
+				'target'         => 'shipment',
+				'previous_state' => Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED,
+				'provider'       => 'kuka-test-kargo',
+				'reference'      => 'KI1-AAAAAA',
+				'expected'       => array(),
+				'created_at'     => time(),
+			)
+		);
+		$order->save_meta_data();
+	},
+);
+
+$orphan_wrong = array();
+$orphan_rows  = array();
+
+foreach ( $orphan_cases as $orphan_label => $orphan_setup ) {
+	$orphan = kuka_ship_affinity_scenario();
+	$orphan_id = (int) $orphan['order']->get_id();
+
+	// A real create, so the reference and the shipment id are genuine, then the
+	// provider is removed: exactly what a record written before ownership was
+	// pinned -- or one whose meta was partly lost -- looks like.
+	$orphan['manager']->create_shipment( $orphan['order'], 'dhl' );
+
+	$orphan_order = wc_get_order( $orphan_id );
+	$orphan_setup( $orphan_order );
+
+	$orphan_order = wc_get_order( $orphan_id );
+	$orphan_order->delete_meta_data( Kuka_Island_Shipping_Order_Store::META_PROVIDER );
+	$orphan_order->save_meta_data();
+	kuka_ship_forget_order( $orphan_id );
+
+	$orphan_evidence = Kuka_Island_Shipping_Order_Store::has_carrier_evidence( wc_get_order( $orphan_id ) );
+	$orphan_stored   = Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $orphan_id ) );
+
+	kuka_ship_affinity_flip( $orphan );
+	$orphan['transport']->reset();
+	$orphan['other']->reset_counters();
+
+	$orphan_codes = array(
+		'create'    => (string) $orphan['manager']->create_shipment( wc_get_order( $orphan_id ) )['code'],
+		'resume'    => (string) $orphan['manager']->resume_barcode( wc_get_order( $orphan_id ) )['code'],
+		'update'    => (string) $orphan['manager']->update_shipment( wc_get_order( $orphan_id ) )['code'],
+		'cancel'    => (string) $orphan['manager']->cancel( wc_get_order( $orphan_id ) )['code'],
+		'query'     => (string) $orphan['manager']->query_status( wc_get_order( $orphan_id ) )['code'],
+		'reconcile' => (string) $orphan['manager']->reconcile_order( wc_get_order( $orphan_id ) )['verdict'],
+	);
+
+	kuka_ship_affinity_unflip( $orphan );
+
+	foreach ( $orphan_codes as $orphan_door => $orphan_code ) {
+		if ( 'shipment_provider_missing' !== $orphan_code ) {
+			$orphan_wrong[] = $orphan_label . '/' . $orphan_door . '=>' . $orphan_code;
+		}
+	}
+
+	if ( ! $orphan_evidence ) {
+		$orphan_wrong[] = $orphan_label . '/evidence=>NO';
+	}
+
+	if ( '' !== $orphan_stored ) {
+		$orphan_wrong[] = $orphan_label . '/provider=>' . $orphan_stored;
+	}
+
+	if ( 0 !== count( $orphan['transport']->log ) || 0 !== $orphan['other']->contacts() ) {
+		$orphan_wrong[] = sprintf(
+			'%s/contacts=>dhl:%d,other:%d',
+			$orphan_label,
+			count( $orphan['transport']->log ),
+			$orphan['other']->contacts()
+		);
+	}
+
+	$orphan_rows[] = $orphan_label . ':evidence_yes/doors_refused_6/contacts_0';
+
+	kuka_ship_purge_actions( $orphan_id );
+	kuka_ship_destroy_order( wc_get_order( $orphan_id ) );
+}
+
+$report(
+	'SHIPPING_ORPHANED_PROTECTED_STATE_FAILS_CLOSED',
+	array() === $orphan_wrong && 3 === count( $orphan_rows ),
+	sprintf(
+		'measured:real_manager_with_two_adapters|cases:%d|doors_per_case:6|wrong:%s|rows:%s',
+		count( $orphan_rows ),
+		array() === $orphan_wrong ? 'none' : implode( '+', $orphan_wrong ),
+		implode( ',', $orphan_rows )
+	)
+);
+
+/* ========================================================================== */
+/* 55. Cleanup and verdict                                                     */
 /* ========================================================================== */
 
 $leftover = get_posts(

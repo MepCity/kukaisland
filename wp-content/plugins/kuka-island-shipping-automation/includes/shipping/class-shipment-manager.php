@@ -600,12 +600,23 @@ final class Kuka_Island_Shipping_Manager {
 			$carrier = $admitted['carrier'];
 			$state   = Kuka_Island_Shipping_Order_Store::get_state( $order );
 
-			if ( in_array( $state, Kuka_Island_Shipping_Order_Store::states_blocking_create(), true ) ) {
+			/*
+			 * DECIDED BY THE ALLOW-LIST, NOT BY A LIST OF REFUSALS. This used
+			 * to ask states_blocking_create() -- a deny-list -- and
+			 * STATE_CANCELLED was not on it. A cancelled order therefore passed
+			 * this door; see run_creation(), which is where the damage was.
+			 */
+			if ( ! in_array( $state, Kuka_Island_Shipping_Order_Store::states_allowing_create_order(), true ) ) {
 				return array(
 					'ok'      => false,
 					'state'   => $state,
-					'code'    => 'already_in_progress',
-					'message' => self::state_message( $state ),
+					// The deny-list survives only to say WHICH kind of refusal
+					// this is: something in progress at the carrier, or a state
+					// that is not a create state at all.
+					'code'    => in_array( $state, Kuka_Island_Shipping_Order_Store::states_blocking_create(), true )
+						? 'already_in_progress'
+						: 'not_creatable',
+					'message' => self::create_refusal_message( $state ),
 					'detail'  => '',
 				);
 			}
@@ -652,11 +663,14 @@ final class Kuka_Island_Shipping_Manager {
 		$shipment = $request['shipment'];
 		$state    = Kuka_Island_Shipping_Order_Store::get_state( $order );
 
-		// STATE_ABSENT_CONFIRMED means a reconciliation proved nothing exists
-		// under this reference, so a create is legitimate again.
-		if ( Kuka_Island_Shipping_Order_Store::STATE_NONE === $state
-			|| Kuka_Island_Shipping_Order_Store::STATE_BLOCKED === $state
-			|| Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED === $state ) {
+		/*
+		 * STATE_ABSENT_CONFIRMED means a reconciliation proved nothing exists
+		 * under this reference, so a create is legitimate again. The list is
+		 * Order_Store::states_allowing_create_order() and it is the same list
+		 * the door above consults -- one allow-list, asked twice, because the
+		 * state is re-read inside the lock.
+		 */
+		if ( in_array( $state, Kuka_Island_Shipping_Order_Store::states_allowing_create_order(), true ) ) {
 
 			$guarded = $this->guarded_write(
 				$order,
@@ -700,6 +714,34 @@ final class Kuka_Island_Shipping_Manager {
 				(string) $created->get( 'order_invoice_id', '' )
 			);
 			$this->note( $order, __( 'Taşıyıcıda sipariş oluşturuldu.', 'kuka-island-shipping-automation' ) . ' ' . $created->to_safe_line() );
+		}
+
+		/*
+		 * THE BARCODE STAGE IS GATED SEPARATELY, AND THIS IS WHERE THE HOLE
+		 * WAS. The old code fell through to run_barcode() unconditionally: any
+		 * state the createOrder branch above did not accept skipped the branch
+		 * and went straight to createbarcode. STATE_CANCELLED was such a state
+		 * -- it was absent from the deny-list at the door -- so an order whose
+		 * shipment had been cancelled and PROVED cancelled produced a
+		 * createbarcode against the cancelled record.
+		 *
+		 * The state is re-read, because a successful createOrder just moved it,
+		 * and only states_allowing_create_barcode() -- exactly
+		 * STATE_ORDER_CREATED -- may continue. Everything else returns without
+		 * a single external write.
+		 */
+		$state = Kuka_Island_Shipping_Order_Store::get_state( $order );
+
+		if ( ! in_array( $state, Kuka_Island_Shipping_Order_Store::states_allowing_create_barcode(), true ) ) {
+			return array(
+				'ok'      => false,
+				'state'   => $state,
+				'code'    => in_array( $state, Kuka_Island_Shipping_Order_Store::states_blocking_create(), true )
+					? 'already_in_progress'
+					: 'not_creatable',
+				'message' => self::create_refusal_message( $state ),
+				'detail'  => '',
+			);
 		}
 
 		return $this->run_barcode( $order, $carrier, $reference, $shipment );
@@ -2307,6 +2349,23 @@ final class Kuka_Island_Shipping_Manager {
 			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Bu sipariş teslim edilmiş. Yeni gönderi oluşturulmadı.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor. Yeni gönderi oluşturulmadı.', 'kuka-island-shipping-automation' ),
 			default                                                    => __( 'Bu sipariş için yeni gönderi oluşturulmadı.', 'kuka-island-shipping-automation' ),
+		};
+	}
+
+	/**
+	 * Operator-facing sentence for a state the create path refuses.
+	 *
+	 * Covers everything state_message() covers, plus the states that used to
+	 * fall through the deny-list and reach the barcode stage. STATE_CANCELLED
+	 * is the one this method exists for: a cancelled record is not a state a
+	 * shipment can be created from, and the previous version said nothing at
+	 * all about it because it never refused it.
+	 */
+	public static function create_refusal_message( string $state ): string {
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED => __( 'Bu siparişin taşıyıcı kaydı iptal edilmiş ve iptal sorguyla doğrulanmıştı. İptal edilmiş bir kayıt üzerinden gönderi ya da barkod oluşturulmaz; yeni kargo ayrı ve açık bir işlemdir.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED => __( 'Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; yeniden oluşturma açık bir işlemdir.', 'kuka-island-shipping-automation' ),
+			default => self::state_message( $state ),
 		};
 	}
 

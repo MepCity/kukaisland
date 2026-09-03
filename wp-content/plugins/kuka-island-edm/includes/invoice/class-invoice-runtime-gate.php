@@ -22,7 +22,47 @@
 
 defined( 'ABSPATH' ) || exit;
 
-final class Kuka_Island_Core_Invoice_Runtime_Gate {
+/**
+ * The one question the transmission path asks before contacting EDM.
+ *
+ * DECLARED HERE, BESIDE ITS ONLY PRODUCTION IMPLEMENTATION, on purpose: the
+ * contract and the real gate are one concept, and every `require_once` of this
+ * file already brings both -- including the activator's, which loads the gate
+ * directly and would otherwise need a second require in the right order.
+ *
+ * WHY A SEAM EXISTS AT ALL. The real gate answers from the options table, and
+ * that answer is the site's delivery state: with the EDM plugin inactive the
+ * gate is CLOSED, which is correct and must stay correct. But the offline
+ * behaviour suite has to drive the send path against a mock transport, and a
+ * closed gate refuses before the transport is ever reached -- so 21 mock-based
+ * measurements were failing for a reason that had nothing to do with what they
+ * measure.
+ *
+ * The seam does NOT loosen the production gate. Invoice_Manager defaults to the
+ * real gate, every production construction site uses that default, and the
+ * gate's own measurement constructs the manager with the default so it still
+ * proves the closed and open behaviour of the real thing. A test may hand in an
+ * explicitly open gate, and then it is the TEST that is stating the
+ * precondition, in one visible place, instead of a suite quietly writing to the
+ * site's option.
+ */
+interface Kuka_Island_Core_Invoice_Transmission_Gate {
+
+	/** Is transmission forbidden right now? */
+	public function is_closed(): bool;
+
+	/**
+	 * Operator-facing reason, safe for an order note.
+	 *
+	 * Deliberately NOT named message(): the real gate's operator sentence is a
+	 * static method with that name and PHP cannot satisfy a non-static
+	 * interface method with a static one. Two names beats a second class that
+	 * would have to keep the same sentence in step.
+	 */
+	public function closed_message(): string;
+}
+
+final class Kuka_Island_Core_Invoice_Runtime_Gate implements Kuka_Island_Core_Invoice_Transmission_Gate {
 
 	/** Autoload is off: this must never be served from a request-start snapshot. */
 	public const OPTION = 'kuka_island_edm_runtime_disabled';
@@ -72,5 +112,20 @@ final class Kuka_Island_Core_Invoice_Runtime_Gate {
 	/** Operator-facing reason, safe for an order note. */
 	public static function message(): string {
 		return __( 'EDM eklentisi devre dışı bırakıldığı için gönderim yapılmadı. Belge oluşturulmadı.', 'kuka-island-edm' );
+	}
+
+	/*
+	 * The interface, answered by the static methods above. Instance methods
+	 * rather than a second implementation: there is exactly one real gate and
+	 * exactly one place that reads the option, so the injectable form and the
+	 * static form can never disagree.
+	 */
+
+	public function is_closed(): bool {
+		return self::is_disabled();
+	}
+
+	public function closed_message(): string {
+		return self::message();
 	}
 }
