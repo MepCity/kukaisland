@@ -1404,6 +1404,51 @@ function kuka_ship_attach_sole_poller( Kuka_Island_Shipping_Manager $manager ): 
 }
 
 /**
+ * An existing published product that needs shipping, or 0.
+ *
+ * Read-only: the shop's own catalogue is used and never modified. It is needed
+ * because EDM's Internet_Sales_Details::read_shipment_facts() answers "no
+ * shipment fact" for an order with no shippable line -- correctly, since an
+ * order of downloadables never leaves -- and the bare fixture item carries no
+ * product id at all.
+ */
+function kuka_ship_shippable_product_id(): int {
+	$ids = (array) wc_get_products(
+		array(
+			'status'  => 'publish',
+			'limit'   => 25,
+			'return'  => 'ids',
+			'orderby' => 'ID',
+			'order'   => 'ASC',
+		)
+	);
+
+	foreach ( $ids as $id ) {
+		$product = wc_get_product( (int) $id );
+
+		if ( ! $product instanceof WC_Product || ! $product->needs_shipping() ) {
+			continue;
+		}
+
+		if ( ! $product->is_type( 'variable' ) ) {
+			return (int) $id;
+		}
+
+		// A variable parent cannot be an order line; its variation can, and the
+		// variation is what carries needs_shipping() on the item.
+		foreach ( (array) $product->get_children() as $child_id ) {
+			$child = wc_get_product( (int) $child_id );
+
+			if ( $child instanceof WC_Product && $child->needs_shipping() ) {
+				return (int) $child_id;
+			}
+		}
+	}
+
+	return 0;
+}
+
+/**
  * Drive an order into STATE_ORDER_CREATED the way an operator now has to.
  *
  * ONE STEP BECAME TWO, DELIBERATELY. A createbarcode that answered 400 used to
@@ -3845,6 +3890,12 @@ $pot_required = array(
 	// The create path's allow-list refusals.
 	'Bu siparişin taşıyıcı kaydı iptal edilmiş ve iptal sorguyla doğrulanmıştı. İptal edilmiş bir kayıt üzerinden gönderi ya da barkod oluşturulmaz; yeni kargo ayrı ve açık bir işlemdir.',
 	'Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; yeniden oluşturma açık bir işlemdir.',
+	// The reconciliation lock, and the poll chain that stops on a local refusal.
+	'Bu sipariş için başka bir kargo işlemi sürüyor. Mutabakat sorgusu yapılmadı.',
+	'Bu siparişin taşıyıcı kaydı iptal edilmiş ve iptal salt-okunur sorguyla doğrulanmıştı. Yeni mutabakat sorgusu yapılmadı.',
+	'Mutabakat bu referansla taşıyıcıda kayıt olmadığını daha önce kanıtladı. Yeni mutabakat sorgusu yapılmadı.',
+	'Otomatik durum sorgusu taşıyıcıya hiç gönderilmedi (%s). Deneme harcanmadı ve yeni sorgu planlanmadı; ayar düzeltildikten sonra sorgu elle başlatılabilir.',
+	'Otomatik kargo durum sorgusu yapılandırma nedeniyle gönderilemedi (%s). Deneme harcanmadı, yeni sorgu planlanmadı. Ayar düzeltildikten sonra sorgu elle başlatılabilir.',
 );
 
 $pot_required_missing = array();
@@ -5181,8 +5232,15 @@ $report(
 	&& 0 === $gate_status['adapter']->read_calls()
 	// nothing was sent, so nothing was spent
 	&& $gate_status_attempts_before === $gate_status_attempts_after
-	// read_shipment / read_order
-	&& 'blocked' === (string) $gate_recon_verdict['verdict']
+	/*
+	 * read_shipment / read_order. The refusal now names the gate that produced
+	 * it rather than the generic 'blocked': reconcile_order() takes the mutation
+	 * lock and re-asks the gate INSIDE it, so a gate that closed after the entry
+	 * check stops the operation before reconcile() is entered at all. The
+	 * property being measured is unchanged and is the important one -- zero
+	 * reads, and the state preserved, because a blocked read proves nothing.
+	 */
+	&& 'credentials_missing' === (string) $gate_recon_verdict['verdict']
 	&& 0 === $gate_recon['adapter']->read_calls()
 	&& Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $gate_recon_state
 	// the cancellation confirmation
@@ -7454,7 +7512,606 @@ $report(
 );
 
 /* ========================================================================== */
-/* 55. Cleanup and verdict                                                     */
+/* 55. The fulfilment carries the date it was fulfilled                        */
+/* ========================================================================== */
+
+/*
+ * THE GAP. sync_status() flipped the WooCommerce fulfilment to `fulfilled` and
+ * never wrote a fulfilment DATE, so get_date_fulfilled() stayed null. Nothing
+ * in the shipping module reads it -- but the EDM invoice does: the handover date
+ * on a fiscal document is exactly this value, and without it every order
+ * shipped through this module answered internet_sales_shipment_date_missing.
+ *
+ * THE TIMEZONE IS MEASURED, NOT GUESSED. Fulfillment::set_date_fulfilled()
+ * hands its input to normalize_date_to_utc(), which builds a DateTime with
+ * wp_timezone() as the fallback zone and stores the UTC equivalent. Round-
+ * tripped on this install (PHP UTC, WordPress Europe/Istanbul, +03:00):
+ *
+ *   set_date_fulfilled( '2026-09-04 12:00:00' )        -> '2026-09-04 09:00:00'
+ *   set_date_fulfilled( '2026-09-04 12:00:00+00:00' )  -> '2026-09-04 12:00:00'
+ *
+ * So a bare gmdate() string is read as SHOP-LOCAL and stored three hours early
+ * on this shop -- a silently wrong handover date on a fiscal document. The
+ * value written therefore states its own offset, and the assertion below is the
+ * discriminator: a stored value that is off by the shop's offset fails it.
+ */
+
+$fdate_scenario = kuka_ship_scenario(
+	static function ( string $method, string $url ) use ( &$fdate_code ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok( '990011223', 'BC-FDATE' );
+		}
+
+		if ( str_contains( $url, '/getshipmentstatus' ) ) {
+			// The vendor's own field name, exactly as the other status
+			// measurements in this suite script it.
+			return array(
+				'status' => 200,
+				'body'   => (string) wp_json_encode( array( 'shipmentId' => '990011223', 'shipmentStatusCode' => $fdate_code ) ),
+			);
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$fdate_code    = 1;
+$fdate_product = kuka_ship_shippable_product_id();
+
+if ( $fdate_product > 0 ) {
+	// A real shippable line, so EDM's reader has a shipment fact to report. The
+	// product itself is only referenced; nothing about it is written.
+	$fdate_order = $fdate_scenario['order'];
+
+	foreach ( $fdate_order->get_items() as $fdate_item ) {
+		$fdate_order->remove_item( $fdate_item->get_id() );
+	}
+
+	$fdate_order->add_product( wc_get_product( $fdate_product ), 1 );
+	$fdate_order->calculate_totals( false );
+	$fdate_order->save();
+}
+
+$fdate_scenario['manager']->create_shipment( $fdate_scenario['order'] );
+$fdate_id  = (int) $fdate_scenario['order']->get_id();
+$fdate_ref = (string) Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $fdate_id ) )['reference'];
+
+/** The fulfilment as a FRESH object every time, so nothing is read from memory. */
+$fdate_read = static function () use ( $fdate_id, $fdate_ref ) {
+	kuka_ship_forget_order( $fdate_id );
+	$own = Kuka_Island_Shipping_Fulfillment_Writer::find_own( wc_get_order( $fdate_id ), $fdate_ref );
+
+	return null === $own ? null : $own;
+};
+
+// (a) Before code 2: not fulfilled, no date.
+$fdate_before   = $fdate_read();
+$fdate_none     = null !== $fdate_before && ! $fdate_before->get_is_fulfilled()
+	&& '' === (string) $fdate_before->get_date_fulfilled();
+
+/*
+ * (b) Code 2, the FIRST transition into fulfilled.
+ *
+ * Driven through Fulfillment_Writer::sync_status() DIRECTLY, because that is
+ * the method under test and its report says who wrote the date. Going only
+ * through query_status() would leave the question open: WooCommerce's own
+ * FulfillmentsDataStore also fills _date_fulfilled on a fulfilled save, so a
+ * date appearing is not by itself evidence that this module produced it.
+ * 'date_fulfilled:set' is.
+ */
+$fdate_code = Kuka_Island_Shipping_Status::CODE_IN_TRANSFER;
+$fdate_at   = time();
+$fdate_sync = Kuka_Island_Shipping_Fulfillment_Writer::sync_status(
+	wc_get_order( $fdate_id ),
+	$fdate_ref,
+	Kuka_Island_Shipping_Status::CODE_IN_TRANSFER
+);
+
+// And the integrated path runs too, so the module's own poll is measured.
+$fdate_scenario['manager']->query_status( wc_get_order( $fdate_id ) );
+
+$fdate_first     = $fdate_read();
+$fdate_stored    = null === $fdate_first ? '' : (string) $fdate_first->get_date_fulfilled();
+$fdate_fulfilled = null !== $fdate_first && $fdate_first->get_is_fulfilled();
+
+/*
+ * The stored value is UTC 'Y-m-d H:i:s'. Parsed strictly as UTC and compared
+ * against the moment the transition happened: a bare-gmdate write would land
+ * the shop's offset away and fail here.
+ */
+$fdate_parsed = '' === $fdate_stored
+	? null
+	: DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $fdate_stored, new DateTimeZone( 'UTC' ) );
+$fdate_skew   = $fdate_parsed instanceof DateTimeImmutable ? abs( $fdate_parsed->getTimestamp() - $fdate_at ) : -1;
+$fdate_exact  = $fdate_parsed instanceof DateTimeImmutable && $fdate_parsed->format( 'Y-m-d H:i:s' ) === $fdate_stored;
+
+// (c) Codes 3, 4, 5 and a repeated poll: the value must not move by one byte.
+$fdate_moves = array();
+foreach ( array( 3, 4, 5, 5 ) as $fdate_later ) {
+	$fdate_code = $fdate_later;
+	$fdate_scenario['manager']->query_status( wc_get_order( $fdate_id ) );
+
+	$fdate_now = $fdate_read();
+	$fdate_val = null === $fdate_now ? '' : (string) $fdate_now->get_date_fulfilled();
+
+	if ( $fdate_val !== $fdate_stored ) {
+		$fdate_moves[] = 'code' . (string) $fdate_later . '=>' . $fdate_val;
+	}
+}
+
+/*
+ * And the value EDM will put on the document. read_shipment_facts() is the
+ * production reader; the day it derives has to be the moment expressed in the
+ * SHOP's timezone, which right now is not the same calendar day as UTC.
+ */
+$fdate_edm_ready = class_exists( 'Kuka_Island_Core_Internet_Sales_Details' );
+
+if ( ! $fdate_edm_ready ) {
+	$fdate_edm_loader = dirname( __FILE__ ) . '/lib-edm-module-loader.php';
+
+	if ( is_readable( $fdate_edm_loader ) ) {
+		require_once $fdate_edm_loader;
+		$fdate_edm_module = kuka_edm_load_module();
+		$fdate_edm_ready  = (bool) $fdate_edm_module['ok'] && class_exists( 'Kuka_Island_Core_Internet_Sales_Details' );
+	}
+}
+
+$fdate_facts      = array();
+$fdate_edm_day    = '';
+$fdate_expect_day = '';
+
+if ( $fdate_edm_ready ) {
+	kuka_ship_forget_order( $fdate_id );
+	$fdate_facts   = Kuka_Island_Core_Internet_Sales_Details::read_shipment_facts( wc_get_order( $fdate_id ) );
+	$fdate_edm_raw = (string) ( $fdate_facts['shipment_date'] ?? '' );
+	$fdate_edm_dt  = '' === $fdate_edm_raw
+		? null
+		: Kuka_Island_Core_Internet_Sales_Details::parse_fulfillment_datetime( $fdate_edm_raw );
+
+	if ( $fdate_edm_dt instanceof DateTimeImmutable ) {
+		$fdate_edm_day = $fdate_edm_dt->setTimezone( wp_timezone() )->format( 'Y-m-d' );
+	}
+
+	if ( $fdate_parsed instanceof DateTimeImmutable ) {
+		$fdate_expect_day = $fdate_parsed->setTimezone( wp_timezone() )->format( 'Y-m-d' );
+	}
+}
+
+$report(
+	'SHIPPING_FULFILLMENT_DATE_ON_FIRST_FULFILL',
+	$fdate_none
+		// This module wrote it, in its own code, on the first transition.
+		&& true === (bool) $fdate_sync['ok']
+		&& 'fulfilled' === (string) $fdate_sync['action']
+		&& 'set' === (string) $fdate_sync['date_fulfilled']
+		&& $fdate_fulfilled
+		&& '' !== $fdate_stored
+		&& $fdate_exact
+		// Within two minutes of the transition, so the shop's offset cannot hide.
+		&& $fdate_skew >= 0 && $fdate_skew <= 120
+		&& array() === $fdate_moves
+		&& $fdate_edm_ready
+		&& $fdate_product > 0
+		&& '' !== $fdate_edm_day
+		&& $fdate_edm_day === $fdate_expect_day
+		&& $fdate_edm_day === ( new DateTimeImmutable( '@' . (string) $fdate_at ) )->setTimezone( wp_timezone() )->format( 'Y-m-d' ),
+	sprintf(
+		'measured:real_poll_and_fresh_fulfillment_objects|before_code_2:%s|writer_action:%s|writer_date:%s|fulfilled_after_code_2:%s|date_stored:%s|utc_format_exact:%s|skew_seconds:%d|later_codes_3_4_5_and_repeat:%s|edm_reader:%s|shippable_line:%s|edm_local_day:%s|shop_day_now:%s',
+		$fdate_none ? 'no_date' : 'HAD_DATE_OR_FULFILLED',
+		(string) $fdate_sync['action'],
+		(string) $fdate_sync['date_fulfilled'],
+		$fdate_fulfilled ? 'yes' : 'NO',
+		'' === $fdate_stored ? 'ABSENT' : 'present',
+		$fdate_exact ? 'yes' : 'NO',
+		$fdate_skew,
+		array() === $fdate_moves ? 'byte_identical' : implode( '+', $fdate_moves ),
+		$fdate_edm_ready ? 'loaded' : 'UNAVAILABLE',
+		$fdate_product > 0 ? 'yes' : 'NO',
+		'' === $fdate_edm_day ? 'MISSING' : $fdate_edm_day,
+		( new DateTimeImmutable( '@' . (string) $fdate_at ) )->setTimezone( wp_timezone() )->format( 'Y-m-d' )
+	)
+);
+
+kuka_ship_purge_actions( $fdate_id );
+kuka_ship_destroy_order( wc_get_order( $fdate_id ) );
+
+/* ========================================================================== */
+/* 56. Reconciliation takes the same mutation lock, with zero wait             */
+/* ========================================================================== */
+
+/*
+ * THE GAP. reconcile_order() is an external entry point -- an operator button
+ * -- and it was the only mutation-adjacent door that took NO lock. It read the
+ * provider, the state, the pending intent and the reference from whatever
+ * object the caller happened to hold, so it could run while a create was still
+ * in flight and settle an intent belonging to a write that had not finished.
+ * Two operators pressing it at once could each read the same open intent.
+ *
+ * Measured with a GENUINE second MySQL session, because a MySQL advisory lock
+ * is held per connection: two sequential calls on one connection prove nothing.
+ */
+
+$rlock_session = kuka_ship_second_session();
+$rlock_db      = $rlock_session['db'];
+
+$rlock_adapter = new Kuka_Shipping_Fake_Carrier();
+$rlock_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $rlock_adapter ) ) );
+$rlock_order   = kuka_ship_fixture_order();
+$rlock_id      = (int) $rlock_order->get_id();
+
+// An open CREATE intent, written by the production method that writes them.
+$rlock_begin = Kuka_Island_Shipping_Order_Store::begin_mutation(
+	wc_get_order( $rlock_id ),
+	array(
+		'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_CREATE,
+		'operation' => 'create_order',
+		'target'    => 'order',
+		'provider'  => Kuka_Shipping_Fake_Carrier::KEY,
+		'reference' => Kuka_Island_Shipping_Order_Store::prepare_reference( wc_get_order( $rlock_id ) ),
+	)
+);
+
+kuka_ship_forget_order( $rlock_id );
+$rlock_adapter->reset_counters();
+
+/** The four decisions, as the DATABASE holds them. */
+$rlock_snapshot = static function () use ( $rlock_db, $rlock_id ): string {
+	return implode(
+		'|',
+		array(
+			kuka_ship_meta_over( $rlock_db, $rlock_id, Kuka_Island_Shipping_Order_Store::META_STATE ),
+			kuka_ship_meta_over( $rlock_db, $rlock_id, Kuka_Island_Shipping_Order_Store::META_PROVIDER ),
+			kuka_ship_meta_over( $rlock_db, $rlock_id, Kuka_Island_Shipping_Order_Store::META_REFERENCE ),
+			kuka_ship_meta_over( $rlock_db, $rlock_id, Kuka_Island_Shipping_Order_Store::META_PENDING_MUTATION ),
+		)
+	);
+};
+
+$rlock_before = $rlock_snapshot();
+
+// Somebody else holds the order's mutation lock: a create is in flight.
+$rlock_held      = $rlock_session['separate'] ? kuka_ship_hold_mutation_lock( $rlock_db, $rlock_id ) : false;
+$rlock_contended = $rlock_held
+	? $rlock_manager->reconcile_order( wc_get_order( $rlock_id ) )
+	: array( 'verdict' => 'NOT_RUN' );
+
+$rlock_reads_while_held  = $rlock_adapter->read_calls();
+$rlock_writes_while_held = $rlock_adapter->write_calls();
+$rlock_during            = $rlock_snapshot();
+
+if ( $rlock_held ) {
+	kuka_ship_release_mutation_lock( $rlock_db, $rlock_id );
+}
+
+/*
+ * The lock is free again. The reconciliation now runs and settles the intent
+ * from the FRESH state -- the adapter answers not_found on both reads, which is
+ * the only proof of absence this integration accepts.
+ */
+$rlock_after_verdict = $rlock_manager->reconcile_order( wc_get_order( $rlock_id ) );
+$rlock_after_state   = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $rlock_id ) );
+$rlock_after_intent  = Kuka_Island_Shipping_Order_Store::pending_mutation( wc_get_order( $rlock_id ) );
+$rlock_reads_after   = $rlock_adapter->read_calls();
+
+kuka_ship_purge_actions( $rlock_id );
+kuka_ship_destroy_order( wc_get_order( $rlock_id ) );
+
+/* --- and one intent cannot be closed twice by two concurrent presses ----- */
+
+$rtwice          = kuka_ship_cancel_fixture();
+$rtwice_id       = (int) $rtwice['order']->get_id();
+$rtwice['adapter']->results['read_shipment'] = Kuka_Island_Shipping_Result::transient( 'get_shipment', 'timeout', 0 );
+$rtwice['manager']->cancel( wc_get_order( $rtwice_id ) );
+$rtwice['adapter']->results = array();
+$rtwice['adapter']->reset_counters();
+
+// Press one: the read proves the shipment is gone, so the intent closes.
+$rtwice_first  = $rtwice['manager']->reconcile_order( wc_get_order( $rtwice_id ) );
+$rtwice_state  = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $rtwice_id ) );
+$rtwice_intent = Kuka_Island_Shipping_Order_Store::pending_mutation( wc_get_order( $rtwice_id ) );
+
+// Press two, arriving while a third party holds the lock: refused, no reads.
+$rtwice_held     = $rlock_session['separate'] ? kuka_ship_hold_mutation_lock( $rlock_db, $rtwice_id ) : false;
+$rtwice_reads_a  = $rtwice['adapter']->read_calls();
+$rtwice_second   = $rtwice_held
+	? $rtwice['manager']->reconcile_order( wc_get_order( $rtwice_id ) )
+	: array( 'verdict' => 'NOT_RUN' );
+$rtwice_reads_b  = $rtwice['adapter']->read_calls();
+
+if ( $rtwice_held ) {
+	kuka_ship_release_mutation_lock( $rlock_db, $rtwice_id );
+}
+
+// And with the lock free, a second press still cannot re-close a closed intent.
+$rtwice_third = $rtwice['manager']->reconcile_order( wc_get_order( $rtwice_id ) );
+
+$report(
+	'SHIPPING_RECONCILE_TAKES_THE_MUTATION_LOCK',
+	$rlock_session['separate']
+		&& true === (bool) $rlock_begin['ok']
+		&& $rlock_held
+		// Refused, with zero wait and zero carrier contact.
+		&& 'lock_contended' === (string) $rlock_contended['verdict']
+		&& 0 === $rlock_reads_while_held
+		&& 0 === $rlock_writes_while_held
+		// Not one byte of the four decisions moved.
+		&& $rlock_during === $rlock_before
+		// With the lock free it runs, from the fresh state, and settles.
+		&& 'absent_confirmed' === (string) $rlock_after_verdict['verdict']
+		&& Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED === $rlock_after_state
+		&& array() === $rlock_after_intent
+		&& 2 === $rlock_reads_after
+		&& 0 === $rlock_adapter->write_calls()
+		// One intent, closed once.
+		&& 'cancelled' === (string) $rtwice_first['verdict']
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $rtwice_state
+		&& array() === $rtwice_intent
+		&& $rtwice_held
+		&& 'lock_contended' === (string) $rtwice_second['verdict']
+		&& $rtwice_reads_a === $rtwice_reads_b
+		// A conclusion a read already reached is not re-asked, and a closed
+		// intent cannot be closed a second time.
+		&& 'already_settled' === (string) $rtwice_third['verdict'],
+	sprintf(
+		'measured:second_mysql_session|separate:%s|contended_verdict:%s|reads_while_held:%d|writes_while_held:%d|decisions_byte_identical:%s|after_release_verdict:%s|state:%s|intent:%s|reconcile_reads:%d|concurrent_second_press:%s|reads_added_by_it:%d|third_press:%s',
+		$rlock_session['separate'] ? 'yes' : 'NO',
+		(string) $rlock_contended['verdict'],
+		$rlock_reads_while_held,
+		$rlock_writes_while_held,
+		$rlock_during === $rlock_before ? 'yes' : 'NO',
+		(string) $rlock_after_verdict['verdict'],
+		$rlock_after_state,
+		array() === $rlock_after_intent ? 'cleared' : 'STILL_SET',
+		$rlock_reads_after,
+		(string) $rtwice_second['verdict'],
+		$rtwice_reads_b - $rtwice_reads_a,
+		(string) $rtwice_third['verdict']
+	)
+);
+
+kuka_ship_purge_actions( $rtwice_id );
+kuka_ship_destroy_order( wc_get_order( $rtwice_id ) );
+
+/* ========================================================================== */
+/* 57. A local refusal ends the poll chain instead of booking 14 days of it    */
+/* ========================================================================== */
+
+/*
+ * THE GAP. query_status() can refuse before the carrier is touched at all --
+ * credentials missing, a closed runtime gate, an unregistered carrier, a
+ * configuration value nobody understood. Those are not carrier attempts, so
+ * they correctly spend no attempt from the budget. But the poller decided what
+ * to do next from "ok:false plus an unknown lifecycle", which is the
+ * still-moving branch, so it booked another query. With the attempt counter
+ * standing still, MAX_ATTEMPTS never arrived and the only thing that ended the
+ * chain was MAX_ELAPSED: roughly fourteen days of scheduler work for an order
+ * whose carrier was never contacted once.
+ */
+
+putenv( 'KUKA_SHIPPING_AUTOMATION=1' );
+
+$lrefuse            = kuka_ship_fake_shipment();
+$lrefuse_id         = (int) $lrefuse['order']->get_id();
+$lrefuse_notes_at_0 = count( (array) wc_get_order_notes( array( 'order_id' => $lrefuse_id, 'limit' => 200 ) ) );
+
+// The gate closes: credentials are gone. Nothing may reach the carrier.
+$lrefuse['adapter']->readiness = array(
+	'ready'        => false,
+	'gaps'         => array( 'KUKA_DHL_CLIENT_ID' ),
+	'environment'  => 'test',
+	'live_blocked' => false,
+);
+$lrefuse['adapter']->reset_counters();
+
+kuka_ship_attach_sole_poller( $lrefuse['manager'] );
+$lrefuse_booked = Kuka_Island_Shipping_Status_Poller::schedule_query( $lrefuse_id );
+
+// Three runner turns, so note and history growth can be counted.
+$lrefuse_run = kuka_ship_drive_status_chain( $lrefuse_id, 5 );
+
+$lrefuse_worker  = new Kuka_Island_Shipping_Status_Poller( $lrefuse['manager'] );
+$lrefuse_outcome = $lrefuse_worker->run( $lrefuse_id );
+$lrefuse_worker->run( $lrefuse_id );
+$lrefuse_worker->run( $lrefuse_id );
+
+kuka_ship_forget_order( $lrefuse_id );
+$lrefuse_data    = Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $lrefuse_id ) );
+$lrefuse_pending = Kuka_Island_Shipping_Status_Poller::has_pending_query( $lrefuse_id );
+$lrefuse_notes   = count( (array) wc_get_order_notes( array( 'order_id' => $lrefuse_id, 'limit' => 200 ) ) ) - $lrefuse_notes_at_0;
+
+$lrefuse_history = 0;
+foreach ( (array) $lrefuse_data['history'] as $lrefuse_entry ) {
+	if ( str_contains( (string) ( $lrefuse_entry['message'] ?? '' ), 'kimlik' )
+		|| str_contains( (string) ( $lrefuse_entry['message'] ?? '' ), 'yapılandırma' ) ) {
+		++$lrefuse_history;
+	}
+}
+
+$lrefuse_removed = kuka_ship_purge_actions( $lrefuse_id );
+
+/* --- the control: a REAL transient network result still spends an attempt - */
+
+$ltransient    = kuka_ship_fake_shipment();
+$ltransient_id = (int) $ltransient['order']->get_id();
+$ltransient['adapter']->results['read_shipment_status'] = Kuka_Island_Shipping_Result::transient( 'get_shipment_status', 'timeout', 0 );
+$ltransient['adapter']->reset_counters();
+
+kuka_ship_attach_sole_poller( $ltransient['manager'] );
+Kuka_Island_Shipping_Status_Poller::schedule_query( $ltransient_id );
+$ltransient_run = kuka_ship_drive_status_chain( $ltransient_id, 1 );
+
+kuka_ship_forget_order( $ltransient_id );
+$ltransient_attempts = Kuka_Island_Shipping_Order_Store::query_attempts( wc_get_order( $ltransient_id ) );
+$ltransient_pending  = Kuka_Island_Shipping_Status_Poller::has_pending_query( $ltransient_id );
+$ltransient_reads    = $ltransient['adapter']->count_for( 'read_shipment_status' );
+$ltransient_removed  = kuka_ship_purge_actions( $ltransient_id );
+
+putenv( 'KUKA_SHIPPING_AUTOMATION' );
+
+$report(
+	'SHIPPING_LOCAL_REFUSAL_ENDS_THE_POLL_CHAIN',
+	in_array( $lrefuse_booked, array( Kuka_Island_Shipping_Status_Poller::SCHEDULE_CREATED, Kuka_Island_Shipping_Status_Poller::SCHEDULE_ALREADY_PENDING ), true )
+		// The carrier was never contacted, so no attempt was spent.
+		&& 0 === $lrefuse['adapter']->count_for( 'read_shipment_status' )
+		&& 0 === (int) $lrefuse_data['query_attempts']
+		// And no follow-up was booked: the chain ends here, not in 14 days.
+		&& ! $lrefuse_pending
+		&& 1 === count( $lrefuse_run['processed'] )
+		&& str_starts_with( (string) $lrefuse_outcome, 'stop:' )
+		// The operator can see WHY, once, however many turns run.
+		&& 'credentials_missing' === (string) $lrefuse_data['last_error']
+		&& $lrefuse_notes <= 1
+		&& $lrefuse_history <= 1
+		// The control: a real transient answer still costs an attempt and still
+		// keeps the bounded retry chain.
+		&& 1 === $ltransient_reads
+		&& 1 === $ltransient_attempts
+		&& $ltransient_pending
+		&& 1 === count( $ltransient_run['processed'] ),
+	sprintf(
+		'measured:action_scheduler_runner|local_refusal:carrier_reads:%d|attempts:%d|follow_up_booked:%s|runner_turns:%d|worker_outcome:%s|last_error:%s|notes_added_by_4_turns:%d|history_entries:%d|actions_removed:%d'
+			. '||transient_control:reads:%d|attempts:%d|follow_up_booked:%s|actions_removed:%d',
+		$lrefuse['adapter']->count_for( 'read_shipment_status' ),
+		(int) $lrefuse_data['query_attempts'],
+		$lrefuse_pending ? 'YES' : 'no',
+		count( $lrefuse_run['processed'] ),
+		(string) $lrefuse_outcome,
+		'' === (string) $lrefuse_data['last_error'] ? 'none' : (string) $lrefuse_data['last_error'],
+		$lrefuse_notes,
+		$lrefuse_history,
+		$lrefuse_removed,
+		$ltransient_reads,
+		$ltransient_attempts,
+		$ltransient_pending ? 'yes' : 'NO',
+		$ltransient_removed
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $lrefuse_id ) );
+kuka_ship_destroy_order( wc_get_order( $ltransient_id ) );
+
+/* ========================================================================== */
+/* 58. A shipment adopted by reconciliation has a start time                   */
+/* ========================================================================== */
+
+/*
+ * THE GAP. META_CREATED_AT was written only by save_order_created(), which runs
+ * on a confirmed createOrder. A reconciliation that finds a SHIPMENT under the
+ * reference calls save_shipment_created() directly, with no createOrder behind
+ * it in this life of the order -- so created_at stayed 0. The poller computes
+ * elapsed as time() - created_at, and with 0 that is every second since 1970:
+ * the very first turn exceeded MAX_ELAPSED and the chain gave up before it had
+ * read anything. The parcel existed at the carrier and nothing followed it.
+ */
+
+putenv( 'KUKA_SHIPPING_AUTOMATION=1' );
+
+$adopt_adapter = new Kuka_Shipping_Fake_Carrier();
+$adopt_adapter->results['read_shipment'] = Kuka_Island_Shipping_Result::success(
+	'get_shipment',
+	array( 'shipment_id' => 'ADOPTED-1', 'exists' => true )
+);
+$adopt_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $adopt_adapter ) ) );
+$adopt_order   = kuka_ship_fixture_order();
+$adopt_id      = (int) $adopt_order->get_id();
+
+/*
+ * The order the reconciliation meets: an owner and a reference, an open create
+ * intent, and NOTHING confirmed -- exactly what a createOrder that never came
+ * back leaves behind.
+ */
+Kuka_Island_Shipping_Order_Store::begin_mutation(
+	wc_get_order( $adopt_id ),
+	array(
+		'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_CREATE,
+		'operation' => 'create_order',
+		'target'    => 'order',
+		'provider'  => Kuka_Shipping_Fake_Carrier::KEY,
+		'reference' => Kuka_Island_Shipping_Order_Store::prepare_reference( wc_get_order( $adopt_id ) ),
+	)
+);
+
+kuka_ship_forget_order( $adopt_id );
+$adopt_created_before = (int) Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $adopt_id ) )['created_at'];
+
+$adopt_verdict = $adopt_manager->reconcile_order( wc_get_order( $adopt_id ) );
+
+kuka_ship_forget_order( $adopt_id );
+$adopt_data    = Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $adopt_id ) );
+$adopt_created = (int) $adopt_data['created_at'];
+
+// The first poll must NOT be the last one.
+kuka_ship_attach_sole_poller( $adopt_manager );
+$adopt_decision = Kuka_Island_Shipping_Status_Poller::decide(
+	Kuka_Island_Shipping_Status::LIFECYCLE_IN_PROGRESS,
+	0,
+	time() - $adopt_created
+);
+$adopt_run     = kuka_ship_drive_status_chain( $adopt_id, 1 );
+$adopt_pending = Kuka_Island_Shipping_Status_Poller::has_pending_query( $adopt_id );
+$adopt_removed = kuka_ship_purge_actions( $adopt_id );
+
+// And an existing created_at is never moved.
+$adopt_keep = kuka_ship_fixture_order();
+$adopt_keep_id = (int) $adopt_keep->get_id();
+$adopt_keep->update_meta_data( Kuka_Island_Shipping_Order_Store::META_CREATED_AT, 1700000000 );
+$adopt_keep->save_meta_data();
+Kuka_Island_Shipping_Order_Store::save_shipment_created( wc_get_order( $adopt_keep_id ), 'KEEP-1', array( 'BC-KEEP' ) );
+kuka_ship_forget_order( $adopt_keep_id );
+$adopt_kept = (int) Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $adopt_keep_id ) )['created_at'];
+
+putenv( 'KUKA_SHIPPING_AUTOMATION' );
+
+$report(
+	'SHIPPING_ADOPTED_SHIPMENT_HAS_A_START_TIME',
+	0 === $adopt_created_before
+		&& 'shipment_present' === (string) $adopt_verdict['verdict']
+		&& Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === (string) $adopt_data['state']
+		// Read back from a fresh order object, and it is a real moment.
+		&& $adopt_created > 0
+		&& abs( $adopt_created - time() ) <= 120
+		// So the first poll reschedules instead of giving up.
+		&& 'reschedule' === (string) $adopt_decision['action']
+		&& 'still_moving' === (string) $adopt_decision['reason']
+		&& 1 === count( $adopt_run['processed'] )
+		&& $adopt_pending
+		// An existing value is left exactly as it was.
+		&& 1700000000 === $adopt_kept,
+	sprintf(
+		'measured:real_reconciliation_and_action_scheduler|created_at_before:%d|verdict:%s|state:%s|created_at_after:%d|skew_seconds:%d|first_poll_decision:%s/%s|runner_turns:%d|follow_up_booked:%s|existing_value_kept:%d|actions_removed:%d',
+		$adopt_created_before,
+		(string) $adopt_verdict['verdict'],
+		(string) $adopt_data['state'],
+		$adopt_created,
+		$adopt_created > 0 ? abs( $adopt_created - time() ) : -1,
+		(string) $adopt_decision['action'],
+		(string) $adopt_decision['reason'],
+		count( $adopt_run['processed'] ),
+		$adopt_pending ? 'yes' : 'NO',
+		$adopt_kept,
+		$adopt_removed
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $adopt_id ) );
+kuka_ship_destroy_order( wc_get_order( $adopt_keep_id ) );
+
+if ( $rlock_db instanceof wpdb ) {
+	$rlock_db->close();
+}
+
+/* ========================================================================== */
+/* 59. Cleanup and verdict                                                     */
 /* ========================================================================== */
 
 $leftover = get_posts(

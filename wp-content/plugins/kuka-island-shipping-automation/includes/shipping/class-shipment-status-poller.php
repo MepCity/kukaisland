@@ -282,6 +282,59 @@ final class Kuka_Island_Shipping_Status_Poller {
 		$queried = $this->manager->query_status( $order );
 
 		/*
+		 * A REFUSAL THAT NEVER REACHED THE CARRIER ENDS THE CHAIN.
+		 *
+		 * query_status() can refuse before the network entirely: credentials
+		 * missing, the runtime gate closed, the carrier not registered, a
+		 * configuration value nobody understood, no reference on the order.
+		 * Those are not carrier attempts, so they correctly spend nothing from
+		 * the attempt budget -- and that is exactly what made this a trap. The
+		 * decision below was taken from "ok:false plus an unknown lifecycle",
+		 * which is the still-moving branch, so another query was booked; with
+		 * the counter standing still MAX_ATTEMPTS never arrived, and the only
+		 * thing that ended the chain was MAX_ELAPSED. Roughly fourteen days of
+		 * scheduler work, and a history entry and an order note on every turn,
+		 * for an order whose carrier was never contacted once.
+		 *
+		 * The fact is asked for rather than guessed from a list of codes: a
+		 * code list would go stale the first time a new refusal was added.
+		 *
+		 * Nothing here is retried on a timer. The reason is recorded ONCE -- the
+		 * order screen shows it and says the manual query is still available --
+		 * and an operator who fixes the credentials or the setting presses the
+		 * button themselves. That press goes through query_status() exactly as
+		 * before; this branch closes no door.
+		 */
+		if ( false === ( $queried['contacted'] ?? true ) ) {
+			$code = (string) ( $queried['code'] ?? 'shipping_local_refusal' );
+
+			$recorded = Kuka_Island_Shipping_Order_Store::record_local_refusal(
+				$order,
+				'poll',
+				$code,
+				sprintf(
+					/* translators: %s: allow-listed refusal code. */
+					__( 'Otomatik durum sorgusu taşıyıcıya hiç gönderilmedi (%s). Deneme harcanmadı ve yeni sorgu planlanmadı; ayar düzeltildikten sonra sorgu elle başlatılabilir.', 'kuka-island-shipping-automation' ),
+					$code
+				)
+			);
+
+			if ( $recorded ) {
+				// The first occurrence only. A wall this module meets on every
+				// turn is one fact, not one note per turn.
+				$order->add_order_note(
+					sprintf(
+						/* translators: %s: allow-listed refusal code. */
+						__( 'Otomatik kargo durum sorgusu yapılandırma nedeniyle gönderilemedi (%s). Deneme harcanmadı, yeni sorgu planlanmadı. Ayar düzeltildikten sonra sorgu elle başlatılabilir.', 'kuka-island-shipping-automation' ),
+						$code
+					)
+				);
+			}
+
+			return 'stop:local_refusal:' . $code;
+		}
+
+		/*
 		 * The attempt number comes back FROM the query, which is the only thing
 		 * that knows a request was issued. The fallback re-reads the persisted
 		 * counter rather than computing one, so even a caller that returned no

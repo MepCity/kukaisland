@@ -563,9 +563,9 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 
 ---
 
-## 15.1 Kargo otomasyonu — altı turda öğrenilenler
+## 15.1 Kargo otomasyonu — yedi turda öğrenilenler
 
-EDM gibi, kargo da **ayrı** bir eklenti. **Altı** bağımsız düzeltme turu geçti
+EDM gibi, kargo da **ayrı** bir eklenti. **Yedi** bağımsız düzeltme turu geçti
 ve her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu sıralamanın kendisi
 ders: her tur bir önceki turun "tamam" dediği yeri ölçtü.
 
@@ -618,7 +618,19 @@ güncel varsayılan taşıyıcısına düşüyordu. Ve kanonik doğrulamanın ke
 çalışmıyordu: EDM pasifken gerçek `make verify` exit 2 veriyordu. Bkz.
 K-37…K-39.
 
-### Yedi tekrarlayan ders
+**Tur 7 — zaman, kilit ve boş zincir.** Dört kusur, hiçbiri "yanlış cevap"
+değil, hepsi "hiç sorulmamış soru". Teslim tarihini modül değil WooCommerce'in
+data store'u yazıyordu — değer doğruydu, fakat mali bir belgenin teslim tarihi
+yazılı olmayan bir vendor yan etkisine bağlıydı. `reconcile_order()` kilit
+almayan tek dış kapıydı ve uçuştaki bir yazmanın intent'ini kapatabiliyordu.
+Taşıyıcıya hiç ulaşmayan bir ret — kimlik eksik, kapı kapalı — deneme
+harcamadığı için `MAX_ATTEMPTS`'a hiç varmıyor ve zinciri yalnız `MAX_ELAPSED`
+bitiriyordu: yaklaşık on dört günlük gereksiz scheduler işi, her turunda bir not
+ve bir geçmiş kaydıyla. Ve mutabakatla benimsenen bir gönderinin `created_at`
+alanı 0 kalıyordu, yani geçen süre 1970'ten beri sayılıyor ve ilk poll turu tek
+okuma yapmadan vazgeçiyordu. Bkz. K-40…K-43.
+
+### Dokuz tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"
    demesi, iptalin uygulandığını söylemez. Bir yazma taşıyıcıya ulaştıysa
@@ -651,7 +663,16 @@ K-37…K-39.
    durumu sessizce içeri alır. Bu modülde iki kez oldu — `cancelled` create
    kapısında, iki korumalı durum sahiplik kanıtında — ve ikisinde de eksik olan
    şey yeni eklenmiş bir durumdu (K-37, K-38).
-7. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
+7. **Değerin doğru olması, onu senin ürettiğin anlamına gelmez.** Fulfillment
+   teslim tarihi bu kurulumda hep doğru çıkıyordu — çünkü WooCommerce'in data
+   store'u dolduruyordu, hiçbir yerde yazılı olmayan bir yan etkiyle. Bir
+   ölçüm "alan dolu mu" diye sorarsa böyle bir bağımlılığı hiç görmez; "bunu
+   kim yazdı" diye sorması gerekir (K-40).
+8. **Deneme harcamayan bir başarısızlık, sonsuz bir zincir demektir.** Taşıyıcıya
+   ulaşmayan ret bütçeden düşmemelidir — bu doğrudur — ama o zaman zinciri
+   bitiren şey de kalmaz. Bütçeyle sınırlanmayan her tekrar için ayrı ve açık
+   bir durma koşulu gerekir (K-42).
+9. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
    `uncertain` bir `Result` bile koda geri dönmüş demektir: kayıt tutabilecek
    bir kod yolu çalıştı. Çökme öyle değildir. Bu yüzden korumanın tamamı
    **istek gitmeden önce diske yazılmış** olana dayanır, ve ölçüm de bunu

@@ -189,14 +189,15 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 	 * @param WC_Order $order     Order.
 	 * @param string   $reference Carrier reference.
 	 * @param mixed    $raw_code  Status value exactly as it arrived.
-	 * @return array{ok: bool, action: string, reason: string}
+	 * @return array{ok: bool, action: string, reason: string, date_fulfilled: string}
 	 */
 	public static function sync_status( WC_Order $order, string $reference, $raw_code ): array {
 		if ( ! self::api_available() ) {
 			return array(
-				'ok'     => false,
-				'action' => 'none',
-				'reason' => 'fulfillments_api_unavailable',
+				'ok'             => false,
+				'action'         => 'none',
+				'reason'         => 'fulfillments_api_unavailable',
+				'date_fulfilled' => 'unknown',
 			);
 		}
 
@@ -204,9 +205,10 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 
 		if ( null === $fulfillment ) {
 			return array(
-				'ok'     => false,
-				'action' => 'none',
-				'reason' => 'own_fulfillment_absent',
+				'ok'             => false,
+				'action'         => 'none',
+				'reason'         => 'own_fulfillment_absent',
+				'date_fulfilled' => 'unknown',
 			);
 		}
 
@@ -217,9 +219,10 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 		// is left exactly as it is.
 		if ( Kuka_Island_Shipping_Status::LIFECYCLE_MANUAL_REVIEW === $lifecycle ) {
 			return array(
-				'ok'     => true,
-				'action' => 'left_for_manual_review',
-				'reason' => '',
+				'ok'             => true,
+				'action'         => 'left_for_manual_review',
+				'reason'         => '',
+				'date_fulfilled' => 'untouched',
 			);
 		}
 
@@ -227,18 +230,57 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 
 		if ( ! $should_be_fulfilled ) {
 			return array(
-				'ok'     => true,
-				'action' => 'no_change',
-				'reason' => '',
+				'ok'             => true,
+				'action'         => 'no_change',
+				'reason'         => '',
+				'date_fulfilled' => 'untouched',
 			);
 		}
 
 		try {
-			$changed = false;
+			$changed   = false;
+			$date_note = 'present';
 
 			if ( ! $fulfillment->get_is_fulfilled() ) {
 				$fulfillment->set_status( 'fulfilled' );
 				$changed = true;
+			}
+
+			/*
+			 * THE HANDOVER DATE, WRITTEN BY THIS MODULE RATHER THAN INHERITED.
+			 *
+			 * WooCommerce 11.0.1's FulfillmentsDataStore does fill _date_fulfilled
+			 * on save when a fulfilment is fulfilled and the date is empty, so on
+			 * this version the value appears either way. That is a vendor side
+			 * effect this module was relying on WITHOUT stating it: nothing here
+			 * said the date mattered, nothing measured it, and the value it ends
+			 * up with is the handover date on a fiscal document -- EDM's
+			 * Internet_Sales_Details reads exactly this field and refuses the
+			 * document with internet_sales_shipment_date_missing without it.
+			 * A vendor change would have moved fiscal dates with no local test
+			 * failing.
+			 *
+			 * THE TIMEZONE IS MEASURED, NOT GUESSED. set_date_fulfilled() hands
+			 * its input to normalize_date_to_utc(), which builds a DateTime with
+			 * wp_timezone() as the FALLBACK zone and stores the UTC equivalent.
+			 * Round-tripped on this install (PHP UTC, WordPress Europe/Istanbul):
+			 *
+			 *   '2026-09-04 12:00:00'        ->  '2026-09-04 09:00:00'
+			 *   '2026-09-04 12:00:00+00:00'  ->  '2026-09-04 12:00:00'
+			 *
+			 * So a bare gmdate() string is read as SHOP-LOCAL and stored three
+			 * hours early here -- a silently wrong date on a fiscal document.
+			 * The value below states its own offset, so the shop's zone cannot
+			 * change what instant it means.
+			 *
+			 * Only when empty. Codes 3, 4 and 5 and every repeated poll come
+			 * through this method again, and the date they must not touch is the
+			 * moment the parcel actually left.
+			 */
+			if ( '' === (string) ( $fulfillment->get_date_fulfilled() ?? '' ) ) {
+				$fulfillment->set_date_fulfilled( ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' ) );
+				$changed   = true;
+				$date_note = 'set';
 			}
 
 			if ( Kuka_Island_Shipping_Status::CODE_DELIVERED === $code
@@ -249,24 +291,27 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 
 			if ( ! $changed ) {
 				return array(
-					'ok'     => true,
-					'action' => 'no_change',
-					'reason' => '',
+					'ok'             => true,
+					'action'         => 'no_change',
+					'reason'         => '',
+					'date_fulfilled' => $date_note,
 				);
 			}
 
 			$fulfillment->save();
 
 			return array(
-				'ok'     => true,
-				'action' => Kuka_Island_Shipping_Status::CODE_DELIVERED === $code ? 'delivered' : 'fulfilled',
-				'reason' => '',
+				'ok'             => true,
+				'action'         => Kuka_Island_Shipping_Status::CODE_DELIVERED === $code ? 'delivered' : 'fulfilled',
+				'reason'         => '',
+				'date_fulfilled' => $date_note,
 			);
 		} catch ( Throwable $e ) {
 			return array(
-				'ok'     => false,
-				'action' => 'update_failed',
-				'reason' => 'fulfillment_write_failed',
+				'ok'             => false,
+				'action'         => 'update_failed',
+				'reason'         => 'fulfillment_write_failed',
+				'date_fulfilled' => 'unknown',
 			);
 		}
 	}

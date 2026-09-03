@@ -1486,34 +1486,111 @@ final class Kuka_Island_Shipping_Manager {
 			);
 		}
 
-		$reference = (string) Kuka_Island_Shipping_Order_Store::get_shipment_data( $order )['reference'];
-
-		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
+		/*
+		 * THE SAME MUTATION LOCK THE FOUR WRITE DOORS TAKE, AND FOR THE SAME
+		 * REASON. This is an external entry point -- an operator button -- and
+		 * it was the only mutation-adjacent door that took no lock at all. It
+		 * therefore ran happily while a create was still in flight: it read the
+		 * provider, the state, the pending intent and the reference from
+		 * whatever object the caller happened to be holding, asked the carrier,
+		 * and settled an intent belonging to a write that had not finished. Two
+		 * operators pressing the button at once each read the same open intent
+		 * and each closed it.
+		 *
+		 * ZERO WAIT, exactly like the write doors. A caller that queues behind
+		 * the lock is a second reconciliation of a state it has not seen; it is
+		 * told the order is busy instead.
+		 *
+		 * THE LOCK LIVES HERE AND ONLY HERE. reconcile(), reconcile_update() and
+		 * reconcile_cancellation() are also called by run_creation(),
+		 * update_shipment() and cancel() with this same lock ALREADY HELD, so a
+		 * second acquisition inside them would deadlock the very paths this
+		 * lock exists to serialise. They stay lock-free by contract, and this
+		 * method is the single owner of that contract.
+		 */
+		if ( ! $this->acquire_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() ) ) {
 			return array(
-				'verdict' => 'no_reference',
-				'message' => __( 'Bu siparişte taşıyıcı referansı yok; sorgulanacak bir kayıt bulunmuyor.', 'kuka-island-shipping-automation' ),
+				'verdict' => 'lock_contended',
+				'message' => __( 'Bu sipariş için başka bir kargo işlemi sürüyor. Mutabakat sorgusu yapılmadı.', 'kuka-island-shipping-automation' ),
 			);
 		}
 
-		/*
-		 * WHICH reconciliation depends on WHAT was issued. Running the generic
-		 * one after a cancellation would write shipment_created the moment it
-		 * found the record and re-open the cancel button; running it after an
-		 * amendment would read "the object exists" as "the amendment was
-		 * applied". Both were real: see reconcile_cancellation() and
-		 * reconcile_update().
-		 */
-		$state = Kuka_Island_Shipping_Order_Store::get_state( $order );
+		try {
+			/*
+			 * Re-read INSIDE the lock, and take every decision from THIS
+			 * reading: the owner, the state, the pending intent and the
+			 * reference. The values the caller handed in belong to a moment
+			 * that has passed -- the previous holder of this lock may have just
+			 * pinned an owner, moved the state and written an intent.
+			 */
+			$order    = wc_get_order( $order->get_id() ) ?: $order;
+			$admitted = $this->admit( $order, $carrier_key );
 
-		if ( Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED === $state ) {
-			return $this->reconcile_cancellation( $order, $admitted['carrier'], $reference );
+			if ( array() !== $admitted['refusal'] ) {
+				return array(
+					'verdict' => (string) $admitted['refusal']['code'],
+					'message' => (string) $admitted['refusal']['message'],
+				);
+			}
+
+			$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+			$reference = (string) $data['reference'];
+			$state     = (string) $data['state'];
+
+			if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
+				return array(
+					'verdict' => 'no_reference',
+					'message' => __( 'Bu siparişte taşıyıcı referansı yok; sorgulanacak bir kayıt bulunmuyor.', 'kuka-island-shipping-automation' ),
+				);
+			}
+
+			/*
+			 * A CONCLUSION THAT WAS ALREADY REACHED BY READING IS NOT RE-ASKED.
+			 * 'cancelled' and 'absent_confirmed' are the two states this module
+			 * only ever writes after a read proved something, and the generic
+			 * reconciliation would happily overwrite either of them from the
+			 * next read -- a proved cancellation becoming absent_confirmed, for
+			 * instance. A read-only button must not move a settled conclusion,
+			 * and a second concurrent press must not be able to close an intent
+			 * that is already closed.
+			 */
+			if ( in_array( $state, array( Kuka_Island_Shipping_Order_Store::STATE_CANCELLED, Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED ), true ) ) {
+				return array(
+					'verdict' => 'already_settled',
+					'message' => self::settled_message( $state ),
+				);
+			}
+
+			/*
+			 * WHICH reconciliation depends on WHAT was issued. Running the
+			 * generic one after a cancellation would write shipment_created the
+			 * moment it found the record and re-open the cancel button; running
+			 * it after an amendment would read "the object exists" as "the
+			 * amendment was applied". Both were real: see
+			 * reconcile_cancellation() and reconcile_update().
+			 */
+			if ( Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED === $state ) {
+				return $this->reconcile_cancellation( $order, $admitted['carrier'], $reference );
+			}
+
+			if ( Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED === $state ) {
+				return $this->reconcile_update( $order, $admitted['carrier'], $reference );
+			}
+
+			return $this->reconcile( $order, $admitted['carrier'], $reference );
+		} finally {
+			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
 		}
+	}
 
-		if ( Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED === $state ) {
-			return $this->reconcile_update( $order, $admitted['carrier'], $reference );
-		}
-
-		return $this->reconcile( $order, $admitted['carrier'], $reference );
+	/**
+	 * Operator-facing sentence for a state a read has already settled.
+	 */
+	public static function settled_message( string $state ): string {
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED => __( 'Bu siparişin taşıyıcı kaydı iptal edilmiş ve iptal salt-okunur sorguyla doğrulanmıştı. Yeni mutabakat sorgusu yapılmadı.', 'kuka-island-shipping-automation' ),
+			default => __( 'Mutabakat bu referansla taşıyıcıda kayıt olmadığını daha önce kanıtladı. Yeni mutabakat sorgusu yapılmadı.', 'kuka-island-shipping-automation' ),
+		};
 	}
 
 	/* ---------------------------------------------------------------------- */
@@ -1531,7 +1608,16 @@ final class Kuka_Island_Shipping_Manager {
 	 *
 	 * @param WC_Order $order       Order.
 	 * @param string   $carrier_key Carrier key, '' for the default.
-	 * @return array{ok: bool, lifecycle: string, code: string, message: string, detail: string, attempts: int}
+	 * `contacted` is the fact the poller needs and cannot derive: was a request
+	 * actually issued to the carrier? It is false for every refusal taken before
+	 * the network -- a closed gate, missing credentials, an unregistered
+	 * carrier, a configuration value nobody understood, a missing reference --
+	 * and true for every answer that came back, including a timeout. The poller
+	 * used to guess from "ok:false plus an unknown lifecycle", which is the
+	 * still-moving branch, and booked another query for a carrier it had never
+	 * reached.
+	 *
+	 * @return array{ok: bool, lifecycle: string, code: string, message: string, detail: string, attempts: int, contacted: bool}
 	 */
 	public function query_status( WC_Order $order, string $carrier_key = '' ): array {
 		$admitted = $this->admit( $order, $carrier_key );
@@ -1544,6 +1630,7 @@ final class Kuka_Island_Shipping_Manager {
 				'message'   => (string) $admitted['refusal']['message'],
 				'detail'    => '',
 				'attempts'  => Kuka_Island_Shipping_Order_Store::query_attempts( $order ),
+				'contacted' => false,
 			);
 		}
 
@@ -1559,6 +1646,7 @@ final class Kuka_Island_Shipping_Manager {
 				'message'   => __( 'Bu siparişte taşıyıcı referansı yok.', 'kuka-island-shipping-automation' ),
 				'detail'    => '',
 				'attempts'  => (int) $data['query_attempts'],
+				'contacted' => false,
 			);
 		}
 
@@ -1577,6 +1665,7 @@ final class Kuka_Island_Shipping_Manager {
 				'message'   => $guarded_status['refusal']['message'],
 				'detail'    => '',
 				'attempts'  => Kuka_Island_Shipping_Order_Store::query_attempts( $order ),
+				'contacted' => false,
 			);
 		}
 
@@ -1613,6 +1702,7 @@ final class Kuka_Island_Shipping_Manager {
 				'message'   => __( 'Kargo durumu okunamadı.', 'kuka-island-shipping-automation' ),
 				'detail'    => $result->to_safe_line(),
 				'attempts'  => $attempts,
+				'contacted' => true,
 			);
 		}
 
@@ -1639,6 +1729,7 @@ final class Kuka_Island_Shipping_Manager {
 			'message'   => Kuka_Island_Shipping_Status::label_for( $raw_code ),
 			'detail'    => $result->to_safe_line(),
 			'attempts'  => $attempts,
+			'contacted' => true,
 		);
 	}
 
@@ -2443,8 +2534,13 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	private function refuse( WC_Order $order, string $code, string $message ): array {
-		Kuka_Island_Shipping_Order_Store::save_blocked( $order, $code, $message );
-		$this->note( $order, $message );
+		// The note follows the audit entry: when save_blocked() reports that
+		// nothing changed -- the same code, the same state as last time -- there
+		// is nothing new to tell anybody, and an automated chain meeting the
+		// same wall on every turn must not fill the order with copies of it.
+		if ( Kuka_Island_Shipping_Order_Store::save_blocked( $order, $code, $message ) ) {
+			$this->note( $order, $message );
+		}
 
 		return array(
 			'ok'      => false,

@@ -902,6 +902,26 @@ final class Kuka_Island_Shipping_Order_Store {
 		// Same save as the state, for the same reason as save_order_created().
 		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
 
+		/*
+		 * AND THE START TIME, WHEN NOTHING HAS SET IT YET. This method is
+		 * reached two ways: after a createbarcode this module sent, in which
+		 * case save_order_created() has already stamped META_CREATED_AT -- and
+		 * directly from Manager::reconcile(), when a read finds a SHIPMENT
+		 * under this reference with no confirmed createOrder behind it in this
+		 * life of the order. On that second path created_at stayed 0, and the
+		 * poller computes elapsed as time() - created_at: zero means every
+		 * second since 1970, so the very first turn exceeded MAX_ELAPSED and
+		 * the chain gave up before reading anything. A parcel existed at the
+		 * carrier and nothing followed it.
+		 *
+		 * Written in THIS save, not a second one, and only when empty: an
+		 * existing value is the moment the shipment actually began and must not
+		 * be moved to the moment it happened to be adopted.
+		 */
+		if ( 0 === (int) $order->get_meta( self::META_CREATED_AT, true ) ) {
+			$order->update_meta_data( self::META_CREATED_AT, time() );
+		}
+
 		if ( '' !== $shipment_id ) {
 			$order->update_meta_data( self::META_SHIPMENT_ID, $shipment_id );
 		}
@@ -1037,6 +1057,34 @@ final class Kuka_Island_Shipping_Order_Store {
 	}
 
 	/**
+	 * Record a local refusal ONCE, however many times it recurs.
+	 *
+	 * The poller can meet the same wall on every turn -- credentials still
+	 * missing, gate still closed -- and each meeting used to append a history
+	 * entry and an order note. Four runner turns produced eight of them, which
+	 * is noise an operator has to read past to find the one fact that matters.
+	 *
+	 * So this is a no-op when the order already carries this exact code: the
+	 * order screen shows the same thing either way, and the audit trail keeps
+	 * the first occurrence, which is the one with information in it.
+	 *
+	 * @param WC_Order $order           Order.
+	 * @param string   $operation       Logical operation name.
+	 * @param string   $safe_error_code Allow-listed code.
+	 * @param string   $message         Operator-facing sentence.
+	 * @return bool True when this was the first occurrence and was recorded.
+	 */
+	public static function record_local_refusal( WC_Order $order, string $operation, string $safe_error_code, string $message ): bool {
+		if ( (string) $order->get_meta( self::META_LAST_ERROR, true ) === $safe_error_code ) {
+			return false;
+		}
+
+		self::save_failure( $order, $operation, $safe_error_code, $message );
+
+		return true;
+	}
+
+	/**
 	 * Record a deliberate refusal that happened BEFORE any network call.
 	 *
 	 * Distinct from save_failure(): nothing was sent, so no attempt counter
@@ -1046,19 +1094,45 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * @param WC_Order $order           Order.
 	 * @param string   $safe_error_code Allow-listed code.
 	 * @param string   $message         Operator-facing sentence.
+	 * @return bool True when this was new information and was recorded.
 	 */
-	public static function save_blocked( WC_Order $order, string $safe_error_code, string $message ): void {
+	public static function save_blocked( WC_Order $order, string $safe_error_code, string $message ): bool {
+		$previous_error = (string) $order->get_meta( self::META_LAST_ERROR, true );
+		$previous_state = self::get_state( $order );
+
 		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
 
 		// A block never overwrites a state that records something existing at
 		// the carrier: the shipment is still there, the request was simply not
 		// made.
-		if ( in_array( self::get_state( $order ), array( self::STATE_NONE, self::STATE_BLOCKED, self::STATE_ABSENT_CONFIRMED ), true ) ) {
+		if ( in_array( $previous_state, array( self::STATE_NONE, self::STATE_BLOCKED, self::STATE_ABSENT_CONFIRMED ), true ) ) {
 			$order->update_meta_data( self::META_STATE, self::STATE_BLOCKED );
 		}
 
-		self::add_history_entry( $order, self::get_state( $order ), $message );
+		/*
+		 * THE SAME UNCHANGED FACT IS RECORDED ONCE.
+		 *
+		 * A refusal taken before the network can recur on every turn of an
+		 * automated chain: credentials still missing, gate still closed. Each
+		 * recurrence used to append an audit entry (and the caller an order
+		 * note), so four poller turns produced four of each -- noise an
+		 * operator has to read past to reach the one entry with information in
+		 * it. When the code AND the resulting state are both exactly what they
+		 * already were, nothing happened that anybody needs telling twice.
+		 *
+		 * The meta is still written every time: it is a current value, not a
+		 * log, and writing it is how a later reading knows the wall is still
+		 * there.
+		 */
+		$is_repeat = $previous_error === $safe_error_code && self::get_state( $order ) === $previous_state;
+
+		if ( ! $is_repeat ) {
+			self::add_history_entry( $order, self::get_state( $order ), $message );
+		}
+
 		self::persist( $order );
+
+		return ! $is_repeat;
 	}
 
 	/**

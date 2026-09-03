@@ -53,6 +53,10 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | EDM pasifken gerçek `make verify` exit 2; 21 mock ölçümü `edm_runtime_disabled` ile düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-39) |
 | 2026-09-04 | Sandbox uygulamasında ürün aboneliği yoktu; uygulama anahtarı tek başına API erişimi vermiyordu | Identity 1.0.1, CBS Info, Standard Command, Barcode Command ve Standard Query Default Plan abonelikleri portalda tamamlandı; test müşteri numarası/parolası destekten istendi |
 | 2026-09-04 | Identity OpenAPI içindeki örnek `customerNumber/password` değerlerinin ortak sandbox hesabı olabileceği kontrol edildi | Geçici kimlik dosyasıyla yapılan salt-okunur Identity çağrısı `401 unauthorized` verdi; örnekler kimlik değildir, gerçek dosya değişmedi ve geçici dosya temizlendi |
+| 2026-09-04 | Fulfillment teslim tarihini modül değil WooCommerce'in data store'u yazıyordu; sözleşme hiçbir yerde yazılı değildi | Tarih artık modülün kendi kodunda, açık `+00:00` offset'iyle ve yalnız ilk geçişte yazılıyor (K-40) |
+| 2026-09-04 | `reconcile_order()` kilit almayan tek dış giriş noktasıydı; uçuştaki bir yazmanın intent'ini kapatabiliyordu | Aynı mutasyon kilidi sıfır beklemeyle alınıyor, sipariş kilit içinde yeniden okunuyor; alt yardımcılar kilitsiz kalıyor (K-41) |
+| 2026-09-04 | Taşıyıcıya hiç ulaşmayan yerel ret, poll zincirini ~14 gün boyunca yeniden planlıyor ve her turda not/geçmiş ekliyordu | `query_status()` artık `contacted` bilgisini döndürüyor; ulaşılmayan ret zinciri bitiriyor ve aynı gerçek bir kez kaydediliyor (K-42) |
+| 2026-09-04 | Mutabakatla benimsenen gönderide `created_at` 0 kalıyor, ilk poll turu `MAX_ELAPSED` ile vazgeçiyordu | `save_shipment_created()` boşsa aynı atomik persist içinde `time()` yazıyor; mevcut değere dokunmuyor (K-43) |
 
 ---
 
@@ -1544,6 +1548,153 @@ geçmez.
   kapı geçirip geçirmediği — `EDM_TRANSMISSION_GATE_SEAM` bunu sayar ve 0
   olmak zorundadır. Ve ölçümün ön koşulunu site option'ını yazarak sağlayan bir
   kod eklenirse, shutdown coordinator'ın hâlâ orada olduğu.
+
+---
+
+## K-40 — Teslim tarihini modül değil vendor yazıyordu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Yok — ve önemli olan buydu. `sync_status()` fulfillment'ı
+  `fulfilled` durumuna geçiriyor, **tarih yazmıyordu**. WooCommerce 11.0.1'in
+  `FulfillmentsDataStore`'u kaydederken `is_fulfilled` doğru ve tarih boşsa
+  `_date_fulfilled` alanını kendisi dolduruyor (`current_time( 'mysql' )`), bu
+  yüzden değer yine oluşuyordu.
+- **Kesin kök neden:** Modül, hiçbir yerde yazmadığı bir **vendor yan
+  etkisine** dayanıyordu. O alanın değeri mali bir belgedeki teslim tarihidir:
+  EDM'in `Internet_Sales_Details` sınıfı tam olarak bu alanı okur ve alan boşsa
+  belgeyi `internet_sales_shipment_date_missing` ile reddeder. WooCommerce
+  tarafında bir değişiklik, hiçbir yerel test düşmeden mali tarihleri
+  kaydırabilirdi.
+- **Saat dilimi ölçüldü, tahmin edilmedi.** `set_date_fulfilled()` girdisini
+  `normalize_date_to_utc()`'ye verir; o da **zonu belirtilmemiş** bir dizgiyi
+  `wp_timezone()` ile okur ve UTC karşılığını saklar. Bu kurulumda (PHP UTC,
+  WordPress Europe/Istanbul) round-trip:
+  `'2026-09-04 12:00:00' → '2026-09-04 09:00:00'`,
+  `'2026-09-04 12:00:00+00:00' → '2026-09-04 12:00:00'`.
+  Yani çıplak bir `gmdate()` dizgisi mağaza-yerel sanılır ve burada **üç saat
+  erken** saklanır.
+- **Uygulanan düzeltme:** Tarih modülün kendi kodunda yazılıyor, **kendi
+  offset'ini belirten** bir dizgiyle (`Y-m-d H:i:sP`), ve **yalnız alan boşsa**
+  — kod 3/4/5 ve her tekrar sorgu bu metottan yine geçer, dokunmamaları gereken
+  şey paketin gerçekten çıktığı andır. `sync_status()` artık ne yaptığını da
+  bildiriyor: `date_fulfilled:set|present|untouched`.
+- **Kanıt:** `SHIPPING_FULFILLMENT_DATE_ON_FIRST_FULFILL` — kod 2 öncesi tarih
+  yok; ilk geçişte modülün kendi raporu `writer_date:set`; saklanan değer birebir
+  UTC biçiminde ve gerçek ana **0 sn** uzaklıkta (çıplak `gmdate()` burada
+  10.800 sn sapardı); kod 3/4/5 ve tekrar sorguda değer **byte olarak** aynı;
+  EDM okuyucusu `shipment_date` üretiyor ve mağazanın yerel gününü veriyor
+  (ölçüm anında UTC günü 2026-09-03, mağaza günü 2026-09-04 — sınır durumu).
+  Düzeltme geri alınarak ölçüldü: modülün raporu `writer_date:present`e dönüyor
+  ve ölçüm **FAIL** veriyor, saklanan tarih yine doğru olsa bile.
+- **İlgili dosya:** `SHIP/includes/shipping/class-fulfillment-writer.php`
+  (`sync_status`)
+- **Tekrar yaşanırsa ilk bak:** `sync_status()` içinde `set_date_fulfilled()`
+  çağrısının olup olmadığı ve girdinin offset taşıdığı. Offset yoksa tarih
+  mağaza saatiyle okunur ve mali belgeye yanlış gün gider.
+
+---
+
+## K-41 — `reconcile_order()` kilit almayan tek dış kapıydı
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Bir create uçuşta iken operatör "Mutabakat" düğmesine basıyor.
+  Mutabakat çalışıyor, taşıyıcıya iki okuma yapıyor ve **bitmemiş bir yazmanın**
+  intent'ini kapatıyor. İki operatör aynı anda bastığında ikisi de aynı açık
+  intent'i okuyup ikisi de kapatıyor.
+- **Kesin kök neden:** `create/resume/update/cancel` dördü de sipariş mutasyon
+  kilidini alıyordu; `reconcile_order()` **hiç** almıyordu. Provider, state,
+  bekleyen intent ve referans kararlarını çağrıcının elindeki nesneden veriyordu
+  — kilidi tutan tarafın az önce değiştirmiş olabileceği değerlerden.
+- **Uygulanan düzeltme:** Aynı kilit, **sıfır beklemeyle** (`lock_contended`),
+  ve kilit alındıktan sonra sipariş DB'den yeniden okunup dört karar **yalnız o
+  taze nesneden** veriliyor. Kilit **tek noktada**: `reconcile()`,
+  `reconcile_update()` ve `reconcile_cancellation()` kilitsiz kalıyor, çünkü
+  `run_creation()`, `update_shipment()` ve `cancel()` onları kilit **zaten
+  tutulurken** çağırır — içlerine ikinci bir alma koymak, kilidin serileştirmek
+  için var olduğu yolları kilitlerdi.
+- **Ek koruma:** Salt-okunur bir düğme, okumayla **zaten varılmış** bir sonucu
+  değiştirmemeli. `cancelled` ve `absent_confirmed` durumlarında mutabakat
+  `already_settled` ile reddediliyor; aksi hâlde genel mutabakat kanıtlanmış bir
+  iptali sonraki okumadan `absent_confirmed`'e çevirebiliyordu.
+- **Kanıt:** `SHIPPING_RECONCILE_TAKES_THE_MUTATION_LOCK` — **gerçek ikinci
+  MySQL oturumu** kilidi tutarken `lock_contended`, taşıyıcı okuma/yazma **0**,
+  ve state/provider/reference/pending-mutation dördü **byte olarak** değişmiyor;
+  kilit bırakılınca taze state üzerinden `absent_confirmed` ile doğru mutabakat
+  çalışıyor; kapanmış bir intent ikinci kez kapatılamıyor (`already_settled`).
+  Düzeltmeden önce aynı ölçüm `reads_while_held:2` ve
+  `decisions_byte_identical:NO` veriyordu.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`reconcile_order`, `settled_message`)
+- **Tekrar yaşanırsa ilk bak:** `reconcile_order()` içinde `acquire_lock()`
+  olup olmadığı, ve alt yardımcılara **ikinci** bir kilit eklenmemiş olduğu.
+  İkincisi eklenirse `cancel()` kendi kilidinde kilitlenir.
+
+---
+
+## K-42 — Ulaşılmayan ret ~14 günlük boş zincir üretiyordu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Kimlikleri eksik ya da çalışma kapısı kapalı bir siparişte
+  otomatik durum sorgusu her turda yeniden planlanıyor. Taşıyıcı teması **0**,
+  `query_attempts` **0**, fakat zincir yaşıyor ve her tur bir geçmiş kaydı ve
+  bir sipariş notu ekliyor. Dört tur → sekiz kayıt.
+- **Kesin kök neden:** `query_status()` taşıyıcıya hiç ulaşmadan reddedebilir
+  (kimlik eksik, kapı kapalı, taşıyıcı kayıtlı değil, ayar tanınmadı, referans
+  yok). Bunlar taşıyıcı denemesi olmadığı için **doğru şekilde** deneme
+  harcamaz — ve tuzak tam buydu: poller sonraki adımı `ok:false` + bilinmeyen
+  lifecycle'dan çıkarıyordu, ki o "hâlâ hareket ediyor" dalıdır. Sayaç
+  ilerlemediği için `MAX_ATTEMPTS` hiç gelmiyor, zinciri bitiren tek şey
+  `MAX_ELAPSED` (≈14 gün) oluyordu.
+- **Uygulanan düzeltme:** `query_status()` artık **`contacted`** bilgisini
+  döndürüyor — kod listesi değil, olgu; kod listesi yeni bir ret eklendiği ilk
+  gün bayatlar. `contacted === false` ise poller `stop:local_refusal:<kod>` ile
+  biter: yeni iş planlamaz, deneme harcamaz. Gerekçe **bir kez** kaydedilir
+  (`Order_Store::save_blocked()` ve `record_local_refusal()` aynı kod + aynı
+  state tekrarında geçmiş/not eklemez), ve operatörün manuel sorgusu aynen
+  açıktır.
+- **Kanıt:** `SHIPPING_LOCAL_REFUSAL_ENDS_THE_POLL_CHAIN` — gerçek Action
+  Scheduler runner'ı üzerinden: taşıyıcı okuma **0**, deneme **0**, planlanan
+  takip **yok**, dört tur sonunda not **1** ve geçmiş kaydı **1**; kontrol
+  olarak gerçek bir `transient` ağ sonucu hâlâ **1** deneme harcıyor ve sınırlı
+  yeniden deneme zincirini koruyor. Düzeltmeden önce aynı ölçüm
+  `follow_up_booked:YES` ve `notes_added_by_4_turns:8` veriyordu.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`query_status`), `.../class-shipment-status-poller.php` (`run`),
+  `.../class-shipment-order-store.php` (`save_blocked`, `record_local_refusal`)
+- **Tekrar yaşanırsa ilk bak:** Poller'ın `contacted` alanını okuyup okumadığı.
+  Karar yine `ok`/lifecycle üzerinden veriliyorsa boş zincir geri gelmiştir.
+
+---
+
+## K-43 — Benimsenen gönderinin başlangıç zamanı yoktu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Mutabakat taşıyıcıda bir **gönderi** buluyor ve benimsiyor;
+  durum `shipment_created` oluyor. Sonraki ilk poll turu tek okuma yapmadan
+  `give_up:max_elapsed_reached` ile bitiyor. Paket taşıyıcıda var ve hiçbir şey
+  onu izlemiyor.
+- **Kesin kök neden:** `META_CREATED_AT` yalnız `save_order_created()`
+  tarafından yazılıyordu, o da onaylanmış bir `createOrder`dan sonra çalışır.
+  `Manager::reconcile()` bulunan bir gönderiyi doğrudan
+  `save_shipment_created()` ile benimser — bu sipariş ömründe arkasında
+  onaylanmış bir `createOrder` olmadan. O yolda `created_at` **0** kalıyordu,
+  ve poller geçen süreyi `time() - created_at` ile hesaplar: sıfır, 1970'ten
+  beri geçen her saniye demektir, yani ilk tur `MAX_ELAPSED`'i aşar.
+- **Uygulanan düzeltme:** `save_shipment_created()` alan **boşsa** aynı atomik
+  persist içinde `time()` yazıyor. Mevcut bir değere dokunmuyor: o değer
+  gönderinin gerçekten başladığı andır, benimsendiği an değil.
+  `save_order_created()` davranışı değişmedi.
+- **Kanıt:** `SHIPPING_ADOPTED_SHIPMENT_HAS_A_START_TIME` — `created_at`
+  öncesinde 0, benimsemeden sonra gerçek bir an (**0 sn** sapma, taze sipariş
+  nesnesinden okunuyor), ilk poll kararı `reschedule/still_moving` ve gerçek
+  runner takip işini planlıyor; önceden var olan `1700000000` değeri
+  değişmiyor. Düzeltmeden önce aynı ölçüm `created_at_after:0` ve
+  `first_poll_decision:give_up/max_elapsed_reached` veriyordu.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`save_shipment_created`)
+- **Tekrar yaşanırsa ilk bak:** `save_shipment_created()` içinde
+  `META_CREATED_AT` yazımı. Yoksa mutabakatla benimsenen her gönderi ilk turda
+  vazgeçilir.
 
 ---
 
