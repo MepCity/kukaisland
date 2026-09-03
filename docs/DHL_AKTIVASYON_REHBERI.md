@@ -94,6 +94,10 @@ Sandbox` uygulaması Identity, CBS Info, Standard Command, Barcode Command ve
 Standard Query ürünlerinin Default Plan'larına abonedir. Eksik Identity çifti
 portal destek formundan istendi; yanıt gelmeden değer uydurulmaz.
 
+Identity OpenAPI içindeki `GenerateTokenRequest.example` değerleri gerçek
+kimlik değildir: gerçek dosyayı değiştirmeyen salt-okunur denemede Identity
+sunucusu `401 unauthorized` döndürdü. Bu örnekleri kimlik dosyasına yazmayın.
+
 ```bash
 ./scripts/dhl-test-credentials.sh --status
 ```

@@ -52,6 +52,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | İptali kanıtlanmış bir sipariş üzerinden `createbarcode` gönderilebiliyordu; create kapısı deny-list soruyordu ve `cancelled` listede yoktu | Tek merkezî allow-list: createOrder 3 durum, createbarcode 1 durum; barkod aşaması ayrıca kapılandı (K-38) |
 | 2026-09-03 | EDM pasifken gerçek `make verify` exit 2; 21 mock ölçümü `edm_runtime_disabled` ile düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-39) |
 | 2026-09-04 | Sandbox uygulamasında ürün aboneliği yoktu; uygulama anahtarı tek başına API erişimi vermiyordu | Identity 1.0.1, CBS Info, Standard Command, Barcode Command ve Standard Query Default Plan abonelikleri portalda tamamlandı; test müşteri numarası/parolası destekten istendi |
+| 2026-09-04 | Identity OpenAPI içindeki örnek `customerNumber/password` değerlerinin ortak sandbox hesabı olabileceği kontrol edildi | Geçici kimlik dosyasıyla yapılan salt-okunur Identity çağrısı `401 unauthorized` verdi; örnekler kimlik değildir, gerçek dosya değişmedi ve geçici dosya temizlendi |
 
 ---
 
@@ -1592,6 +1593,15 @@ görüldü. Portal destek formundan, uygulama ve kuruluş adıyla bu iki değer 
 `Authorization` başlığı biçimi soruldu; portal `Mesajınız gönderildi.` sonucunu
 verdi. Kimlik değeri, API anahtarı veya gizli dizi mesaja ve bu belgeye
 yazılmadı.
+
+OpenAPI'deki `GenerateTokenRequest.example` içinde bir müşteri numarası/parola
+çifti vardır; bu değerlerin çalışan ortak sandbox hesabı olduğu **yazmaz**.
+Gerçek kimlik dosyasını değiştirmeyen, geçici mod-600 kopyayla salt-okunur
+Identity çağrısında bu örnek çift denendi ve sunucu `401 unauthorized` verdi.
+CBS çağrısı oturum oluşmadığı için çalışmadı; yazma operasyonu yoktu. Geçici
+dizin koşu sonunda silindi, gerçek dosya yine `present:2/4` kaldı. Dolayısıyla
+bu örnekler yapılandırmaya alınmaz ve destekten gelecek hesaba özgü çift
+beklenir.
 
 ### Aşama 1 — Kimlik dosyası: yalnız varlık
 
