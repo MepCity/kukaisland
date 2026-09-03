@@ -11,6 +11,19 @@ sonrakini otomatik açmaz.
 Teknik sözleşme: [EDM_ENTEGRASYONU.md](EDM_ENTEGRASYONU.md).
 Bakım kayıtları: [EDM_BAKIM_HAFIZASI.md](EDM_BAKIM_HAFIZASI.md).
 
+## Mevcut ilerleme — 3 Eylül 2026
+
+- Sandbox Login/readiness ve tek taslak `LoadInvoice` tamamlandı.
+- Düzeltilmiş tek sandbox `SendInvoice` EDM tarafından kabul edildi ve
+  numaralandı.
+- Son salt-okunur durum `PACKAGE - PROCESSING`: belge EDM'de var fakat terminal
+  `SEND - SUCCEED` henüz görülmedi.
+- Canlı kimlikler/seriler kurulmadı; eklenti teslim durumunda pasif ve auto-send
+  kapalıdır.
+
+Bu özet bir aşamayı otomatik olarak açmaz. Aşağıdaki kontrol listeleri canlı
+aktivasyonda yeniden ve o günün gerçek ortamında uygulanır.
+
 ---
 
 ## Aşama 0 — Pasif teslim (mevcut durum)
@@ -103,7 +116,8 @@ Mali hazırlık alanları eksikse hiçbir gönderim başlamaz. Bu aşamada yaln�
 
 **Kontrol listesi:**
 
-- [ ] Satıcı VKN, unvan, vergi dairesi, adres, il/ilçe, posta kodu
+- [ ] Satıcı VKN, unvan, vergi dairesi, adres ve il/ilçe
+- [ ] Satıcı posta kodu varsa doğrulandı; yokluğu readiness engeli değildir
 - [ ] Gönderen alias (`urn:mail:...`)
 - [ ] `APPLICATION_NAME = ozelyazilim.kukaisland` (bkz. K-02)
 - [ ] KDV oranları ve para birimi
@@ -119,7 +133,8 @@ Hiçbir belge oluşturmayan, hiçbir şey yazmayan çağrılar. İlk gerçek tem
 budur.
 
 ```bash
-./scripts/edm-test-probe.sh          # kimlik yoksa BLOCKED yazar, ağa çıkmaz
+./scripts/edm-test-run.sh test-edm-sandbox.php
+                                      # kimlik yoksa BLOCKED yazar, ağa çıkmaz
 ```
 
 **Kontrol listesi:**

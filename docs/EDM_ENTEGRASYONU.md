@@ -1,6 +1,10 @@
-# EDM Bilişim e-Fatura ve e-Arşiv Entegrasyonu — Aşama 1
+# EDM Bilişim e-Fatura ve e-Arşiv Entegrasyonu — Teknik Sözleşme
 
-Bu doküman, Kuka Island WooCommerce mağazası için hazırlanan **EDM Bilişim e-Fatura (TICARIFATURA / TEMELFATURA)** ve **e-Arşiv Fatura (EARSIVFATURA)** entegrasyonunun Aşama 1 durumunu açıklar.
+Bu doküman, Kuka Island WooCommerce mağazası için hazırlanan **EDM Bilişim
+e-Fatura (TICARIFATURA / TEMELFATURA)** ve **e-Arşiv Fatura
+(EARSIVFATURA)** entegrasyonunun güncel teknik sözleşmesini açıklar. İlk
+mimari hazırlıktan sonraki gerçek sandbox deneyleri ve ayrı/pasif eklenti
+kararı da bu sözleşmeye işlenmiştir.
 
 **Bu doküman güncel teknik sözleşmedir**, kronolojik bir günlük değil. Bakım
 kayıtları ayrı tutulur: [docs/EDM_BAKIM_HAFIZASI.md](EDM_BAKIM_HAFIZASI.md).
@@ -79,7 +83,8 @@ Kuka_Island_Core_Invoice_    Kuka_Island_Core_UBL_TR_    Kuka_Island_Core_EDM_
 Order_Mapper                 Builder                      Client
 · kuruş tamsayı aritmetiği   · UBL-TR 2.1 / TR1.2         · Gerçek WSDL istek/yanıt
 · satır bazlı kupon dağıtımı · zorunlu alan yoksa hata    · SECRET_KEY opsiyonel
-· fail-closed doğrulamalar   · placeholder üretmez        · oturum düşerse tek retry
+· fail-closed doğrulamalar   · placeholder üretmez        · okumalarda tek oturum retry'ı;
+                                                          SendInvoice'ta retry yok
                                                           · loglarda sır yok
         │
         ▼

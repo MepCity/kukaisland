@@ -9,6 +9,8 @@
 !/README.md
 !/PLAN.md
 !/GECMIS.md
+!/AGENTS.md
+!/CLAUDE.md
 !/composer.json
 !/composer.lock
 !/phpcs.xml.dist

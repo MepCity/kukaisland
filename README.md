@@ -58,7 +58,10 @@ make deploy-package
 
 `make verify` artık doğrulama ve beş storefront smoke akışı için açık `PASS/FAIL` üretir; hata halinde sıfır olmayan kodla çıkar. PHPStan eklenmedi: WordPress/WooCommerce'in dinamik hook ve global tipleri için ayrıca stub/baseline bakımı gerektireceğinden, bu yayın kapısında PHP syntax + WordPress PHPCS + gerçek kurulum/smoke testi daha düşük bakım maliyetli seçildi.
 
-`make deploy-package`, yalnız proje sahipli child tema, Core eklenti ve Veridyen runbook'unu `dist-deploy/` altında checksum'lı arşivler. Çıktı Git dışıdır; komut fiili deploy yapmaz.
+`make deploy-package`, yalnız proje sahipli child tema, Core eklenti, ayrı ve
+varsayılan pasif EDM eklentisi ile gerekli kurulum/bakım rehberlerini
+`dist-deploy/` altında checksum'lı arşivler. Çıktı Git dışıdır; komut fiili
+deploy veya eklenti aktivasyonu yapmaz.
 
 ## Sıfırdan kurulum
 
@@ -72,6 +75,7 @@ make reset
 
 - `wp-content/themes/kuka-island-child/`: yalnız görsel sunum
 - `wp-content/plugins/kuka-island-core/`: tema bağımsız veri/işlev iskeleti
+- `wp-content/plugins/kuka-island-edm/`: ayrı, varsayılan pasif EDM entegrasyonu
 - `scripts/`: kurulum, seed, pilot ve doğrulama
 - `docs/`: kararlar, ölçümler ve Faz 3 aktarma planı
 - `PLAN.md`: bu depodaki kanonik proje planı
@@ -81,6 +85,15 @@ make reset
 - `lib-reference/`: prototip DOM etkileşimlerinin üretilmiş/salt okunur davranış referansı
 
 Referans dizinleri çalışma zamanında kullanılmaz ve elle düzenlenmez. Prototipteki kaynak değişirse aynı dosyalar yeniden kopyalanarak güncellenir; medya ise `scripts/prepare-media.sh` ile `KUKA_PROTOTYPE_DIR/public/images/demo` kaynağından hazırlanır.
+
+## Proje hafızası ve okuma sırası
+
+Bakım veya geliştirme öncesinde önce `GECMIS.md`, ardından `PLAN.md` §38–§39
+okunur. Sonra çalışılacak dizindeki en yakın `AGENTS.md` ve ilgili bakım
+belgeleri izlenir. EDM işi için zorunlu sıra:
+`docs/EDM_BAKIM_HAFIZASI.md` → `docs/EDM_AKTIVASYON_REHBERI.md` →
+`docs/EDM_ENTEGRASYONU.md`. Kök `AGENTS.md` depo genelindeki bağlayıcı
+kuralları ve bu okuma sırasını tanımlar.
 
 ## Sırlar ve üçüncü taraf kodu
 

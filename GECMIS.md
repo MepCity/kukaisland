@@ -1,10 +1,14 @@
 # Kuka Island — geliştirme serüveni
 
-Bu belge **neyi neden yaptığımızı** anlatır. `PLAN.md` sözleşmedir, §38 karar defteridir (178 karar), bu dosya ise hikâyedir: hangi yollara girdik, nerede geri döndük, hangi kuralları neden koyduk.
+Bu belge **neyi neden yaptığımızı** anlatır. `PLAN.md` sözleşmedir, §38 karar
+defteridir; bu dosya ise hikâyedir: hangi yollara girdik, nerede geri döndük,
+hangi kuralları neden koyduk.
 
-Projeye yeni katılan bir yapay zekâ ya da geliştirici önce bunu okumalı. Sonra `PLAN.md` §38 ve §39'a bakmalı.
+Projeye yeni katılan bir yapay zekâ ya da geliştirici önce bunu okumalı. Sonra
+`PLAN.md` §38 ve §39'a bakmalı. İş EDM ile ilgiliyse bu sıranın önüne
+`docs/EDM_BAKIM_HAFIZASI.md` ve `docs/EDM_AKTIVASYON_REHBERI.md` gelir.
 
-**Tarih:** Ağustos 2026. **Depo:** `kukaisland-canli` (kanonik). **Prototip:** `kukaisland_prototype` (dondurulmuş, arşiv).
+**Tarih:** Ağustos–Eylül 2026. **Depo:** `kukaisland-canli` (kanonik). **Prototip:** `kukaisland_prototype` (dondurulmuş, arşiv).
 
 ---
 
@@ -43,13 +47,14 @@ Sonra ölçüm yapıldı:
 ### Üretim yığını
 
 ```
-WordPress 7.0.2
-├── Blocksy 2.1.51 (parent tema, Free)
+WordPress 7.1
+├── Blocksy 2.1.53 (parent tema, Free)
 │   └── kuka-island-child          ← tasarımın tamamı burada
-├── WooCommerce 11.0.0 (HPOS açık)
+├── WooCommerce 11.0.1 (HPOS açık)
 ├── iyzico WooCommerce 3.5.28
-└── Kuka Island Core (kendi eklentimiz)
-    └── Site Görünümü paneli — misafir mağaza ve içerik ayarları
+├── Kuka Island Core (kendi eklentimiz)
+│   └── Site Görünümü + manuel WooCommerce fulfillment
+└── Kuka Island EDM (ayrı, varsayılan pasif eklenti)
 ```
 
 Yerel geliştirme Docker ile: MariaDB + WordPress + WP-CLI. `make reset` temiz volume'dan her şeyi kurar.
@@ -374,6 +379,9 @@ PLAN.md §39   mevcut durum
 docs/BILINEN_SINIRLAMALAR.md
 docs/MUSTERI_SORULARI.md
 docs/AKTARMA_HARITASI.md      override envanteri
+docs/EDM_BAKIM_HAFIZASI.md    EDM sorun → kök neden → çözüm kayıtları
+docs/EDM_AKTIVASYON_REHBERI.md
+docs/EDM_ENTEGRASYONU.md      güncel teknik sözleşme
 docs/qa/                       ekran görüntüleri
 ```
 
@@ -403,31 +411,156 @@ docs/qa/                       ekran görüntüleri
 | 6A | Altı sahneli, panel kontrollü, JS kapalı/mobil/reduced-motion güvenli marka hikâyesi |
 | 7 | Görev odaklı yönetim haritası, durum/uyarı başlangıcı, 13 sekmeli arama, TR/EN yan yana düzenleme, ürün kontrol listesi ve korunan yakında/noindex |
 | 8 | Tema sahipliğinde iki dilli iyzico/footer ödeme şeridi, iletişimde tek kaynak şirket bilgileri, 12 otomatik + 5 manuel başvuru kontrolü ve ölçümlü QA |
+| 9 | Sipariş e-postası hata görünürlüğü, SMTP hazırlığı, yeniden gönderme yüzeyleri ve kapalı `mail()` davranış testi |
+| 10 | Checkout doğrulama özetleri, alan içi hata/odak davranışı ve iki dilli tarayıcı ölçümü |
+| 11 | Footer ödeme logolarını kaldırma, içerik başlık ölçeği ve site e-postasını tek kaynağa bağlama |
 | Deploy | Veridyen'e canlıya alma, coming soon ekranı |
+| EDM | EDM SOAP/UBL entegrasyonu, güvenli sandbox taslak ve gönderim deneyleri, mükerrerlik/poller/kurtarma korumaları; sonra ayrı ve varsayılan pasif eklentiye çıkarma |
 
 ---
 
-## 14. Şu an açık olanlar
+## 14. EDM entegrasyonu — neden uzadı, ne öğrendik
+
+Bu iş ilk bakışta “ödeme oldu, API'ye faturayı gönder” görünüyordu. Gerçekte
+geri alınamaz bir mali belgeyi üreten SOAP sözleşmesi, UBL element sırası,
+numaralandırma, belirsiz ağ sonucu, durum takibi ve kargo zamanı aynı anda doğru
+olmak zorundaydı. Çalışmanın uzamasının nedeni tek bir hata değil, her biri
+gerçek çağrıda farklı sonuç doğuran katmanların sırayla ortaya çıkmasıydı.
+
+### Portal, servis ve doküman birbirinden farklı şeyler
+
+EDM'in test portalı insanın gelen/giden belge ve tanımları gördüğü arayüzdür;
+WooCommerce oraya ekran otomasyonu yapmaz. Kod SOAP web servisine bağlanır.
+E-postada verilen servis yolu eskiydi ve 404 dönüyordu; çalışan WSDL'den
+ölçülen kanonik test yolu `EFaturaEDM21ea/EFaturaEDM.svc` oldu. Bu yüzden URL
+bir “test” etiketine güvenerek değil, Login'den önce tam allow-list ile
+doğrulanıyor.
+
+EDM ayrıca her çağrıda sekiz alanlı `REQUEST_HEADER` ve
+`APPLICATION_NAME=ozelyazilim.kukaisland` bekliyor. İlk istemci bu sözleşmeyi
+eksik kurduğu için Login'in başarılı olması fatura isteğinin doğru olduğu
+anlamına gelmiyordu. Üretim ve sandbox araçlarının farklı başlık üretmesi
+engellendi; ikisi tek yardımcıya bağlandı.
+
+### Taslak yüklemek fatura kesmek değildir
+
+`LoadInvoice` EDM portalına bir **taslak** kaydeder; alıcıya göndermez ve mali
+belgeyi kesmez. `SendInvoice` ise geri alınamaz gönderimdir. Bu ayrım başta net
+değildi; sonradan ayrı komutlar, ayrı state dosyaları ve birbirini dışlayan
+host kapılarıyla yapısal hâle getirildi.
+
+Tek kontrollü `LoadInvoice` deneyi başarılı oldu: EDM taslağı aldı ve 16
+karakterlik numara atadı. Bu deney numaralandırma yolunu kanıtladı fakat aynı
+UBL'in `SendInvoice` iş kurallarından geçeceğini kanıtlamadı.
+
+### Mali numarayı biz üretmiyoruz
+
+UBL `cbc:ID` alanı zorunlu olsa da sipariş numarasından fatura numarası türetmek
+yanlıştı. EDM'in resmî sözleşmesi ve yazılı cevabı uyarınca UBL'de
+`ABC2009123456789` sentinel'i kullanılıyor, SOAP `INVOICE/@ID` gönderilmiyor ve
+gerçek numara yalnız EDM yanıtından kaydediliyor. Sentinel'in sipariş metasında
+fatura numarası olarak kalmasını tek merkezî yazıcı reddediyor.
+
+### Bireysel alıcı ve ilk gerçek ret
+
+Nihai tüketiciden checkout'ta TCKN istemiyoruz. EDM'nin doğruladığı sözleşme:
+`11111111111` + WooCommerce fatura alanlarındaki **gerçek ad/soyad**. E-posta
+hem UBL `ElectronicMail` hem `HEADER.TO` alanına gidiyor; e-Arşivde
+`RECEIVER.alias` yazılmıyor ve teslimi EDM yapıyor.
+
+İlk gerçek `SendInvoice` yine de genel bir ret verdi. Sistem doğru biçimde
+`uncertain` kaldı ve ikinci gönderimi kapattı. EDM request logu tutmadığını
+bildirdiği için aynı kayıtlı girdilerden redakte destek paketi üretildi. Paket
+özgün zarfla byte-identik diye sunulmadı; zaman alanlarının değişebileceği ve
+WSDL uyumunun UBL/GİB iş kurallarının tamamını kanıtlamadığı açıkça yazıldı.
+
+EDM desteği kök nedeni buldu: TCKN'li müşteride `cac:Person` vardı fakat UBL
+`PartyType` dizisinde yanlış yerdeydi. `Person`, `Contact` sonrasına taşındı;
+ikinci bir düğüm eklenmedi. Rapor tarihleri de WSDL'in zorunlu serileştirmesi ve
+EDM'in resmî örnekleri nedeniyle `0001-01-01` oldu.
+
+### İlk kabul edilen gerçek gönderim ve dürüst son durum
+
+Düzeltilmiş tek `SendInvoice` EDM tarafından kabul edildi, UUID yanıtla eşleşti
+ve 16 karakterlik numara atandı. Son salt-okunur ölçüm:
+`PACKAGE - PROCESSING`. Bu, belgenin EDM'de bulunduğunu kanıtlar fakat
+`SEND - SUCCEED` değildir. Yani **terminal başarı henüz gözlemlenmedi**;
+numara atanmış olması GİB'e ulaştığının tek başına kanıtı sayılmıyor.
+
+Arka planda çalışan sandbox izleyicisi yoktur. Tekrar kontrol gerekirse
+`./scripts/edm-sandbox-send-run.sh status=confirm` elle çalıştırılır; bu mod
+yalnız Login/GetInvoiceStatus/GetInvoice/Logout'a izin verir ve state'i
+salt-okunur bağlar.
+
+Buradaki test raporları da aynı kanıt değildir. `make verify` yüzlerce yerel,
+fixture ve gerçek WordPress davranış kontrolünü çalıştırır ama EDM'e gerçek
+fatura göndermez. Salt-okunur probe gerçek EDM bağlantısını, iki kapılı
+sandbox komutu gerçek belge yazmasını, terminal `SEND - SUCCEED` ise EDM/GİB
+sonucunu kanıtlar. Bu üçü ileride tek “PASS” cümlesinde birleştirilmemelidir.
+
+### Neden bu kadar çok mükerrerlik koruması var
+
+Bir timeout “gönderilmedi” demek değildir. Bu nedenle kalıcı UUID, gönderim
+durumu, `sent_at` veya mali attempt sayacından biri bile varsa send yolu yalnız
+uzlaştırmaya döner; `force` bunu aşamaz. `SendInvoice` oturum yenileme retry'ı
+kapalıdır. Durum sorgusu ayrı poller action'ına aittir ve send kuyruğuna geri
+dönemez. Poll planlanamazsa hata görünür olur; sessizce başarı sayılmaz.
+
+Ön-gönderim altyapı retry'ı ile mali gönderim attempt'i de ayrıldı. Queue
+sayacı en fazla üç denemelik tek zincire aittir ve zincirin her çıkışında
+temizlenir. `queued` statüsü worker için geçerli, operatör resend düğmesi için
+geçersizdir. Başarısız gerçek bir belge yeniden kullanılmaz: operatör onaylı
+kurtarma eski kimlikleri append-only arşivler, yeni UUID ve EDM'den yeni numara
+ile yeni belge hazırlar.
+
+### Kargo zamanı ve internet satış bilgisi
+
+Fatura ödeme anında değil, fiziksel siparişin **tamamı kargoya verildiğinde**
+hazırlanır. Kısmi fulfillment bekler. WooCommerce fulfillment tarihi UTC
+saklandığı için katı UTC ayrıştırılıp mağaza timezone'una çevrilir; bozuk tarih
+bugüne düşürülmez. Mesafeli satış taşıyıcısı tüzel kişiyse VKN tam 10 hanedir;
+gerçek DHL/MNG mali kimliği yapılandırılmadan uydurma değerle fatura gönderilmez.
+
+### Son mimari karar: ayrılabilir ve pasif modül
+
+Müşteri belirli sipariş hacmine ulaşana kadar faturayı elle kesecek. Bu yüzden
+EDM kodu Core'un ayrılmaz parçası olarak bırakılmadı; geçmişi korunarak
+`kuka-island-edm` eklentisine taşındı. Bağımlılık yalnız EDM → Core yönünde.
+Deploy paketi eklentiyi taşır fakat yeni kurulumda etkinleştirmez. Pasifken EDM
+sınıfı, paneli, SOAP çağrısı, hook'u, action'ı ve sipariş metası yoktur;
+WooCommerce'in manuel fatura ve kargo süreci aynen çalışır.
+
+Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
+[EDM_BAKIM_HAFIZASI.md](docs/EDM_BAKIM_HAFIZASI.md), sonra
+[EDM_AKTIVASYON_REHBERI.md](docs/EDM_AKTIVASYON_REHBERI.md) ve
+[EDM_ENTEGRASYONU.md](docs/EDM_ENTEGRASYONU.md) okunmalıdır.
+
+---
+
+## 15. Şu an açık olanlar
 
 ### Bizde
 
 - İngilizce ilk geçişin müşteri tarafından, sekiz İngilizce yasal metnin hukuk danışmanı tarafından gözden geçirilmesi/doldurulması
 - Safari / Firefox / iOS / Android turu ve gerçek cihazda Core Web Vitals — hiç yapılmadı
+- EDM sandbox belgesinde terminal `SEND - SUCCEED` henüz gözlemlenmedi; son ölçüm `PACKAGE - PROCESSING`
+- DHL eCommerce sandbox uygulaması oluşturuldu; API ürün abonelikleri ve token için gereken test müşteri numarası/şifresi henüz tamamlanmadı
 
 ### Müşteride
 
 - **ETBİS kaydı** — iyzico başvurusunun önkoşulu
 - `04` §5 beden değişimi maddesi ve `03` üyelik sözleşmesi için hukuk danışmanı kararı
 - Gerçek ürünler, fotoğraf ve fiyatlarla (150 parça, çekim başlamadı)
-- iyzico sandbox anahtarı → §18.1'in 9 test senaryosu
+- iyzico canlı üye işyeri bilgileri ve canlı ilk ödeme kontrolü; sandbox ödeme,
+  callback/idempotency ve iade korumaları geliştirme ortamında doğrulandı
 - **SMTP** (§4.4 zorunlu) — sipariş e-postaları buna bağlı
-- e-Arşiv entegratörü kararı — GİB Portal'ın API'si yok, otomatik fatura için özel entegratör aboneliği şart
+- EDM canlı başvuru/kimlik/seri kurulumu — müşteri hacme ulaşana kadar eklenti pasif, faturalar manuel
 - Kombin indirimi kararı → varsa WPC Product Bundles Premium **$29 tek seferlik**
 - Logo SVG yatay lockup + font lisansı (§4.6 self-hosted zorunlu)
 
 ---
 
-## 15. Bu belgeyi okuyan yapay zekâya
+## 16. Bu belgeyi okuyan yapay zekâya
 
 1. **Ölç, tahmin etme.** Bu projede her "tamamlandı" iddiası ekran görüntüsü veya sayı ile desteklenir. Desteklenmiyorsa "doğrulanmadı" yaz.
 2. **Prototipi çevir, yeniden tasarlama.** `app-reference/` kaynaktır.

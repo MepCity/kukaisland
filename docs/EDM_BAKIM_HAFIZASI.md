@@ -5,7 +5,9 @@ Bu dosya **bakım kaydıdır**, teknik sözleşme değil. Sözleşme:
 [EDM_AKTIVASYON_REHBERI.md](EDM_AKTIVASYON_REHBERI.md).
 
 Amaç tek: bir belirti tekrar ortaya çıktığında **nereye bakılacağını** saniyeler
-içinde bulmak. Her kayıt aynı sekiz alanı taşır ve `Ctrl+F` ile belirti üzerinden
+içinde bulmak. Kök neden kayıtları belirti, neden, düzeltme, kanıt, ilgili
+dosyalar ve “ilk bakılacak yer” bilgilerini taşır; durum kayıtları aynı yapıyı
+yalnız konuya uyan alanlarla kullanır. Tümü `Ctrl+F` ile belirti üzerinden
 aranacak şekilde yazılmıştır.
 
 **Bu dosyaya asla yazılmaz:** kullanıcı adı, parola, secret key, session ID, tam
@@ -13,6 +15,27 @@ belge UUID'si, tam fatura numarası, SOAP gövdesi.
 
 Modül yolu: `wp-content/plugins/kuka-island-edm/`. Kısaltma olarak aşağıda
 `EDM/` kullanılır.
+
+---
+
+## Kısa kronoloji — nereden nereye geldik
+
+Bu özet, ayrıntılı kayıtların yerine geçmez; bakım yapan kişinin doğru kayda
+hızla gitmesi içindir.
+
+| Tarih | Ne oldu | Sonuç / ilgili kayıt |
+| --- | --- | --- |
+| 2026-08-30 | EDM'in e-postadaki eski servis yolu ile çalışan gerçek test WSDL'i birbirine karıştı | Kanonik `EFaturaEDM21ea` yolu ölçülüp allow-list'e alındı (K-01) |
+| 2026-08-30–31 | Login ve SOAP istekleri önce eksik/sapmış sözleşmelerle kuruldu | Login mali readiness'ten ayrıldı; sekiz alanlı ortak `REQUEST_HEADER` yazıldı (K-02, K-03) |
+| 2026-08-31 | Yanıt parser'ı boş durumu başarı sayıyor, poller gerçek akışa bağlanmıyor ve send kuyruğu sorguyu sahipleniyordu | Durumlar birebir sözlükle okunur hâle geldi; sorgu ve gönderim kuyrukları ayrıldı (K-08, K-09, K-20, K-21, K-22) |
+| 2026-09-01 | Numara, bireysel alıcı, e-posta/alias ve başarısız belge kurtarma kuralları kesin değildi | EDM yazılı cevapları ve davranış testleriyle sentinel, `11111111111` + gerçek ad/soyad, e-Arşiv adresleme ve yeni-belge kurtarma sözleşmeleri kuruldu (K-04, K-06, K-07, K-12) |
+| 2026-09-02 | İnternet satış/kargo bilgileri hazırdı fakat gönderime bağlı değildi; tarih timezone'u ve taşıyıcı kimliği belirsizdi | Tam fulfillment kapısı, UTC→mağaza günü dönüşümü ve 10 haneli tüzel taşıyıcı VKN kuralı kuruldu (K-14) |
+| 2026-09-02 | Tek `LoadInvoice` deneyi yapıldı | Taslak başarıyla yüklendi ve EDM numara atadı; bunun fatura kesmek olmadığı kayda geçirildi (K-15) |
+| 2026-09-02 | İlk gerçek `SendInvoice` genel bir ret verdi; özgün zarf güvenlik gereği diskte tutulmamıştı | Belirsiz kayıt kilitlendi; salt-okunur mutabakat yapıldı; redakte destek paketi üretme sınırları yazıldı (K-11, K-23) |
+| 2026-09-03 | EDM teknik destek, reddin TCKN'li alıcıdaki `cac:Person` element sırasından geldiğini bildirdi | `Person`, `Contact` sonrasına taşındı (K-05) |
+| 2026-09-03 | Düzeltilmiş tek `SendInvoice` EDM tarafından kabul edildi ve numaralandı | Son ölçülen durum `PACKAGE - PROCESSING`; belge var fakat terminal başarı henüz görülmedi (K-16, K-17) |
+| 2026-09-03 | Entegrasyon Core'dan ayrıldı | `kuka-island-edm` ayrı, varsayılan pasif eklenti oldu; manuel süreç korunuyor (K-18, K-19, K-24) |
+| Tüm süreç | Sandbox yazma araçlarında “bir daha deneyelim” ve test PASS'ini gerçek EDM sonucu sanma riski tekrarlandı | Kalıcı claim/reset sözleşmesi, byte-katı endpoint/kimlik girişi ve üç ayrı kanıt düzeyi yazıldı (K-25, K-26, K-27) |
 
 ---
 
@@ -90,8 +113,9 @@ Modül yolu: `wp-content/plugins/kuka-island-edm/`. Kısaltma olarak aşağıda
   fatura adından alınır ve **eksikse fail-closed** (`missing_individual_name`).
   Genel unvan hiç üretilmez. Sipariş TCKN taşıyorsa 11 hane olmak zorunda
   (`invalid_individual_tckn`).
-- **Kaynak:** EDM teknik desteği 2026-09-03 yazılı cevabı (test ortamı için
-  `11111111111` kabul).
+- **Kaynak:** EDM teknik desteği 2026-09-03 yazılı cevabı: canlıda genel TCKN
+  `11111111111` kullanılsa bile `cac:Person` içindeki gerçek ad ve soyadın
+  zorunlu olduğu açıklandı.
 - **Kanıt:** `INVOICE_INDIVIDUAL_EARCHIVE_RECEIVER_CONTRACT`,
   `INVOICE_INDIVIDUAL_RECEIVER_FAIL_CLOSED`
 - **İlgili dosyalar:** `EDM/includes/invoice/class-invoice-order-mapper.php`
@@ -242,10 +266,12 @@ Modül yolu: `wp-content/plugins/kuka-island-edm/`. Kısaltma olarak aşağıda
 - **Belirti:** Timeout sonrası "tekrar deneyelim" refleksi.
 - **Kesin kök neden:** Belirsiz bir gönderimden sonra belgenin EDM'de var olup
   olmadığı bilinmez. Yeniden göndermek mükerrer belge üretir.
-- **Uygulanan düzeltme:** Merkezî guard: `transmission_evidence()` bir gönderim
-  kanıtı görürse (`uuid`, numara, `sent_at`, `sending`/`send_uncertain`
-  durumu) `SendInvoice` yolu **kapanır**; yalnız `reconcile_only` okuma yolu
-  kalır. Poller `SendInvoice`'a **ulaşamaz**. Sandbox tarafında da aynı ilke:
+- **Uygulanan düzeltme:** Merkezî guard: `transmission_evidence()` dört kalıcı
+  kanıttan birini görürse (`uuid`, gönderim-sonrası `status`, `sent_at` veya
+  `send_attempts > 0`) `SendInvoice` yolu **kapanır**; yalnız
+  `reconcile_only` okuma yolu kalır. **Fatura numarası kanıt değildir:** numara
+  gönderimden önce çözülebilir ve hiç iletilmemiş bir siparişte kalabilir.
+  Poller `SendInvoice`'a **ulaşamaz**. Sandbox tarafında da aynı ilke:
   `uncertain` kayıt ikinci gönderimi reddeder, çözüm yalnız salt-okunur
   mutabakattır.
 - **Kaynak:** Tasarım kararı; davranışsal testlerle kilitli.
@@ -307,8 +333,11 @@ Modül yolu: `wp-content/plugins/kuka-island-edm/`. Kısaltma olarak aşağıda
   `scripts/lib-edm-sandbox.php`
 - **Tekrar yaşanırsa ilk bak:** Kontrolün `wsdl_declares` alanı. EDM WSDL'i
   gevşetirse atlama serileşmeye başlar, beklenti kırılır ve konu yeniden
-  ölçülmeye zorlanır. **EDM'den çözüm bekliyor:** ya `minOccurs="0"`, ya da
-  hangi değerin istendiğinin belirtilmesi.
+  ölçülmeye zorlanır. Bu konu artık destek cevabı beklemiyor: EDM alanların iş
+  kuralı bakımından zorunlu olmadığını yazılı doğruladı; mevcut WSDL ise
+  serileştirmede ikisini de zorunlu tuttuğu için resmî örneklerle aynı
+  `0001-01-01` değeri kullanılıyor. Bu şekil gerçek `SendInvoice` tarafından
+  kabul edildi; WSDL değişirse yeniden ölçülmelidir.
 
 ---
 
@@ -463,3 +492,223 @@ Modül yolu: `wp-content/plugins/kuka-island-edm/`. Kısaltma olarak aşağıda
   Deaktivasyon **sipariş metasını, geçmişi, UUID/numara kayıtlarını veya
   superseded kayıtlarını silmez** ve başka eklentilerin action'larına
   dokunmaz.
+
+---
+
+## K-20 — Durum sorgusunun sahibi send kuyruğu değil, poller'dır
+
+- **Tarih:** 2026-08-31
+- **Belirti:** İlk durum sorgusundan sonra zincir sessizce duruyor, sonsuza
+  kadar send worker yeniden planlanıyor veya planlama hatası görünmüyor.
+- **Kesin kök neden:** Üç kusur üst üste gelmişti. Poller'ın `start()` metodu
+  gerçek gönderim akışından çağrılmıyordu; `as_has_scheduled_action()` çalışan
+  action'ı da pending saydığı için callback kendi devamını planlayamıyordu;
+  planlama sonucundaki `false`/exception sessizce yutuluyordu.
+- **Uygulanan düzeltme:** Gönderim sonucunun yazıldığı tek merkez
+  `Invoice_Manager::process_order()` poller'ı başlatır. Poller'ın ayrı
+  `ACTION_QUERY_STATUS` action'ı yalnız `GetInvoiceStatus` çağırabilir.
+  Duplicate kontrolü yalnız pending action'a bakar ve sipariş bazlı ayrı
+  advisory lock kullanır. Planlama sonucu `created`, `already_pending`,
+  `lock_contended`, `scheduler_unavailable` veya `schedule_failed` olarak
+  saklanır; hata operatör notuna güvenli kodla yansır.
+- **Önemli sınır:** `MAX_ATTEMPTS=12` ve artan gecikmelerin toplamı fiilen
+  23.400 saniye, yani yaklaşık **6,5 saat**tir. `MAX_ELAPSED=24 saat` mevcut
+  matematikte önce dolmaz. Uzun sürebilen ticari fatura alıcı cevapları için
+  ayrı seyrek izleme tasarlanmadan bu pencere “24 saat” diye anlatılmamalıdır.
+- **Kanıt:** `INVOICE_POLLER_AUTOSTARTS_FROM_SEND`,
+  `INVOICE_POLL_FOLLOWUP_ON_REAL_RUNNER`,
+  `INVOICE_POLL_FIRST_SCHEDULE_FAILURE_VISIBLE`,
+  `INVOICE_POLL_LOCK_RACE_FAIL_VISIBLE`
+- **İlgili dosyalar:** `EDM/includes/invoice/class-invoice-status-poller.php`,
+  `EDM/includes/invoice/class-invoice-manager.php`
+- **Tekrar yaşanırsa ilk bak:** Pending action sayısı, poller'ın son planlama
+  sonucu ve callback sırasında action statüsünün `in-progress` oluşu. Send
+  kuyruğuna sorgu sorumluluğu geri verilmemelidir.
+
+---
+
+## K-21 — Kuyruk retry sayacı mali gönderim sayacı değildir
+
+- **Tarih:** 2026-08-31
+- **Belirti:** Ön-gönderim transient hatası sonsuz action zinciri oluşturuyor
+  veya yeni bir zincir önceki zincirin kalan bütçesiyle başlıyor.
+- **Kesin kök neden:** Retry bütçesi `_kuka_invoice_attempts` mali
+  `SendInvoice` sayacından okunuyordu. Ön-gönderim kilit/altyapı hatası bu
+  sayacı artırmadığı için cap hiç gelmiyordu. Daha sonra ayrı sayaç eklendi,
+  fakat tüm çıkışlarda temizlenmediği için yeni zincir eski bütçeyi miras
+  alabiliyordu.
+- **Uygulanan düzeltme:** Yalnız send kuyruğuna ait
+  `_kuka_invoice_queue_retries` kullanılır; en fazla üç ön-gönderim denemesi
+  vardır. Başarı, cap, permanent/generic exception, poller'a devir,
+  auto-send-kapalı çıkışı ve yeni zincir başlangıcında temizlenir. Mali
+  `_kuka_invoice_attempts` bütçe olarak okunmaz.
+- **Kanıt:** `INVOICE_QUEUE_PRETRANSMISSION_RETRY_CAP`,
+  `INVOICE_QUEUE_RETRY_COUNTER_CLEARED_ON_SUCCESS`,
+  `INVOICE_QUEUE_RETRY_META_CLEARED_ON_EVERY_CHAIN_EXIT`,
+  `INVOICE_QUEUE_NEW_CHAIN_STARTS_AT_ZERO`
+- **İlgili dosyalar:** `EDM/includes/invoice/class-invoice-queue.php`
+- **Tekrar yaşanırsa ilk bak:** İki meta anahtarını karıştırma. Queue retry
+  değeri yeni zincirde yok olmalı; mali attempt değeri geçmiş kanıtıdır ve
+  silinmemelidir.
+
+---
+
+## K-22 — `queued`: worker için geçerli, operatör resend'i için geçersiz
+
+- **Tarih:** 2026-09-01
+- **Belirti:** Otomatik kuyruk siparişi `queued` yaptıktan sonra worker
+  `invalid_invoice_status_transition` ile duruyor; `queued` statüsünü genel
+  retry listesine eklemek ise panelde ikinci “Faturayı Gönder” yolunu açıyor.
+- **Kesin kök neden:** “Worker bu kaydı alabilir mi?” ile “operatör yeniden
+  gönderebilir mi?” aynı predicate'e bağlanmıştı.
+- **Uygulanan düzeltme:** `can_retry(queued)=false` kalır; panel resend sunmaz.
+  Ayrı `Invoice_Manager::may_start_transmission(queued)=true` yalnız hiç
+  gönderilmemiş worker başlangıcına izin verir. Kalıcı
+  `transmission_evidence()` guard'ı önce çalışır ve bu predicate'i ezer.
+- **Kanıt:** `INVOICE_AUTO_SEND_QUEUED_ORDER_REACHES_SEND`,
+  `INVOICE_QUEUED_STATUS_DOES_NOT_ENABLE_ADMIN_RESEND`
+- **İlgili dosyalar:** `EDM/includes/invoice/class-invoice-manager.php`,
+  `EDM/includes/invoice/class-invoice-status.php`
+- **Tekrar yaşanırsa ilk bak:** `queued` değerini `can_retry()` listesine
+  eklemeyin; worker kapısını `may_start_transmission()` üzerinden ölçün.
+
+---
+
+## K-23 — Destek paketi özgün request değildir
+
+- **Tarih:** 2026-09-02–03
+- **Belirti:** EDM “request'i gönderin” diyor, fakat reddedilen çağrının ham
+  SOAP zarfı diskte yok; yeniden üretilen zarf “birebir aynı” sanılıyor.
+- **Kesin kök neden:** Sıfır-sır-sızıntısı politikası ham SOAP gövdesini ve
+  session bilgisini kalıcı olarak saklamıyordu — bu doğru güvenlik
+  davranışıydı. Sonradan aynı kayıtlı girdilerle üretilen zarfın
+  `ACTION_DATE`/zaman alanları değişebildiği için özgün çağrıyla byte-identik
+  olduğu iddia edilemez.
+- **Uygulanan düzeltme:** Destek paketi gerçek üretim kodundan yeniden üretildi;
+  session ve kimlik işaretleri redakte edildi, dış zarfın `CONTENT` değeri ile
+  ayrı UBL dosyasının bit düzeyinde aynı olduğu ve XML'in well-formed olduğu
+  hash/round-trip kontrolleriyle ölçüldü. Özet açıkça bunun özgün request değil,
+  yeniden üretim olduğunu ve WSDL uyumunun UBL-TR/GİB/EDM iş kurallarının
+  tamamını kanıtlamadığını yazdı. EDM'in request logu tutmadığı destek
+  cevabıyla öğrenildi; paket sayesinde asıl `cac:Person` sıra kusuru bulundu.
+- **Güvenlik:** Paket repoya alınmaz; kullanıcı adı, parola, secret key,
+  session ID, tam UUID ve tam belge numarası bakım belgelerine yazılmaz.
+- **Kaynak:** EDM teknik destek yazışması ve redakte paket doğrulamaları.
+- **İlgili dosyalar:** `scripts/edm-sandbox-send.php`,
+  `docs/EDM_ENTEGRASYONU.md` §15.5–§16.1
+- **Tekrar yaşanırsa ilk bak:** Önce mevcut çağrıyı yeniden göndermeyin. Ayrı
+  onaylı bir teşhis koşusunda mode-700 geçici dizin/mode-600 dosya, bağımsız
+  sır taraması ve açık “yeniden üretilmiştir” ibaresi kullanın.
+
+---
+
+## K-24 — EDM ayrı ve varsayılan pasif eklentidir
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Mağaza EDM kullanmaya hazır değilken Core'un her istekte fatura
+  sınıflarını yüklemesi; entegrasyonu kapatmanın güvenli ve anlaşılır bir yolu
+  olmaması.
+- **Kesin kök neden:** Mali entegrasyon başlangıçta `kuka-island-core` içine
+  gömülüydü. Müşteri belirli sipariş hacmine ulaşana kadar faturayı manuel
+  keseceği için bu, ürün yaşam döngüsüyle uyuşmuyordu.
+- **Uygulanan düzeltme:** Kod geçmişi korunarak ayrı
+  `wp-content/plugins/kuka-island-edm/` eklentisine taşındı. Bağımlılık yalnız
+  `EDM → Core`; tersi yasak. Deploy paketi eklentiyi ve üç rehberi taşır,
+  `install.sh` eklentiyi yeni kurulumda etkinleştirmez ve daha önce bilinçli
+  etkinleştirilmişse de kapatmaz. Pasifken sınıf, hook, panel, SOAP çağrısı,
+  action ve sipariş metası oluşmaz; manuel fatura/kargo akışı değişmez.
+- **Kanıt:** `EDM_PASSIVE_*`, `EDM_LIFECYCLE_*`,
+  `verify-deploy-package.sh`
+- **İlgili dosyalar:** `EDM/kuka-island-edm.php`,
+  `EDM/includes/class-plugin.php`, `EDM/includes/class-activator.php`,
+  `scripts/install.sh`, `scripts/build-deploy-package.sh`
+- **Tekrar yaşanırsa ilk bak:** Aktivasyon rehberi. Eklentiyi etkinleştirmek
+  auto-send'i açmaz; canlı kimlik ve gönderim onayı ayrı aşamalardır.
+
+---
+
+## K-25 — Sandbox yazma claim'i kalıcıdır; reset tamamen çevrimdışıdır
+
+- **Tarih:** 2026-08-31–2026-09-03
+- **Belirti:** Belirsiz bir `LoadInvoice`/`SendInvoice` sonrasında araç yeniden
+  yazmaya çalışıyor; bozuk state dosyasını boş sayıyor; “reset” komutu çalışırken
+  önce Login/CheckUser gibi EDM çağrıları yapıyor.
+- **Kesin kök neden:** İlk tasarımlarda yazma sahipliği ile sonuç durumu yeterince
+  ayrılmamıştı. Reset kontrolü de credential yükleme, client oluşturma ve EDM
+  okumalarının **sonrasında** duruyordu. Daha kötüsü, ilk “0 SOAP çağrısı” testi
+  gerçek runner'ı değil testin kendi closure'ını çalıştırdığı için hiçbir şeyi
+  kanıtlamıyordu.
+- **Uygulanan düzeltme:** Her sandbox yazma türünün ayrı, mode-600 state dosyası
+  ve tek-sahipli kilidi vardır. Geçişler `idle → in_flight → confirmed |
+  failed_definitive | uncertain`; `uncertain`, terminal ve bozuk kayıtlar yeni
+  yazmayı fail-closed reddeder. Reset CLI argümanları dosyanın başında ayrıştırılır
+  ve credential/client/EDM yollarından **önce** çıkar. Wrapper reset modunda
+  credential dosyasını mount etmez, yazma env'ini iletmez ve açık yazma kapısını
+  Docker başlamadan host'ta reddeder. Reset yalnız kanıtlı yoklukla
+  `uncertain → idle` yapar; UUID'yi değiştirmez ve geçmişi append-only korur.
+- **Kanıt:** `SANDBOX_CLAIM_*`, `SANDBOX_STATE_CORRUPTION_FAIL_CLOSED`,
+  `SANDBOX_CORRUPT_STATE_BLOCKS_WRITE`,
+  `SANDBOX_RESET_PRECEDES_EVERY_EDM_PATH`,
+  `SANDBOX_RESET_HOST_WRITE_GATE`, `SANDBOX_RESET_REAL_WRAPPER_DRIVER`
+- **İlgili dosyalar:** `scripts/lib-edm-sandbox.php`,
+  `scripts/edm-sandbox-invoice.php`, `scripts/edm-sandbox-run.sh`,
+  `scripts/verify-reset-offline.sh`
+- **Tekrar yaşanırsa ilk bak:** State'i elle düzenlemeyin veya silmeyin. Önce
+  salt-okunur EDM kanıtını alın; sonra yalnız belgelenmiş reset komutunu kullanın.
+  “Testte sayaç sıfır” demeden önce testin **gerçek wrapper ve gerçek driver**
+  yolunu çalıştırdığını doğrulayın.
+
+---
+
+## K-26 — Endpoint ve kimlik girdileri normalize edilmez
+
+- **Tarih:** 2026-08-31
+- **Belirti:** Başında/sonunda boşluk, tab, yeni satır veya kontrol byte'ı olan
+  WSDL değeri kanonik endpoint gibi kabul ediliyor; kimlik dosyasındaki özel
+  karakterler kabuk tarafından değişiyor.
+- **Kesin kök neden:** Endpoint doğrulayıcı `$wsdl` üzerinde önce `trim()`
+  çalıştırdığı için kendi “whitespace/control reddi” kuralını uçlarda
+  ulaşılamaz yapıyordu. Kimlikleri komut argümanı/env metni gibi taşımak da
+  boşluk, `=` ve sır sızıntısı riski oluşturuyordu.
+- **Uygulanan düzeltme:** Endpoint ham byte dizisi olarak, hiç
+  `trim`/`ltrim`/`rtrim` yapılmadan doğrulanır; boşluk/kontrol, backslash,
+  fragment, userinfo, scheme/host/path/query/port sırayla fail-closed kontrol
+  edilir. Kimlikler repo dışında mode-600 dosyada tutulur; değerler yankılanmaz,
+  argv'ye girmez ve parser boşluk ile `=` karakterlerini verbatim korur.
+- **Kanıt:** `SANDBOX_ENDPOINT_ALLOWLIST` (42 vaka),
+  `SANDBOX_ENDPOINT_REJECTS_PADDING`,
+  `SANDBOX_ENDPOINT_DOES_NOT_NORMALISE`, `SANDBOX_CRED_PARSER_VERBATIM`,
+  `EDM_RUNNER_ALLOWLIST`
+- **İlgili dosyalar:** `scripts/lib-edm-sandbox.php`,
+  `scripts/edm-test-credentials.sh`, `scripts/edm-test-run.sh`
+- **Tekrar yaşanırsa ilk bak:** Endpoint'i “düzeltmek” için kırpmayın; girdiyi
+  üreten kaynağı düzeltin. Kimliği shell komutuna, `.env` çıktısına, WordPress
+  option'ına veya repoya kopyalamayın.
+
+---
+
+## K-27 — `make verify` gerçek EDM sonucunu kanıtlamaz
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Yüzlerce PASS görüldüğünde “EDM'ye bağlandık, fatura kesin
+  kesiliyor” sonucu çıkarılıyor; ya da sandbox portalındaki sonuç ile yerel mock
+  test aynı kanıt düzeyinde anlatılıyor.
+- **Kesin kök neden:** Üç ayrı kanıt yüzeyi tek raporda karıştırılmıştı:
+  kaynak/sözleşme taraması, yerel davranışsal test ve gerçek EDM sandbox çağrısı.
+  `make verify` gerçek EDM `SendInvoice` çağırmaz; kimlik yoksa gerçek Login ve
+  CheckCounter satırları açıkça `BLOCKED`, gönderim satırı `SKIPPED` kalır.
+- **Uygulanan düzeltme:** Kanıtlar ayrı adlandırılır:
+  1. `make verify`: mock/fixture, gerçek WordPress/Action Scheduler ve izolasyon
+     sözleşmeleri; dış EDM yazması **yok**.
+  2. Salt-okunur probe/status: gerçek EDM Login/okuma; belge yazması **yok**.
+  3. Açık iki kapılı sandbox `LoadInvoice`/`SendInvoice`: gerçek EDM yazması;
+     sonucu ayrıca state ve portal/status kanıtıyla kaydedilir.
+  Kod testi PASS olsa bile tarayıcı/portal veya gerçek sandbox ölçümü gereken
+  bir kabul maddesine PASS yazılmaz.
+- **Kanıt:** `REAL_EDM_LOGIN=BLOCKED|reason:no_runtime_credentials`,
+  `REAL_EDM_SEND_INVOICE=SKIPPED|reason:read_only_verification_never_sends`,
+  `SANDBOX_SEND_WRITE_OPERATIONS`, `SANDBOX_SEND_STATUS_OPERATIONS`
+- **İlgili dosyalar:** `scripts/verify.sh`, `scripts/test-edm-sandbox.php`,
+  `scripts/edm-sandbox-send-run.sh`, `docs/EDM_AKTIVASYON_REHBERI.md`
+- **Tekrar yaşanırsa ilk bak:** Raporda önce “hangi yüzey ölçüldü?” sorusunu
+  cevaplayın. Mock PASS, EDM kabulü ve GİB terminal başarısı üç farklı olgudur.
