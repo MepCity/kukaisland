@@ -237,6 +237,21 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 		$this->append_cbc( $dom, $party_id, 'cbc:ID', $tax_number, array( 'schemeID' => $id_scheme ) );
 		$party->appendChild( $party_id );
 
+		/*
+		 * cac:Person is BUILT here and APPENDED last, after cac:Contact.
+		 *
+		 * UBL 2.1's PartyType sequence -- and EDM's own WSDL, which declares
+		 * PartyIdentification, PartyName, PostalAddress, PhysicalLocation,
+		 * PartyTaxScheme, PartyLegalEntity, Contact, Person -- puts Person
+		 * AFTER Contact. Appending it here, next to PartyIdentification, put it
+		 * in an invalid position and is what EDM refused a SendInvoice for on
+		 * 3 September 2026.
+		 *
+		 * The node is created once and moved, never copied: a second Person
+		 * would be a different defect with the same symptom.
+		 */
+		$person = null;
+
 		if ( ! empty( $customer['company'] ) ) {
 			$party_name = $dom->createElement( 'cac:PartyName' );
 			$this->append_cbc( $dom, $party_name, 'cbc:Name', (string) $customer['company'] );
@@ -252,7 +267,6 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 			$person = $dom->createElement( 'cac:Person' );
 			$this->append_cbc( $dom, $person, 'cbc:FirstName', $this->required( $customer['first_name'] ?? null, 'customer.first_name' ) );
 			$this->append_cbc( $dom, $person, 'cbc:FamilyName', $this->required( $customer['last_name'] ?? null, 'customer.last_name' ) );
-			$party->appendChild( $person );
 		}
 
 		$address = $dom->createElement( 'cac:PostalAddress' );
@@ -283,6 +297,11 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 		}
 		$this->append_cbc( $dom, $contact, 'cbc:ElectronicMail', $this->required( $customer['email'] ?? null, 'customer.email' ) );
 		$party->appendChild( $contact );
+
+		// Last in PartyType's sequence, and only for an individual buyer.
+		if ( null !== $person ) {
+			$party->appendChild( $person );
+		}
 
 		$cust_party->appendChild( $party );
 		$invoice->appendChild( $cust_party );

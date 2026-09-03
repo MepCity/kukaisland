@@ -617,19 +617,21 @@ $report(
  * placeholder, and the SOAP-side INVOICE/@ID stays omitted. Two different
  * fields.
  */
+$ubl_supplier_fixture = array(
+	'vkn'        => '3230512384',
+	'name'       => 'EDM TEST',
+	'tax_office' => 'SELÇUK',
+	'address'    => 'BOMONTİ BUSİNESS CENTER',
+	'district'   => 'Esenler',
+	'city'       => 'İstanbul',
+	'postcode'   => '',
+	'country'    => 'Türkiye',
+	'email'      => '',
+	'phone'      => '',
+);
+
 $ubl_built = kuka_sandbox_build_ubl(
-	array(
-		'vkn'        => '3230512384',
-		'name'       => 'EDM TEST',
-		'tax_office' => 'SELÇUK',
-		'address'    => 'BOMONTİ BUSİNESS CENTER',
-		'district'   => 'Esenler',
-		'city'       => 'İstanbul',
-		'postcode'   => '',
-		'country'    => 'Türkiye',
-		'email'      => '',
-		'phone'      => '',
-	),
+	$ubl_supplier_fixture,
 	KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN,
 	KUKA_SANDBOX_DOCUMENTED_PROFILE_ID,
 	kuka_sandbox_uuid()
@@ -1940,6 +1942,471 @@ foreach ( (array) glob( $state_root . '/*' ) as $leftover ) {
 }
 rmdir( $state_root );
 $report( 'SANDBOX_STATE_FIXTURES_CLEANED', ! is_dir( $state_root ), sprintf( 'temp_root_removed:%s', is_dir( $state_root ) ? 'no' : 'yes' ) );
+
+/* ========================================================================== */
+/* The sandbox and production address the recipient identically                 */
+/* ========================================================================== */
+
+/*
+ * EDM technical support answered the e-Arşiv addressing contract: the buyer's
+ * e-mail goes in the UBL's cbc:ElectronicMail and in INVOICE/HEADER/TO, EDM
+ * delivers to it, and RECEIVER/@alias -- a GİB mailbox the recipient does not
+ * have -- is omitted entirely.
+ *
+ * Both write paths now take that shape from one helper,
+ * Kuka_Island_Core_EDM_Client::recipient_addressing(). This measures that they
+ * really do agree, by comparing the request the PRODUCTION client serialises
+ * against the one the sandbox builds -- rather than trusting that they call the
+ * same function.
+ */
+final class Kuka_Sandbox_Addressing_Recorder implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, array<string, mixed>> */
+	public array $requests = array();
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->requests[ $operation ] = $parameters;
+
+		if ( 'Login' === $operation ) {
+			return array( 'SESSION_ID' => 'session-addressing', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+
+		return array(
+			'INVOICE'        => array( 'UUID' => 'uuid-addressing', 'ID' => 'EDM2026000009999' ),
+			'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ),
+		);
+	}
+}
+
+$addressing_config = new Kuka_Island_Core_Invoice_Config(
+	array(
+		'username'      => 'addressing_user',
+		'password'      => 'addressing_pass',
+		'sender_vkn'    => '1234567890',
+		'sender_alias'  => 'urn:mail:box@example.com',
+	)
+);
+
+/**
+ * The RECEIVER block and HEADER/TO a production SendInvoice would serialise.
+ *
+ * @param Kuka_Island_Core_Invoice_Config $config  Configuration.
+ * @param string                          $profile PROFILEID to send under.
+ * @param string                          $alias   Recipient alias, if any.
+ * @param string                          $email   Buyer e-mail.
+ * @return array{receiver: array<string, mixed>, to: string|null}
+ */
+$production_addressing = static function ( Kuka_Island_Core_Invoice_Config $config, string $profile, string $alias, string $email ): array {
+	$recorder = new Kuka_Sandbox_Addressing_Recorder();
+	$client   = new Kuka_Island_Core_EDM_Client( $config, $recorder );
+
+	$client->send_invoice(
+		array(
+			'trx_id'         => 1,
+			'uuid'           => 'uuid-addressing',
+			'invoice_serial' => '',
+			'profile_id'     => $profile,
+			'issue_date'     => '2026-01-02',
+			'payable_amount' => '120.00',
+			'receiver_vkn'   => KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN,
+			'receiver_alias' => $alias,
+			'customer_email' => $email,
+			'ubl_xml'        => '<Invoice/>',
+		)
+	);
+
+	$sent   = (array) ( $recorder->requests['SendInvoice'] ?? array() );
+	$header = (array) ( $sent['INVOICE'][0]['HEADER'] ?? array() );
+
+	return array(
+		'receiver' => (array) ( $sent['RECEIVER'] ?? array() ),
+		'to'       => array_key_exists( 'TO', $header ) ? (string) $header['TO'] : null,
+	);
+};
+
+$prod_earchive = $production_addressing( $addressing_config, KUKA_SANDBOX_DOCUMENTED_PROFILE_ID, '', KUKA_SANDBOX_RECEIVER_EMAIL );
+
+// Reuses the harness's own supplier fixture, so no new sender identity appears.
+$addressing_ubl_xml = (string) kuka_sandbox_build_ubl(
+	$ubl_supplier_fixture,
+	KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN,
+	KUKA_SANDBOX_DOCUMENTED_PROFILE_ID,
+	'uuid-addressing'
+)['xml'];
+
+$sandbox_request  = kuka_sandbox_build_load_request( array_merge( $request_ctx, array( 'series_code' => '' ) ) );
+$sandbox_receiver = (array) ( $sandbox_request['RECEIVER'] ?? array() );
+$sandbox_header   = (array) ( $sandbox_request['INVOICE'][0]['HEADER'] ?? array() );
+$sandbox_to       = array_key_exists( 'TO', $sandbox_header ) ? (string) $sandbox_header['TO'] : null;
+
+// The e-Fatura branch, to show the helper did not simply drop the alias.
+$prod_einvoice = $production_addressing( $addressing_config, 'TICARIFATURA', 'urn:mail:defaultgb@acme.com', KUKA_SANDBOX_RECEIVER_EMAIL );
+
+$report(
+	'SANDBOX_MATCHES_PRODUCTION_RECIPIENT_ADDRESSING',
+	// e-Arşiv: no alias attribute at all, on either path.
+	array( 'vkn' ) === array_keys( $prod_earchive['receiver'] )
+	&& array( 'vkn' ) === array_keys( $sandbox_receiver )
+	&& ! array_key_exists( 'alias', $prod_earchive['receiver'] )
+	&& ! array_key_exists( 'alias', $sandbox_receiver )
+	// The buyer's e-mail in HEADER/TO, the same value on both.
+	&& KUKA_SANDBOX_RECEIVER_EMAIL === $prod_earchive['to']
+	&& KUKA_SANDBOX_RECEIVER_EMAIL === $sandbox_to
+	&& $prod_earchive['to'] === $sandbox_to
+	&& $prod_earchive['receiver'] === $sandbox_receiver
+	// And the UBL the sandbox loads carries that same address, from the same
+	// constant that filled HEADER/TO.
+	&& str_contains( (string) $addressing_ubl_xml, '<cbc:ElectronicMail>' . KUKA_SANDBOX_RECEIVER_EMAIL . '</cbc:ElectronicMail>' )
+	// e-Fatura still addresses a GİB mailbox in both fields.
+	&& 'urn:mail:defaultgb@acme.com' === ( $prod_einvoice['receiver']['alias'] ?? '' )
+	&& 'urn:mail:defaultgb@acme.com' === $prod_einvoice['to'],
+	sprintf(
+		'measured:production_client_vs_sandbox_request|earchive_alias:%s|sandbox_alias:%s|earchive_to:%s|sandbox_to:%s|identical:%s|ubl_electronicmail:%s|einvoice_alias:%s|einvoice_to:%s',
+		array_key_exists( 'alias', $prod_earchive['receiver'] ) ? 'PRESENT' : 'omitted',
+		array_key_exists( 'alias', $sandbox_receiver ) ? 'PRESENT' : 'omitted',
+		null === $prod_earchive['to'] ? 'absent' : 'customer_email',
+		null === $sandbox_to ? 'absent' : 'customer_email',
+		( $prod_earchive['to'] === $sandbox_to && $prod_earchive['receiver'] === $sandbox_receiver ) ? 'yes' : 'no',
+		'same_constant',
+		'' === ( $prod_einvoice['receiver']['alias'] ?? '' ) ? 'absent' : 'set',
+		null === $prod_einvoice['to'] ? 'absent' : 'set'
+	)
+);
+
+/* ========================================================================== */
+/* The SendInvoice experiment's gates, and its isolation from LoadInvoice        */
+/* ========================================================================== */
+
+/*
+ * SendInvoice ISSUES a document, so its gates are measured as a pure decision
+ * table rather than by running the tool: every refusal has to hold before any
+ * credential is loaded or any endpoint is contacted.
+ *
+ * The two experiments' gates are deliberately separate. Opening the LoadInvoice
+ * one during a send is refused outright -- one asks for a draft, the other for a
+ * transmission, and together the intent is ambiguous.
+ */
+$send_gate_cases = array(
+	// name => [ send env, write env, args, expected mode, expected refusal ]
+	'plan_by_default'        => array( '', '', array(), 'plan', '' ),
+	'both_gates'             => array( 'true', '', array( 'confirm=SendInvoice' ), 'send', '' ),
+	'env_only'               => array( 'true', '', array(), 'refused', 'operation_not_confirmed' ),
+	'confirm_only'           => array( '', '', array( 'confirm=SendInvoice' ), 'refused', 'send_gate_not_enabled' ),
+	'wrong_operation'        => array( 'true', '', array( 'confirm=LoadInvoice' ), 'refused', 'wrong_operation_confirmed' ),
+	'dashed_confirm'         => array( 'true', '', array( '--confirm=SendInvoice' ), 'send', '' ),
+	'env_not_literal_true'   => array( 'TRUE', '', array( 'confirm=SendInvoice' ), 'refused', 'send_gate_not_enabled' ),
+	'env_truthy_one'         => array( '1', '', array( 'confirm=SendInvoice' ), 'refused', 'send_gate_not_enabled' ),
+	'loadinvoice_gate_open'  => array( 'true', 'true', array( 'confirm=SendInvoice' ), 'refused', 'loadinvoice_write_gate_open_during_send' ),
+	'write_gate_alone'       => array( '', 'true', array( 'confirm=SendInvoice' ), 'refused', 'loadinvoice_write_gate_open_during_send' ),
+);
+
+$send_gate_ok      = true;
+$send_gate_details = array();
+foreach ( $send_gate_cases as $case => $spec ) {
+	$verdict = kuka_sandbox_send_gates( (string) $spec[0], (string) $spec[1], (array) $spec[2] );
+
+	$hit = $verdict['mode'] === $spec[3]
+		&& ( 'send' === $spec[3] ) === $verdict['allowed']
+		&& ( '' === $spec[4] || in_array( $spec[4], $verdict['refusals'], true ) );
+
+	$send_gate_details[] = $case . '=' . $verdict['mode'] . ( empty( $verdict['refusals'] ) ? '' : '/' . implode( '+', $verdict['refusals'] ) );
+	if ( ! $hit ) {
+		$send_gate_ok = false;
+	}
+}
+
+$isd_decision = kuka_sandbox_send_internetsales_decision();
+
+$report(
+	'SANDBOX_SEND_GATES_AND_ISOLATION',
+	$send_gate_ok
+	// The experiment mints its OWN document: a different seed, a different
+	// state file. The confirmed LoadInvoice draft is never transmitted.
+	&& kuka_sandbox_send_uuid() !== kuka_sandbox_uuid()
+	&& KUKA_SANDBOX_SEND_UUID_SEED !== KUKA_SANDBOX_UUID_SEED
+	&& 'sandbox-send-e2e.json' === KUKA_SANDBOX_SEND_STATE_FILE
+	// INTERNETSALESDETAILS is decided from the WSDL, and this isolated fiscal
+	// test is not a distance sale, so it declares INTERNETSALES=false and sends
+	// no details block. Nothing here needs a courier API.
+	&& false === $isd_decision['required']
+	&& false === $isd_decision['internetsales']
+	&& 'wsdl_minOccurs_0_and_not_a_distance_sale' === $isd_decision['reason'],
+	sprintf(
+		'measured:pure_gate_table|cases:%d|%s|own_uuid_seed:yes|own_state_file:%s|uuid_distinct:%s|internetsalesdetails:%s|reason:%s',
+		count( $send_gate_cases ),
+		implode( ' ', $send_gate_details ),
+		KUKA_SANDBOX_SEND_STATE_FILE,
+		kuka_sandbox_send_uuid() !== kuka_sandbox_uuid() ? 'yes' : 'NO',
+		$isd_decision['required'] ? 'included' : 'omitted',
+		$isd_decision['reason']
+	)
+);
+
+/* ========================================================================== */
+/* An unsettled transmission is resolved by evidence, never by assumption      */
+/* ========================================================================== */
+
+/*
+ * kuka_sandbox_resolve_verdict() decides whether a document exists in the
+ * world. The one mistake that produces a duplicate fiscal document is calling
+ * absence when it was not proved, so every shape that is NOT proof of absence
+ * must come back `unknown`.
+ *
+ * The control is what makes a refusal readable: EDM answers a never-transmitted
+ * UUID the same way it answers a refusal, so the target is only absent when it
+ * matches that control exactly.
+ */
+$refused          = 'edm_request_refused';
+$control_refuses  = array(
+	'status_ok'     => false,
+	'status_error'  => $refused,
+	'literal'       => '',
+	'number_length' => 0,
+);
+$control_answers  = array(
+	'status_ok'     => true,
+	'status_error'  => '',
+	'literal'       => '',
+	'number_length' => 0,
+);
+$read_shape       = static function ( array $over = array() ): array {
+	return array_merge(
+		array(
+			'status_ok'      => false,
+			'status_error'   => '',
+			'status_literal' => '',
+			'status_number'  => '',
+			'xml_error'      => '',
+			'checks'         => array(
+				'xml_retrieved' => false,
+				'uuid_match'    => false,
+			),
+		),
+		$over
+	);
+};
+
+$verdict_cases = array(
+	// Presence: EDM said something about THIS document.
+	'xml_echoed_uuid'          => array(
+		$read_shape( array( 'checks' => array( 'xml_retrieved' => true, 'uuid_match' => true ) ) ),
+		array(),
+		'present',
+	),
+	'status_gave_a_number'     => array(
+		$read_shape( array( 'status_ok' => true, 'status_number' => '1234567890123456' ) ),
+		array(),
+		'present',
+	),
+	'status_gave_a_literal'    => array(
+		$read_shape( array( 'status_ok' => true, 'status_literal' => 'LOAD - SUCCEED' ) ),
+		array(),
+		'present',
+	),
+	// Content with no UUID match is not absence -- something is stored there.
+	'content_without_uuid'     => array(
+		$read_shape( array( 'status_ok' => true, 'checks' => array( 'xml_retrieved' => true, 'uuid_match' => false ) ) ),
+		array(),
+		'unknown',
+	),
+	// Absence, answered directly: the query worked and EDM knew nothing.
+	'answered_with_nothing'    => array(
+		$read_shape( array( 'status_ok' => true, 'xml_error' => 'empty_content_returned' ) ),
+		array(),
+		'absent',
+	),
+	// Absence, calibrated: refused exactly as the never-transmitted UUID is.
+	'refusal_matches_control'  => array(
+		$read_shape( array( 'status_error' => $refused, 'xml_error' => 'empty_content_returned' ) ),
+		$control_refuses,
+		'absent',
+	),
+	// The control answered cleanly, so an unknown UUID is NOT refused here and
+	// the target's refusal means something else.
+	'control_answered_cleanly' => array(
+		$read_shape( array( 'status_error' => $refused, 'xml_error' => 'empty_content_returned' ) ),
+		$control_answers,
+		'unknown',
+	),
+	// A different refusal is a different fact.
+	'refusal_differs'          => array(
+		$read_shape( array( 'status_error' => 'edm_network_error', 'xml_error' => 'empty_content_returned' ) ),
+		$control_refuses,
+		'unknown',
+	),
+	// No control at all: a refusal cannot be read, so nothing is concluded.
+	'refusal_without_control'  => array(
+		$read_shape( array( 'status_error' => $refused, 'xml_error' => 'empty_content_returned' ) ),
+		array(),
+		'unknown',
+	),
+	// A control that itself carried a document is not a control.
+	'control_saw_a_document'   => array(
+		$read_shape( array( 'status_error' => $refused, 'xml_error' => 'empty_content_returned' ) ),
+		array_merge( $control_refuses, array( 'number_length' => 16 ) ),
+		'unknown',
+	),
+	// Both calls failed at the transport: no answer, no verdict.
+	'both_calls_failed'        => array(
+		$read_shape( array( 'status_error' => 'edm_network_error', 'xml_error' => 'edm_network_error' ) ),
+		array(),
+		'unknown',
+	),
+);
+
+$verdict_ok      = true;
+$verdict_details = array();
+foreach ( $verdict_cases as $case_name => $case ) {
+	$got = kuka_sandbox_resolve_verdict( $case[0], $case[1] );
+	if ( $case[2] !== $got['verdict'] ) {
+		$verdict_ok = false;
+	}
+	$verdict_details[] = sprintf( '%s=%s', $case_name, $got['verdict'] );
+}
+
+// Absence is never the default: an empty read establishes nothing.
+$empty_verdict = kuka_sandbox_resolve_verdict( array(), array() );
+$verdict_ok    = $verdict_ok && 'unknown' === $empty_verdict['verdict'];
+
+$report(
+	'SANDBOX_RESOLVE_VERDICT',
+	$verdict_ok,
+	sprintf(
+		'measured:pure_verdict_table|cases:%d|%s|empty_read:%s|absence_requires_an_answer:yes|refusal_requires_matching_control:yes',
+		count( $verdict_cases ),
+		implode( ' ', $verdict_details ),
+		$empty_verdict['verdict']
+	)
+);
+
+/* ========================================================================== */
+/* The status check cannot transmit, structurally                              */
+/* ========================================================================== */
+
+/*
+ * status=confirm asks EDM about a document it already accepted. The danger is
+ * not that it queries: it is that a later edit reaches for send_invoice() on
+ * the same client. Kuka_Sandbox_Readonly_Transport makes that impossible
+ * rather than discouraged, so the refusal is measured here with a mock inner
+ * transport -- no network, no document.
+ */
+$readonly_inner = new class() implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<int, string> */
+	public array $reached = array();
+
+	public function call( string $action, array $parameters ) {
+		$this->reached[] = $action;
+
+		return array( 'ok' => true );
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function get_last_request(): string {
+		return '';
+	}
+};
+
+$readonly = new Kuka_Sandbox_Readonly_Transport( $readonly_inner );
+
+$readonly_cases = array(
+	// Allowed: the four operations the status check needs.
+	'Login'            => 'allowed',
+	'GetInvoiceStatus' => 'allowed',
+	'GetInvoice'       => 'allowed',
+	'Logout'           => 'allowed',
+	// Refused: everything that writes at EDM.
+	'SendInvoice'      => 'refused',
+	'LoadInvoice'      => 'refused',
+	'EmailInvoice'     => 'refused',
+	'CancelInvoice'    => 'refused',
+	'CreateSerial'     => 'refused',
+	// Refused: an operation nobody has heard of is not given the benefit of
+	// the doubt.
+	'MadeUpOperation'  => 'refused',
+);
+
+$readonly_ok      = true;
+$readonly_details = array();
+foreach ( $readonly_cases as $action => $expected ) {
+	$got = 'allowed';
+	try {
+		$readonly->call( $action, array() );
+	} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
+		$got = 'refused:' . $e->get_safe_error_code();
+	}
+	if ( 'allowed' === $expected ? 'allowed' !== $got : ! str_starts_with( $got, 'refused' ) ) {
+		$readonly_ok = false;
+	}
+	$readonly_details[] = $action . '=' . ( str_starts_with( $got, 'refused' ) ? 'refused' : 'allowed' );
+}
+
+/*
+ * A refused operation must not have reached the inner transport at all. If it
+ * had, the refusal would be cosmetic: the request would already be on its way.
+ */
+$reached_only_allowed = array( 'Login', 'GetInvoiceStatus', 'GetInvoice', 'Logout' ) === $readonly_inner->reached;
+$ledger_matches       = array( 'Login', 'GetInvoiceStatus', 'GetInvoice', 'Logout' ) === $readonly->ledger();
+$no_writes_counted    = 0 === $readonly->count_of( 'SendInvoice' ) && 0 === $readonly->count_of( 'LoadInvoice' );
+
+/*
+ * Terminal classification. `unknown` is the one that matters: an unrecognised
+ * literal must never be called settled, because a settled document stops being
+ * watched.
+ */
+$terminal_cases = array(
+	Kuka_Island_Core_EDM_Document_Status::CLASS_SUCCEEDED         => true,
+	Kuka_Island_Core_EDM_Document_Status::CLASS_NEGATIVE_TERMINAL => true,
+	Kuka_Island_Core_EDM_Document_Status::CLASS_ERROR             => true,
+	Kuka_Island_Core_EDM_Document_Status::CLASS_PENDING           => false,
+	Kuka_Island_Core_EDM_Document_Status::CLASS_UNKNOWN           => false,
+);
+
+$terminal_ok      = true;
+$terminal_details = array();
+foreach ( $terminal_cases as $class => $expected ) {
+	$got = kuka_sandbox_status_is_terminal( (string) $class );
+	if ( $expected !== $got ) {
+		$terminal_ok = false;
+	}
+	$terminal_details[] = $class . '=' . ( $got ? 'terminal' : 'pending' );
+}
+
+// The literal this document is actually sitting on, classified by the
+// production table rather than by eye.
+$processing = Kuka_Island_Core_EDM_Document_Status::classify( 'PACKAGE - PROCESSING' );
+$processing_pending = Kuka_Island_Core_EDM_Document_Status::CLASS_PENDING === $processing['class']
+	&& ! kuka_sandbox_status_is_terminal( (string) $processing['class'] );
+
+$report(
+	'SANDBOX_STATUS_MODE_IS_READ_ONLY',
+	$readonly_ok
+	&& $reached_only_allowed
+	&& $ledger_matches
+	&& $no_writes_counted
+	&& $terminal_ok
+	&& $processing_pending,
+	sprintf(
+		'measured:allow_listed_transport|cases:%d|%s|reached_inner:%s|write_attempts_reached_inner:%s|SendInvoice:%d|LoadInvoice:%d|terminal_table:%s|package_processing:%s',
+		count( $readonly_cases ),
+		implode( ' ', $readonly_details ),
+		array() === $readonly_inner->reached ? 'none' : implode( ',', $readonly_inner->reached ),
+		$reached_only_allowed ? 'none' : 'SOME',
+		$readonly->count_of( 'SendInvoice' ),
+		$readonly->count_of( 'LoadInvoice' ),
+		implode( ' ', $terminal_details ),
+		$processing_pending ? 'pending' : 'MISCLASSIFIED'
+	)
+);
 
 if ( ! empty( $failures ) ) {
 	WP_CLI::error( sprintf( 'EDM sandbox harness verification failed (%d: %s).', count( $failures ), implode( ', ', $failures ) ) );

@@ -626,6 +626,12 @@ expect_invoice_line "Invoice live readiness validation" "INVOICE_LIVE_READINESS_
 # consumer title would be a fabricated party on a fiscal document and a missing
 # address means a document the buyer never receives.
 expect_invoice_line "the individual e-Archive receiver carries a real name" "INVOICE_INDIVIDUAL_EARCHIVE_RECEIVER_CONTRACT=PASS|measured:production_mapper_and_ubl|tckn:11111111111|id_scheme:TCKN|first_name:Zeynep|family_name:Aydın|party_name:none|electronic_mail:zeynep.aydin@example.com|cbc_id:ABC2009123456789|error:none"
+expect_invoice_line "the individual buyer's cac:Person sits after cac:Contact" "INVOICE_INDIVIDUAL_PERSON_USES_VALID_PARTY_ORDER=PASS|measured:production_builder_xml_dom|individual_order:PartyIdentification,PostalAddress,PartyTaxScheme,Contact,Person|person_nodes:1|person_after_contact:yes|person_children:FirstName,FamilyName|first_name:present|family_name:present|id_scheme:TCKN|old_defective_order_producible:no|corporate_order:PartyIdentification,PartyName,PostalAddress,PartyTaxScheme,Contact|corporate_person_nodes:0|corporate_party_name:Kuka Test Kurumsal A.Ş.|corporate_id_scheme:VKN|error:none"
+# Omitting EDM's own GIB report dates is impossible against the live WSDL: the
+# encoder refuses before any transport. BLOCKED is the honest verdict, and the
+# whole line is pinned so a relaxed WSDL breaks this and forces a re-measure.
+expect_invoice_match "omitting EDM's GIB report dates is refused by the encoder" "^INVOICE_OUTGOING_REQUEST_OMITS_REPORT_SENDDATES=BLOCKED\\|measured:real_wsdl_soap_encoder\\|network_soap_operations:0\\|omission_verdict:SoapFault\\|omission_envelope_produced:no\\|encoder_message:SOAP-ERROR: Encoding: object has no 'EARCHIVE_REPORT_SENDDATE' property\\|control_serialises:yes\\|control_senddate_nodes:1,1\\|"
+expect_invoice_match "the WSDL/EDM contradiction about those dates is recorded, not hidden" "^INVOICE_OUTGOING_REQUEST_OMITS_REPORT_SENDDATES=BLOCKED\\|.*\\|wsdl_declares:EARCHIVE_REPORT_SENDDATE\\(type=xs:date,minOccurs=1\\) CANCEL_EARCHIVE_REPORT_SENDDATE\\(type=xs:date,minOccurs=1\\)\\|conflict:edm_written_answer_says_not_required_but_wsdl_says_minOccurs_1\\|action:fields_sent_as_0001-01-01_matching_official_request_examples\\|resolution:documented_dotnet_minvalue_means_no_value\\|probe_sound:yes$"
 expect_invoice_match "a missing name or e-mail is fail-closed" "^INVOICE_INDIVIDUAL_RECEIVER_FAIL_CLOSED=PASS\\|measured:production_mapper\\|cases:4\\|no_first_name=missing_individual_name no_last_name=missing_individual_name no_name_at_all=missing_individual_name no_email=missing_customer_email\\|malformed_email_refused_by_woocommerce:yes\\|generic_titles:none\\|checkout_tckn_fields:none\\|"
 
 # Audit item 3: auto-send honours the whole can_send_invoice contract.
@@ -774,6 +780,12 @@ expect_invoice_match "an unreadable handover date is fail-closed" "^INVOICE_FULF
 expect_invoice_line "a legal carrier needs a ten-digit VKN" "INVOICE_LEGAL_CARRIER_REQUIRES_10_DIGIT_VKN=PASS|measured:production_resolver_real_send_and_real_wsdl|cases:7|ten_digits=accepted eleven_digits=internet_sales_carrier_vkn_invalid nine_digits=internet_sales_carrier_vkn_invalid twelve_digits=internet_sales_carrier_vkn_invalid with_letters=internet_sales_carrier_vkn_invalid with_spaces=internet_sales_carrier_vkn_invalid empty=internet_sales_carrier_vkn_missing|eleven_digit_send:internet_sales_details_incomplete/SendInvoice=0|xml_tuzel_vkn:9990001111|xml_vkn_digits:10|xml_tuzel_unvan:TEST KARGO A.S. - GERCEK DEGIL|tuzelKisi_nodes:1|gercekKisi_nodes:0"
 
 expect_invoice_match "the fulfillment fixtures leave no products behind" "^INVOICE_FULFILLMENT_FIXTURES_CLEANED=PASS\\|product_residue:none\\|fixture_products_left:0\\|stale_purged_on_entry:[0-9]+$"
+
+# A session-expired fault used to re-run the callback once, which for SendInvoice
+# is a second transmission of the same document. It now surfaces instead: the
+# manager records send_uncertain and the poller asks EDM what happened. A read
+# still retries, because re-asking a question is free.
+expect_invoice_line "a session-expired fault never re-transmits" "INVOICE_SESSION_EXPIRY_NEVER_RETRANSMITS=PASS|measured:production_send_with_session_expired_fault|SendInvoice=1|Login=1|LoadInvoice=0|threw:yes|status:send_uncertain|poll_actions_pending:1|read_path_unaffected:yes|retry_flag_wired:yes"
 
 expect_invoice_match "the internet-sales block is fail-closed" "^INVOICE_INTERNET_SALES_DETAILS_CONTRACT=PASS\\|cases:12\\|"
 
@@ -948,6 +960,23 @@ expect_sandbox_line "settle transitions are guarded" "SANDBOX_CLAIM_SETTLE_GUARD
 expect_sandbox_line "state write failure is never reported as recorded" "SANDBOX_CLAIM_STATE_WRITE_FAILURE_REPORTED=PASS|lock:yes|written:no|reason:state_persist_failed"
 expect_sandbox_line "sandbox harness leaves no temporary files" "SANDBOX_HARNESS_TEMP_CLEANED=PASS|temp_root_removed:yes"
 expect_sandbox_match "plugin gained no document-creating capability" "^SANDBOX_PLUGIN_HAS_NO_WRITE_CAPABILITY=PASS\\|module_files:[0-9]{2,}\\|hits:none$"
+# EDM technical support answered the e-Arşiv addressing contract, so the stale
+# "alias not established" block is gone. Both write paths take the shape from one
+# helper, and this compares the request the PRODUCTION client serialises against
+# the one the sandbox builds rather than trusting they call the same function.
+# SendInvoice ISSUES a document, so its two literal gates are measured as a pure
+# decision table -- every refusal holds before any credential is loaded. The two
+# experiments' gates are separate, and opening the LoadInvoice one during a send
+# is refused outright. The send experiment mints its own document from its own
+# seed and state file, so the confirmed draft is never transmitted.
+expect_sandbox_match "the SendInvoice gates refuse everything but the exact pair" "^SANDBOX_SEND_GATES_AND_ISOLATION=PASS\\|measured:pure_gate_table\\|cases:10\\|plan_by_default=plan both_gates=send env_only=refused/operation_not_confirmed confirm_only=refused/send_gate_not_enabled wrong_operation=refused/wrong_operation_confirmed "
+expect_sandbox_match "the status check cannot transmit, structurally" "^SANDBOX_STATUS_MODE_IS_READ_ONLY=PASS\\|measured:allow_listed_transport\\|cases:10\\|Login=allowed GetInvoiceStatus=allowed GetInvoice=allowed Logout=allowed SendInvoice=refused LoadInvoice=refused EmailInvoice=refused CancelInvoice=refused CreateSerial=refused MadeUpOperation=refused\\|"
+expect_sandbox_match "a refused write never reaches the wire, and unknown is not terminal" "^SANDBOX_STATUS_MODE_IS_READ_ONLY=PASS\\|.*\\|reached_inner:Login,GetInvoiceStatus,GetInvoice,Logout\\|write_attempts_reached_inner:none\\|SendInvoice:0\\|LoadInvoice:0\\|.*unknown=pending\\|package_processing:pending$"
+expect_sandbox_match "an unsettled transmission is resolved by evidence, never by assumption" "^SANDBOX_RESOLVE_VERDICT=PASS\\|measured:pure_verdict_table\\|cases:11\\|"
+expect_sandbox_match "absence is never the default verdict" "^SANDBOX_RESOLVE_VERDICT=PASS\\|.*\\|empty_read:unknown\\|absence_requires_an_answer:yes\\|refusal_requires_matching_control:yes$"
+expect_sandbox_match "the send experiment is isolated from the draft" "^SANDBOX_SEND_GATES_AND_ISOLATION=PASS\\|.*\\|own_uuid_seed:yes\\|own_state_file:sandbox-send-e2e.json\\|uuid_distinct:yes\\|internetsalesdetails:omitted\\|reason:wsdl_minOccurs_0_and_not_a_distance_sale$"
+
+expect_sandbox_line "sandbox and production address the recipient identically" "SANDBOX_MATCHES_PRODUCTION_RECIPIENT_ADDRESSING=PASS|measured:production_client_vs_sandbox_request|earchive_alias:omitted|sandbox_alias:omitted|earchive_to:customer_email|sandbox_to:customer_email|identical:yes|ubl_electronicmail:same_constant|einvoice_alias:set|einvoice_to:set"
 expect_sandbox_line "production numbering guard untouched" "SANDBOX_NUMBERING_GUARD_UNTOUCHED=PASS|guards:4|missing:none"
 
 # Corrupt claim records, call classification and the driver write path.

@@ -83,13 +83,19 @@ $cli_args = (array) ( $args ?? array() );
  * sent or issued invoice.
  */
 $sendinvoice_reported = false;
+$sendinvoice_reason   = 'out_of_scope_this_round';
 register_shutdown_function(
-	static function () use ( &$sendinvoice_reported ): void {
+	static function () use ( &$sendinvoice_reported, &$sendinvoice_reason ): void {
 		if ( $sendinvoice_reported ) {
 			return;
 		}
 		$sendinvoice_reported = true;
-		WP_CLI::line( 'SANDBOX_SENDINVOICE=NOT_EXECUTED|reason:out_of_scope_this_round|documents_sent:0|recipient_delivery:none' );
+		WP_CLI::line(
+			sprintf(
+				'SANDBOX_SENDINVOICE=NOT_EXECUTED|reason:%s|documents_sent:0|recipient_delivery:none',
+				$sendinvoice_reason
+			)
+		);
 	}
 );
 
@@ -297,6 +303,89 @@ WP_CLI::line(
 /* ========================================================================== */
 
 $client   = new Kuka_Island_Core_EDM_Client( $config );
+
+/* ========================================================================== */
+/* Read-only mode: re-read the document the state record already names          */
+/* ========================================================================== */
+
+/*
+ * Confirming a draft must never require creating a second one. This mode does
+ * two reads -- GetInvoiceStatus and GetInvoice -- against the UUID and number
+ * the state record holds, and touches nothing else: no claim transition, no
+ * state write, and no LoadInvoice. The runner does not forward the write env
+ * var into the container for it either.
+ */
+$readback_requested = false;
+$readback_value     = '';
+foreach ( $cli_args as $arg ) {
+	if ( is_string( $arg ) && str_starts_with( $arg, 'readback=' ) ) {
+		$readback_requested = true;
+		$readback_value     = substr( $arg, strlen( 'readback=' ) );
+	}
+}
+
+if ( $readback_requested ) {
+	// The confirmation is a literal, like every other gate here: a typo or a
+	// half-remembered value must not become a different instruction.
+	if ( 'confirm' !== $readback_value ) {
+		WP_CLI::line( 'SANDBOX_READBACK=BLOCKED|reason:invalid_readback_confirmation|expected:readback=confirm|soap_calls:0' );
+		WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+		$sendinvoice_reason = 'readback_confirmation_invalid';
+		exit( 1 );
+	}
+
+	if ( 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' ) ) {
+		WP_CLI::line( 'SANDBOX_READBACK=BLOCKED|reason:write_gate_open_during_readback|soap_calls:0' );
+		WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+		$sendinvoice_reason = 'readback_refused';
+		exit( 1 );
+	}
+
+	// status() returns the verdict plus the decoded record under 'record'; the
+	// document's identifiers live there, not at the top level.
+	$rb_status = ( new Kuka_Sandbox_Claim( KUKA_SANDBOX_STATE_DIR . '/sandbox-e2e.json' ) )->status();
+	$rb_record = (array) ( $rb_status['record'] ?? array() );
+	$rb_uuid   = trim( (string) ( $rb_record['uuid'] ?? '' ) );
+	$rb_number = trim( (string) ( $rb_record['assigned_number'] ?? '' ) );
+
+	if ( Kuka_Sandbox_Claim::S_CONFIRMED !== (string) ( $rb_status['state'] ?? '' ) || '' === $rb_uuid || '' === $rb_number ) {
+		WP_CLI::line(
+			sprintf(
+				'SANDBOX_READBACK=BLOCKED|reason:no_confirmed_document_recorded|state:%s|uuid:%s|number:%s|soap_calls:0',
+				(string) ( $rb_status['state'] ?? 'unknown' ),
+				'' === $rb_uuid ? 'absent' : 'present',
+				'' === $rb_number ? 'absent' : 'present'
+			)
+		);
+		WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+		$sendinvoice_reason = 'readback_refused';
+		exit( 1 );
+	}
+
+	// The fixture is deterministic, so the expected totals are recomputed
+	// rather than trusted from the record.
+	$rb_tax     = Kuka_Island_Core_Invoice_Order_Mapper::tax_from_taxable( KUKA_SANDBOX_NET_CENTS, KUKA_SANDBOX_VAT_PERCENT );
+	$rb_payable = KUKA_SANDBOX_NET_CENTS + $rb_tax;
+
+	WP_CLI::line(
+		sprintf(
+			'SANDBOX_READBACK=PASS|mode:read_only|operations:GetInvoiceStatus,GetInvoice|document:recorded|number_length:%d',
+			strlen( $rb_number )
+		)
+	);
+
+	$client->login();
+	$rb_read = kuka_sandbox_read_document( $client, $rb_uuid, $rb_number, $rb_payable, $rb_tax );
+	kuka_sandbox_report_readback( $rb_read );
+	$client->logout();
+
+	WP_CLI::line( 'SANDBOX_WRITE_OPERATIONS=NONE|count:0' );
+
+	// The coordinator above is the single authority for this line, so a branch
+	// says WHY rather than printing a second copy of it.
+	$sendinvoice_reason = 'read_only_readback';
+	exit( 0 );
+}
 $login_ok = false;
 try {
 	$login_ok = '' !== $client->login();
@@ -548,29 +637,65 @@ WP_CLI::line( 'SANDBOX_DUPLICATE_GUARD=PASS|state:idle|uuid_deterministic:yes|ed
 /* ========================================================================== */
 
 /*
- * Unresolved contract, and the last gate before any write.
+ * The recipient addressing contract, now answered.
  *
- * For EARSIVFATURA addressed to the final-consumer identifier 11111111111, no
- * official EDM source establishes what LoadInvoiceRequest.RECEIVER.alias and
- * INVOICE.HEADER.TO must carry. Nothing is guessed here: not 'defaultpk', not
- * an e-mail address, and not an empty string presented as if it were correct.
+ * This gate existed because no official source said what an EARSIVFATURA
+ * addressed to the final-consumer identifier 11111111111 should carry in
+ * LoadInvoiceRequest.RECEIVER.alias and INVOICE.HEADER.TO, and nothing was
+ * going to be guessed -- not 'defaultpk', not an e-mail address, and not an
+ * empty string presented as if it were correct.
  *
- * Flip this to true ONLY against a written EDM answer, and record that answer
- * in docs/EDM_ENTEGRASYONU.md at the same time.
+ * EDM technical support has since answered it in writing: for e-Arşiv the
+ * buyer's e-mail address goes in the UBL's cbc:ElectronicMail AND in
+ * INVOICE.HEADER.TO, EDM delivers the document to that address itself, and
+ * RECEIVER.alias -- which belongs to a GİB mailbox the recipient does not have
+ * -- is omitted entirely.
+ *
+ * So there is nothing left to guess, and nothing invented here either: the
+ * shape comes from Kuka_Island_Core_EDM_Client::recipient_addressing(), the
+ * same helper production's SendInvoice uses, and it is asserted below rather
+ * than assumed.
  */
-$receiver_alias_established = false;
+$sandbox_addressing = Kuka_Island_Core_EDM_Client::recipient_addressing( true, '', KUKA_SANDBOX_RECEIVER_EMAIL );
+$sandbox_load_probe = kuka_sandbox_build_load_request(
+	array(
+		'uuid'             => $uuid,
+		'issue_date'       => gmdate( 'Y-m-d' ),
+		'series_code'      => '',
+		'sender_vkn'       => $config->get_sender_vkn(),
+		'sender_alias'     => $config->get_sender_alias(),
+		'receiver_vkn'     => KUKA_SANDBOX_DOCUMENTED_RECEIVER_VKN,
+		'profile_id'       => KUKA_SANDBOX_DOCUMENTED_PROFILE_ID,
+		'payable'          => '0.00',
+		'session_id'       => '0',
+		'application_name' => $config->get_application_name(),
+		'action_date'      => gmdate( 'Y-m-d\TH:i:s' ),
+		'content'          => '',
+	)
+);
+$probe_receiver = (array) ( $sandbox_load_probe['RECEIVER'] ?? array() );
+$probe_header   = (array) ( $sandbox_load_probe['INVOICE'][0]['HEADER'] ?? array() );
 
-if ( ! $receiver_alias_established ) {
-	WP_CLI::line( 'SANDBOX_RECEIVER_ALIAS=BLOCKED|reason:official_earchive_alias_not_established' );
-	$block( 'SANDBOX_DRAFT_UPLOAD', 'receiver_alias_contract_unresolved' );
+$alias_contract_ok = null === $sandbox_addressing['receiver_alias']
+	&& ! array_key_exists( 'alias', $probe_receiver )
+	&& KUKA_SANDBOX_RECEIVER_EMAIL === (string) ( $probe_header['TO'] ?? '' );
+
+if ( ! $alias_contract_ok ) {
+	WP_CLI::line(
+		sprintf(
+			'SANDBOX_RECEIVER_ALIAS=BLOCKED|reason:addressing_contract_not_as_specified|earchive_alias:%s|header_to:%s',
+			array_key_exists( 'alias', $probe_receiver ) ? 'PRESENT' : 'omitted',
+			'' === (string) ( $probe_header['TO'] ?? '' ) ? 'absent' : 'set'
+		)
+	);
+	$block( 'SANDBOX_DRAFT_UPLOAD', 'receiver_addressing_shape_wrong' );
 	$block_from( array_slice( $all_steps, 6 ), 'no_document_created' );
-	WP_CLI::log( 'No LoadInvoice was attempted: the e-Archive recipient alias contract is not established by any official EDM source, and it will not be guessed.' );
 	$claim->release();
 	$client->logout();
 	exit( 0 );
 }
 
-WP_CLI::line( 'SANDBOX_RECEIVER_ALIAS=PASS|reason:official_earchive_alias_established' );
+WP_CLI::line( 'SANDBOX_RECEIVER_ALIAS=PASS|earchive_alias:omitted|header_to:customer_email|source:production_recipient_addressing_helper' );
 
 $allow_write = 'true' === (string) getenv( 'KUKA_EDM_ALLOW_SANDBOX_WRITE' );
 
@@ -696,82 +821,16 @@ WP_CLI::line(
 /* Readback                                                                     */
 /* ========================================================================== */
 
-$status_ok     = false;
-$mapped_status = '';
-try {
-	$status_result = $client->get_invoice_status( $uuid, $assigned_number );
-	$status_ok     = true;
-	$mapped_status = $status_result->get_status();
-} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-	$mapped_status = 'query_failed:' . $e->get_safe_error_code();
-}
-WP_CLI::line( sprintf( 'SANDBOX_STATUS_READBACK=%s|status:%s', $status_ok ? 'PASS' : 'FAIL', $mapped_status ) );
-
-$checks = array(
-	'xml_retrieved' => false,
-	'xml_parsed'    => false,
-	'uuid_match'    => false,
-	'payable_match' => false,
-	'tax_match'     => false,
-);
-$cbc_present = false;
-$cbc_matches = false;
-
-try {
-	$xml_back                = $client->get_invoice_document( $uuid, 'XML' );
-	$checks['xml_retrieved'] = '' !== trim( (string) $xml_back );
-
-	if ( $checks['xml_retrieved'] ) {
-		$dom                  = new DOMDocument();
-		$checks['xml_parsed'] = (bool) $dom->loadXML( $xml_back );
-		if ( $checks['xml_parsed'] ) {
-			$xp    = new DOMXPath( $dom );
-			$one   = static function ( DOMXPath $xp, string $q ): string {
-				$n = $xp->query( $q );
-				return ( false !== $n && $n->length > 0 ) ? trim( (string) $n->item( 0 )->nodeValue ) : '';
-			};
-			$cents = static fn( string $v ): int => Kuka_Island_Core_Invoice_Order_Mapper::amount_to_cents( $v );
-
-			$back_id  = $one( $xp, '/*[local-name()="Invoice"]/*[local-name()="ID"]' );
-			$back_uid = $one( $xp, '/*[local-name()="Invoice"]/*[local-name()="UUID"]' );
-			$back_pay = $one( $xp, '//*[local-name()="LegalMonetaryTotal"]/*[local-name()="PayableAmount"]' );
-			$back_tax = $one( $xp, '/*[local-name()="Invoice"]/*[local-name()="TaxTotal"]/*[local-name()="TaxAmount"]' );
-
-			$checks['uuid_match']    = '' !== $back_uid && 0 === strcasecmp( $back_uid, $uuid );
-			$checks['payable_match'] = '' !== $back_pay && $cents( $back_pay ) === $cents( $built['totals']['payable'] );
-			$checks['tax_match']     = '' !== $back_tax && $cents( $back_tax ) === $cents( $built['totals']['tax'] );
-
-			$cbc_present = '' !== $back_id;
-			$cbc_matches = $cbc_present && $back_id === $assigned_number;
-		}
-	}
-} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
-	$checks['xml_retrieved'] = false;
-}
-
-$readback = kuka_sandbox_evaluate_readback( $checks );
-
-WP_CLI::line(
-	sprintf(
-		'SANDBOX_XML_READBACK=%s|xml_retrieved:%s|xml_parsed:%s|uuid_match:%s|payable_match:%s|tax_match:%s|failed:%s',
-		$readback['ok'] ? 'PASS' : 'FAIL',
-		$checks['xml_retrieved'] ? 'yes' : 'no',
-		$checks['xml_parsed'] ? 'yes' : 'no',
-		$checks['uuid_match'] ? 'yes' : 'no',
-		$checks['payable_match'] ? 'yes' : 'no',
-		$checks['tax_match'] ? 'yes' : 'no',
-		empty( $readback['failed'] ) ? 'none' : implode( ',', $readback['failed'] )
-	)
+$read = kuka_sandbox_read_document(
+	$client,
+	$uuid,
+	$assigned_number,
+	Kuka_Island_Core_Invoice_Order_Mapper::amount_to_cents( (string) $built['totals']['payable'] ),
+	Kuka_Island_Core_Invoice_Order_Mapper::amount_to_cents( (string) $built['totals']['tax'] )
 );
 
-WP_CLI::line(
-	sprintf(
-		'SANDBOX_CBC_ID_READBACK=%s|cbc_id_present_in_stored_xml:%s|matches_assigned_number:%s',
-		$cbc_matches ? 'PASS' : 'FAIL',
-		$cbc_present ? 'yes' : 'no',
-		$cbc_matches ? 'yes' : 'no'
-	)
-);
+kuka_sandbox_report_readback( $read );
+
 
 WP_CLI::line( sprintf( 'SANDBOX_WRITE_OPERATIONS=%s|count:1|result:%s', $planned_operation, $write['result_label'] ) );
 

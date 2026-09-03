@@ -592,6 +592,146 @@ $report(
 	)
 );
 
+/* ------------------------------------------------------------------------ */
+/* cac:Person sits where UBL PartyType puts it: after cac:Contact            */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * EDM refused a real SendInvoice on 3 September 2026 because cac:Person was
+ * not in a valid UBL position for a TCKN-identified buyer. The builder was
+ * appending it next to cac:PartyIdentification, so the produced order was
+ * PartyIdentification, Person, PostalAddress, PartyTaxScheme, Contact.
+ *
+ * PartyType's sequence -- in UBL 2.1 and in EDM's own WSDL, which declares
+ * PartyIdentification, PartyName, PostalAddress, PhysicalLocation,
+ * PartyTaxScheme, PartyLegalEntity, Contact, Person, AgentParty -- puts Person
+ * LAST of those. This measures the produced document, not the source: the
+ * child element names are read out of the real builder's XML in document
+ * order and checked against that sequence.
+ */
+$party_children = static function ( DOMXPath $xp, string $scope ): array {
+	$names = array();
+	$nodes = $xp->query( $scope . '/*' );
+	if ( false !== $nodes ) {
+		foreach ( $nodes as $node ) {
+			if ( $node instanceof DOMElement ) {
+				$names[] = (string) $node->localName;
+			}
+		}
+	}
+
+	return $names;
+};
+
+/** PartyType's declared order, as EDM's WSDL lists it. */
+$party_type_sequence = array(
+	'PartyIdentification',
+	'PartyName',
+	'PostalAddress',
+	'PhysicalLocation',
+	'PartyTaxScheme',
+	'PartyLegalEntity',
+	'Contact',
+	'Person',
+	'AgentParty',
+);
+
+$ordered_by_sequence = static function ( array $sent, array $declared ): bool {
+	$positions = array();
+	foreach ( $sent as $name ) {
+		$idx = array_search( $name, $declared, true );
+		if ( false === $idx ) {
+			return false;
+		}
+		$positions[] = (int) $idx;
+	}
+	$sorted = $positions;
+	sort( $sorted );
+
+	return $positions === $sorted;
+};
+
+$ind_party_order  = $party_children( $individual_xp, $individual_customer_scope );
+$ind_person_count = (int) ( ( false !== $individual_xp->query( $individual_customer_scope . '/*[local-name()="Person"]' ) )
+	? $individual_xp->query( $individual_customer_scope . '/*[local-name()="Person"]' )->length
+	: 0 );
+
+$person_idx  = array_search( 'Person', $ind_party_order, true );
+$contact_idx = array_search( 'Contact', $ind_party_order, true );
+
+// Person carries exactly FirstName and FamilyName -- nothing more, nothing less.
+$person_kids = $party_children( $individual_xp, $individual_customer_scope . '/*[local-name()="Person"]' );
+
+/*
+ * The corporate path must be untouched: a company buyer gets PartyName and no
+ * Person at all. Built through the same production builder, from the same
+ * mapper output, with only the company and a 10-digit VKN changed.
+ */
+$corporate_person_count = -1;
+$corporate_party_order  = array();
+$corporate_party_name   = '';
+$corporate_id_scheme    = '';
+$corporate_error        = '';
+if ( null !== $individual_data ) {
+	$corporate_data                          = $individual_data;
+	$corporate_data['customer']['company']    = 'Kuka Test Kurumsal A.Ş.';
+	$corporate_data['customer']['tax_number'] = '1234567890';
+	$corporate_data['customer']['tax_office'] = 'Beşiktaş';
+	try {
+		$corp_dom = new DOMDocument();
+		$corp_dom->loadXML( ( new Kuka_Island_Core_UBL_TR_Builder( $corporate_data ) )->build_xml() );
+		$corp_xp                = new DOMXPath( $corp_dom );
+		$corporate_party_order  = $party_children( $corp_xp, $individual_customer_scope );
+		$corp_person_nodes      = $corp_xp->query( $individual_customer_scope . '/*[local-name()="Person"]' );
+		$corporate_person_count = ( false !== $corp_person_nodes ) ? $corp_person_nodes->length : -1;
+		$corporate_party_name   = $ubl_text( $corp_xp, $individual_customer_scope . '/*[local-name()="PartyName"]/*[local-name()="Name"]' );
+		$scheme_node            = $corp_xp->query( $individual_customer_scope . '/*[local-name()="PartyIdentification"]/*[local-name()="ID"]/@schemeID' );
+		$corporate_id_scheme    = ( false !== $scheme_node && $scheme_node->length > 0 ) ? trim( (string) $scheme_node->item( 0 )->nodeValue ) : '';
+	} catch ( Throwable $t ) {
+		$corporate_error = get_class( $t );
+	}
+}
+
+$person_order_ok = 1 === $ind_person_count
+	&& false !== $person_idx
+	&& false !== $contact_idx
+	&& $person_idx > $contact_idx
+	// The whole produced sequence, not only the Person/Contact pair.
+	&& $ordered_by_sequence( $ind_party_order, $party_type_sequence )
+	// The exact old defective order must no longer be producible.
+	&& array( 'PartyIdentification', 'Person', 'PostalAddress', 'PartyTaxScheme', 'Contact' ) !== $ind_party_order
+	&& array( 'FirstName', 'FamilyName' ) === $person_kids
+	&& '' !== $ubl_first
+	&& '' !== $ubl_family
+	&& 'TCKN' === $ubl_id_scheme
+	// Corporate behaviour unchanged.
+	&& '' === $corporate_error
+	&& 0 === $corporate_person_count
+	&& 'Kuka Test Kurumsal A.Ş.' === $corporate_party_name
+	&& 'VKN' === $corporate_id_scheme
+	&& $ordered_by_sequence( $corporate_party_order, $party_type_sequence );
+
+$report(
+	'INVOICE_INDIVIDUAL_PERSON_USES_VALID_PARTY_ORDER',
+	$person_order_ok,
+	sprintf(
+		'measured:production_builder_xml_dom|individual_order:%s|person_nodes:%d|person_after_contact:%s|person_children:%s|first_name:%s|family_name:%s|id_scheme:%s|old_defective_order_producible:%s|corporate_order:%s|corporate_person_nodes:%d|corporate_party_name:%s|corporate_id_scheme:%s|error:%s',
+		implode( ',', $ind_party_order ),
+		$ind_person_count,
+		( false !== $person_idx && false !== $contact_idx && $person_idx > $contact_idx ) ? 'yes' : 'NO',
+		implode( ',', $person_kids ),
+		'' !== $ubl_first ? 'present' : 'ABSENT',
+		'' !== $ubl_family ? 'present' : 'ABSENT',
+		$ubl_id_scheme ?: 'none',
+		array( 'PartyIdentification', 'Person', 'PostalAddress', 'PartyTaxScheme', 'Contact' ) === $ind_party_order ? 'YES' : 'no',
+		implode( ',', $corporate_party_order ),
+		$corporate_person_count,
+		'' === $corporate_party_name ? 'ABSENT' : $corporate_party_name,
+		$corporate_id_scheme ?: 'none',
+		'' === $corporate_error ? 'none' : $corporate_error
+	)
+);
+
 kuka_test_delete_order( $individual_order->get_id(), $test_run_id );
 
 // Each missing fact is refused by its own name, and produces no document.
@@ -1576,6 +1716,182 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 			'assertions:%d|failed:%s',
 			$send2_xpath['count'],
 			empty( $send2_xpath['failed'] ) ? 'none' : implode( ' ; ', $send2_xpath['failed'] )
+		)
+	);
+
+	/* --- 7G2: why EDM's own GİB report dates are still in the request ----- */
+
+	/*
+	 * EDM technical support confirmed in writing on 3 September 2026 that
+	 * EARCHIVE_REPORT_SENDDATE and CANCEL_EARCHIVE_REPORT_SENDDATE are not
+	 * required in a SendInvoice request: both carry dates on which EDM itself
+	 * reports the e-Arşiv document, and its cancellation, to GİB.
+	 *
+	 * Removing them was attempted and it is not possible. This check records
+	 * WHY, by measuring the encoder rather than reading the schema and
+	 * assuming: the live WSDL declares both minOccurs="1", and ext-soap
+	 * enforces minOccurs at encoding time, so omitting either produces NO
+	 * envelope at all -- not a rejected request, no request. Sending the
+	 * document would become impossible.
+	 *
+	 * It runs on its own SoapClient so the production client's operation
+	 * ledger is untouched, and it transmits nothing: __doRequest is overridden.
+	 */
+	$senddate_names = array( 'EARCHIVE_REPORT_SENDDATE', 'CANCEL_EARCHIVE_REPORT_SENDDATE' );
+
+	$node_count = static function ( string $xml, string $local ): int {
+		if ( '' === trim( $xml ) ) {
+			return -1;
+		}
+		$dom = new DOMDocument();
+		if ( ! @$dom->loadXML( $xml ) ) {
+			return -1;
+		}
+		$nodes = ( new DOMXPath( $dom ) )->query( sprintf( '//*[local-name()="%s"]', $local ) );
+
+		return ( false !== $nodes ) ? $nodes->length : -1;
+	};
+
+	$senddate_probe = new Kuka_Island_Test_WSDL_Interceptor(
+		Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL,
+		array(
+			'trace'        => 1,
+			'exceptions'   => true,
+			'cache_wsdl'   => WSDL_CACHE_MEMORY,
+			'soap_version' => SOAP_1_1,
+			'encoding'     => 'UTF-8',
+		)
+	);
+
+	$senddate_header = array(
+		'SENDER'         => '1234567890',
+		'RECEIVER'       => '11111111111',
+		'ISSUE_DATE'     => '2026-08-31',
+		'PAYABLE_AMOUNT' => '120.00',
+		'FROM'           => 'urn:mail:defaultgb@example.com',
+		'TO'             => 'alici@example.com',
+		'PROFILEID'      => 'EARSIVFATURA',
+		'INTERNETSALES'  => false,
+		'EARCHIVE'       => true,
+		'INVOICE_TYPE'   => 'SATIS',
+		'ISACTIVE'       => true,
+		'MARKED'         => false,
+	);
+
+	$senddate_request = static function ( array $header ): array {
+		return array(
+			'REQUEST_HEADER' => Kuka_Island_Core_EDM_Request_Header::build(
+				'verify-session',
+				'SendInvoice',
+				'ozelyazilim.kukaisland',
+				'uuid-verify-senddate',
+				'2026-08-31T00:00:00'
+			),
+			'SENDER'         => array( 'vkn' => '1234567890', 'alias' => 'urn:mail:defaultgb@example.com' ),
+			'RECEIVER'       => array( 'vkn' => '11111111111' ),
+			'INVOICE'        => array(
+				array(
+					'TRXID'   => 1,
+					'UUID'    => 'uuid-verify-senddate',
+					'HEADER'  => $header,
+					'CONTENT' => base64_encode( '<Invoice/>' ),
+				),
+			),
+		);
+	};
+
+	$senddate_attempt = static function ( Kuka_Island_Test_WSDL_Interceptor $probe, array $request ): array {
+		$probe->last_request_xml = '';
+		$verdict                 = 'serialised';
+		$message                 = '';
+		try {
+			$probe->__soapCall( 'SendInvoice', array( $request ) );
+		} catch ( Throwable $t ) {
+			$verdict = get_class( $t );
+			$message = $t->getMessage();
+		}
+
+		return array(
+			'verdict' => $verdict,
+			'message' => $message,
+			'xml'     => $probe->last_request_xml,
+		);
+	};
+
+	// (a) Omitted -- the behavioural attempt EDM's answer would authorise.
+	$omit_attempt = $senddate_attempt( $senddate_probe, $senddate_request( $senddate_header ) );
+
+	// (b) Present -- the control, proving the probe itself is sound.
+	$with_attempt = $senddate_attempt(
+		$senddate_probe,
+		$senddate_request(
+			array_merge(
+				$senddate_header,
+				array(
+					'EARCHIVE_REPORT_SENDDATE'        => '2026-08-31',
+					'CANCEL_EARCHIVE_REPORT_SENDDATE' => '2026-08-31',
+				)
+			)
+		)
+	);
+
+	$omission_refused = 'serialised' !== $omit_attempt['verdict']
+		&& '' === trim( (string) $omit_attempt['xml'] )
+		&& str_contains( (string) $omit_attempt['message'], 'EARCHIVE_REPORT_SENDDATE' );
+
+	$control_serialises = 'serialised' === $with_attempt['verdict']
+		&& 1 === $node_count( (string) $with_attempt['xml'], 'EARCHIVE_REPORT_SENDDATE' )
+		&& 1 === $node_count( (string) $with_attempt['xml'], 'CANCEL_EARCHIVE_REPORT_SENDDATE' );
+
+	// The exact declarations, quoted from the WSDL rather than characterised.
+	$senddate_declarations = array();
+	$senddate_wsdl_dom     = new DOMDocument();
+	if ( @$senddate_wsdl_dom->load( Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL ) ) {
+		$senddate_wsdl_xp = new DOMXPath( $senddate_wsdl_dom );
+		$senddate_wsdl_xp->registerNamespace( 'xs', 'http://www.w3.org/2001/XMLSchema' );
+		foreach ( $senddate_names as $decl_name ) {
+			$decl = $senddate_wsdl_xp->query( sprintf( '//xs:complexType[@name="INVOICE"]//xs:element[@name="%s"]', $decl_name ) );
+			if ( false !== $decl && $decl->length > 0 && $decl->item( 0 ) instanceof DOMElement ) {
+				$senddate_declarations[] = sprintf(
+					'%s(type=%s,minOccurs=%s)',
+					$decl_name,
+					$decl->item( 0 )->getAttribute( 'type' ),
+					$decl->item( 0 )->hasAttribute( 'minOccurs' ) ? $decl->item( 0 )->getAttribute( 'minOccurs' ) : '1'
+				);
+			}
+		}
+	}
+
+	/*
+	 * BLOCKED, not FAIL and not PASS. Omission cannot be encoded against this
+	 * WSDL; the fields are sent as 0001-01-01, the documented .NET MinValue
+	 * that EDM's own request examples and connector produce for "no value".
+	 * Both halves of the measurement have to hold for the verdict to be
+	 * trustworthy: omission must be refused AND the control must serialise,
+	 * otherwise the probe is broken rather than the schema being strict.
+	 */
+	/*
+	 * Emitted directly rather than through $report(): nothing here is broken,
+	 * so this must not fail the suite. It is a recorded impossibility, and the
+	 * expectation in scripts/verify.sh pins the whole line -- so if EDM ever
+	 * relaxes the WSDL and omission starts serialising, that expectation breaks
+	 * and forces this to be re-measured instead of quietly staying true.
+	 */
+	WP_CLI::line(
+		sprintf(
+			'INVOICE_OUTGOING_REQUEST_OMITS_REPORT_SENDDATES=%s|%s',
+			( $omission_refused && $control_serialises ) ? 'BLOCKED' : 'BLOCKED_PROBE_UNSOUND',
+			sprintf(
+				'measured:real_wsdl_soap_encoder|network_soap_operations:0|omission_verdict:%s|omission_envelope_produced:%s|encoder_message:%s|control_serialises:%s|control_senddate_nodes:%d,%d|wsdl_declares:%s|conflict:edm_written_answer_says_not_required_but_wsdl_says_minOccurs_1|action:fields_sent_as_0001-01-01_matching_official_request_examples|resolution:documented_dotnet_minvalue_means_no_value|probe_sound:%s',
+				$omit_attempt['verdict'],
+				'' === trim( (string) $omit_attempt['xml'] ) ? 'no' : 'YES',
+				'' === $omit_attempt['message'] ? 'none' : $omit_attempt['message'],
+				'serialised' === $with_attempt['verdict'] ? 'yes' : 'NO',
+				$node_count( (string) $with_attempt['xml'], 'EARCHIVE_REPORT_SENDDATE' ),
+				$node_count( (string) $with_attempt['xml'], 'CANCEL_EARCHIVE_REPORT_SENDDATE' ),
+				array() === $senddate_declarations ? 'not_read' : implode( ' ', $senddate_declarations ),
+				( $omission_refused && $control_serialises ) ? 'yes' : 'NO'
+			)
 		)
 	);
 
@@ -7711,6 +8027,136 @@ if ( $runner_available
 		)
 	);
 }
+
+/* ========================================================================== */
+/* A session-expired fault never re-transmits the document                     */
+/* ========================================================================== */
+
+/*
+ * Kuka_Island_Core_EDM_Client::execute_with_session() re-runs its callback once
+ * when EDM reports an expired session. That is right for a read and for an
+ * idempotent call, and it was WRONG for SendInvoice: re-running that callback is
+ * a second transmission of the same document. EDM reports session expiry before
+ * it processes the body, so in practice the first call did nothing -- but that is
+ * not a guarantee anyone here can make, and the cost of being wrong is two
+ * fiscal documents for one sale.
+ *
+ * SendInvoice now forbids the retry. The fault surfaces, the manager records
+ * send_uncertain, and the poller asks EDM what happened.
+ */
+final class Kuka_Island_Test_Session_Expiry_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
+	/** @var array<string, int> */
+	public array $calls = array();
+	/** @var string Operation that should raise the session-expired fault. */
+	public string $expire_on;
+
+	public function __construct( string $expire_on ) {
+		$this->expire_on = $expire_on;
+	}
+
+	public function get_last_request(): string {
+		return '';
+	}
+
+	public function get_last_response(): string {
+		return '';
+	}
+
+	public function call( string $operation, array $parameters ) {
+		$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+
+		if ( 'Login' === $operation ) {
+			return array( 'SESSION_ID' => 'session-expiry-fixture', 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+		}
+
+		if ( $operation === $this->expire_on ) {
+			// The shape the client's is_session_expired_fault() recognises.
+			throw new SoapFault( 'Client', 'Session expired or invalid session id.' );
+		}
+
+		if ( 'GetInvoiceStatus' === $operation ) {
+			return array(
+				'INVOICE_STATUS' => array(
+					array(
+						'UUID'   => $parameters['INVOICE']['UUID'] ?? 'uuid-expiry',
+						'ID'     => 'EDM2026000004000',
+						'HEADER' => array( 'STATUS' => 'SEND - SUCCEED' ),
+					),
+				),
+			);
+		}
+
+		return array( 'REQUEST_RETURN' => array( 'RETURN_CODE' => 0 ) );
+	}
+}
+
+// A transmission: the fault must NOT be retried, so SendInvoice stays at one.
+$expiry_send_transport = new Kuka_Island_Test_Session_Expiry_Transport( 'SendInvoice' );
+$expiry_send_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $expiry_send_transport ) );
+$expiry_send_order     = kuka_create_lock_order( $test_run_id, $billing_props, array() );
+$expiry_send_order_id  = (int) $expiry_send_order->get_id();
+
+$expiry_send_error = '';
+try {
+	$expiry_send_manager->process_order( $expiry_send_order );
+} catch ( Throwable $t ) {
+	$expiry_send_error = get_class( $t );
+}
+
+$expiry_send_order->read_meta_data( true );
+$expiry_send_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $expiry_send_order );
+$expiry_send_calls  = (int) ( $expiry_send_transport->calls['SendInvoice'] ?? 0 );
+$expiry_send_logins = (int) ( $expiry_send_transport->calls['Login'] ?? 0 );
+$expiry_poll_booked = count( $poll_pending_ids( $expiry_send_order_id ) );
+
+Kuka_Island_Core_Invoice_Status_Poller::unschedule( $expiry_send_order_id );
+kuka_test_delete_order( $expiry_send_order_id, $test_run_id );
+
+/*
+ * A READ still retries, because re-asking a question is free. Measured on the
+ * same fault shape so the difference is the operation, not the fixture.
+ */
+$expiry_read_transport = new Kuka_Island_Test_Session_Expiry_Transport( 'nothing' );
+$expiry_read_client    = new Kuka_Island_Core_EDM_Client( $config, $expiry_read_transport );
+$expiry_read_ok        = false;
+try {
+	$expiry_read_ok = $expiry_read_client->get_invoice_status( 'uuid-expiry', 'EDM2026000004000' ) instanceof Kuka_Island_Core_Invoice_Result;
+} catch ( Throwable $t ) {
+	$expiry_read_ok = false;
+}
+
+// And the client source states the rule where the retry lives.
+$client_source     = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-edm-client.php' );
+$retry_flag_wired  = str_contains( $client_source, 'bool $allow_session_retry = true' )
+	&& str_contains( $client_source, '$allow_session_retry && $this->is_session_expired_fault( $fault )' );
+
+$report(
+	'INVOICE_SESSION_EXPIRY_NEVER_RETRANSMITS',
+	// Exactly one SendInvoice, despite the session-expired fault.
+	1 === $expiry_send_calls
+	&& 0 === (int) ( $expiry_send_transport->calls['LoadInvoice'] ?? 0 )
+	// One Login only: the client did not re-login to try again.
+	&& 1 === $expiry_send_logins
+	// The fault surfaced, and the manager put the document in the uncertain
+	// state whose whole purpose is "ask, never resend".
+	&& '' !== $expiry_send_error
+	&& Kuka_Island_Core_Invoice_Status::STATUS_SEND_UNCERTAIN === $expiry_send_status
+	&& 1 === $expiry_poll_booked
+	// A read is unaffected.
+	&& true === $expiry_read_ok
+	&& true === $retry_flag_wired,
+	sprintf(
+		'measured:production_send_with_session_expired_fault|SendInvoice=%d|Login=%d|LoadInvoice=%d|threw:%s|status:%s|poll_actions_pending:%d|read_path_unaffected:%s|retry_flag_wired:%s',
+		$expiry_send_calls,
+		$expiry_send_logins,
+		$expiry_send_transport->calls['LoadInvoice'] ?? 0,
+		'' === $expiry_send_error ? 'no' : 'yes',
+		$expiry_send_status,
+		$expiry_poll_booked,
+		$expiry_read_ok ? 'yes' : 'no',
+		$retry_flag_wired ? 'yes' : 'no'
+	)
+);
 
 /* ========================================================================== */
 /* REQUEST_HEADER contract and safe SOAP fault classification                  */

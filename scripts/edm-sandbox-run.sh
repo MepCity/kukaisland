@@ -14,6 +14,11 @@
 #   ./scripts/edm-sandbox-run.sh                                            # PLAN
 #   KUKA_EDM_ALLOW_SANDBOX_WRITE=true ./scripts/edm-sandbox-run.sh confirm=LoadInvoice
 #
+# Re-read the document the state record already names. Reads only -- no claim
+# transition, no state write, no LoadInvoice -- so confirming a draft never
+# requires creating a second one:
+#   ./scripts/edm-sandbox-run.sh readback=confirm
+#
 # Reconciliation reset (uncertain -> idle only). Fully offline: no credential
 # file is required and none is mounted, so no EDM call is reachable:
 #   ./scripts/edm-sandbox-run.sh reset=document_absent_at_edm audit=<label>
@@ -38,9 +43,11 @@ state_dir="$cred_dir/edm-sandbox-state"
 # here too rather than merely asserted: with no file at /run/edm/edm-test.env
 # the credential loader has nothing to read even if the code path changed.
 reset_mode=no
+readback_mode=no
 for arg in "$@"; do
   case "$arg" in
     reset=*) reset_mode=yes ;;
+    readback=*) readback_mode=yes ;;
   esac
 done
 
@@ -54,6 +61,19 @@ allow="${KUKA_EDM_ALLOW_SANDBOX_WRITE:-}"
 # be silently skipped. Nothing is started, mounted or created first.
 if [ "$reset_mode" = "yes" ] && [ "$allow" = "true" ]; then
   echo "EDM_SANDBOX_RUN=BLOCKED|reason:write_gate_open_during_reset|credentials_mounted:no|docker_started:no|state_unchanged:yes"
+  exit 1
+fi
+
+# A readback re-reads a document that already exists; an open write gate asks to
+# create one. Together the intent is ambiguous, so neither happens. Refused on
+# the host, before any mount, for the same reason the reset branch is.
+if [ "$readback_mode" = "yes" ] && [ "$allow" = "true" ]; then
+  echo "EDM_SANDBOX_RUN=BLOCKED|reason:write_gate_open_during_readback|credentials_mounted:no|docker_started:no|state_unchanged:yes"
+  exit 1
+fi
+
+if [ "$readback_mode" = "yes" ] && [ "$reset_mode" = "yes" ] ; then
+  echo "EDM_SANDBOX_RUN=BLOCKED|reason:readback_and_reset_together|credentials_mounted:no|docker_started:no|state_unchanged:yes"
   exit 1
 fi
 
@@ -87,6 +107,17 @@ mode=$(stat -f '%Lp' "$cred_file" 2>/dev/null || stat -c '%a' "$cred_file" 2>/de
 if [ "$mode" != "600" ]; then
   echo "EDM_SANDBOX_RUN=BLOCKED|reason:credentials_file_mode_not_600|mode:$mode" >&2
   exit 1
+fi
+
+if [ "$readback_mode" = "yes" ]; then
+  # Reads only: GetInvoiceStatus and GetInvoice against the document the state
+  # record already names. The write env var is deliberately NOT forwarded, so
+  # no write path is reachable inside the container even if the code changed.
+  echo "EDM_SANDBOX_RUN=READBACK_ONLY|write_env_forwarded:no|nothing_will_be_created"
+  exec docker compose run --rm -T \
+    -v "$cred_file":/run/edm/edm-test.env:ro \
+    -v "$state_dir":/run/edm/state:ro \
+    wp-cli wp eval-file /project-scripts/edm-sandbox-invoice.php "$@"
 fi
 
 if [ "$allow" = "true" ]; then

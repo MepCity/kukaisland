@@ -72,6 +72,47 @@ final class Kuka_Island_Core_EDM_Client {
 	 *
 	 * @param array<string, mixed> $verdict Output of the fault classifier.
 	 */
+	/**
+	 * How the recipient is addressed, for both EDM write operations.
+	 *
+	 * INVOICE/HEADER/TO is minOccurs="0" and means two different things per
+	 * profile, and RECEIVER/@alias is an optional attribute that belongs to only
+	 * one of them:
+	 *
+	 * - e-Fatura: the recipient has a GİB mailbox. Its alias goes in HEADER/TO
+	 *   and in RECEIVER/@alias.
+	 * - e-Arşiv: the recipient has no GİB mailbox. EDM technical support
+	 *   confirmed in writing that HEADER/TO carries the buyer's e-mail address
+	 *   -- the same address the UBL's cbc:ElectronicMail carries -- and that EDM
+	 *   delivers the document to it itself. RECEIVER/@alias is omitted
+	 *   ENTIRELY, never sent as an empty string.
+	 *
+	 * One helper so SendInvoice in production and LoadInvoice in the sandbox
+	 * tool cannot drift apart on the shape they send. A null means "do not
+	 * serialise this field at all".
+	 *
+	 * @param bool   $is_earchive    Whether the document is an e-Arşiv invoice.
+	 * @param string $receiver_alias Recipient GİB mailbox alias, when there is one.
+	 * @param string $customer_email Buyer's e-mail address.
+	 * @return array{to: string|null, receiver_alias: string|null}
+	 */
+	public static function recipient_addressing( bool $is_earchive, string $receiver_alias, string $customer_email ): array {
+		$receiver_alias = trim( $receiver_alias );
+		$customer_email = trim( $customer_email );
+
+		if ( $is_earchive ) {
+			return array(
+				'to'             => '' === $customer_email ? null : $customer_email,
+				'receiver_alias' => null,
+			);
+		}
+
+		return array(
+			'to'             => '' === $receiver_alias ? null : $receiver_alias,
+			'receiver_alias' => '' === $receiver_alias ? null : $receiver_alias,
+		);
+	}
+
 	private static function login_exception_for( array $verdict ): Kuka_Island_Core_Invoice_Exception {
 		$category = (string) ( $verdict['category'] ?? Kuka_Island_Core_EDM_Fault_Classifier::CAT_UNCLASSIFIED );
 
@@ -324,32 +365,50 @@ final class Kuka_Island_Core_EDM_Client {
 					'PAYABLE_AMOUNT'                  => (string) ( $payload['payable_amount'] ?? '0.00' ),
 					'INTERNETSALES'                   => (bool) ( $payload['is_internet_sales'] ?? true ),
 					'EARCHIVE'                        => $is_earchive,
-					'EARCHIVE_REPORT_SENDDATE'        => $issue_date,
-					'CANCEL_EARCHIVE_REPORT_SENDDATE' => $issue_date,
+					/*
+					 * EARCHIVE_REPORT_SENDDATE and
+					 * CANCEL_EARCHIVE_REPORT_SENDDATE cannot be omitted: the
+					 * live test WSDL declares both
+					 *
+					 *   <xs:element name="EARCHIVE_REPORT_SENDDATE"
+					 *               type="xs:date" minOccurs="1" maxOccurs="1"/>
+					 *   <xs:element name="CANCEL_EARCHIVE_REPORT_SENDDATE"
+					 *               type="xs:date" minOccurs="1" maxOccurs="1"/>
+					 *
+					 * and ext-soap enforces minOccurs at ENCODING time, before
+					 * any transport: omitting either raises
+					 * "SOAP-ERROR: Encoding: object has no
+					 * 'EARCHIVE_REPORT_SENDDATE' property" and produces no
+					 * envelope at all. EDM technical support confirmed in
+					 * writing on 3 September 2026 that neither is semantically
+					 * required: both carry dates on which EDM itself reports
+					 * the e-Arşiv document, and its cancellation, to GİB.
+					 *
+					 * 0001-01-01 is not an invented filler. It is what EDM's
+					 * own reference clients send for exactly this situation:
+					 * both official SendInvoice request examples in "EDM
+					 * E-Fatura Web API v4 Request-Response" carry
+					 * <EARCHIVE_REPORT_SENDDATE>0001-01-01< and the official C#
+					 * connector never assigns either field, so .NET serialises
+					 * DateTime.MinValue -- the same 0001-01-01. It is the
+					 * documented "no value" of this schema. Sending the issue
+					 * date here, as this client briefly did, asserts a GİB
+					 * reporting date that has not happened.
+					 *
+					 * INVOICE_OUTGOING_REQUEST_OMITS_REPORT_SENDDATES records
+					 * the omission impossibility, so nobody removes these again
+					 * without re-measuring.
+					 */
+					'EARCHIVE_REPORT_SENDDATE'        => '0001-01-01',
+					'CANCEL_EARCHIVE_REPORT_SENDDATE' => '0001-01-01',
 					'ISACTIVE'                        => true,
 					'MARKED'                          => false,
 				);
 
-				/*
-				 * INVOICE/HEADER/TO is minOccurs="0" and means two different
-				 * things for the two profiles, which is what the previous code
-				 * got wrong by treating it as a GİB alias in both.
-				 *
-				 * - e-Fatura: TO is the recipient's GİB mailbox alias.
-				 * - e-Arşiv: the recipient has no GİB mailbox. EDM technical
-				 *   support confirmed TO carries the buyer's e-mail address, and
-				 *   that EDM then delivers the document itself -- so there is no
-				 *   EmailInvoice call anywhere on this path.
-				 *
-				 * RECEIVER/@alias stays an e-Fatura-only attribute and is omitted
-				 * entirely for e-Arşiv rather than sent as an empty string.
-				 */
-				if ( $is_earchive ) {
-					if ( '' !== $customer_email ) {
-						$header['TO'] = $customer_email;
-					}
-				} elseif ( '' !== $receiver_alias ) {
-					$header['TO'] = $receiver_alias;
+				// The one addressing rule, shared with the sandbox tool.
+				$addressing = self::recipient_addressing( $is_earchive, $receiver_alias, $customer_email );
+				if ( null !== $addressing['to'] ) {
+					$header['TO'] = $addressing['to'];
 				}
 
 				/*
@@ -386,8 +445,8 @@ final class Kuka_Island_Core_EDM_Client {
 				$invoice_entry['CONTENT'] = (string) ( $payload['ubl_xml'] ?? '' );
 
 				$receiver = array( 'vkn' => (string) ( $payload['receiver_vkn'] ?? '' ) );
-				if ( ! $is_earchive && '' !== $receiver_alias ) {
-					$receiver['alias'] = $receiver_alias;
+				if ( null !== $addressing['receiver_alias'] ) {
+					$receiver['alias'] = $addressing['receiver_alias'];
 				}
 
 				$request = array(
@@ -407,7 +466,11 @@ final class Kuka_Island_Core_EDM_Client {
 				// No expected number is passed: there is nothing local that
 				// could stand in for the one EDM assigns.
 				return $this->parse_send_invoice_response( $response, $payload['uuid'] ?? '', '' );
-			}
+			},
+			// Never re-run a transmission. A session-expired fault surfaces, the
+			// manager records send_uncertain, and the poller asks EDM what
+			// happened rather than sending the document again.
+			false
 		);
 	}
 
@@ -583,7 +646,26 @@ final class Kuka_Island_Core_EDM_Client {
 	 * @param callable(string): T $callback
 	 * @return T
 	 */
-	private function execute_with_session( callable $callback ) {
+	/**
+	 * Run one operation with a session, re-logging in once if the session expired.
+	 *
+	 * The retry is safe for a read and for an idempotent call, and it is NOT
+	 * safe for SendInvoice: re-running that callback is a second transmission of
+	 * the same document. A session-expired fault is reported by EDM before it
+	 * processes the body, so in practice the first call did nothing -- but
+	 * "in practice" is not a guarantee anyone here can make, and the cost of
+	 * being wrong is two fiscal documents for one sale.
+	 *
+	 * So a transmitting caller passes $allow_session_retry = false and gets the
+	 * fault instead. The manager then records send_uncertain and books a
+	 * GetInvoiceStatus poll, which is the path that exists for exactly this: ask
+	 * EDM what happened, never resend blind.
+	 *
+	 * @param callable $callback            Operation to run with the session id.
+	 * @param bool     $allow_session_retry Whether one re-login retry is allowed.
+	 * @return mixed
+	 */
+	private function execute_with_session( callable $callback, bool $allow_session_retry = true ) {
 		if ( empty( $this->session_id ) ) {
 			$this->login();
 		}
@@ -591,7 +673,7 @@ final class Kuka_Island_Core_EDM_Client {
 		try {
 			return $callback( (string) $this->session_id );
 		} catch ( SoapFault $fault ) {
-			if ( $this->is_session_expired_fault( $fault ) ) {
+			if ( $allow_session_retry && $this->is_session_expired_fault( $fault ) ) {
 				// Clear expired session and attempt single login retry.
 				$this->session_id = null;
 				$this->login();

@@ -847,10 +847,13 @@ class Kuka_Island_Core_Invoice_Manager {
 		// SendInvoiceRequest/RECEIVER declares `vkn` and `alias` as optional
 		// xs:attribute entries, and INVOICE/HEADER/TO is
 		// minOccurs="0". e-Arşiv recipients have no GİB mailbox, and the flow is
-		// identified by INVOICE/HEADER/EARCHIVE (xs:boolean) plus
-		// EARCHIVE_REPORT_SENDDATE -- not by a receiver alias. Omitting the alias
-		// is therefore schema-valid; the previously invented default-mailbox
-		// label was not, and has been removed.
+		// identified by INVOICE/HEADER/EARCHIVE (xs:boolean) -- not by a
+		// receiver alias. Omitting the alias is therefore schema-valid; the
+		// previously invented default-mailbox label was not, and has been
+		// removed. (This comment used to cite EARCHIVE_REPORT_SENDDATE as part
+		// of that identification. The outgoing request no longer sends it: it
+		// is EDM's own GİB reporting date, per their written answer of
+		// 3 September 2026.)
 		return array(
 			'document_type'  => Kuka_Island_Core_Invoice_Status::TYPE_EARCHIVE,
 			'profile_id'     => 'EARSIVFATURA',

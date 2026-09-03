@@ -89,7 +89,7 @@ Tüm isteklerde `REQUEST_HEADER/APPLICATION_NAME = ozelyazilim.kukaisland`.
 - `FROM` (xs:token), **`TO` (xs:token, `minOccurs="0"`)**
 - `PROFILEID`, `INVOICE_TYPE`, `ISSUE_DATE`, `PAYABLE_AMOUNT`
 - `INTERNETSALES`, `EARCHIVE` (xs:boolean, zorunlu)
-- `EARCHIVE_REPORT_SENDDATE`, `CANCEL_EARCHIVE_REPORT_SENDDATE` (xs:date, zorunlu)
+- `EARCHIVE_REPORT_SENDDATE`, `CANCEL_EARCHIVE_REPORT_SENDDATE` (xs:date, `minOccurs="1"` — şemada zorunlu, EDM'e göre iş kuralı olarak gereksiz; bkz. §16.2)
 - `ISACTIVE`, `MARKED` (xs:boolean)
 - **`INVOICESERIAL_REQUESTED` (xs:token, `minOccurs="0"`)**
 
@@ -210,7 +210,7 @@ WSDL kanıtı:
 
 - `SendInvoiceRequest/RECEIVER` içinde `vkn` ve `alias` **opsiyonel `xs:attribute`**.
 - `INVOICE/HEADER/TO` `minOccurs="0"`.
-- e-Arşiv akışı `INVOICE/HEADER/EARCHIVE` (xs:boolean) ve `EARCHIVE_REPORT_SENDDATE` ile tanımlanır.
+- e-Arşiv akışı `INVOICE/HEADER/EARCHIVE` (xs:boolean) ile tanımlanır. `EARCHIVE_REPORT_SENDDATE` bu tanımın parçası **değildir**: EDM'in GİB'e raporlama tarihidir (§16.2).
 
 e-Arşiv alıcısının GİB posta kutusu yoktur; alanın atlanması şema geçerlidir. Uydurma bir posta kutusu etiketi yazmak değildi ve kaldırıldı. e-Fatura tarafında alias `CheckUser`'dan gelir ve eksikse `missing_recipient_alias` ile fail-closed davranılır.
 
@@ -997,3 +997,455 @@ make verify
 ```
 
 EDM kimlik bilgileri yalnız `wp-config.php` sabitleri veya ortam değişkenleri üzerinden okunur; Git'e, loglara, komut çıktısına veya veritabanına yazılmaz.
+
+---
+
+## e-Arşiv alıcı adresleme sözleşmesi (EDM teknik desteğinden yazılı cevap)
+
+Bu bölüm, sandbox aracındaki `receiver_alias_contract_unresolved` engelinin
+neden kaldırıldığını kayda geçirir. Engel, hiçbir resmî kaynak
+`RECEIVER.alias` ve `INVOICE.HEADER.TO` alanlarının ne taşıyacağını
+söylemediği için vardı ve hiçbir değer tahmin edilmemişti.
+
+EDM teknik desteğinin yazılı cevabı:
+
+1. Müşteri e-postası UBL içindeki `cbc:ElectronicMail` alanına yazılır.
+2. Aynı e-posta `INVOICE/HEADER/TO` alanına yazılır.
+3. EDM faturayı bu adrese kendisi iletir; ayrı bir `EmailInvoice` çağrısı yapılmaz.
+4. `RECEIVER.alias` e-Arşiv'de **hiç serileştirilmez** — boş string de gönderilmez.
+   Alias, alıcının sahip olmadığı bir GİB posta kutusunu adresler.
+
+Bu kural tek yerde tanımlıdır:
+`Kuka_Island_Core_EDM_Client::recipient_addressing()`. Üretimdeki `SendInvoice`
+ve sandbox aracındaki `LoadInvoice` aynı yardımcıyı kullanır; eşdeğerlik
+`SANDBOX_MATCHES_PRODUCTION_RECIPIENT_ADDRESSING` ile ölçülür.
+
+### Tek kontrollü LoadInvoice taslağının gözlemleri
+
+Test ortamına (`test.edmbilisim.com.tr`) tek bir `LoadInvoice` çağrısı yapıldı.
+`LoadInvoice`, `SendInvoice` **değildir**: belgeyi EDM'de taslak olarak saklar,
+fatura kesmez ve alıcıya hiçbir şey iletmez.
+
+- Belge numarası EDM tarafından atandı: 16 karakter, `GENERATEINVOICEIDONLOAD =
+  true` ile. Numara yalnız yanıttan okundu; `INVOICE/@ID` gönderilmedi ve
+  gönderilen UBL'in `cbc:ID` alanı EDM'nin portal yer tutucusunu taşıdı.
+- `GetInvoiceStatus`, yüklenen taslak için **`LOAD - SUCCEED`** literalini
+  döndürdü. Bu literal EDM'nin yayımlanmış *giden belge* durum listesinde
+  bulunmadığı için `Kuka_Island_Core_EDM_Document_Status` onu fail-closed olarak
+  `needs_manual_review`'a eşliyor. Bu doğru davranıştır ve üretim yolu
+  `LoadInvoice` çağırmadığı için üretimi etkilemez. Literal, taslak yolunun
+  bilinen sonucu olarak burada kayıtlıdır; giden belge tablosuna
+  **eklenmemiştir**, çünkü kesilmiş bir belgeyi tanımlamaz.
+- `GetInvoice` taslak için **boş CONTENT** döndürdü
+  (`reason:empty_content_returned`). Ölçülen gerçek budur: LoadInvoice
+  taslağında bu operasyon XML vermedi. Neden vermediği ve hangi koşulda
+  vereceği ölçülmemiştir; XML readback bu nedenle raporlarda dürüstçe FAIL
+  kalıyor ve gönderim sonrasında tekrar ölçülecektir.
+
+Taslağın EDM'de var olduğunun kanıtı, durum sorgusunun bizim UUID'imiz
+hakkında kendi literalini döndürmesidir: `document_present_at_edm:yes`.
+Doğrulama, ikinci bir belge oluşturmadan tekrarlanabilir:
+
+```bash
+./scripts/edm-sandbox-run.sh readback=confirm
+```
+
+## 15. İzole sandbox GERÇEK GÖNDERİM denemesi ve sonucu
+
+Test ortamına, açık operatör onayıyla **tek bir** `SendInvoice` çağrısı yapıldı.
+EDM çağrıyı reddetti. Belgenin oluşup oluşmadığı **kesin olarak
+doğrulanamadı**; kalıcı durum bu nedenle `uncertain` tutuluyor ve araçtaki her
+kapı ikinci gönderimi reddediyor. Ölçüm, belgenin oluşmamış olmasını **güçlü
+olasılık** yapar (§15.2), fakat EDM teyidi beklenmektedir — ve `uncertain`
+kaydını çözecek olan da o teyittir, buradaki çıkarım değil.
+
+### 15.1 Reddetme neden tek başına bir cevap değildir
+
+`SendInvoice` hata verdikten sonra belgenin EDM'de var olup olmadığı
+**bilinmiyordu**, ve bu soruyu yeniden göndererek cevaplamak yasaktır. Aynı
+belgeyi bir daha iletmek, bu kod tabanındaki her korumanın engellemek için var
+olduğu şeydir.
+
+`resolve` modu bunu yalnız okuma ile cevaplar (`GetInvoiceStatus` + `GetInvoice`;
+kapı gerektirmez, çünkü hiçbir şey oluşturmaz; iki kapıdan biri veya bir onay
+argümanı varsa reddeder):
+
+```bash
+./scripts/edm-sandbox-send-run.sh resolve
+```
+
+İlk resolve **sonuçsuz** çıktı, ve sebebi kayda değer: gönderilen belge için
+`GetInvoiceStatus` **de** reddedildi, gönderimin aldığı güvenli kodun aynısıyla
+(`edm_request_refused`). Bir reddetme tek başına belirsizdir — "sana cevap
+vermem" ile "böyle bir belgem yok" aynı biçimde gelir.
+
+### 15.2 Reddetmeyi okunur kılan iki kontrol
+
+| Kontrol | Sorulan | EDM'nin cevabı |
+| --- | --- | --- |
+| **Pozitif** | onaylı `LoadInvoice` taslağı (var olduğu bilinen belge) | `LOAD - SUCCEED`, 16 karakter numara, `document_present_at_edm:yes` |
+| **Negatif** | koşu içinde üretilen, hiç iletilmemiş UUID | **birebir aynı reddetme**, durum literali yok, numara yok |
+
+Pozitif kontrol okumaların, kimlik bilgilerinin ve endpoint'in sağlam olduğunu
+gösterir. Negatif kontrol, EDM'nin **tanımadığı bir UUID'ye** verdiği cevabın
+tam olarak bu reddetme olduğunu gösterir. Bu ikisi birlikte, gönderilen belgenin
+EDM'de bulunmamasını güçlü olasılık yapar.
+
+Ne kadarını kanıtladığı konusunda dürüst olmak gerekir: bu bir **çıkarım**, EDM'in
+"böyle bir belgem yok" beyanı değil. Kanıtlanan şey, reddin hiç iletilmemiş bir
+UUID'nin aldığı reddin aynısı olduğudur. Reddin başka bir sebepten de aynı
+biçimde gelebileceği dışlanmadı, bu yüzden `absent` verdict'i kaydı otomatik
+olarak `idle`'a döndürmez ve `uncertain` yerinde kalır:
+
+```
+SANDBOX_SEND_RESOLVE=PASS|verdict:absent|status_answered:no|status_literal:none
+  |status_number_length:0|status_error:edm_request_refused
+  |xml_error:empty_content_returned|uuid_match:no
+SANDBOX_SEND_RESOLVE_CONTROL=never_transmitted_uuid|status_answered:no
+  |status_error:edm_request_refused|status_literal:none|status_number_length:0
+SANDBOX_SEND_RESOLVE_REASON=refusal_matches_the_never_transmitted_control_uuid
+```
+
+Negatif kontrol her resolve koşusunun parçasıdır, elle yapılan tek seferlik bir
+ölçüm değil: reddetmeyi okuyan operatör kalibrasyonu aynı çıktıda görmelidir, ve
+EDM'nin bu davranışı bu depoya sabitlenecek bir gerçek değildir.
+
+### 15.3 Yokluk asla varsayılan değildir
+
+`kuka_sandbox_resolve_verdict()` saf ve üç değerlidir; **varsayılanı `unknown`**.
+
+| Verdict | Ne zaman |
+| --- | --- |
+| `present` | EDM bu belge hakkında bir şey söyledi: saklı XML bizim UUID'imizi yansıttı, ya da durum sorgusu bir numara veya bir durum literali döndürdü |
+| `absent` | EDM **cevap verdi** ve belge hakkında hiçbir şey söylemedi (literal yok, numara yok, içerik yok); ya da reddetme, hiç iletilmemiş kontrol UUID'siyle birebir eşleşti |
+| `unknown` | Diğer her şey. Taşıma hatası, okunamayan cevap, UUID'imizi taşımayan içerik (o anahtarda bir şey saklı; ne olduğu belirlenmedi) |
+
+Bu dosyadaki tek ölçümlü hata—yokluğu kanıtlamadan iddia etmek—mükerrer mali
+belge üretir. `SANDBOX_RESOLVE_VERDICT` on bir şekli ölçer: boş okuma, temiz
+cevap veren kontrol, kendisi numara taşıyan kontrol ve iki farklı reddetme
+dahil.
+
+`absent`, bu aracın verdict adıdır — EDM'in "böyle bir belgem yok" beyanı
+değil. İkisini karıştırmamak önemli: verdict, reddin hiç iletilmemiş bir UUID'nin
+aldığı reddin aynısı olduğu ölçümüne dayanır, EDM'in belge hakkındaki
+açıklamasına değil. Bu yüzden `absent` kaydı kendiliğinden `idle`'a döndürmez.
+
+Kaydı `idle`'a döndürmek ayrı ve açık bir eylemdir: `reconcile=absent`, ve yalnız
+yokluk **aynı koşuda** ölçülmüşse uygulanır — çünkü gönderim kapısını yeniden
+açar.
+
+### 15.4 Yan bulgu: oturum yenilemesi gönderimi tekrarlıyordu
+
+`Kuka_Island_Core_EDM_Client::execute_with_session()`, EDM oturum süresi bittiğini
+bildirdiğinde callback'i bir kez yeniden çalıştırıyordu. Okumada bu bedavadır;
+`SendInvoice`'ta **aynı belgenin ikinci kez iletilmesidir**. EDM oturum
+kontrolünü gövdeyi işlemeden önce yapar, dolayısıyla pratikte ilk çağrı bir şey
+yapmamış olur — ama bu, bu kodun verebileceği bir garanti değildir ve yanılmanın
+bedeli bir satış için iki mali belgedir.
+
+`send_invoice()` artık `allow_session_retry = false` geçiyor. Hata yüzeye çıkar,
+manager `send_uncertain` yazar, poller EDM'e ne olduğunu sorar — tam olarak bu
+durum için var olan yol. Okuma yolları değişmedi.
+
+### 15.5 Destek paketi ve doğrulamanın kapsam sınırları
+
+EDM request loglarını tutmadığı için gönderdiğimiz isteği istedi. Bizde de yok:
+`SoapClient` trace yalnız `WP_DEBUG` ile açılıyor, entegrasyon paketi SOAP
+gövdesini diske yazmıyor, kalıcı kayıt yalnız UUID ile sonucu tutuyor. Bu yüzden
+istek **yeniden üretildi**: aynı üretim kodu (`send_invoice()`), aynı fixture,
+aynı belge UUID'si, aynı WSDL ve aynı ext-soap serileştirmesi. Hiçbir SOAP
+operasyonu ağa gitmedi — `set_session_id()` ile Login atlandı ve `SoapClient`
+alt sınıfı `__doRequest()`'i override ederek zarfı yakaladı.
+
+Buna **orijinal request denmiyor**. İki yeniden üretim koşusu arasında yalnız
+saate bağlı iki alan değişiyor (`ACTION_DATE` ve CONTENT içindeki
+`cbc:IssueTime`); geri kalanı aynı üretim kodu ve aynı kayıtlı girdilerden
+yeniden oluşuyor. Orijinal saklanmadığı için **byte-identiklik kanıtlanamaz** ve
+iddia edilmiyor.
+
+Yapılan doğrulamanın kapsam sınırları, paketin içinde de yazılı:
+
+- WSDL doğrulaması **SOAP zarfını ve `SendInvoice` request yapısını** kapsar:
+  element sırası (`xs:sequence`), zorunlu element ve attribute, namespace formu
+  (bu servis 603 element'te açık `form="unqualified"` taşır), `xs:date` /
+  `xs:boolean` / `xs:long` biçimleri, boş element ve `xsi:nil`. Base64 `CONTENT`
+  içindeki UBL belgesinin **UBL-TR/GİB Schematron ve EDM iş kurallarının
+  tamamını geçtiğini kanıtlamaz.**
+- `LoadInvoice`'in kabul edilmiş olması, **aynı UBL içeriğinin `SendInvoice`
+  aşamasındaki mali ve iş kuralı doğrulamalarından geçeceğini kanıtlamaz.**
+  `LoadInvoice` belgeyi taslak olarak saklar, `SendInvoice` fatura keser; bu iki
+  aşamada uygulanan doğrulamaların aynı olduğu ölçülmedi.
+
+Kabul edilen işlemle karşılaştırma yine de yararlıdır: kabul edilmiş
+`LoadInvoice` isteği de aynı yolla offline yakalandığında `REQUEST_HEADER` ve
+`INVOICE/HEADER` birebir aynı çıkıyor, tek yapısal fark `LoadInvoice`'e özgü
+`GENERATEINVOICEIDONLOAD`. Bu, reddi bizim zarf biçimimizle açıklayan bir ölçüm
+bulunmadığını gösterir — reddin sebebini göstermez.
+
+### 15.6 EDM teknik desteğine sorulacaklar
+
+Reddetmenin **sebebi** henüz bilinmiyor: onu raporlayacak olan koşu, teşhisi
+fazla kaba olan koşuydu. Teşhis düzeltildi (`SANDBOX_SEND_ERROR_CODE` artık
+client'ın kendi belirlediği güvenli kodu basıyor), ama cevabı öğrenmek yeni bir
+gönderim gerektirir ve bu ayrı bir karardır.
+
+EDM teknik desteği test kullanıcısının **bütün web servis işlemlerine yetkili**
+olduğunu yazılı olarak doğruladı, dolayısıyla yetki sorusu kapandı.
+
+Sorulacaklar — hepsi ölçülmüş olgulara dayanıyor:
+
+1. Bu istekte EDM tarafında görünen **hata mesajı / hata kodu** nedir? EDM
+   request loglarını tutmadığı için istek yeniden üretilip gönderildi (§15.5).
+2. `GetInvoiceStatus`, **tanımadığı bir UUID** için hata mı döndürür? Ölçümümüz
+   bunu gösteriyor; teyit ederseniz mutabakat mantığımız bu davranışa
+   dayanabilir. Belge yok mesajı için ayrı bir kod varsa hangisidir?
+3. `GetInvoice`, **`LoadInvoice` ile yüklenmiş bir taslak** için boş `CONTENT`
+   döndürüyor. Beklenen bu mu? Taslağın XML'i hangi koşulda okunabilir?
+
+Ayrıca, bu izole testin bilinçli seçimleri. Hiçbiri bizim tarafımızda kesin hata
+olarak tespit **edilmedi**; reddin sebebi bilinmediği için EDM iş kuralları
+açısından sakınca taşıyıp taşımadıkları soruluyor:
+
+| Alan | Değer | Sorulan |
+| --- | --- | --- |
+| `HEADER.TO` | `sandbox-test-alici@example.invalid` | RFC 6761 ile ayrılmış, teslim edilemeyen alan adı. Test gönderiminde gerçek ve teslim edilebilir adres zorunlu mu? |
+| Alıcı TCKN | `11111111111` | Test ortamında kabul edilir mi, yoksa belirli bir TCKN mi kullanılmalı? |
+| Alıcı ad/soyad | sentetik | `cac:Person` isim gerektirdiği için gerçek görünümlü, kimseyi tanımlamayan ad. Sakıncası var mı? |
+| `HEADER.INTERNETSALES` | `false` | Arkasında sipariş, ödeme aracısı veya gönderi olmayan bu testte `false`. e-Arşiv faturasında kabul edilir mi? |
+| `INTERNETSALESDETAILS` | gönderilmedi | WSDL'de `minOccurs="0"`; `INTERNETSALES=false` iken atlanması doğru mu? |
+| Alıcı `PartyTaxScheme/TaxScheme/Name` | boş | Satıcıda dolu, alıcıda (nihai tüketici) boş. Boş bırakılabilir, doldurulmalı, yoksa tamamen atlanmalı mı? |
+
+Bu tablo `request-summary.txt` içindeki listeyle aynı tutulmalıdır: destek
+paketiyle doküman farklı şeyler söylerse hangisinin gönderildiği belirsizleşir.
+
+## 16. EDM teknik desteğinin 3 Eylül 2026 yazılı cevabı
+
+Reddedilen `SendInvoice` için hazırlanan destek paketi (§15.5) gönderildikten
+sonra EDM yazılı olarak cevap verdi. Aşağıdakiler EDM'in beyanıdır; bizim
+çıkarımımız değil. Hangisinin hâlâ çıkarım olduğu ayrıca belirtiliyor.
+
+### 16.1 Reddin sebebi: `cac:Person`'ın geçersiz UBL konumu
+
+EDM, TCKN ile tanımlanan alıcıda **`cac:Person`'ın geçerli UBL konumunda
+bulunmadığı** için isteğin reddedildiğini bildirdi.
+
+Gerçekten gönderilen UBL'de bireysel alıcının `cac:Party` çocuk sırası şuydu:
+
+```
+PartyIdentification
+Person            <-- geçersiz konum
+PostalAddress
+PartyTaxScheme
+Contact
+```
+
+Doğru sıra `Person`'ın `Contact`'tan **sonra** gelmesidir. Bu, EDM'in kendi
+WSDL'indeki `PartyType` dizisiyle de birebir örtüşür:
+
+```
+PartyIdentification, PartyName, PostalAddress, PhysicalLocation,
+PartyTaxScheme, PartyLegalEntity, Contact, Person, AgentParty
+```
+
+`Kuka_Island_Core_UBL_TR_Builder::append_customer_party()` düzeltildi:
+`cac:Person` düğümü hâlâ **bir kez** oluşturuluyor, fakat `cac:Contact`'tan
+sonra ekleniyor. Düğüm kopyalanmadı — iki `Person`, aynı belirtiyi veren farklı
+bir kusur olurdu. EDM'in e-postasındaki örnekte kalın yazılmış ikinci blok doğru
+konumu gösteriyordu, iki `Person` kullanılmasını istemiyordu.
+
+Üretilen sıra artık:
+
+```
+PartyIdentification, PostalAddress, PartyTaxScheme, Contact, Person
+```
+
+Kurumsal alıcı davranışı değişmedi: `company` doluysa `cac:PartyName` üretilir,
+`cac:Person` **hiç** oluşmaz, `schemeID` `VKN` kalır.
+
+`INVOICE_INDIVIDUAL_PERSON_USES_VALID_PARTY_ORDER` bunu kaynak araması yapmadan
+ölçer: gerçek sipariş → gerçek mapper → gerçek builder XML'i, DOM ile okunup
+`PartyType` dizisine karşı doğrulanır. Eski hatalı sıranın artık üretilemediği
+de ayrıca kontrol edilir.
+
+### 16.2 Rapor tarihi alanları: iş kuralı gereksiz, şema zorunlu
+
+EDM, `EARCHIVE_REPORT_SENDDATE` ve `CANCEL_EARCHIVE_REPORT_SENDDATE` alanlarının
+`SendInvoice` isteğinde **zorunlu olmadığını** ve e-Arşiv belgesinin **EDM
+tarafından GİB'e raporlanma** tarihlerini ifade ettiğini yazılı olarak
+doğruladı. Dolayısıyla bu tarihler EDM'in kaydedeceği olgulardır, bizim iddia
+edeceğimiz değerler değil.
+
+Alanları çıkarmayı denedik. **Teknik olarak mümkün değil** — ve bu bir okuma
+değil, ölçüm:
+
+| Deneme | Sonuç |
+| --- | --- |
+| İki alan **olmadan** serileştirme | `SoapFault` — `SOAP-ERROR: Encoding: object has no 'EARCHIVE_REPORT_SENDDATE' property`, **hiç zarf üretilmedi** (0 byte) |
+| İki alan **ile** serileştirme (kontrol) | Başarılı, 1246 byte, her iki element birer düğüm |
+
+Canlı test WSDL'i her ikisini de şöyle ilan ediyor:
+
+```xml
+<xs:element name="EARCHIVE_REPORT_SENDDATE"        type="xs:date" minOccurs="1" maxOccurs="1"/>
+<xs:element name="CANCEL_EARCHIVE_REPORT_SENDDATE" type="xs:date" minOccurs="1" maxOccurs="1"/>
+```
+
+ext-soap `minOccurs`'u **kodlama aşamasında** uygular, yani taşımadan önce.
+Atlamak reddedilen bir istek üretmiyor; **hiç istek üretmiyor**. Alanlar
+kaldırılmış bırakılsaydı hiçbir fatura gönderilemezdi.
+
+Bu yüzden alanlar **hâlâ gönderiliyor**, fakat değer artık `issue_date` değil:
+
+```
+EARCHIVE_REPORT_SENDDATE        = 0001-01-01
+CANCEL_EARCHIVE_REPORT_SENDDATE = 0001-01-01
+```
+
+`0001-01-01` **uydurulmuş bir dolgu değildir**; bu şemanın dokümante edilmiş
+"değer yok" ifadesidir:
+
+- "EDM E-Fatura Web API v4 Request-Response" belgesindeki **her iki resmî
+  SendInvoice request örneği** `<EARCHIVE_REPORT_SENDDATE>0001-01-01<` taşıyor.
+- Resmî C# connector bu iki alana **hiç değer atamıyor**; .NET
+  `DateTime.MinValue` serileştiriyor — aynı `0001-01-01`.
+
+Önceki davranış (`issue_date`) **henüz gerçekleşmemiş bir GİB raporlama tarihi
+iddia ediyordu**. Boş string veya `null` ise şema `xs:date` beklediği için
+geçersizdir. Yani üç seçenekten yalnız biri hem şemayı hem de anlamı koruyor.
+
+`INVOICE_OUTGOING_REQUEST_OMITS_REPORT_SENDDATES` bu yüzden **BLOCKED** olarak
+raporlanır, PASS değil: adı "atlanıyor" diyor, atlanmıyor. Satır her koşuda
+encoder'ı yeniden ölçer ve iki yarısı birlikte tutmalıdır — atlama reddedilmeli
+**ve** kontrol serileşmeli; aksi hâlde katı olan şema değil, bozuk olan sondadır.
+EDM ileride WSDL'i gevşetirse atlama serileşmeye başlar, beklenti kırılır ve
+konu sessizce doğru kalmak yerine yeniden ölçülmeye zorlanır.
+
+**EDM'den çözüm gerekiyor:** ya WSDL'de `minOccurs="0"` yapılmalı, ya da bu
+alanlara hangi değerin yazılmasını istediklerini belirtmeleri gerekiyor.
+
+### 16.3 Belge oluşmadığı kesinleşti
+
+EDM, hatalı çağrıda **belge oluşmadığını kesin olarak teyit etti**. §15'te bu
+bir çıkarımdı — reddin, hiç iletilmemiş bir kontrol UUID'sinin aldığı reddin
+aynısı olması — ve `uncertain` kaydını çözecek şeyin EDM teyidi olduğu
+yazılmıştı. Teyit geldi: çıkarım doğruydu, ve artık çıkarım değil.
+
+### 16.4 Kabul edilen diğer noktalar
+
+| Konu | EDM'in cevabı |
+| --- | --- |
+| Test e-posta adresi | Yalnız **format olarak geçerli** olması yeterli; teslim edilebilir olması gerekmiyor. `sandbox-test-alici@example.invalid` bu turda değiştirilmiyor |
+| Bireysel alıcı `PartyTaxScheme/TaxScheme/Name` | **Boş olabilir**. Kaldırılmadı, doldurulmadı |
+| e-Arşiv alıcı adresleme şeklimiz | **Kabul edildi**: `HEADER.TO` = müşteri e-postası, UBL `cbc:ElectronicMail` = aynı adres, `RECEIVER.alias` atlanmış |
+
+Bu üçü, önceki turda "EDM'den kontrol istediğimiz alanlar" listesinde soru
+olarak duruyordu (§15.6). Artık cevaplandılar ve davranış değişmedi — çünkü
+mevcut davranış zaten doğruydu.
+
+Alıcı TCKN `11111111111`, sentetik ad/soyad, `INTERNETSALES=false` ve
+`INTERNETSALESDETAILS`'in atlanması hakkında ayrı bir itiraz gelmedi; reddin tek
+sebebi olarak `cac:Person` konumu bildirildi.
+
+## 17. İlk başarılı sandbox `SendInvoice` ve durum takibi
+
+### 17.1 Gönderim gerçekleşti, belge numaralandı
+
+`cac:Person` konumu düzeltildikten (§16.1) ve rapor tarihleri `0001-01-01`
+yapıldıktan (§16.2) sonra tek bir `SendInvoice` daha yapıldı ve **EDM kabul
+etti**. Kayıt:
+
+```
+state           = confirmed
+outcome         = success
+operation       = SendInvoice
+assigned_number = 16 karakter (EDM atadı)
+edm_status      = PACKAGE - PROCESSING
+```
+
+Kaydın geçmişi, aradan geçen mutabakatı da gösteriyor:
+
+```
+in_flight -> uncertain                                   (§15, reddedilen deneme)
+          -> idle       evidence: document_absent_at_edm  (§15.3, açık mutabakat)
+          -> in_flight
+          -> confirmed                                    (kabul edilen gönderim)
+```
+
+`idle`'a dönüş, `reconcile=absent` ile ve yalnız yokluğun aynı koşuda ölçülmüş
+olması sayesinde yapıldı — gönderim kapısını yeniden açan tek yol bu. İkinci
+belge oluşmadı: aynı UUID yeniden kullanıldı, çünkü tohum deterministiktir.
+
+### 17.2 `status=confirm`: yapısal olarak salt-okunur durum sorgusu
+
+Kabul edilmiş bir belgenin EDM'deki **güncel** durumunu sormak için ayrı ve açık
+isimli bir mod var:
+
+```bash
+./scripts/edm-sandbox-send-run.sh status=confirm
+```
+
+Tehlike sorgulamak değil; ileride birinin aynı client üzerinde
+`send_invoice()`'a uzanması. Bu yüzden salt-okunurluk **yapısal**:
+
+| Katman | Nasıl |
+| --- | --- |
+| Transport | `Kuka_Sandbox_Readonly_Transport` yalnız `Login`, `GetInvoiceStatus`, `GetInvoice`, `Logout` taşır. Başka her operasyon **iç transport'a ulaşmadan** reddedilir |
+| Mount | Runner state dizinini **`:ro`** mount eder; state veya history yazmak imkânsız, yalnız istenmiyor değil |
+| Kilit | Claim **hiç alınmaz** — kilit yazılabilir dosya gerektirir. `status()` yalnız okur |
+| Kanıt | State dosyasının SHA-256'sı başta ve sonda alınıp raporlanır |
+| Defter | Her operasyon kaydedilir; `SendInvoice=0` / `LoadInvoice=0` çağrı yerinin yokluğundan değil **defterden** okunur |
+
+Mod, `confirm=SendInvoice` veya açık bir gönderim kapısıyla birlikte
+çalıştırılırsa reddeder, ve `status=` yalnız literal `status=confirm` kabul eder
+(`status=yes` → `invalid_status_confirmation`).
+
+`SANDBOX_STATUS_MODE_IS_READ_ONLY` on operasyonu ölçer: dördü izinli, altısı
+reddedilir (`SendInvoice`, `LoadInvoice`, `EmailInvoice`, `CancelInvoice`,
+`CreateSerial` ve hiç duyulmamış bir operasyon — bilinmeyene şüphenin faydası
+tanınmaz). Reddedilenlerin iç transport'a **ulaşmadığı** ayrıca kontrol edilir;
+ulaşsalardı reddetme kozmetik olurdu, istek çoktan yola çıkmış olurdu.
+
+### 17.3 Ölçülen durum: `PACKAGE - PROCESSING`, yani **pending**
+
+```
+SANDBOX_SEND_STATUS=PASS|edm_status:PACKAGE - PROCESSING|status_class:pending
+  |terminal:pending|mapped_status:pending_approval|document_present_at_edm:yes
+  |number_returned:yes|number_length:16|number_matches_record:yes
+  |status_response_uuid_match:yes|xml_uuid_match:no|status_error:none
+SANDBOX_SEND_STATUS_XML=PENDING|xml_retrieved:no|reason:empty_content_returned
+SANDBOX_SEND_STATUS_OPERATIONS=PASS|observed:Login,GetInvoiceStatus,GetInvoice,Logout
+  |SendInvoice:0|LoadInvoice:0|refused_write_attempts:none|logout:ok
+SANDBOX_SEND_STATUS_STATE_UNCHANGED=PASS|state:confirmed|history_entries:5
+  |claim_transitions:0|state_writes:0
+```
+
+Belge EDM'de **var**: durum sorgusu bizim UUID'imizi yansıttı, kaydımızdaki 16
+karakterlik numarayı döndürdü ve kendi literalini verdi.
+
+`PACKAGE - PROCESSING`, üretim tablosunda `CLASS_PENDING`. **Terminal değil**, ve
+`unknown` de terminal sayılmaz: tanınmayan bir literali yerleşmiş ilan etmek, o
+belgeyi izlemeyi bırakmak demektir.
+
+Bu yüzden **nihai gönderim başarısı henüz kaydedilmedi**. `SEND - SUCCEED`
+görülmedi; görülen, paketin EDM'de işlenmekte olduğu. Aradaki fark önemli:
+numara atanmış olması belgenin GİB'e ulaştığını göstermez.
+
+`GetInvoice` XML'i hâlâ boş `CONTENT` döndürüyor. §15'te bunun taslak yoluna
+özgü olabileceği yazılmıştı; artık ölçülen şu: **gönderilmiş fakat henüz işlenen**
+bir belge için de boş dönüyor. Neden döndüğü ve hangi koşulda XML verileceği
+hâlâ ölçülmemiştir.
+
+### 17.4 Tekrar gönderim yok, sonsuz polling yok, arka plan süreci yok
+
+Durum pending olduğu için hiçbir şey yapılmadı. Yeniden gönderilmedi, polling
+döngüsü kurulmadı ve **hiçbir arka plan süreci başlatılmadı** — bir sonraki
+kontrol istenirse komut elle tekrar çalıştırılır:
+
+```
+SANDBOX_SEND_STATUS_NEXT_CHECK=pending|not_resent:yes|no_polling_loop:yes
+  |no_background_process_started:yes|earliest_useful_recheck_utc:...
+  |command:status=confirm
+```
+
+Önerilen en erken yeniden kontrol, ölçüm anından **30 dakika** sonrasıdır.
+Bu bir zamanlama değil, bir öneridir; çalışan hiçbir iş yoktur.
