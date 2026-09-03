@@ -1,0 +1,162 @@
+<?php
+/**
+ * The DHL eCommerce Türkiye adapter.
+ *
+ * Implements the carrier contract on top of the client, the mapper and the
+ * address resolver. It is the last place in the plugin where the vendor's
+ * vocabulary appears; everything it returns is carrier-agnostic.
+ *
+ * get_key() returns 'dhl', which is the same string WooCommerce Fulfillments
+ * uses for its own DHL shipping provider
+ * (Automattic\WooCommerce\Admin\Features\Fulfillments\Providers\
+ * DHLShippingProvider::get_key()). That is deliberate and it is what makes the
+ * fulfilment record this integration writes indistinguishable from one a person
+ * created by hand -- which is the property that keeps the manual route working.
+ *
+ * @package Kuka_Island_Shipping_Automation
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Carrier_Interface {
+
+	public const KEY = 'dhl';
+
+	private Kuka_Island_Shipping_DHL_Config $config;
+	private Kuka_Island_Shipping_DHL_Client $client;
+	private Kuka_Island_Shipping_DHL_Address_Resolver $resolver;
+
+	public function __construct(
+		?Kuka_Island_Shipping_DHL_Config $config = null,
+		?Kuka_Island_Shipping_DHL_Client $client = null,
+		?Kuka_Island_Shipping_DHL_Address_Resolver $resolver = null
+	) {
+		$this->config   = $config ?? new Kuka_Island_Shipping_DHL_Config();
+		$this->client   = $client ?? new Kuka_Island_Shipping_DHL_Client( $this->config );
+		$this->resolver = $resolver ?? new Kuka_Island_Shipping_DHL_Address_Resolver( $this->client );
+	}
+
+	public function get_key(): string {
+		return self::KEY;
+	}
+
+	public function get_label(): string {
+		return __( 'DHL eCommerce Türkiye', 'kuka-island-shipping-automation' );
+	}
+
+	public function get_config(): Kuka_Island_Shipping_DHL_Config {
+		return $this->config;
+	}
+
+	public function get_client(): Kuka_Island_Shipping_DHL_Client {
+		return $this->client;
+	}
+
+	public function get_resolver(): Kuka_Island_Shipping_DHL_Address_Resolver {
+		return $this->resolver;
+	}
+
+	/**
+	 * @return array{ready: bool, gaps: array<int, string>, environment: string, live_blocked: bool}
+	 */
+	public function get_readiness(): array {
+		return array(
+			'ready'        => $this->config->is_ready(),
+			'gaps'         => $this->config->get_readiness_gaps(),
+			'environment'  => $this->config->get_environment(),
+			'live_blocked' => $this->config->is_live_blocked(),
+		);
+	}
+
+	public function ping(): Kuka_Island_Shipping_Result {
+		return $this->client->authenticate();
+	}
+
+	public function resolve_location( string $city, string $district ): Kuka_Island_Shipping_Result {
+		return $this->resolver->resolve( $city, $district );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function create_order( array $shipment ): Kuka_Island_Shipping_Result {
+		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
+
+		if ( array() !== $gaps ) {
+			return Kuka_Island_Shipping_Result::permanent( 'create_order', 'payload_incomplete' );
+		}
+
+		if ( ! empty( $shipment['cod']['enabled'] ) ) {
+			// Refused here as well as upstream. Two independent refusals, because
+			// this one survives a future caller that builds a shipment request
+			// without going through the manager.
+			return Kuka_Island_Shipping_Result::permanent( 'create_order', 'cod_not_supported' );
+		}
+
+		return $this->client->create_order( Kuka_Island_Shipping_DHL_Order_Mapper::create_order_payload( $shipment ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function create_barcode( array $shipment ): Kuka_Island_Shipping_Result {
+		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
+
+		if ( array() !== $gaps ) {
+			return Kuka_Island_Shipping_Result::permanent( 'create_barcode', 'payload_incomplete' );
+		}
+
+		if ( ! empty( $shipment['cod']['enabled'] ) ) {
+			return Kuka_Island_Shipping_Result::permanent( 'create_barcode', 'cod_not_supported' );
+		}
+
+		return $this->client->create_barcode( Kuka_Island_Shipping_DHL_Order_Mapper::create_barcode_payload( $shipment ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function update_order( array $shipment ): Kuka_Island_Shipping_Result {
+		if ( ! Kuka_Island_Shipping_Reference::is_valid( (string) ( $shipment['reference'] ?? '' ) ) ) {
+			return Kuka_Island_Shipping_Result::permanent( 'update_order', 'payload_incomplete' );
+		}
+
+		return $this->client->update_order( Kuka_Island_Shipping_DHL_Order_Mapper::update_order_payload( $shipment ) );
+	}
+
+	public function cancel_order( string $reference ): Kuka_Island_Shipping_Result {
+		return $this->client->cancel_order( $reference );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function update_shipment( array $shipment ): Kuka_Island_Shipping_Result {
+		if ( ! Kuka_Island_Shipping_Reference::is_valid( (string) ( $shipment['reference'] ?? '' ) )
+			|| '' === trim( (string) ( $shipment['shipment_id'] ?? '' ) ) ) {
+			return Kuka_Island_Shipping_Result::permanent( 'update_shipment', 'payload_incomplete' );
+		}
+
+		return $this->client->update_shipment( Kuka_Island_Shipping_DHL_Order_Mapper::update_shipment_payload( $shipment ) );
+	}
+
+	public function cancel_shipment( string $reference, string $shipment_id ): Kuka_Island_Shipping_Result {
+		return $this->client->cancel_shipment( $reference, $shipment_id );
+	}
+
+	public function read_order( string $reference ): Kuka_Island_Shipping_Result {
+		return $this->client->get_order( $reference );
+	}
+
+	public function read_shipment( string $reference ): Kuka_Island_Shipping_Result {
+		return $this->client->get_shipment( $reference );
+	}
+
+	public function read_shipment_status( string $reference ): Kuka_Island_Shipping_Result {
+		return $this->client->get_shipment_status( $reference );
+	}
+
+	public function track_shipment( string $reference ): Kuka_Island_Shipping_Result {
+		return $this->client->track_shipment( $reference );
+	}
+}

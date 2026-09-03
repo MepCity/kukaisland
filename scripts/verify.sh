@@ -111,6 +111,79 @@ else
 fi
 printf '%s\n' "$invoice_external_isolation"
 
+# --- Shipping automation ---------------------------------------------------
+#
+# Ordered on purpose. The OpenAPI contract runs first because everything below
+# it is only meaningful if the client still matches the vendor's documents. The
+# passive contract runs before anything loads the module, because loading it
+# would destroy what that suite measures. The behavioural suite then drives the
+# module through a mock transport, and the lifecycle suite finally activates and
+# deactivates the plugin for real and puts it back.
+# The same cross-process order-table fingerprint the invoice suites use, taken
+# either side of the shipping suites. Those suites create fixture orders and
+# WooCommerce fulfilments and remove them again; this is what proves the removal
+# rather than trusting it.
+shipping_pre_keyset=$(invoice_keyset_line)
+printf 'SHIPPING_DB_KEYSET_PRE=%s\n' "${shipping_pre_keyset#INVOICE_DB_KEYSET=}"
+
+dhl_openapi=$(./scripts/verify-dhl-openapi-contract.sh)
+printf '%s\n' "$dhl_openapi"
+
+shipping_passive=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-shipping-passive-contract.php)
+printf '%s\n' "$shipping_passive"
+
+# Mock transport only: no network call, no credential, no carrier operation.
+# Fixture orders are created and removed inside the suite.
+shipping_behaviour=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-shipping-automation.php)
+printf '%s\n' "$shipping_behaviour"
+
+shipping_lifecycle=$(./scripts/verify-shipping-activation-lifecycle.sh)
+printf '%s\n' "$shipping_lifecycle"
+
+# The DHL credential mount must be reachable only by the single allow-listed
+# read-only script, exactly as the EDM one is. A refusal reason of
+# credentials_file_absent counts as a leak here, because it means the script
+# name was accepted before the credential gate was reached.
+dhl_runner_leaks=0
+for dhl_bad_script in 'dhl-sandbox-shipment.php' '../scripts/test-dhl-sandbox.php' '/etc/passwd' 'sub/test-dhl-sandbox.php' 'test-dhl-sandbox.php;id' 'verify.php' 'TEST-DHL-SANDBOX.PHP' ''; do
+  dhl_runner_out=$(./scripts/dhl-test-run.sh "$dhl_bad_script" 2>&1 | head -n 1 || true)
+  case "$dhl_runner_out" in
+    DHL_TEST_RUN=BLOCKED*credentials_file_absent*) dhl_runner_leaks=$((dhl_runner_leaks + 1)) ;;
+    DHL_TEST_RUN=BLOCKED*) ;;
+    *) dhl_runner_leaks=$((dhl_runner_leaks + 1)) ;;
+  esac
+done
+dhl_runner_allowlisted=$(./scripts/dhl-test-run.sh 'test-dhl-sandbox.php' 2>&1 | head -n 1 || true)
+case "$dhl_runner_allowlisted" in
+  DHL_TEST_RUN=STARTING*|DHL_TEST_RUN=BLOCKED*credentials_file_absent*) dhl_runner_allowlist_ok=yes ;;
+  *) dhl_runner_allowlist_ok=no ;;
+esac
+
+# The write tool must refuse without the exact confirmation phrase, and must
+# make no call while refusing.
+dhl_write_refusals=0
+for dhl_write_args in '--order=1' '--order=1 --confirm=evet' '--confirm=TEK-SANDBOX-GONDERISI-ONAYLIYORUM' '--order=abc --confirm=TEK-SANDBOX-GONDERISI-ONAYLIYORUM'; do
+  # shellcheck disable=SC2086
+  dhl_write_out=$(./scripts/dhl-sandbox-run.sh $dhl_write_args 2>&1 | head -n 1 || true)
+  case "$dhl_write_out" in
+    DHL_SANDBOX_RUN=BLOCKED*) dhl_write_refusals=$((dhl_write_refusals + 1)) ;;
+    *) ;;
+  esac
+done
+printf 'DHL_RUNNER_ALLOWLIST=leaks:%s|allowlisted_reaches_credential_gate:%s|write_tool_refusals:%s/4\n' \
+  "$dhl_runner_leaks" "$dhl_runner_allowlist_ok" "$dhl_write_refusals"
+
+shipping_post_keyset=$(invoice_keyset_line)
+printf 'SHIPPING_DB_KEYSET_POST=%s\n' "${shipping_post_keyset#INVOICE_DB_KEYSET=}"
+
+if [ -n "$shipping_pre_keyset" ] && [ "$shipping_pre_keyset" = "$shipping_post_keyset" ]; then
+  shipping_isolation="SHIPPING_DB_ISOLATION=keyset_match:yes"
+else
+  shipping_isolation="SHIPPING_DB_ISOLATION=keyset_match:no"
+fi
+printf '%s\n' "$shipping_isolation"
+
+
 email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
 email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
@@ -332,6 +405,16 @@ expect_sandbox_line() {
     echo "PASS $label"
   else
     echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_shipping_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
     failures=$((failures + 1))
   fi
 }
@@ -689,7 +772,69 @@ expect_lifecycle_match "the lifecycle test restores the state it found" "^EDM_LI
 expect_lifecycle_match "the lifecycle suite passes as a whole" "^EDM_LIFECYCLE=PASS\\|activation_and_deactivation_measured_through_wp_cli$"
 
 # A3: the deploy package carries the plugin and the documents AGENTS.md cites.
-expect_deploy_match "the deploy package contains the plugin and every EDM document" "^DEPLOY_PACKAGE_CONTENTS=PASS\\|measured:built_archive_listing\\|required_paths:13\\|missing:none\\|edm_entries:[0-9]+\\|checksum:yes\\|credential_files:0\\|built_in_temp_dir:yes$"
+expect_deploy_match "the deploy package contains both optional plugins and every document they cite" "^DEPLOY_PACKAGE_CONTENTS=PASS\\|measured:built_archive_listing\\|required_paths:24\\|missing:none\\|edm_entries:[0-9]+\\|shipping_entries:[0-9]+\\|checksum:yes\\|credential_files:0\\|built_in_temp_dir:yes$"
+
+# --- Shipping automation ---------------------------------------------------
+# The vendor's own documents are the authority for every path, field and code.
+expect_shipping_match "the OpenAPI documents match their checksums and the client matches them" "^DHL_OPENAPI_CONTRACT=(PASS\\|checksums:5/5\\|documents:5\\|operations_declared:[0-9]+\\|operations_used:13\\|status_codes:8\\|host:pinned\\|base_paths:matched|SKIPPED\\|reason:(spec_directory_absent|python3_absent))"
+
+# Passive delivery: nothing loads, nothing hooks, nothing is scheduled, and the
+# manual fulfilment route an operator uses today still works.
+expect_shipping_match "the shipping plugin ships present but inactive" "^SHIPPING_PASSIVE_PLUGIN_STATE=PASS\\|measured:wordpress_runtime\\|plugin_file_present:yes\\|plugin_active:no\\|core_active:yes\\|woocommerce_active:yes\\|header_declares_dependencies:yes$"
+expect_shipping_match "no shipping class is loaded while the plugin is inactive" "^SHIPPING_PASSIVE_CLASSES_ABSENT=PASS\\|checked:12\\|declared:none\\|http_client_loadable:no$"
+expect_shipping_match "no shipping hook is registered while the plugin is inactive" "^SHIPPING_PASSIVE_HOOKS_ABSENT=PASS\\|own_hooks_registered:none\\|module_callbacks_on_shared_hooks:0$"
+expect_shipping_match "no shipping scheduled action exists while the plugin is inactive" "^SHIPPING_PASSIVE_ACTIONS_ABSENT=PASS\\|by_hook:0\\|by_group:0$"
+expect_shipping_match "a real order lifecycle writes no shipping meta and books no job" "^SHIPPING_PASSIVE_ORDER_LIFECYCLE=PASS\\|transitions:processing->completed\\|shipping_meta_keys:none\\|actions_booked:0$"
+expect_shipping_match "the manual tracking-number route works with the plugin inactive" "^SHIPPING_PASSIVE_MANUAL_ROUTE=PASS\\|created:yes\\|provider:dhl\\|tracking_number:stored\\|fulfilled:yes\\|automation_marker:absent$"
+expect_shipping_match "Core never references the shipping plugin" "^SHIPPING_PASSIVE_CORE_INTACT=PASS\\|core_files_referencing_shipping_plugin:0\\|dependency_direction:shipping_to_core_only$"
+expect_shipping_match "the fulfilment drawer scroll protection is untouched" "^SHIPPING_DRAWER_PROTECTION_INTACT=PASS\\|core_rule_present:yes\\|forbidden_patterns_in_shipping_plugin:0\\|shipping_plugin_assets:0\\|enqueued_admin_scripts:0$"
+
+# Behaviour, through a mock transport: every failure mode, and the two rules
+# that keep a parcel from being booked twice.
+expect_shipping_match "a write and a read are classified differently" "^SHIPPING_FAULT_MATRIX=PASS\\|cases:18\\|write_and_read_separated:yes\\|wrong:none$"
+expect_shipping_match "the status dictionary is the vendor's, and unknown means manual review" "^SHIPPING_STATUS_DICTIONARY=PASS\\|documented_codes:8\\|cases:22\\|unknown_to_manual_review:yes\\|delivered_only_code:5$"
+expect_shipping_match "the reference is unique, uppercase and validated" "^SHIPPING_REFERENCE_SHAPE=PASS\\|validator_cases:9\\|minted:200\\|unique:200\\|uppercase:yes\\|seeded_value_avoided:yes\\|order_id_in_reference:yes\\|"
+expect_shipping_match "the live environment is blocked and offers no endpoint" "^SHIPPING_LIVE_BLOCKED=PASS\\|endpoints_offered:0\\|create_code:live_environment_blocked\\|ping_code:live_environment_blocked\\|http_requests:0$"
+expect_shipping_match "missing credentials make no external call at all" "^SHIPPING_FAIL_CLOSED_CREDENTIALS=PASS\\|http_requests:0\\|gaps:4\\|"
+expect_shipping_match "only the sandbox endpoints may be contacted" "^SHIPPING_ENDPOINT_ALLOWLIST=PASS\\|cases:15\\|wrong:none$"
+expect_shipping_match "the token is reused, capped and never printed or stored" "^SHIPPING_TOKEN_SESSION=PASS\\|authenticate_calls:3\\|token_requests:1\\|reused:yes\\|expired_string_vetoes_cache:0\\|far_future_capped:300\\|unparsable_window:300\\|persisted_to_db:no\\|token_in_debug_output:absent$"
+expect_shipping_match "a 401 repeats a read once and never repeats a write" "^SHIPPING_401_RETRY_POLICY=PASS\\|write_attempts:1\\|write_outcome:permanent\\|read_attempts:2\\|reauth_calls:2$"
+expect_shipping_match "an unreadable 200 on a write is uncertain, not success" "^SHIPPING_UNREADABLE_SUCCESS_IS_UNCERTAIN=PASS\\|cases:5\\|all_uncertain:yes$"
+expect_shipping_match "addresses resolve exactly, or uniquely, or not at all" "^SHIPPING_ADDRESS_RESOLUTION=PASS\\|folding:ok\\|exact:yes\\|ascii_unique:yes\\|ascii_collision_refused:district_ambiguous\\|district_miss:district_not_found\\|city_miss:city_not_found\\|approximate_matching:none\\|no_authorization_on_cbs:yes$"
+expect_shipping_match "a failed reference-data listing is never cached" "^SHIPPING_REFERENCE_DATA_CACHE=PASS\\|failure_cached:no\\|ttl_bounded:1_day$"
+expect_shipping_match "one order books exactly one order and one barcode" "^SHIPPING_CREATE_ONCE=PASS\\|first:created\\|second:refused\\|second_code:already_in_progress\\|createOrder_calls:1\\|createbarcode_calls:1\\|state:shipment_created\\|"
+expect_shipping_match "the reference persists in HPOS-compatible order meta" "^SHIPPING_REFERENCE_PERSISTED=PASS\\|stable_across_reads:yes\\|uppercase:yes\\|in_history:yes\\|hpos_meta:yes$"
+expect_shipping_match "the fulfilment record carries provider dhl and no invented tracking number" "^SHIPPING_FULFILLMENT_RECORD=PASS\\|record:created\\|provider_key:dhl\\|tracking_number:unset_because_unmeasured\\|status_on_create:unfulfilled$"
+expect_shipping_match "the tracking-number source stays unmeasured until it is measured" "^SHIPPING_TRACKING_NUMBER_SOURCE=PASS\\|default:unmeasured\\|"
+expect_shipping_match "a carrier status reading reaches the WooCommerce fulfilment" "^SHIPPING_STATUS_TO_FULFILLMENT=PASS\\|lifecycle:in_progress\\|stored_code:2\\|tracking_url_stored:yes\\|fulfilled_at_code_2:yes$"
+expect_shipping_match "an undocumented status code falls to manual review" "^SHIPPING_UNKNOWN_STATUS_TO_MANUAL_REVIEW=PASS\\|raw_code:42\\|lifecycle:manual_review\\|state:manual_review\\|stored_code:0\\|fulfilment_not_downgraded:yes\\|polling_stops:yes$"
+expect_shipping_match "no credential reaches a note, a meta value or a result line" "^SHIPPING_NO_SECRET_LEAK=PASS\\|sentinels:5\\|leaks_in_notes_meta_and_results:0\\|scan_control_positive:yes\\|"
+expect_shipping_match "an uncertain create is reconciled by reading, never resent" "^SHIPPING_UNCERTAIN_NO_RESEND=PASS\\|createOrder_attempts:1\\|createbarcode_attempts:0\\|read_only_reconcile_calls:2\\|verdict_state:absent_confirmed\\|"
+expect_shipping_match "an inconclusive reconciliation keeps the door shut" "^SHIPPING_INCONCLUSIVE_STAYS_SHUT=PASS\\|createbarcode_attempts:1\\|createOrder_attempts:1\\|state:reconcile_required\\|second_attempt:already_in_progress$"
+expect_shipping_match "a reconciliation that finds the shipment adopts it without writing" "^SHIPPING_RECONCILE_ADOPTS_EXISTING=PASS\\|verdict:shipment_present\\|adopted_shipment_id:yes\\|state:shipment_created\\|writes_issued:0$"
+expect_shipping_match "cash on delivery is refused before any call" "^SHIPPING_COD_FAIL_CLOSED=PASS\\|manager_code:cod_not_supported\\|http_requests:0\\|adapter_code:cod_not_supported\\|config_default:disabled$"
+expect_shipping_match "isCOD is zero in every payload the mapper builds" "^SHIPPING_COD_ZERO_IN_PAYLOADS=PASS\\|payloads:4\\|isCOD_always_zero:yes$"
+expect_shipping_match "the payload uses the vendor's enumerations and defaults nothing" "^SHIPPING_PAYLOAD_MAPPING=PASS\\|enumerations:from_spec\\|barcode_equals_reference:yes\\|"
+expect_shipping_match "the runtime gate stops a call that is already under way" "^SHIPPING_RUNTIME_GATE=PASS\\|closed_blocks:yes\\|http_requests_while_closed:0\\|code:shipping_runtime_disabled\\|restored:yes$"
+expect_shipping_match "polling is bounded, increasing, finite and off by default" "^SHIPPING_POLL_POLICY=PASS\\|ladder:15m,30m,60m,120m,240m,480m,720m,1440m\\|monotonic:yes\\|max_attempts:10\\|max_elapsed_days:14\\|terminal_stops:yes\\|automation_default:off$"
+expect_shipping_match "the suite leaves no Action Scheduler residue" "^SHIPPING_NO_SCHEDULER_RESIDUE=PASS\\|pending_by_group:0\\|pending_by_hook:0\\|automation_off_books_nothing:yes$"
+expect_shipping_match "loading the module registers no hook" "^SHIPPING_LOAD_REGISTERS_NOTHING=PASS\\|hooks_checked:6\\|registered:0\\|register_called:no$"
+expect_shipping_match "a second carrier is added through the registry filter alone" "^SHIPPING_CARRIER_REGISTRY=PASS\\|registered:dhl\\|non_adapters_dropped:yes\\|unknown_key_returns:null\\|filter:kuka_island_shipping_carriers$"
+expect_shipping_match "the behavioural suite removes its fixtures and its notes" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0$"
+expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIFY=PASS$"
+
+# Activation and deactivation, driven for real through WP-CLI.
+expect_shipping_match "the shipping lifecycle test starts from the delivered state" "^SHIPPING_LIFECYCLE_START=PASS\\|measured:wp_cli\\|plugin:inactive\\|core:active\\|woocommerce:active\\|gate_option:absent\\|"
+expect_shipping_match "activation registers every hook and opens no carrier route" "^SHIPPING_LIFECYCLE_ACTIVATION=PASS\\|active:yes\\|composition_root:loaded\\|booted:yes\\|missing_deps:none\\|classes_absent:none\\|hooks_unregistered:none\\|order_status_routes:none\\|runtime_gate_open:yes\\|automation:off\\|poll_actions:0$"
+expect_shipping_match "deactivation unloads everything, closes the gate and keeps the audit trail" "^SHIPPING_LIFECYCLE_DEACTIVATION=PASS\\|classes_declared:none\\|hooks_registered:none\\|pending_poll_actions:0\\|shipping_meta_preserved:[0-9]+\\|runtime_gate_closed:yes\\|core_works:yes$"
+expect_shipping_match "the shipping lifecycle test restores the state it found" "^SHIPPING_LIFECYCLE_RESTORED=PASS\\|plugin:inactive\\|gate_option:no\\|active_plugins_identical:yes\\|"
+expect_shipping_match "the shipping lifecycle suite passes as a whole" "^SHIPPING_LIFECYCLE=PASS$"
+
+expect_value "the DHL credential mount is reachable only by the allow-listed script" "$dhl_runner_leaks" "0"
+expect_value "the allow-listed DHL script reaches the credential gate" "$dhl_runner_allowlist_ok" "yes"
+expect_value "the DHL write tool refuses every unconfirmed invocation" "$dhl_write_refusals" "4"
+expect_value "the shipping suites leave the order tables exactly as they found them" "$shipping_isolation" "SHIPPING_DB_ISOLATION=keyset_match:yes"
+
 
 # B: the isolated active module, loaded from the new plugin path.
 expect_invoice_match "the dependency notice names the plugin that is missing" "^EDM_DEPENDENCY_NOTICE_NAMES_THE_MISSING_PLUGIN=PASS\\|measured:dependency_map_and_rendered_notice\\|pairs:WooCommerce=>woocommerce Kuka_Island_Core_Plugin=>kuka-island-core\\|own_slug:kuka-island-edm\\|self_dependency:none\\|slugs_without_plugin_dir:none\\|notice_names_core:yes\\|notice_names_self:no$"

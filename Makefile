@@ -46,6 +46,7 @@ pot:
 	docker compose run --rm wp-cli wp i18n make-pot /var/www/html/wp-content/themes/kuka-island-child /var/www/html/wp-content/themes/kuka-island-child/languages/kuka-island.pot --domain=kuka-island
 	docker compose run --rm wp-cli wp i18n make-pot /var/www/html/wp-content/plugins/kuka-island-core /var/www/html/wp-content/plugins/kuka-island-core/languages/kuka-island-core.pot --domain=kuka-island-core
 	docker compose run --rm wp-cli wp i18n make-pot /var/www/html/wp-content/plugins/kuka-island-edm /var/www/html/wp-content/plugins/kuka-island-edm/languages/kuka-island-edm.pot --domain=kuka-island-edm
+	docker compose run --rm wp-cli wp i18n make-pot /var/www/html/wp-content/plugins/kuka-island-shipping-automation /var/www/html/wp-content/plugins/kuka-island-shipping-automation/languages/kuka-island-shipping-automation.pot --domain=kuka-island-shipping-automation
 
 deploy-package:
 	@./scripts/build-deploy-package.sh

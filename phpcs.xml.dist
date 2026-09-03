@@ -4,6 +4,7 @@
   <file>wp-content/themes/kuka-island-child</file>
   <file>wp-content/plugins/kuka-island-core</file>
   <file>wp-content/plugins/kuka-island-edm</file>
+  <file>wp-content/plugins/kuka-island-shipping-automation</file>
   <file>scripts</file>
   <exclude-pattern>*/languages/*</exclude-pattern>
   <exclude-pattern>*/vendor/*</exclude-pattern>

@@ -50,6 +50,7 @@ services:
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
       - ./wp-content/plugins/kuka-island-core:/var/www/html/wp-content/plugins/kuka-island-core
       - ./wp-content/plugins/kuka-island-edm:/var/www/html/wp-content/plugins/kuka-island-edm
+      - ./wp-content/plugins/kuka-island-shipping-automation:/var/www/html/wp-content/plugins/kuka-island-shipping-automation
       - ./docker/php/opcache.ini:/usr/local/etc/php/conf.d/zz-kuka-opcache.ini:ro
       - ./docker/apache/assets-cache.conf:/etc/apache2/conf-enabled/zz-kuka-assets-cache.conf:ro
       - ./seed-media:/seed-media:ro
@@ -89,6 +90,7 @@ services:
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
       - ./wp-content/plugins/kuka-island-core:/var/www/html/wp-content/plugins/kuka-island-core
       - ./wp-content/plugins/kuka-island-edm:/var/www/html/wp-content/plugins/kuka-island-edm
+      - ./wp-content/plugins/kuka-island-shipping-automation:/var/www/html/wp-content/plugins/kuka-island-shipping-automation
       - ./scripts:/project-scripts:ro
       - ./seed-media:/seed-media:ro
     working_dir: /var/www/html
@@ -124,6 +126,7 @@ services:
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
       - ./wp-content/plugins/kuka-island-core:/var/www/html/wp-content/plugins/kuka-island-core
       - ./wp-content/plugins/kuka-island-edm:/var/www/html/wp-content/plugins/kuka-island-edm
+      - ./wp-content/plugins/kuka-island-shipping-automation:/var/www/html/wp-content/plugins/kuka-island-shipping-automation
     working_dir: /var/www/html
     command:
       - sh

@@ -69,6 +69,34 @@ case "$edm_status" in
     echo "EDM_PLUGIN=not_activated|delivery_state:fresh_install|activation:manual_with_checklist"
     ;;
 esac
+# --- Kuka Island Shipping Automation: present, and deliberately NOT activated -
+#
+# A shipment booked at a courier costs money and produces a parcel somebody has
+# to cancel, so activation is a decision a person makes with
+# docs/DHL_AKTIVASYON_REHBERI.md open -- never a side effect of running the
+# installer. Like the EDM block above, this one only ever OBSERVES and REPORTS.
+# It does not activate, and it does not deactivate: re-running install must not
+# quietly undo a deliberate activation someone made yesterday.
+if [ ! -f "$project_dir/wp-content/plugins/kuka-island-shipping-automation/kuka-island-shipping-automation.php" ]; then
+  echo "Hata: kuka-island-shipping-automation eklentisi dosya sisteminde bulunamadı." >&2
+  exit 1
+fi
+
+shipping_status=$(docker compose run --rm -T wp-cli wp plugin list --field=status --name=kuka-island-shipping-automation 2>/dev/null | tr -d '\r\n' || true)
+case "$shipping_status" in
+  active)
+    # Someone activated it on purpose. Left exactly as it is.
+    echo "SHIPPING_PLUGIN=active|left_unchanged:yes|reason:deliberate_activation_preserved|automation:off_unless_KUKA_SHIPPING_AUTOMATION_set"
+    ;;
+  inactive)
+    echo "SHIPPING_PLUGIN=inactive|delivery_state:as_designed|activation:manual_with_checklist"
+    ;;
+  *)
+    # Present on disk, not yet known to WordPress: the fresh-install case.
+    echo "SHIPPING_PLUGIN=not_activated|delivery_state:fresh_install|activation:manual_with_checklist"
+    ;;
+esac
+
 # Üyelik kaldırıldı; sosyal giriş eklentisi artık kurulmaz ve önceki bir
 # kurulumdan kalmışsa silinir.
 docker compose run --rm wp-cli wp plugin delete nextend-facebook-connect >/dev/null 2>&1 || true

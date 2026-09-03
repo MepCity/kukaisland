@@ -34,6 +34,8 @@
 !/wp-content/plugins/kuka-island-core/**
 !/wp-content/plugins/kuka-island-edm/
 !/wp-content/plugins/kuka-island-edm/**
+!/wp-content/plugins/kuka-island-shipping-automation/
+!/wp-content/plugins/kuka-island-shipping-automation/**
 
 # Local secrets, media, database and generated files
 .env
@@ -55,3 +57,15 @@ edm-test.env
 scripts/edm-test.env
 scripts/*.edm-test.env
 *edm-credentials*
+
+# DHL sandbox credentials must never be committed. The canonical location is
+# ~/.config/kuka-island/dhl-sandbox.env, which is outside this work tree and
+# therefore unreachable by `git add`. These patterns only defend against an
+# accidental in-repository copy, and are placed after the scripts/ allow-list
+# so the last matching rule wins.
+dhl-sandbox.env
+.dhl-sandbox.env
+*.dhl-sandbox.env
+scripts/dhl-sandbox.env
+scripts/*.dhl-sandbox.env
+*dhl-credentials*

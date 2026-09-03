@@ -48,12 +48,23 @@ for required in \
   'wp-content/plugins/kuka-island-edm/includes/class-invoice.php' \
   'wp-content/plugins/kuka-island-edm/includes/invoice/class-edm-client.php' \
   'wp-content/plugins/kuka-island-edm/includes/invoice/class-invoice-runtime-gate.php' \
+  'wp-content/plugins/kuka-island-shipping-automation/kuka-island-shipping-automation.php' \
+  'wp-content/plugins/kuka-island-shipping-automation/AGENTS.md' \
+  'wp-content/plugins/kuka-island-shipping-automation/includes/class-plugin.php' \
+  'wp-content/plugins/kuka-island-shipping-automation/includes/class-activator.php' \
+  'wp-content/plugins/kuka-island-shipping-automation/includes/class-shipping-automation.php' \
+  'wp-content/plugins/kuka-island-shipping-automation/includes/shipping/class-shipment-runtime-gate.php' \
+  'wp-content/plugins/kuka-island-shipping-automation/includes/shipping/dhl/class-dhl-client.php' \
   'wp-content/plugins/kuka-island-core/kuka-island-core.php' \
   'wp-content/themes/kuka-island-child/style.css' \
   'docs/DEPLOY_RUNBOOK.md' \
+  'docs/KARGO_SCROLL_KORUMA_NOTU.md' \
   'docs/EDM_AKTIVASYON_REHBERI.md' \
   'docs/EDM_BAKIM_HAFIZASI.md' \
-  'docs/EDM_ENTEGRASYONU.md'
+  'docs/EDM_ENTEGRASYONU.md' \
+  'docs/DHL_AKTIVASYON_REHBERI.md' \
+  'docs/DHL_BAKIM_HAFIZASI.md' \
+  'docs/DHL_ENTEGRASYONU.md'
 do
   if ! grep -Fqx "$required" "$listing"; then
     missing="$missing $required"
@@ -61,17 +72,18 @@ do
 done
 
 edm_entries=$(grep -c '^wp-content/plugins/kuka-island-edm/' "$listing" || true)
+shipping_entries=$(grep -c '^wp-content/plugins/kuka-island-shipping-automation/' "$listing" || true)
 checksum='no'
 [ -f "$archive.sha256" ] && checksum='yes'
 
 # Credentials must never travel in a package.
-leaked=$(grep -Ec '(^|/)(\.env|edm-test\.env)$' "$listing" || true)
+leaked=$(grep -Ec '(^|/)(\.env|edm-test\.env|dhl-sandbox\.env)$' "$listing" || true)
 
 if [ -n "$missing" ] || [ "$checksum" != 'yes' ] || [ "$leaked" != '0' ]; then
-  printf 'DEPLOY_PACKAGE_CONTENTS=FAIL|edm_entries:%s|checksum:%s|credential_files:%s|missing:%s\n' \
-    "$edm_entries" "$checksum" "$leaked" "${missing:-none}"
+  printf 'DEPLOY_PACKAGE_CONTENTS=FAIL|edm_entries:%s|shipping_entries:%s|checksum:%s|credential_files:%s|missing:%s\n' \
+    "$edm_entries" "$shipping_entries" "$checksum" "$leaked" "${missing:-none}"
   exit 1
 fi
 
-printf 'DEPLOY_PACKAGE_CONTENTS=PASS|measured:built_archive_listing|required_paths:13|missing:none|edm_entries:%s|checksum:%s|credential_files:0|built_in_temp_dir:yes\n' \
-  "$edm_entries" "$checksum"
+printf 'DEPLOY_PACKAGE_CONTENTS=PASS|measured:built_archive_listing|required_paths:24|missing:none|edm_entries:%s|shipping_entries:%s|checksum:%s|credential_files:0|built_in_temp_dir:yes\n' \
+  "$edm_entries" "$shipping_entries" "$checksum"

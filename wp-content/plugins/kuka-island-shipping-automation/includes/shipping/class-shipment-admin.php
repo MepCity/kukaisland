@@ -1,0 +1,295 @@
+<?php
+/**
+ * The order-screen panel.
+ *
+ * A side metabox, exactly like the invoice module's. It adds NOTHING to the
+ * WooCommerce fulfilment drawer: no stylesheet, no script, no markup inside the
+ * drawer, no MutationObserver, no wheel or touch handler and no document scroll
+ * lock. The drawer's scroll behaviour is governed by one CSS rule in Core that
+ * this plugin does not touch and must not touch -- see
+ * docs/KARGO_SCROLL_KORUMA_NOTU.md.
+ *
+ * Every action is a POST with a nonce and a capability check, and every one of
+ * them is a DELIBERATE press. There is no automatic path from an order status
+ * change, a payment or a checkout to any of these buttons.
+ *
+ * The manual route is stated on the panel itself, in every state, because an
+ * operator looking at a failed automation needs to be told -- there, not in a
+ * document -- that WooCommerce's own tracking-number field still works.
+ *
+ * @package Kuka_Island_Shipping_Automation
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+final class Kuka_Island_Shipping_Admin {
+
+	private Kuka_Island_Shipping_Manager $manager;
+
+	public function __construct( ?Kuka_Island_Shipping_Manager $manager = null ) {
+		$this->manager = $manager ?? new Kuka_Island_Shipping_Manager();
+	}
+
+	public function register(): void {
+		add_action( 'add_meta_boxes', array( $this, 'add_meta_box' ), 20, 2 );
+		add_action( 'admin_post_kuka_shipping_create', array( $this, 'handle_create' ) );
+		add_action( 'admin_post_kuka_shipping_requery', array( $this, 'handle_requery' ) );
+		add_action( 'admin_post_kuka_shipping_reconcile', array( $this, 'handle_reconcile' ) );
+		add_action( 'admin_post_kuka_shipping_update', array( $this, 'handle_update' ) );
+		add_action( 'admin_post_kuka_shipping_cancel', array( $this, 'handle_cancel' ) );
+	}
+
+	/**
+	 * @param string           $post_type_or_screen Screen or post type.
+	 * @param WP_Post|WC_Order $post_or_order       Order or post.
+	 */
+	public function add_meta_box( string $post_type_or_screen, $post_or_order = null ): void {
+		$screen_id = function_exists( 'wc_get_page_screen_id' ) ? wc_get_page_screen_id( 'shop_order' ) : 'shop_order';
+
+		foreach ( array_unique( array( 'shop_order', 'woocommerce_page_wc-orders', $screen_id ) ) as $screen ) {
+			add_meta_box(
+				'kuka_island_shipping_box',
+				__( 'Kargo Otomasyonu', 'kuka-island-shipping-automation' ),
+				array( $this, 'render_meta_box' ),
+				$screen,
+				'side',
+				'default'
+			);
+		}
+	}
+
+	/**
+	 * One short sentence saying what an operator can do next.
+	 *
+	 * Public and static so the exact wording can be asserted without rendering
+	 * an admin screen.
+	 *
+	 * @param WC_Order                                     $order    Order.
+	 * @param Kuka_Island_Shipping_Carrier_Interface|null  $carrier  Carrier, or null when none is registered.
+	 */
+	public static function operator_hint( WC_Order $order, ?Kuka_Island_Shipping_Carrier_Interface $carrier ): string {
+		if ( null === $carrier ) {
+			return __( 'Kayıtlı kargo firması yok. Manuel kargo süreci kullanılabilir.', 'kuka-island-shipping-automation' );
+		}
+
+		$readiness = $carrier->get_readiness();
+
+		if ( $readiness['live_blocked'] ) {
+			return __( 'Canlı ortam bloke: resmî üretim uçları doğrulanmadı. Otomatik kargo kapalı, manuel kargo açık.', 'kuka-island-shipping-automation' );
+		}
+
+		if ( ! $readiness['ready'] ) {
+			return sprintf(
+				/* translators: %s: comma separated configuration field names. */
+				__( 'Kimlik yapılandırması eksik (%s). Otomatik kargo kapalı, manuel kargo açık.', 'kuka-island-shipping-automation' ),
+				implode( ', ', $readiness['gaps'] )
+			);
+		}
+
+		$cod = Kuka_Island_Shipping_Manager::cod_gate( $order );
+
+		if ( ! $cod['ok'] ) {
+			return $cod['message'];
+		}
+
+		$state = Kuka_Island_Shipping_Order_Store::get_state( $order );
+
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Belirsiz taşıyıcı yanıtı var. Yeniden gönderim yapılmaz; önce mutabakat sorgusu çalıştırın.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Mutabakat taşıyıcıda kayıt olmadığını gösterdi. Yeniden oluşturma açık bir işlemdir.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Kargo durumu manuel inceleme bekliyor.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Gönderi teslim edildi.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED          => __( 'Taşıyıcı kaydı iptal edildi.', 'kuka-island-shipping-automation' ),
+			default                                                    => '',
+		};
+	}
+
+	/**
+	 * @param WP_Post|WC_Order $post_or_order Order or post.
+	 */
+	public function render_meta_box( $post_or_order ): void {
+		$order = $post_or_order instanceof WC_Order ? $post_or_order : wc_get_order( $post_or_order );
+
+		if ( ! $order instanceof WC_Order ) {
+			echo '<p>' . esc_html__( 'Sipariş bilgisi bulunamadı.', 'kuka-island-shipping-automation' ) . '</p>';
+
+			return;
+		}
+
+		$carrier  = $this->manager->get_registry()->get( $this->manager->default_carrier_key() );
+		$data     = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+		$hint     = self::operator_hint( $order, $carrier );
+		$order_id = (int) $order->get_id();
+
+		echo '<p><strong>' . esc_html__( 'Taşıyıcı:', 'kuka-island-shipping-automation' ) . '</strong> ';
+		echo esc_html( null !== $carrier ? $carrier->get_label() : __( 'kayıtlı değil', 'kuka-island-shipping-automation' ) );
+		echo '</p>';
+
+		echo '<p><strong>' . esc_html__( 'Durum:', 'kuka-island-shipping-automation' ) . '</strong> ';
+		echo esc_html( self::state_label( $data['state'] ) );
+		echo '</p>';
+
+		if ( '' !== $data['reference'] ) {
+			echo '<p><strong>' . esc_html__( 'Referans:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['reference'] ) . '</code></p>';
+		}
+
+		if ( '' !== $data['shipment_id'] ) {
+			echo '<p><strong>' . esc_html__( 'Gönderi no:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['shipment_id'] ) . '</code></p>';
+		}
+
+		if ( array() !== $data['barcodes'] ) {
+			echo '<p><strong>' . esc_html__( 'Barkodlar:', 'kuka-island-shipping-automation' ) . '</strong> ' . esc_html( implode( ', ', $data['barcodes'] ) ) . '</p>';
+		}
+
+		if ( 0 !== $data['status_code'] ) {
+			echo '<p><strong>' . esc_html__( 'Kargo durumu:', 'kuka-island-shipping-automation' ) . '</strong> ' . esc_html( Kuka_Island_Shipping_Status::label_for( $data['status_code'] ) ) . '</p>';
+		}
+
+		if ( '' !== $data['tracking_url'] ) {
+			echo '<p><a href="' . esc_url( $data['tracking_url'] ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Takip bağlantısı', 'kuka-island-shipping-automation' ) . '</a></p>';
+		}
+
+		if ( '' !== $data['last_error'] ) {
+			echo '<p><strong>' . esc_html__( 'Son hata kodu:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['last_error'] ) . '</code></p>';
+		}
+
+		if ( '' !== $hint ) {
+			echo '<p>' . esc_html( $hint ) . '</p>';
+		}
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+
+		$creatable = null !== $carrier
+			&& $carrier->get_readiness()['ready']
+			&& Kuka_Island_Shipping_Manager::cod_gate( $order )['ok']
+			&& ! in_array( $data['state'], Kuka_Island_Shipping_Order_Store::states_blocking_create(), true );
+
+		if ( $creatable ) {
+			$this->action_button( $order_id, 'kuka_shipping_create', __( 'DHL gönderisi oluştur', 'kuka-island-shipping-automation' ) );
+		}
+
+		if ( Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $data['state'] ) {
+			$this->action_button( $order_id, 'kuka_shipping_reconcile', __( 'Mutabakat sorgusu çalıştır (salt-okunur)', 'kuka-island-shipping-automation' ) );
+		}
+
+		if ( in_array( $data['state'], array( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED, Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW, Kuka_Island_Shipping_Order_Store::STATE_DELIVERED ), true ) ) {
+			$this->action_button( $order_id, 'kuka_shipping_requery', __( 'Kargo durumunu sorgula', 'kuka-island-shipping-automation' ) );
+		}
+
+		if ( in_array( $data['state'], array( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED, Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED ), true ) ) {
+			$this->action_button( $order_id, 'kuka_shipping_update', __( 'Taşıyıcı kaydını güncelle', 'kuka-island-shipping-automation' ) );
+			$this->action_button( $order_id, 'kuka_shipping_cancel', __( 'Taşıyıcı kaydını iptal et', 'kuka-island-shipping-automation' ) );
+		}
+
+		echo '<p class="description">' . esc_html__( 'Manuel kargo yolu her zaman açıktır: WooCommerce kargo çekmecesinden takip numarasını elle girebilirsiniz.', 'kuka-island-shipping-automation' ) . '</p>';
+	}
+
+	/**
+	 * One nonce-protected POST button.
+	 */
+	private function action_button( int $order_id, string $action, string $label ): void {
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="margin-bottom:8px;">';
+		echo '<input type="hidden" name="action" value="' . esc_attr( $action ) . '" />';
+		echo '<input type="hidden" name="order_id" value="' . esc_attr( (string) $order_id ) . '" />';
+		wp_nonce_field( $action . '_' . $order_id, '_kuka_ship_nonce' );
+		echo '<button type="submit" class="button">' . esc_html( $label ) . '</button>';
+		echo '</form>';
+	}
+
+	public static function state_label( string $state ): string {
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_NONE               => __( 'Kargo işlemi başlatılmadı', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED      => __( 'Taşıyıcıda sipariş oluşturuldu', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED   => __( 'Gönderi oluşturuldu', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Belirsiz — mutabakat gerekiyor', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Taşıyıcıda kayıt yok (doğrulandı)', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Teslim edildi', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Manuel inceleme gerekiyor', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED          => __( 'İptal edildi', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_BLOCKED            => __( 'Engellendi — çağrı yapılmadı', 'kuka-island-shipping-automation' ),
+			default                                                    => $state,
+		};
+	}
+
+	/* ---------------------------------------------------------------------- */
+	/* Action handlers                                                         */
+	/* ---------------------------------------------------------------------- */
+
+	public function handle_create(): void {
+		$order = $this->authorise( 'kuka_shipping_create' );
+
+		if ( $order instanceof WC_Order ) {
+			$this->manager->create_shipment( $order );
+		}
+
+		$this->go_back();
+	}
+
+	public function handle_requery(): void {
+		$order = $this->authorise( 'kuka_shipping_requery' );
+
+		if ( $order instanceof WC_Order ) {
+			$this->manager->query_status( $order );
+		}
+
+		$this->go_back();
+	}
+
+	public function handle_reconcile(): void {
+		$order = $this->authorise( 'kuka_shipping_reconcile' );
+
+		if ( $order instanceof WC_Order ) {
+			$this->manager->reconcile_order( $order );
+		}
+
+		$this->go_back();
+	}
+
+	public function handle_update(): void {
+		$order = $this->authorise( 'kuka_shipping_update' );
+
+		if ( $order instanceof WC_Order ) {
+			$this->manager->update_shipment( $order );
+		}
+
+		$this->go_back();
+	}
+
+	public function handle_cancel(): void {
+		$order = $this->authorise( 'kuka_shipping_cancel' );
+
+		if ( $order instanceof WC_Order ) {
+			$this->manager->cancel( $order );
+		}
+
+		$this->go_back();
+	}
+
+	/**
+	 * Nonce, capability and order, in that order.
+	 *
+	 * @param string $action Action name; also the nonce namespace.
+	 * @return WC_Order|null
+	 */
+	private function authorise( string $action ): ?WC_Order {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$order_id = absint( $_POST['order_id'] ?? 0 );
+
+		check_admin_referer( $action . '_' . $order_id, '_kuka_ship_nonce' );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-shipping-automation' ) );
+		}
+
+		$order = wc_get_order( $order_id );
+
+		return $order instanceof WC_Order ? $order : null;
+	}
+
+	private function go_back(): void {
+		wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=wc-orders' ) );
+		exit;
+	}
+}
