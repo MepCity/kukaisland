@@ -37,7 +37,7 @@
  * UUID anyway, approve() treats the live evidence as the truth and the
  * reservation as stale.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -287,14 +287,14 @@ final class Kuka_Island_Core_Invoice_Recovery {
 	 * Operator-facing sentence for an approved replacement.
 	 */
 	public static function approved_message(): string {
-		return __( 'EDM tarafından reddedilen belge için yeni bir fatura belgesi oluşturulması onaylandı. Eski belge kayıtları korunmuştur; numara yeniden EDM tarafından atanacaktır.', 'kuka-island-core' );
+		return __( 'EDM tarafından reddedilen belge için yeni bir fatura belgesi oluşturulması onaylandı. Eski belge kayıtları korunmuştur; numara yeniden EDM tarafından atanacaktır.', 'kuka-island-edm' );
 	}
 
 	/**
 	 * Operator-facing sentence for a refused request.
 	 */
 	public static function not_eligible_message(): string {
-		return __( 'Bu sipariş için yeni belge oluşturulamaz: yalnızca EDM tarafından reddedilmiş (PACKAGE - FAIL / SEND - FAILED) belgeler yeniden oluşturulabilir.', 'kuka-island-core' );
+		return __( 'Bu sipariş için yeni belge oluşturulamaz: yalnızca EDM tarafından reddedilmiş (PACKAGE - FAIL / SEND - FAILED) belgeler yeniden oluşturulabilir.', 'kuka-island-edm' );
 	}
 
 	/**

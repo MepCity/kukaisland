@@ -2,7 +2,7 @@
 /**
  * Real SoapClient transport implementation for EDM integration.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -52,7 +52,7 @@ final class Kuka_Island_Core_EDM_SOAP_Transport implements Kuka_Island_Core_SOAP
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'PHP ext-soap extension is not installed or loaded.',
 					'soap_extension_missing',
-					__( 'Sunucuda PHP SoapClient eklentisi bulunamadı.', 'kuka-island-core' )
+					__( 'Sunucuda PHP SoapClient eklentisi bulunamadı.', 'kuka-island-edm' )
 				);
 			}
 
@@ -62,7 +62,7 @@ final class Kuka_Island_Core_EDM_SOAP_Transport implements Kuka_Island_Core_SOAP
 				throw new Kuka_Island_Core_Invoice_Transient_Exception(
 					'WSDL loading failed.',
 					'wsdl_load_failed',
-					__( 'EDM WSDL tanımı yüklenemedi. Ağ veya sunucu geçici olarak yanıt vermiyor.', 'kuka-island-core' )
+					__( 'EDM WSDL tanımı yüklenemedi. Ağ veya sunucu geçici olarak yanıt vermiyor.', 'kuka-island-edm' )
 				);
 			}
 		}

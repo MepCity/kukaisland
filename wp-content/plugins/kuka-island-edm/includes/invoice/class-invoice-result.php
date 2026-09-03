@@ -2,7 +2,7 @@
 /**
  * Invoice operation result DTO.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

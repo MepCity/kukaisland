@@ -30,6 +30,8 @@
 /wp-content/plugins/*
 !/wp-content/plugins/kuka-island-core/
 !/wp-content/plugins/kuka-island-core/**
+!/wp-content/plugins/kuka-island-edm/
+!/wp-content/plugins/kuka-island-edm/**
 
 # Local secrets, media, database and generated files
 .env

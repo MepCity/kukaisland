@@ -1,0 +1,486 @@
+# Copyright (C) 2026 MepCity
+# This file is distributed under the same license as the Kuka Island EDM plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: Kuka Island EDM 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/kuka-island-edm\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-09-03T11:46:27+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: kuka-island-edm\n"
+
+#. Plugin Name of the plugin
+#: kuka-island-edm.php
+msgid "Kuka Island EDM"
+msgstr ""
+
+#. Description of the plugin
+#: kuka-island-edm.php
+msgid "Kuka Island e-Fatura / e-Arşiv entegrasyonu. Varsayılan teslim durumu pasiftir; etkinleştirme ayrı bir kontrol listesiyle yapılır."
+msgstr ""
+
+#. Author of the plugin
+#: kuka-island-edm.php
+msgid "MepCity"
+msgstr ""
+
+#. translators: %s: comma separated plugin slugs.
+#: includes/class-plugin.php:110
+#, php-format
+msgid "Kuka Island EDM devre dışı: gerekli eklentiler yüklenmedi (%s). Hiçbir fatura işlemi kaydedilmedi."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:124
+msgid "EDM giriş bilgileri hatalı."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:132
+msgid "EDM giriş isteği biçimi reddedildi."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:140
+msgid "EDM servis adresi bulunamadı."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:148
+msgid "EDM oturum bilgisi reddedildi."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:156
+msgid "EDM sunucusuyla güvenli bağlantı kurulamadı."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:164
+msgid "EDM sunucusu zamanında yanıt vermedi."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:172
+msgid "EDM sunucusunda geçici bir hata oluştu."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:180
+msgid "EDM sunucusuna bağlanılamadı. Lütfen kısa süre sonra tekrar deneyin."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:211
+msgid "EDM kullanıcı adı ve şifre yapılandırması eksik."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:246
+msgid "EDM oturumu açılırken iletişim hatası oluştu."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:255
+msgid "EDM sunucusundan geçerli bir oturum kimliği alınamadı."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:299
+msgid "Geçersiz vergi/kimlik numarası."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:694
+msgid "EDM servisi ile bağlantı kurulurken hata oluştu."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:740
+msgid "Fatura EDM tarafından iş kuralı veya şema hatası sebebiyle reddedildi."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:748
+msgid "EDM isteği kalıcı olarak reddetti."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:756
+msgid "EDM servisi geçici bir hata bildirdi. İşlem tekrar denenebilir."
+msgstr ""
+
+#: includes/invoice/class-edm-client.php:880
+msgid "EDM isteği kabul etti; belge durumu henüz bildirilmedi."
+msgstr ""
+
+#: includes/invoice/class-edm-provider.php:30
+msgid "EDM Bilişim e-Fatura / e-Arşiv"
+msgstr ""
+
+#: includes/invoice/class-edm-soap-transport.php:55
+msgid "Sunucuda PHP SoapClient eklentisi bulunamadı."
+msgstr ""
+
+#: includes/invoice/class-edm-soap-transport.php:65
+msgid "EDM WSDL tanımı yüklenemedi. Ağ veya sunucu geçici olarak yanıt vermiyor."
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:34
+msgid "e-Fatura / e-Arşiv Durumu"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:61
+msgid "Fatura kuyruğa alındı."
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:75
+msgid "Fatura EDM durum sorgusunda."
+msgstr ""
+
+#. translators: %s: carrier display name
+#: includes/invoice/class-invoice-admin.php:107
+#, php-format
+msgid "%s mali taşıyıcı bilgileri yapılandırılmamış."
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:108
+msgid "Kargo firması"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:134
+msgid "Sipariş bilgisi bulunamadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:150
+msgid "Bilgi:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:151
+msgid "EDM test erişimi ve muhasebe onayları bekleniyor. Otomatik gönderim kapalıdır."
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:167
+msgid "Fatura No:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:174
+msgid "EDM UUID:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:181
+msgid "Gönderim:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:188
+msgid "Son Sorgu:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:194
+msgid "Ortam:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:201
+msgid "Fatura hiç gönderilmedi: zorunlu bir sözleşme doğrulanmadığı için işlem güvenli biçimde durduruldu."
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:207
+msgid "Hata Kodu:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:228
+msgid "Durumu Sorgula"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:252
+msgid "Fatura EDM sistemine iletilecek. Onaylıyor musunuz?"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:253
+msgid "Faturayı Gönder"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:271
+msgid "EDM tarafından reddedilen belge yerine YENİ bir fatura belgesi oluşturulacak. Eski belge kayıtları silinmez. Onaylıyor musunuz?"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:272
+msgid "Yeni Belge Olarak Yeniden Oluştur"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:283
+msgid "Yerine Yeni Belge Oluşturulan Kayıtlar:"
+msgstr ""
+
+#: includes/invoice/class-invoice-admin.php:307
+#: includes/invoice/class-invoice-admin.php:329
+#: includes/invoice/class-invoice-admin.php:371
+msgid "Yetkiniz yetersiz."
+msgstr ""
+
+#: includes/invoice/class-invoice-exceptions.php:33
+msgid "Fatura işlemi sırasında bir hata oluştu."
+msgstr ""
+
+#: includes/invoice/class-invoice-exceptions.php:103
+msgid "Fatura sunucusuna bağlanılamadı veya işlem zaman aşımına uğradı. Yeniden denenecektir."
+msgstr ""
+
+#: includes/invoice/class-invoice-exceptions.php:113
+msgid "Fatura verisi doğrulanamadı veya entegratör tarafından kalıcı olarak reddedildi."
+msgstr ""
+
+#: includes/invoice/class-invoice-fixture-guard.php:58
+msgid "Test veya sandbox siparişleri için gerçek fatura kesilemez."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:185
+msgid "Fatura EDM sistemine gönderilmiş olabilir ve durumu doğrulanamadı. Mükerrer gönderim engellendi; lütfen EDM üzerinden fatura durumunu manuel olarak sorgulayın."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:226
+msgid "Ödemesi kesinleşmemiş sipariş için fatura oluşturulamaz."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:236
+#: includes/invoice/class-invoice-manager.php:284
+msgid "Bu siparişin faturası zaten başarıyla kesilmiştir ve mükerrer gönderilemez."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:257
+#: includes/invoice/class-invoice-manager.php:313
+msgid "Fatura durumu şu anda yeniden gönderime uygun değildir."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:267
+msgid "Bu siparişin fatura işlemi şu anda başka bir süreç tarafından yürütülüyor."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:431
+msgid "Fatura XML oluşturuldu, EDM gönderimi başlatılıyor."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:668
+msgid "Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:671
+msgid "Fatura için siparişin tamamen kargoya verilmesi bekleniyor."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:691
+msgid "Kargo firmasının mali bilgileri (VKN ve unvan) yapılandırılmamış; fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:695
+msgid "Sipariş birden fazla kargo firmasıyla gönderilmiş; tek faturada tek taşıyıcı bildirilebildiği için manuel inceleme gerekiyor."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:699
+msgid "Kargoya verilme tarihi okunamadı; fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:703
+msgid "Ödeme tarihi bulunamadı; fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:708
+msgid "Ödeme yöntemi için doğrulanmış mali karşılık tanımlı değil; fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:711
+msgid "İnternet satış bilgileri eksik olduğu için fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:814
+msgid "İşlemdeki faturanın UUID kaydı bulunamadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:849
+msgid "Alıcının e-Fatura mükellefiyeti GİB üzerinden sorgulanamadı. Hatalı belge türü kesilmemesi için işlem durduruldu."
+msgstr ""
+
+#: includes/invoice/class-invoice-manager.php:859
+msgid "e-Fatura mükellefinin GİB posta kutusu etiketi (alias) bulunamadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-numbering.php:113
+msgid "Fatura serisi yapılandırılmadığı için gönderim durduruldu. Seri, EDM portalından seçilip ortam yapılandırmasına girilmelidir."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:169
+msgid "Fatura seri ön eki (3 karakter) yapılandırılmamış."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:184
+msgid "Fatura numarası yalnızca EDM tarafından atanabilir."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:193
+msgid "Sipariş para birimi bilgisi eksik olduğu için fatura oluşturulamaz."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:218
+msgid "Sipariş tarihi bulunamadığı için fatura oluşturulamaz."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:296
+msgid "Sipariş satırında indirim tutarı hatalı olduğu için fatura oluşturulamadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:305
+msgid "Siparişteki ürün için doğrulanmış KDV oranı tespit edilemedi."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:348
+msgid "Kargo tutarı negatif olduğu için fatura oluşturulamadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:358
+msgid "Kargo için doğrulanmış KDV oranı tespit edilemedi."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:385
+msgid "Kupon indirimi satırlara birebir dağıtılamadığı için fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:445
+msgid "Hesaplanan fatura tutarı, siparişte tahsil edilen tutarla yuvarlama farkının ötesinde ayrıştığı için fatura oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:617
+msgid "Kurumsal fatura için geçerli bir VKN/TCKN girilmelidir."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:624
+msgid "Kurumsal fatura için vergi dairesi bilgisi zorunludur."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:631
+msgid "e-Fatura alıcısı için GİB posta kutusu etiketi (alias) bulunamadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:653
+msgid "Bireysel T.C. Kimlik Numarası 11 haneli olmalıdır."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:663
+msgid "Fatura oluşturmak için alıcı adres ve şehir bilgisi zorunludur."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:683
+msgid "Bireysel fatura için alıcının adı ve soyadı zorunludur."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:700
+msgid "Faturanın alıcıya iletilebilmesi için geçerli bir e-posta adresi zorunludur."
+msgstr ""
+
+#: includes/invoice/class-invoice-order-mapper.php:744
+msgid "Satıcı kurumsal ve mali bilgileri (VKN, Unvan, Vergi Dairesi, Adres, İlçe, Şehir) eksik yapılandırılmış."
+msgstr ""
+
+#. translators: 1: warning sentence, 2: safe error code
+#: includes/invoice/class-invoice-order-store.php:411
+#, php-format
+msgid "%1$s (%2$s)"
+msgstr ""
+
+#: includes/invoice/class-invoice-queue.php:131
+msgid "Fatura kuyruğa eklendi."
+msgstr ""
+
+#: includes/invoice/class-invoice-queue.php:217
+msgid "Beklenmeyen hata sebebiyle işlem durduruldu."
+msgstr ""
+
+#: includes/invoice/class-invoice-queue.php:271
+msgid "Otomatik deneme limiti aşıldı. Fatura manuel inceleme gerektiriyor."
+msgstr ""
+
+#. translators: %s: Invoice number
+#: includes/invoice/class-invoice-queue.php:340
+#, php-format
+msgid "Sipariş için iade işlemi yapıldı (Fatura No: %s). Faturanın iptali veya e-Arşiv/GİB iade faturası işlemleri için muhasebe kontrolü gereklidir."
+msgstr ""
+
+#: includes/invoice/class-invoice-recovery.php:290
+msgid "EDM tarafından reddedilen belge için yeni bir fatura belgesi oluşturulması onaylandı. Eski belge kayıtları korunmuştur; numara yeniden EDM tarafından atanacaktır."
+msgstr ""
+
+#: includes/invoice/class-invoice-recovery.php:297
+msgid "Bu sipariş için yeni belge oluşturulamaz: yalnızca EDM tarafından reddedilmiş (PACKAGE - FAIL / SEND - FAILED) belgeler yeniden oluşturulabilir."
+msgstr ""
+
+#: includes/invoice/class-invoice-runtime-gate.php:74
+msgid "EDM eklentisi devre dışı bırakıldığı için gönderim yapılmadı. Belge oluşturulmadı."
+msgstr ""
+
+#: includes/invoice/class-invoice-status-poller.php:295
+msgid "Fatura gönderilmiş olabilir; otomatik durum sorgusu planlanamadı, lütfen fatura durumunu manuel olarak sorgulayın."
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:53
+msgid "Kuyrukta"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:54
+msgid "Gönderiliyor"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:55
+msgid "Gönderildi"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:56
+msgid "EDM/GİB Sonucu Bekleniyor"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:57
+msgid "Ağ/Durum Belirsiz (Uzlaştırma Gerekli)"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:58
+msgid "Tamamlandı"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:59
+msgid "Manuel Müdahale Gerekli"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:60
+msgid "Hata Oluştu"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:61
+msgid "Alıcı Tarafından Reddedildi"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:62
+msgid "İptal Edildi"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:63
+msgid "Fail-Closed Engellendi (Sözleşme Doğrulanmadı)"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:64
+msgid "Manuel EDM Durum Sorgusu Gerekli (Mükerrer Gönderim Kilitli)"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:65
+msgid "Fatura Oluşturulmadı"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:74
+msgid "e-Fatura"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:75
+msgid "e-Arşiv Fatura"
+msgstr ""
+
+#: includes/invoice/class-invoice-status.php:76
+msgid "Belirsiz"
+msgstr ""
+
+#: includes/invoice/class-ubl-tr-builder.php:162
+msgid "Zorunlu fatura alanı eksik olduğu için UBL belgesi üretilmedi."
+msgstr ""
+
+#: includes/invoice/class-ubl-tr-builder.php:354
+msgid "Vergi oranı bilgisi eksik olduğu için UBL belgesi üretilmedi."
+msgstr ""
+
+#: includes/invoice/class-ubl-tr-builder.php:405
+msgid "Fatura satırının KDV oranı doğrulanmadığı için UBL belgesi üretilmedi."
+msgstr ""

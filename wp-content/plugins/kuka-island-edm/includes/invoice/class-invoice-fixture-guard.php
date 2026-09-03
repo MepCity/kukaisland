@@ -14,7 +14,7 @@
  * - There is deliberately NO toggle, filter, option or constant that turns the
  *   guard off. A fixture-marked order can never be invoiced for real.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -55,7 +55,7 @@ final class Kuka_Island_Core_Invoice_Fixture_Guard {
 		throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 			'Test fixture orders cannot be sent for production invoicing.',
 			self::ERROR_CODE,
-			__( 'Test veya sandbox siparişleri için gerçek fatura kesilemez.', 'kuka-island-core' )
+			__( 'Test veya sandbox siparişleri için gerçek fatura kesilemez.', 'kuka-island-edm' )
 		);
 	}
 }

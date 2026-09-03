@@ -42,6 +42,33 @@ docker compose run --rm wp-cli wp language plugin install woocommerce tr_TR
 docker compose run --rm wp-cli wp theme install blocksy --version=2.1.53 --force
 docker compose run --rm wp-cli wp theme activate kuka-island-child
 docker compose run --rm wp-cli wp plugin activate kuka-island-core
+
+# --- Kuka Island EDM: present, and deliberately NOT activated ---------------
+#
+# Fiscal documents are irreversible, so activation is a decision a person makes
+# with docs/EDM_AKTIVASYON_REHBERI.md open -- never a side effect of running the
+# installer. This block therefore only ever OBSERVES and REPORTS. It does not
+# activate, and just as importantly it does not deactivate: re-running install
+# must not quietly undo a deliberate activation someone made yesterday.
+if [ ! -f "$project_dir/wp-content/plugins/kuka-island-edm/kuka-island-edm.php" ]; then
+  echo "Hata: kuka-island-edm eklentisi dosya sisteminde bulunamadı." >&2
+  exit 1
+fi
+
+edm_status=$(docker compose run --rm -T wp-cli wp plugin list --field=status --name=kuka-island-edm 2>/dev/null | tr -d '\r\n' || true)
+case "$edm_status" in
+  active)
+    # Someone activated it on purpose. Left exactly as it is.
+    echo "EDM_PLUGIN=active|left_unchanged:yes|reason:deliberate_activation_preserved"
+    ;;
+  inactive)
+    echo "EDM_PLUGIN=inactive|delivery_state:as_designed|activation:manual_with_checklist"
+    ;;
+  *)
+    # Present on disk, not yet known to WordPress: the fresh-install case.
+    echo "EDM_PLUGIN=not_activated|delivery_state:fresh_install|activation:manual_with_checklist"
+    ;;
+esac
 # Üyelik kaldırıldı; sosyal giriş eklentisi artık kurulmaz ve önceki bir
 # kurulumdan kalmışsa silinir.
 docker compose run --rm wp-cli wp plugin delete nextend-facebook-connect >/dev/null 2>&1 || true

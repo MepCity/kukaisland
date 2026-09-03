@@ -2,7 +2,7 @@
 /**
  * Invoice status constants and state definitions.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -50,19 +50,19 @@ final class Kuka_Island_Core_Invoice_Status {
 	 */
 	public static function get_label( string $status ): string {
 		return match ( $status ) {
-			self::STATUS_QUEUED              => __( 'Kuyrukta', 'kuka-island-core' ),
-			self::STATUS_SENDING             => __( 'Gönderiliyor', 'kuka-island-core' ),
-			self::STATUS_SENT                => __( 'Gönderildi', 'kuka-island-core' ),
-			self::STATUS_PENDING_APPROVAL    => __( 'EDM/GİB Sonucu Bekleniyor', 'kuka-island-core' ),
-			self::STATUS_SEND_UNCERTAIN      => __( 'Ağ/Durum Belirsiz (Uzlaştırma Gerekli)', 'kuka-island-core' ),
-			self::STATUS_COMPLETED           => __( 'Tamamlandı', 'kuka-island-core' ),
-			self::STATUS_NEEDS_MANUAL_REVIEW => __( 'Manuel Müdahale Gerekli', 'kuka-island-core' ),
-			self::STATUS_FAILED              => __( 'Hata Oluştu', 'kuka-island-core' ),
-			self::STATUS_REJECTED            => __( 'Alıcı Tarafından Reddedildi', 'kuka-island-core' ),
-			self::STATUS_CANCELLED           => __( 'İptal Edildi', 'kuka-island-core' ),
-			self::STATUS_BLOCKED             => __( 'Fail-Closed Engellendi (Sözleşme Doğrulanmadı)', 'kuka-island-core' ),
-			self::STATUS_RECONCILIATION_REQUIRED => __( 'Manuel EDM Durum Sorgusu Gerekli (Mükerrer Gönderim Kilitli)', 'kuka-island-core' ),
-			default                          => __( 'Fatura Oluşturulmadı', 'kuka-island-core' ),
+			self::STATUS_QUEUED              => __( 'Kuyrukta', 'kuka-island-edm' ),
+			self::STATUS_SENDING             => __( 'Gönderiliyor', 'kuka-island-edm' ),
+			self::STATUS_SENT                => __( 'Gönderildi', 'kuka-island-edm' ),
+			self::STATUS_PENDING_APPROVAL    => __( 'EDM/GİB Sonucu Bekleniyor', 'kuka-island-edm' ),
+			self::STATUS_SEND_UNCERTAIN      => __( 'Ağ/Durum Belirsiz (Uzlaştırma Gerekli)', 'kuka-island-edm' ),
+			self::STATUS_COMPLETED           => __( 'Tamamlandı', 'kuka-island-edm' ),
+			self::STATUS_NEEDS_MANUAL_REVIEW => __( 'Manuel Müdahale Gerekli', 'kuka-island-edm' ),
+			self::STATUS_FAILED              => __( 'Hata Oluştu', 'kuka-island-edm' ),
+			self::STATUS_REJECTED            => __( 'Alıcı Tarafından Reddedildi', 'kuka-island-edm' ),
+			self::STATUS_CANCELLED           => __( 'İptal Edildi', 'kuka-island-edm' ),
+			self::STATUS_BLOCKED             => __( 'Fail-Closed Engellendi (Sözleşme Doğrulanmadı)', 'kuka-island-edm' ),
+			self::STATUS_RECONCILIATION_REQUIRED => __( 'Manuel EDM Durum Sorgusu Gerekli (Mükerrer Gönderim Kilitli)', 'kuka-island-edm' ),
+			default                          => __( 'Fatura Oluşturulmadı', 'kuka-island-edm' ),
 		};
 	}
 
@@ -71,9 +71,9 @@ final class Kuka_Island_Core_Invoice_Status {
 	 */
 	public static function get_type_label( string $type ): string {
 		return match ( $type ) {
-			self::TYPE_EINVOICE => __( 'e-Fatura', 'kuka-island-core' ),
-			self::TYPE_EARCHIVE => __( 'e-Arşiv Fatura', 'kuka-island-core' ),
-			default             => __( 'Belirsiz', 'kuka-island-core' ),
+			self::TYPE_EINVOICE => __( 'e-Fatura', 'kuka-island-edm' ),
+			self::TYPE_EARCHIVE => __( 'e-Arşiv Fatura', 'kuka-island-edm' ),
+			default             => __( 'Belirsiz', 'kuka-island-edm' ),
 		};
 	}
 

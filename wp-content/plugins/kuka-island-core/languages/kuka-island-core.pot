@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-30T11:40:48+00:00\n"
+"POT-Creation-Date: 2026-09-03T11:46:29+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island-core\n"
@@ -502,6 +502,42 @@ msgstr ""
 #: includes/class-email-delivery.php:247
 #, php-format
 msgid "Sipariş e-postası gönderilemedi: %s"
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:103
+msgid "iyzico bildiriminde zorunlu alan eksik."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:119
+msgid "iyzico bildiriminin imzası doğrulanamadı."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:146
+msgid "iyzico bildirimindeki ödeme kimliği sipariş kaydıyla uyuşmuyor."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:164
+msgid "Aynı siparişin ödemesi şu anda işleniyor, lütfen yeniden deneyin."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:214
+msgid "Sipariş başka bir ödemeyle kesinleşmiş; bu bildirim uygulanmadı."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:237
+msgid "Ödeme iyzico tarafında doğrulanamadı; sipariş değiştirilmedi."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:249
+msgid "iyzico bildirimi işlenemedi."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:266
+msgid "iyzico bildirimi sonrasında sipariş ödenmiş duruma geçmedi."
+msgstr ""
+
+#: includes/class-iyzico-idempotency.php:761
+msgid "Aynı iyzico bildirimi tekrar geldi; sipariş durumu, tutarı ve stoğu korunarak yok sayıldı. Sonraki tekrarlar için ayrıca not düşülmez."
 msgstr ""
 
 #: includes/class-legal-displays.php:20

@@ -4,7 +4,7 @@
  *
  * Implements the verified EDM Bilişim Connector Service WSDL protocol specification.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -121,7 +121,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'EDM login authentication failed.',
 					'edm_auth_failed',
-					__( 'EDM giriş bilgileri hatalı.', 'kuka-island-core' )
+					__( 'EDM giriş bilgileri hatalı.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -129,7 +129,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'EDM refused the login request contract.',
 					'edm_login_contract_rejected',
-					__( 'EDM giriş isteği biçimi reddedildi.', 'kuka-island-core' )
+					__( 'EDM giriş isteği biçimi reddedildi.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -137,7 +137,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'EDM login endpoint did not resolve to the service.',
 					'edm_login_endpoint_not_found',
-					__( 'EDM servis adresi bulunamadı.', 'kuka-island-core' )
+					__( 'EDM servis adresi bulunamadı.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -145,7 +145,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'EDM rejected the login session state.',
 					'edm_login_session_rejected',
-					__( 'EDM oturum bilgisi reddedildi.', 'kuka-island-core' )
+					__( 'EDM oturum bilgisi reddedildi.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -153,7 +153,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
 					'EDM login TLS failure.',
 					'edm_login_tls_failure',
-					__( 'EDM sunucusuyla güvenli bağlantı kurulamadı.', 'kuka-island-core' )
+					__( 'EDM sunucusuyla güvenli bağlantı kurulamadı.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -161,7 +161,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
 					'EDM login timed out.',
 					'edm_login_timeout',
-					__( 'EDM sunucusu zamanında yanıt vermedi.', 'kuka-island-core' )
+					__( 'EDM sunucusu zamanında yanıt vermedi.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -169,7 +169,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
 					'EDM login remote server error.',
 					'edm_login_server_error',
-					__( 'EDM sunucusunda geçici bir hata oluştu.', 'kuka-island-core' )
+					__( 'EDM sunucusunda geçici bir hata oluştu.', 'kuka-island-edm' )
 				);
 				break;
 
@@ -177,7 +177,7 @@ final class Kuka_Island_Core_EDM_Client {
 				$exception = new Kuka_Island_Core_Invoice_Transient_Exception(
 					'EDM login network / server fault.',
 					'edm_login_fault',
-					__( 'EDM sunucusuna bağlanılamadı. Lütfen kısa süre sonra tekrar deneyin.', 'kuka-island-core' )
+					__( 'EDM sunucusuna bağlanılamadı. Lütfen kısa süre sonra tekrar deneyin.', 'kuka-island-edm' )
 				);
 				break;
 		}
@@ -208,7 +208,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'EDM login credentials are not configured.',
 				'edm_not_configured',
-				__( 'EDM kullanıcı adı ve şifre yapılandırması eksik.', 'kuka-island-core' )
+				__( 'EDM kullanıcı adı ve şifre yapılandırması eksik.', 'kuka-island-edm' )
 			);
 		}
 
@@ -243,7 +243,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw ( new Kuka_Island_Core_Invoice_Transient_Exception(
 				'EDM login unexpected error.',
 				'edm_login_error',
-				__( 'EDM oturumu açılırken iletişim hatası oluştu.', 'kuka-island-core' )
+				__( 'EDM oturumu açılırken iletişim hatası oluştu.', 'kuka-island-edm' )
 			) )->set_diagnostic( $verdict );
 		}
 
@@ -252,7 +252,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'EDM login did not return a valid session ID.',
 				'edm_session_empty',
-				__( 'EDM sunucusundan geçerli bir oturum kimliği alınamadı.', 'kuka-island-core' )
+				__( 'EDM sunucusundan geçerli bir oturum kimliği alınamadı.', 'kuka-island-edm' )
 			);
 		}
 
@@ -296,7 +296,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Invalid tax identifier length.',
 				'invalid_tax_identifier',
-				__( 'Geçersiz vergi/kimlik numarası.', 'kuka-island-core' )
+				__( 'Geçersiz vergi/kimlik numarası.', 'kuka-island-edm' )
 			);
 		}
 
@@ -691,7 +691,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw new Kuka_Island_Core_Invoice_Transient_Exception(
 				'EDM connection / network error.',
 				'edm_network_error',
-				__( 'EDM servisi ile bağlantı kurulurken hata oluştu.', 'kuka-island-core' )
+				__( 'EDM servisi ile bağlantı kurulurken hata oluştu.', 'kuka-island-edm' )
 			);
 		}
 	}
@@ -737,7 +737,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw ( new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'EDM business rejection.',
 				'edm_business_rejection',
-				__( 'Fatura EDM tarafından iş kuralı veya şema hatası sebebiyle reddedildi.', 'kuka-island-core' )
+				__( 'Fatura EDM tarafından iş kuralı veya şema hatası sebebiyle reddedildi.', 'kuka-island-edm' )
 			) )->set_diagnostic( $verdict );
 		}
 
@@ -745,7 +745,7 @@ final class Kuka_Island_Core_EDM_Client {
 			throw ( new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'EDM refused the request.',
 				'edm_request_refused',
-				__( 'EDM isteği kalıcı olarak reddetti.', 'kuka-island-core' )
+				__( 'EDM isteği kalıcı olarak reddetti.', 'kuka-island-edm' )
 			) )->set_diagnostic( $verdict );
 		}
 
@@ -753,7 +753,7 @@ final class Kuka_Island_Core_EDM_Client {
 		throw ( new Kuka_Island_Core_Invoice_Transient_Exception(
 			'EDM SOAP Fault.',
 			'edm_soap_fault',
-			__( 'EDM servisi geçici bir hata bildirdi. İşlem tekrar denenebilir.', 'kuka-island-core' )
+			__( 'EDM servisi geçici bir hata bildirdi. İşlem tekrar denenebilir.', 'kuka-island-edm' )
 		) )->set_diagnostic( $verdict );
 	}
 
@@ -877,7 +877,7 @@ final class Kuka_Island_Core_EDM_Client {
 			$status      = null === $return_code || '0' === $return_code
 				? Kuka_Island_Core_Invoice_Status::STATUS_SENT
 				: Kuka_Island_Core_Invoice_Status::STATUS_NEEDS_MANUAL_REVIEW;
-			$status_desc = '' !== $status_desc ? $status_desc : __( 'EDM isteği kabul etti; belge durumu henüz bildirilmedi.', 'kuka-island-core' );
+			$status_desc = '' !== $status_desc ? $status_desc : __( 'EDM isteği kabul etti; belge durumu henüz bildirilmedi.', 'kuka-island-edm' );
 		} else {
 			$status = Kuka_Island_Core_EDM_Document_Status::resolve_lifecycle( $classified );
 		}

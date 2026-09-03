@@ -5,7 +5,7 @@
  * Persists and retrieves invoice state on WC_Order using standard WC CRUD,
  * guaranteeing full compatibility with HPOS and legacy post meta.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -408,7 +408,7 @@ final class Kuka_Island_Core_Invoice_Order_Store {
 			$order->add_order_note(
 				sprintf(
 					/* translators: 1: warning sentence, 2: safe error code */
-					__( '%1$s (%2$s)', 'kuka-island-core' ),
+					__( '%1$s (%2$s)', 'kuka-island-edm' ),
 					$message,
 					$safe_error_code
 				),

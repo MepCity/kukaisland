@@ -6,7 +6,7 @@
  * Secret values are read only from wp-config constants or environment variables,
  * never from plain database options or source code.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

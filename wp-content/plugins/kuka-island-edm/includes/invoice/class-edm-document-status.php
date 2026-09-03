@@ -17,7 +17,7 @@
  * Unknown is deliberately not an error and not a success: it maps to manual
  * review, so a status EDM adds later cannot silently complete an invoice.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

@@ -14,6 +14,9 @@
 
 defined( 'WP_CLI' ) || exit( 1 );
 
+require_once __DIR__ . '/lib-edm-module-loader.php';
+$kuka_edm_module = kuka_edm_load_module();
+
 require_once __DIR__ . '/lib-edm-test-credentials.php';
 require_once __DIR__ . '/lib-edm-sandbox.php';
 
@@ -380,7 +383,7 @@ $report(
  * nowhere else. What is asserted here is that it is declared once, in the
  * mapper, and that the sandbox library is not where any of it comes from.
  */
-$module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/';
+$module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/';
 $module_files = (array) glob( $module_dir . '*.php' );
 $leak_hits    = array();
 
@@ -1231,7 +1234,7 @@ $report( 'SANDBOX_HARNESS_TEMP_CLEANED', ! is_dir( $tmp_root ), sprintf( 'temp_r
 /* No document-creating capability leaked into the plugin                       */
 /* ========================================================================== */
 
-$module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/';
+$module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/';
 $module_files = glob( $module_dir . '*.php' ) ?: array();
 $write_hits   = array();
 foreach ( $module_files as $file ) {

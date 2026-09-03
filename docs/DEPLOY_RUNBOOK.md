@@ -2,6 +2,45 @@
 
 Bu belge Local → Veridyen test alanı → Production sırasını tarif eder. Fiili aktarım, alan adı, SMTP ve iyzico anahtarları mağaza sahibinin yetkisindedir. Repoya kullanıcı adı, parola, anahtar, IP veya gerçek veritabanı bilgisi yazılmaz.
 
+## Kuka Island EDM eklentisi — pakette var, teslimde PASİF
+
+Deploy arşivi `wp-content/plugins/kuka-island-edm/` eklentisini **içerir**,
+fakat eklenti **etkinleştirilmemiş** olarak teslim edilir. Bu bilinçli bir
+tercihtir: mali belge geri alınamaz, dolayısıyla teslim durumu hiçbir belgenin
+kesilemeyeceği durumdur.
+
+Pasifken WordPress bu eklentinin **hiçbir dosyasını yüklemez**. Sonuç olarak
+EDM sınıfları, yönetim paneli, fatura/kargo/gönderim/poll hook'ları, SOAP
+bağlantısı, sipariş EDM metası ve Action Scheduler işi **oluşmaz**. WooCommerce
+sipariş, ödeme, manuel fatura ve manuel kargo süreçleri aynen çalışır.
+
+`scripts/install.sh` bu eklentiyi:
+
+- dosya sisteminde **arar** ve yoksa hata verir,
+- **etkinleştirmez**,
+- daha önce bilinçli olarak etkinleştirilmişse **devre dışı bırakmaz**,
+- durumu tek satırda bildirir:
+
+```
+EDM_PLUGIN=inactive|delivery_state:as_designed|activation:manual_with_checklist
+EDM_PLUGIN=active|left_unchanged:yes|reason:deliberate_activation_preserved
+EDM_PLUGIN=not_activated|delivery_state:fresh_install|activation:manual_with_checklist
+```
+
+`kuka-island-core` her zaman aktif kalır ve EDM eklentisine **bağımlı
+değildir**.
+
+**Aktivasyon bu runbook'un kapsamında değildir.** Ayrı ve kademeli bir kontrol
+listesiyle yapılır: [EDM_AKTIVASYON_REHBERI.md](EDM_AKTIVASYON_REHBERI.md).
+O rehber pasif teslimden canlı otomatik gönderime kadar on aşama tanımlar ve
+her aşama kendi kanıtını üretir.
+
+Deploy sonrası doğrulama:
+
+```bash
+make verify   # EDM_PASSIVE_* satırlarının tamamı PASS olmalı
+```
+
 ## 1. Yayın öncesi kapı
 
 1. Temiz çalışma kopyasında `git pull --ff-only`, `composer install` ve `make verify` çalıştırılır. Yalnız `VERIFY=PASS` ile devam edilir.

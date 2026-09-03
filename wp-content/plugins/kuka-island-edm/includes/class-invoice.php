@@ -2,7 +2,7 @@
 /**
  * Invoice Module Loader and Composition Root.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -48,6 +48,7 @@ final class Kuka_Island_Core_Invoice {
 		require_once $dir . 'class-edm-request-header.php';
 		require_once $dir . 'class-invoice-status.php';
 		require_once $dir . 'class-edm-document-status.php';
+		require_once $dir . 'class-invoice-runtime-gate.php';
 		require_once $dir . 'class-invoice-fixture-guard.php';
 		require_once $dir . 'class-invoice-config.php';
 		require_once $dir . 'class-invoice-result.php';

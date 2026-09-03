@@ -2,7 +2,38 @@
 
 Bu doküman, Kuka Island WooCommerce mağazası için hazırlanan **EDM Bilişim e-Fatura (TICARIFATURA / TEMELFATURA)** ve **e-Arşiv Fatura (EARSIVFATURA)** entegrasyonunun Aşama 1 durumunu açıklar.
 
-**Aşama 1 sonucu: gönderim üretimde kapalıdır (fail-closed BLOCKED).** Sebep, mali belge numarasının EDM tarafından nasıl atandığının sözleşme düzeyinde doğrulanmamış olmasıdır. Ayrıntı: [§4 Mali Belge Numarası](#4-mali-belge-numarası--fail-closed).
+**Bu doküman güncel teknik sözleşmedir**, kronolojik bir günlük değil. Bakım
+kayıtları ayrı tutulur: [docs/EDM_BAKIM_HAFIZASI.md](EDM_BAKIM_HAFIZASI.md).
+Etkinleştirme akışı için [docs/EDM_AKTIVASYON_REHBERI.md](EDM_AKTIVASYON_REHBERI.md).
+
+### Modül nerede yaşıyor
+
+EDM/fatura kodu artık Kuka Island Core'un içinde değil, **ayrı ve varsayılan
+olarak pasif** bir eklentide:
+
+```
+wp-content/plugins/kuka-island-edm/
+  kuka-island-edm.php            plugin başlığı ve bootstrap
+  includes/class-plugin.php      composition root + bağımlılık kontrolü
+  includes/class-activator.php   aktivasyon/deaktivasyon
+  includes/class-invoice.php     modül yükleyicisi
+  includes/invoice/              EDM client, UBL, manager, queue, poller, ...
+```
+
+Bağımlılık **tek yönlüdür**: `kuka-island-edm → kuka-island-core`. Core bu
+eklentiye hiçbir şekilde bağlı değildir ve eklenti pasifken hiçbir dosyası
+yüklenmez.
+
+**Gönderim üretimde kapalıdır**, ve bunun üç ayrı sebebi var — herhangi biri tek
+başına yeterli:
+
+1. Eklenti **pasif** teslim ediliyor; pasifken hiçbir hook, panel, SOAP
+   bağlantısı, Action Scheduler işi veya sipariş metası oluşmaz.
+2. `KUKA_INVOICE_AUTO_SEND` **kapalı**.
+3. Canlı EDM kimlik bilgileri **yapılandırılmamış**.
+
+Mali belge numarası sözleşmesi ise artık **doğrulanmıştır** (§4); bu bir engel
+değildir.
 
 ---
 
@@ -124,7 +155,16 @@ WSDL'in kanıtladığı şey:
 - `GetInvoiceSerial` tescilli serileri ve `LASTSERIALUSED` değerini **bildirir**; sıradaki numarayı vermez veya rezerve etmez.
 - `INVOICE/HEADER/INVOICESERIAL_REQUESTED` alanı belgeyi tescilli bir seriye bağlar ve `INVOICE/@ID` opsiyoneldir — yani numarayı EDM'nin ataması sözleşmeyle uyumludur.
 
-WSDL'in kanıtlamadığı şey: EDM'nin atadığı numarayı gönderilen `CONTENT` içindeki UBL `cbc:ID` alanına geri yazıp yazmadığı. UBL-TR 2.1 TR1.2 `cbc:ID`'yi zorunlu tutar ve bu değer yerel olarak **uydurulmadan** üretilemez.
+WSDL'in kanıtlamadığı şey, o zaman şuydu: EDM'nin atadığı numarayı gönderilen
+`CONTENT` içindeki UBL `cbc:ID` alanına geri yazıp yazmadığı. UBL-TR 2.1 TR1.2
+`cbc:ID`'yi zorunlu tutar ve bu değer yerel olarak **uydurulmadan** üretilemez.
+
+**Bu soru artık kapandı.** EDM teknik desteği yazılı olarak bildirdi ve iki
+gerçek çağrıyla ölçüldü: gönderilen UBL'in `cbc:ID` alanına EDM'in portal yer
+tutucusu `ABC2009123456789` yazılır, SOAP `INVOICE/@ID` **hiç gönderilmez**, ve
+gerçek numara **yalnız yanıttan** okunur. İki ölçümde de EDM 16 karakterlik bir
+numara atadı (§17.1). Aşağıdaki fail-closed politika bu yüzden değişmedi:
+politikanın amacı numaranın kaynağını kanıtlamaktı, ve kaynak artık kanıtlı.
 
 Bu nedenle:
 
@@ -214,9 +254,25 @@ WSDL kanıtı:
 
 e-Arşiv alıcısının GİB posta kutusu yoktur; alanın atlanması şema geçerlidir. Uydurma bir posta kutusu etiketi yazmak değildi ve kaldırıldı. e-Fatura tarafında alias `CheckUser`'dan gelir ve eksikse `missing_recipient_alias` ile fail-closed davranılır.
 
-### Genel bireysel VKN politikası
+### Bireysel alıcı kimliği
 
-`KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN` **tanımsızsa varsayılan `false`**. `11111111111` yalnız sabit **literal `true`** olduğunda kullanılır; `'1'` gibi truthy değerler politikayı açmaz. Kapalıyken TCKN'siz bireysel siparişte `missing_individual_tckn` atılır.
+Bu bölüm bir zamanlar `KUKA_EDM_ALLOW_GENERIC_INDIVIDUAL_VKN` adlı bir kapıyı
+anlatıyordu. **O kapı kodda yok**; anlatım kaynakla çelişiyordu ve kaldırıldı.
+
+Ölçülen davranış (`Kuka_Island_Core_Invoice_Order_Mapper`):
+
+- Bireysel alıcıda TCKN **koşulsuz** `11111111111` olur. EDM'in yazılı cevabı bu
+  değeri test ortamı için onayladı ve nihai tüketici için ayrı bir TCKN
+  sorulmuyor: checkout'ta TCKN alanı **yok** ve eklenmemeli.
+- Karşılığında **isim zorunlu**. Ad veya soyad eksikse `missing_individual_name`
+  ile fail-closed davranılır. "Nihai Tüketici" gibi genel bir unvan mali belgeye
+  uydurma taraf adı yazmak olurdu; üretilmez.
+- Sipariş TCKN taşıyorsa 11 hane olmak zorundadır; değilse
+  `invalid_individual_tckn`.
+
+Kanıt: `INVOICE_INDIVIDUAL_EARCHIVE_RECEIVER_CONTRACT` gerçek sipariş → gerçek
+mapper → gerçek UBL ölçer; `INVOICE_INDIVIDUAL_RECEIVER_FAIL_CLOSED` eksik
+isim/e-posta hallerini kapatır.
 
 ---
 
@@ -753,8 +809,16 @@ Sandbox'a hapsedilmişlerdir:
   override verilse bile — `sandbox_values_refused_without_verified_test_endpoint` ile boş döner.
 - Eklenti tarafında hiçbir dosya `lib-edm-sandbox`, `kuka_sandbox_`, `KUKA_SANDBOX_` veya
   `KUKA_EDM_SANDBOX_` referansı içermez (`SANDBOX_DEFAULTS_NOT_IN_PRODUCTION` ölçer).
-- Üretim mapper'ındaki `11111111111`, değişmeden `allow_generic_individual_vkn` politika
-  kapısının arkasındadır ve politika **varsayılan olarak kapalıdır**; aynı test bunu da doğrular.
+- Üretim mapper'ındaki `11111111111` sabiti **tek kez** tanımlıdır ve modülde başka literal
+  kopyası yoktur (`generic_tckn_declared_once:yes|extra_literal_copies:none` ölçer).
+
+  Bu madde bir zamanlar bu değerin `allow_generic_individual_vkn` adlı bir politika kapısının
+  arkasında olduğunu ve kapının varsayılan kapalı olduğunu söylüyordu. **Öyle bir kapı
+  önceden vardı, kaldırıldı**; anlatım kodla çelişiyordu ve hiçbir test onu doğrulamıyordu.
+  Güncel davranış §5'te: bireysel e-Arşiv alıcısında `11111111111` **koşulsuz** kullanılır,
+  gerçek ad ve soyad **zorunludur**, eksikse `missing_individual_name` ile fail-closed
+  davranılır. Sandbox'a hapsedilen şey bu değer değil, sandbox'ın **kendi** profil ve alıcı
+  override'larıdır.
 
 Override verilirse doğrulanır: `PROFILEID` için `/^[A-Z][A-Z0-9_]{3,31}$/`, alıcı için
 `/^\d{10,11}$/` **ve** gönderici VKN'sine eşit olmama, salt sıfır olmama. Hatalı override

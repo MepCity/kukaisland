@@ -5,7 +5,7 @@
  * Provides a clean, read-only administration interface within the WooCommerce
  * order screen without altering native order fulfillment or payment panels.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -31,7 +31,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 		foreach ( array_unique( $screens ) as $screen ) {
 			add_meta_box(
 				'kuka_island_invoice_box',
-				__( 'e-Fatura / e-Arşiv Durumu', 'kuka-island-core' ),
+				__( 'e-Fatura / e-Arşiv Durumu', 'kuka-island-edm' ),
 				array( $this, 'render_meta_box' ),
 				$screen,
 				'side',
@@ -58,7 +58,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 		$status = Kuka_Island_Core_Invoice_Order_Store::get_status( $order );
 
 		if ( Kuka_Island_Core_Invoice_Status::STATUS_QUEUED === $status ) {
-			return __( 'Fatura kuyruğa alındı.', 'kuka-island-core' );
+			return __( 'Fatura kuyruğa alındı.', 'kuka-island-edm' );
 		}
 
 		if ( in_array(
@@ -72,7 +72,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 			),
 			true
 		) ) {
-			return __( 'Fatura EDM durum sorgusunda.', 'kuka-island-core' );
+			return __( 'Fatura EDM durum sorgusunda.', 'kuka-island-edm' );
 		}
 
 		if ( Kuka_Island_Core_Invoice_Status::is_terminal( $status ) ) {
@@ -104,8 +104,8 @@ final class Kuka_Island_Core_Invoice_Admin {
 
 				return sprintf(
 					/* translators: %s: carrier display name */
-					__( '%s mali taşıyıcı bilgileri yapılandırılmamış.', 'kuka-island-core' ),
-					'' === $label ? __( 'Kargo firması', 'kuka-island-core' ) : $label
+					__( '%s mali taşıyıcı bilgileri yapılandırılmamış.', 'kuka-island-edm' ),
+					'' === $label ? __( 'Kargo firması', 'kuka-island-edm' ) : $label
 				);
 			}
 
@@ -131,7 +131,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 	public function render_meta_box( $post_or_order ): void {
 		$order = $post_or_order instanceof WC_Order ? $post_or_order : wc_get_order( $post_or_order );
 		if ( ! $order instanceof WC_Order ) {
-			echo '<p>' . esc_html__( 'Sipariş bilgisi bulunamadı.', 'kuka-island-core' ) . '</p>';
+			echo '<p>' . esc_html__( 'Sipariş bilgisi bulunamadı.', 'kuka-island-edm' ) . '</p>';
 			return;
 		}
 
@@ -147,8 +147,8 @@ final class Kuka_Island_Core_Invoice_Admin {
 		<div class="kuka-invoice-panel" style="font-size: 13px; line-height: 1.5;">
 			<?php if ( ! $config->is_auto_send_enabled() ) : ?>
 				<div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 8px 10px; margin-bottom: 12px; color: #92400e; font-size: 12px;">
-					<strong><?php esc_html_e( 'Bilgi:', 'kuka-island-core' ); ?></strong>
-					<?php esc_html_e( 'EDM test erişimi ve muhasebe onayları bekleniyor. Otomatik gönderim kapalıdır.', 'kuka-island-core' ); ?>
+					<strong><?php esc_html_e( 'Bilgi:', 'kuka-island-edm' ); ?></strong>
+					<?php esc_html_e( 'EDM test erişimi ve muhasebe onayları bekleniyor. Otomatik gönderim kapalıdır.', 'kuka-island-edm' ); ?>
 				</div>
 			<?php endif; ?>
 
@@ -164,47 +164,47 @@ final class Kuka_Island_Core_Invoice_Admin {
 			<table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12px;">
 				<?php if ( ! empty( $data['invoice_number'] ) ) : ?>
 					<tr>
-						<td style="padding: 4px 0; color: #6b7280; width: 40%;"><?php esc_html_e( 'Fatura No:', 'kuka-island-core' ); ?></td>
+						<td style="padding: 4px 0; color: #6b7280; width: 40%;"><?php esc_html_e( 'Fatura No:', 'kuka-island-edm' ); ?></td>
 						<td style="padding: 4px 0; font-weight: 600; font-family: monospace;"><?php echo esc_html( $data['invoice_number'] ); ?></td>
 					</tr>
 				<?php endif; ?>
 
 				<?php if ( ! empty( $data['uuid'] ) ) : ?>
 					<tr>
-						<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'EDM UUID:', 'kuka-island-core' ); ?></td>
+						<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'EDM UUID:', 'kuka-island-edm' ); ?></td>
 						<td style="padding: 4px 0; font-family: monospace; font-size: 11px; word-break: break-all;"><?php echo esc_html( $data['uuid'] ); ?></td>
 					</tr>
 				<?php endif; ?>
 
 				<?php if ( ! empty( $data['sent_at'] ) ) : ?>
 					<tr>
-						<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'Gönderim:', 'kuka-island-core' ); ?></td>
+						<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'Gönderim:', 'kuka-island-edm' ); ?></td>
 						<td style="padding: 4px 0;"><?php echo esc_html( wp_date( 'd.m.Y H:i', $data['sent_at'] ) ); ?></td>
 					</tr>
 				<?php endif; ?>
 
 				<?php if ( ! empty( $data['last_queried_at'] ) ) : ?>
 					<tr>
-						<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'Son Sorgu:', 'kuka-island-core' ); ?></td>
+						<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'Son Sorgu:', 'kuka-island-edm' ); ?></td>
 						<td style="padding: 4px 0;"><?php echo esc_html( wp_date( 'd.m.Y H:i', $data['last_queried_at'] ) ); ?></td>
 					</tr>
 				<?php endif; ?>
 
 				<tr>
-					<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'Ortam:', 'kuka-island-core' ); ?></td>
+					<td style="padding: 4px 0; color: #6b7280;"><?php esc_html_e( 'Ortam:', 'kuka-island-edm' ); ?></td>
 					<td style="padding: 4px 0;"><?php echo esc_html( $config->is_live() ? 'Canlı (Production)' : 'Test (Sandbox)' ); ?></td>
 				</tr>
 			</table>
 
 			<?php if ( Kuka_Island_Core_Invoice_Status::is_blocked( $status ) ) : ?>
 				<div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; color: #991b1b; font-size: 11px;">
-					<?php esc_html_e( 'Fatura hiç gönderilmedi: zorunlu bir sözleşme doğrulanmadığı için işlem güvenli biçimde durduruldu.', 'kuka-island-core' ); ?>
+					<?php esc_html_e( 'Fatura hiç gönderilmedi: zorunlu bir sözleşme doğrulanmadığı için işlem güvenli biçimde durduruldu.', 'kuka-island-edm' ); ?>
 				</div>
 			<?php endif; ?>
 
 			<?php if ( ! empty( $data['last_error'] ) ) : ?>
 				<div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; color: #991b1b; font-size: 11px;">
-					<strong><?php esc_html_e( 'Hata Kodu:', 'kuka-island-core' ); ?></strong>
+					<strong><?php esc_html_e( 'Hata Kodu:', 'kuka-island-edm' ); ?></strong>
 					<code><?php echo esc_html( $data['last_error'] ); ?></code>
 				</div>
 			<?php endif; ?>
@@ -225,7 +225,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 						<input type="hidden" name="action" value="kuka_invoice_requery">
 						<input type="hidden" name="order_id" value="<?php echo esc_attr( (string) $order_id ); ?>">
 						<button type="submit" class="button button-secondary" style="font-size: 11px; padding: 0 8px; height: 26px; line-height: 24px;">
-							<?php esc_html_e( 'Durumu Sorgula', 'kuka-island-core' ); ?>
+							<?php esc_html_e( 'Durumu Sorgula', 'kuka-island-edm' ); ?>
 						</button>
 					</form>
 				<?php endif; ?>
@@ -249,8 +249,8 @@ final class Kuka_Island_Core_Invoice_Admin {
 						<?php wp_nonce_field( 'kuka_invoice_manual_send_' . $order_id, '_kuka_inv_nonce' ); ?>
 						<input type="hidden" name="action" value="kuka_invoice_manual_send">
 						<input type="hidden" name="order_id" value="<?php echo esc_attr( (string) $order_id ); ?>">
-						<button type="submit" class="button button-primary" style="font-size: 11px; padding: 0 8px; height: 26px; line-height: 24px;" onclick="return confirm('<?php esc_attr_e( 'Fatura EDM sistemine iletilecek. Onaylıyor musunuz?', 'kuka-island-core' ); ?>');">
-							<?php esc_html_e( 'Faturayı Gönder', 'kuka-island-core' ); ?>
+						<button type="submit" class="button button-primary" style="font-size: 11px; padding: 0 8px; height: 26px; line-height: 24px;" onclick="return confirm('<?php esc_attr_e( 'Fatura EDM sistemine iletilecek. Onaylıyor musunuz?', 'kuka-island-edm' ); ?>');">
+							<?php esc_html_e( 'Faturayı Gönder', 'kuka-island-edm' ); ?>
 						</button>
 					</form>
 				<?php endif; ?>
@@ -268,8 +268,8 @@ final class Kuka_Island_Core_Invoice_Admin {
 						<?php wp_nonce_field( 'kuka_invoice_recreate_' . $order_id, '_kuka_inv_nonce' ); ?>
 						<input type="hidden" name="action" value="kuka_invoice_recreate">
 						<input type="hidden" name="order_id" value="<?php echo esc_attr( (string) $order_id ); ?>">
-						<button type="submit" class="button" style="font-size: 11px; padding: 0 8px; height: 26px; line-height: 24px;" onclick="return confirm('<?php esc_attr_e( 'EDM tarafından reddedilen belge yerine YENİ bir fatura belgesi oluşturulacak. Eski belge kayıtları silinmez. Onaylıyor musunuz?', 'kuka-island-core' ); ?>');">
-							<?php esc_html_e( 'Yeni Belge Olarak Yeniden Oluştur', 'kuka-island-core' ); ?>
+						<button type="submit" class="button" style="font-size: 11px; padding: 0 8px; height: 26px; line-height: 24px;" onclick="return confirm('<?php esc_attr_e( 'EDM tarafından reddedilen belge yerine YENİ bir fatura belgesi oluşturulacak. Eski belge kayıtları silinmez. Onaylıyor musunuz?', 'kuka-island-edm' ); ?>');">
+							<?php esc_html_e( 'Yeni Belge Olarak Yeniden Oluştur', 'kuka-island-edm' ); ?>
 						</button>
 					</form>
 				<?php endif; ?>
@@ -280,7 +280,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 			if ( ! empty( $superseded_documents ) ) :
 				?>
 				<div style="margin-top: 10px; border-top: 1px solid #e5e7eb; padding-top: 8px; font-size: 11px; color: #4b5563;">
-					<strong><?php esc_html_e( 'Yerine Yeni Belge Oluşturulan Kayıtlar:', 'kuka-island-core' ); ?></strong>
+					<strong><?php esc_html_e( 'Yerine Yeni Belge Oluşturulan Kayıtlar:', 'kuka-island-edm' ); ?></strong>
 					<ul style="margin: 4px 0 0 14px;">
 						<?php foreach ( $superseded_documents as $superseded ) : ?>
 							<li>
@@ -304,7 +304,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 		check_admin_referer( 'kuka_invoice_requery_' . $order_id, '_kuka_inv_nonce' );
 
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-core' ) );
+			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-edm' ) );
 		}
 
 		$order = wc_get_order( $order_id );
@@ -326,7 +326,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 		check_admin_referer( 'kuka_invoice_manual_send_' . $order_id, '_kuka_inv_nonce' );
 
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-core' ) );
+			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-edm' ) );
 		}
 
 		$order = wc_get_order( $order_id );
@@ -368,7 +368,7 @@ final class Kuka_Island_Core_Invoice_Admin {
 		check_admin_referer( 'kuka_invoice_recreate_' . $order_id, '_kuka_inv_nonce' );
 
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-core' ) );
+			wp_die( esc_html__( 'Yetkiniz yetersiz.', 'kuka-island-edm' ) );
 		}
 
 		$order = wc_get_order( $order_id );

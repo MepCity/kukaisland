@@ -18,7 +18,7 @@
  * place a SendInvoice result is persisted, so the automatic queue and the manual
  * send button in the order screen behave identically.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -292,7 +292,7 @@ final class Kuka_Island_Core_Invoice_Status_Poller {
 	 * about the failure is written anywhere.
 	 */
 	public static function unbooked_message(): string {
-		return __( 'Fatura gönderilmiş olabilir; otomatik durum sorgusu planlanamadı, lütfen fatura durumunu manuel olarak sorgulayın.', 'kuka-island-core' );
+		return __( 'Fatura gönderilmiş olabilir; otomatik durum sorgusu planlanamadı, lütfen fatura durumunu manuel olarak sorgulayın.', 'kuka-island-edm' );
 	}
 
 	/**

@@ -21,7 +21,7 @@
  * credential: every value is either a fixed contract constant or an explicit
  * argument, so the builder cannot log or leak a secret.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

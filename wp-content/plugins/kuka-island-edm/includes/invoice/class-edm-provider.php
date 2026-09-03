@@ -2,7 +2,7 @@
 /**
  * EDM Invoice Provider implementation.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -27,7 +27,7 @@ final class Kuka_Island_Core_EDM_Provider implements Kuka_Island_Core_Invoice_Pr
 	}
 
 	public function get_name(): string {
-		return __( 'EDM Bilişim e-Fatura / e-Arşiv', 'kuka-island-core' );
+		return __( 'EDM Bilişim e-Fatura / e-Arşiv', 'kuka-island-edm' );
 	}
 
 	public function login(): string {

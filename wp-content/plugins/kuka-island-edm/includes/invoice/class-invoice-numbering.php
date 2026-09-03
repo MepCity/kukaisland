@@ -46,7 +46,7 @@
  * environment configuration; until it is configured, the send path is
  * fail-closed BLOCKED with `invoice_series_unconfigured`.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -110,7 +110,7 @@ final class Kuka_Island_Core_Invoice_Numbering {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				sprintf( 'No three-character serial prefix is configured for %s.', $document_type ),
 				self::ERROR_SERIES_UNCONFIGURED,
-				__( 'Fatura serisi yapılandırılmadığı için gönderim durduruldu. Seri, EDM portalından seçilip ortam yapılandırmasına girilmelidir.', 'kuka-island-core' )
+				__( 'Fatura serisi yapılandırılmadığı için gönderim durduruldu. Seri, EDM portalından seçilip ortam yapılandırmasına girilmelidir.', 'kuka-island-edm' )
 			);
 		}
 

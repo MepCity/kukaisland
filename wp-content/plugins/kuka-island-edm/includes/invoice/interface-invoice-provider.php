@@ -2,7 +2,7 @@
 /**
  * Invoice provider contract.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

@@ -19,7 +19,7 @@
  *
  * Nothing here returns, stores or logs the message itself.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

@@ -18,6 +18,8 @@ defined( 'WP_CLI' ) || exit( 1 );
 
 define( 'KUKA_INVOICE_KEYSET_LIBRARY_ONLY', true );
 require_once __DIR__ . '/verify-invoice-keyset.php';
+require_once __DIR__ . '/lib-edm-module-loader.php';
+$kuka_edm_module = kuka_edm_load_module();
 
 // Suppress WooCommerce emails during test execution to prevent mail subprocesses and notes.
 add_filter( 'woocommerce_email_enabled_new_order', '__return_false' );
@@ -805,7 +807,7 @@ foreach ( $receiver_gap_cases as $case => $spec ) {
 
 // No generic consumer title anywhere in the module, and no checkout field
 // asking a retail customer for a TCKN.
-$receiver_module_files = (array) ( glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/*.php' ) ?: array() );
+$receiver_module_files = (array) ( glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/*.php' ) ?: array() );
 $module_generic_titles = array();
 foreach ( $receiver_module_files as $receiver_module_file ) {
 	$receiver_module_source = (string) file_get_contents( $receiver_module_file );
@@ -819,8 +821,15 @@ foreach ( $receiver_module_files as $receiver_module_file ) {
 	}
 }
 
+/*
+ * Core keeps the checkout and billing-preference fields; the EDM module keeps
+ * everything fiscal. Both trees are scanned, because a retail-customer TCKN
+ * field appearing on either side would be the same defect.
+ */
 $checkout_files = array_merge(
 	(array) glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/*.php' ),
+	(array) glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/*.php' ),
+	(array) glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/*.php' ),
 	(array) glob( trailingslashit( WP_CONTENT_DIR ) . 'themes/kuka-island-child/*.php' ),
 	(array) glob( trailingslashit( WP_CONTENT_DIR ) . 'themes/kuka-island-child/inc/*.php' )
 );
@@ -1161,7 +1170,7 @@ $guard_method       = $guard_reflection->getMethod( 'is_test_fixture_order' );
 $manager_reflection = new ReflectionClass( 'Kuka_Island_Core_Invoice_Manager' );
 $manager_accessor   = $manager_reflection->getMethod( 'is_test_fixture_order' );
 
-$invoice_module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/';
+$invoice_module_dir   = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/';
 $invoice_module_files = glob( $invoice_module_dir . '*.php' ) ?: array();
 
 $toggle_hits = array();
@@ -2120,7 +2129,7 @@ $numbering_status = Kuka_Island_Core_Invoice_Order_Store::get_status( $numbering
 
 // No three-character literal is hard-coded anywhere in the module.
 $series_literals = array();
-foreach ( (array) ( glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/*.php' ) ?: array() ) as $series_file ) {
+foreach ( (array) ( glob( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/*.php' ) ?: array() ) as $series_file ) {
 	$series_source = (string) file_get_contents( $series_file );
 	if ( preg_match_all( '/(get_series_einvoice|get_series_earchive)\s*\(\s*\)\s*\?\?\s*[\'"]/', $series_source ) > 0 ) {
 		$series_literals[] = basename( $series_file ) . ':series_default';
@@ -2313,6 +2322,205 @@ $report(
 	)
 );
 kuka_test_delete_order( $happy_order->get_id(), $test_run_id );
+
+/* --- The deactivation gate stops an in-flight worker ---------------------- */
+
+/*
+ * Deactivating the plugin removes its hooks for the NEXT request. It cannot
+ * reach a worker that is already inside process_order(), and Action Scheduler
+ * workers are exactly that: long-running, already loaded, already past the
+ * point where a hook would have mattered. So the module carries a persistent
+ * run gate, and this proves the gate actually stops the send rather than merely
+ * existing.
+ *
+ * Measured through the production manager with a tracking transport, so the
+ * evidence is a SendInvoice count and the order's own meta -- not the presence
+ * of an if statement.
+ */
+$gate_option_before = get_option( Kuka_Island_Core_Invoice_Runtime_Gate::OPTION, null );
+
+$gate_setup = static function ( string $run_id ) use ( $billing_props ) {
+	return kuka_create_lock_order(
+		$run_id,
+		$billing_props,
+		array(
+			'_kuka_invoice_number'        => 'KUK2026000000043',
+			'_kuka_invoice_number_source' => Kuka_Island_Core_Invoice_Order_Store::NUMBER_SOURCE_EDM,
+		)
+	);
+};
+
+// (a) Gate closed, as deactivation leaves it.
+Kuka_Island_Core_Invoice_Runtime_Gate::disable();
+$gate_closed_reads_disabled = Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled();
+
+$blocked_transport = new Kuka_Island_Test_Tracking_Transport();
+$blocked_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $blocked_transport ) );
+$blocked_order     = $gate_setup( $test_run_id );
+
+$blocked_code  = '';
+$blocked_error = '';
+try {
+	$blocked_manager->process_order( $blocked_order );
+} catch ( Kuka_Island_Core_Invoice_Exception $e ) {
+	$blocked_code = $e->get_safe_error_code();
+} catch ( Throwable $t ) {
+	$blocked_error = get_class( $t );
+}
+
+$blocked_order->read_meta_data( true );
+$blocked_data = Kuka_Island_Core_Invoice_Order_Store::get_invoice_data( $blocked_order );
+
+/*
+ * Nothing may have been written. The gate sits above mark_sending() precisely
+ * so a refused transmission leaves no reserved UUID and no `sending` status --
+ * residue the duplicate-protection rules would then have to reason about.
+ */
+$blocked_uuid_absent   = '' === (string) ( $blocked_data['uuid'] ?? '' );
+$blocked_not_sending   = 'sending' !== (string) ( $blocked_data['status'] ?? '' );
+$blocked_no_send_call  = 0 === ( $blocked_transport->calls['SendInvoice'] ?? 0 );
+
+// (b) Gate open again: the same setup must reach EDM, or (a) proved nothing.
+Kuka_Island_Core_Invoice_Runtime_Gate::enable();
+$gate_open_reads_enabled = ! Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled();
+
+$control_transport = new Kuka_Island_Test_Tracking_Transport();
+$control_manager   = new Kuka_Island_Core_Invoice_Manager( $config, new Kuka_Island_Core_EDM_Provider( $config, $control_transport ) );
+$control_order     = $gate_setup( $test_run_id );
+
+$control_error = '';
+try {
+	$control_manager->process_order( $control_order );
+} catch ( Throwable $t ) {
+	$control_error = get_class( $t ) . ': ' . $t->getMessage();
+}
+$control_sent = 1 === ( $control_transport->calls['SendInvoice'] ?? 0 );
+
+/*
+ * The gate is read past the object cache, so a value cached earlier in the same
+ * request cannot let a send through. Measured by priming the cache with the
+ * open state, closing the gate behind it, and reading again.
+ */
+get_option( Kuka_Island_Core_Invoice_Runtime_Gate::OPTION );
+Kuka_Island_Core_Invoice_Runtime_Gate::disable();
+$sees_change_midrequest = Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled();
+
+// Restore whatever the option was before this block ran.
+if ( null === $gate_option_before ) {
+	Kuka_Island_Core_Invoice_Runtime_Gate::enable();
+} else {
+	update_option( Kuka_Island_Core_Invoice_Runtime_Gate::OPTION, $gate_option_before, false );
+}
+
+$report(
+	'EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND',
+	$gate_closed_reads_disabled
+	&& $blocked_no_send_call
+	&& Kuka_Island_Core_Invoice_Manager::ERROR_RUNTIME_DISABLED === $blocked_code
+	&& $blocked_uuid_absent
+	&& $blocked_not_sending
+	&& '' === $blocked_error
+	&& $gate_open_reads_enabled
+	&& $control_sent
+	&& '' === $control_error
+	&& $sees_change_midrequest,
+	sprintf(
+		'measured:production_manager_and_tracking_transport|gate_closed_SendInvoice:%d|error_code:%s|uuid_written:%s|status_after:%s|gate_open_SendInvoice:%d|sees_change_past_object_cache:%s|control_error:%s|unexpected:%s',
+		$blocked_transport->calls['SendInvoice'] ?? 0,
+		'' === $blocked_code ? 'none' : $blocked_code,
+		$blocked_uuid_absent ? 'no' : 'YES',
+		'' === (string) ( $blocked_data['status'] ?? '' ) ? 'unchanged' : (string) $blocked_data['status'],
+		$control_transport->calls['SendInvoice'] ?? 0,
+		$sees_change_midrequest ? 'yes' : 'NO',
+		'' === $control_error ? 'none' : $control_error,
+		'' === $blocked_error ? 'none' : $blocked_error
+	)
+);
+
+kuka_test_delete_order( $blocked_order->get_id(), $test_run_id );
+kuka_test_delete_order( $control_order->get_id(), $test_run_id );
+
+/* --- The dependency notice names the plugin that is actually missing ------ */
+
+/*
+ * This reported 'kuka-island-edm' when Kuka_Island_Core_Plugin was the class
+ * that had not loaded -- telling an administrator to activate the plugin they
+ * were already looking at, while the one they needed went unnamed. A wrong
+ * diagnostic is worse than none: it sends the reader somewhere else.
+ *
+ * The pairing is now a map, and this measures the map AND the sentence an
+ * administrator would actually read.
+ */
+$edm_root_file = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/class-plugin.php';
+if ( is_readable( $edm_root_file ) ) {
+	require_once $edm_root_file;
+}
+
+$dep_map        = class_exists( 'Kuka_Island_EDM_Plugin' ) ? Kuka_Island_EDM_Plugin::dependency_map() : array();
+$dep_own_slug   = class_exists( 'Kuka_Island_EDM_Plugin' ) ? Kuka_Island_EDM_Plugin::OWN_SLUG : '';
+$dep_notice     = class_exists( 'Kuka_Island_EDM_Plugin' )
+	? Kuka_Island_EDM_Plugin::dependency_notice_text( array( 'kuka-island-core' ) )
+	: '';
+
+// Every declared slug must be a plugin that exists on disk, and none of them
+// may be this plugin itself.
+$dep_unresolvable = array();
+$dep_self         = array();
+foreach ( $dep_map as $dep_class => $dep_slug ) {
+	if ( ! is_dir( trailingslashit( WP_PLUGIN_DIR ) . $dep_slug ) ) {
+		$dep_unresolvable[] = $dep_slug;
+	}
+	if ( $dep_slug === $dep_own_slug ) {
+		$dep_self[] = $dep_class . '=>' . $dep_slug;
+	}
+}
+
+$dep_ok = array(
+	'WooCommerce'             => 'woocommerce',
+	'Kuka_Island_Core_Plugin' => 'kuka-island-core',
+) === $dep_map
+	&& array() === $dep_unresolvable
+	&& array() === $dep_self
+	&& 'kuka-island-edm' === $dep_own_slug
+	// The rendered sentence names Core, and does not name this plugin.
+	&& str_contains( $dep_notice, 'kuka-island-core' )
+	&& ! str_contains( $dep_notice, 'kuka-island-edm' );
+
+$report(
+	'EDM_DEPENDENCY_NOTICE_NAMES_THE_MISSING_PLUGIN',
+	$dep_ok,
+	sprintf(
+		'measured:dependency_map_and_rendered_notice|pairs:%s|own_slug:%s|self_dependency:%s|slugs_without_plugin_dir:%s|notice_names_core:%s|notice_names_self:%s',
+		array() === $dep_map
+			? 'none'
+			: implode( ' ', array_map( static fn( $k, $v ) => $k . '=>' . $v, array_keys( $dep_map ), $dep_map ) ),
+		'' === $dep_own_slug ? 'ABSENT' : $dep_own_slug,
+		array() === $dep_self ? 'none' : implode( ',', $dep_self ),
+		array() === $dep_unresolvable ? 'none' : implode( ',', $dep_unresolvable ),
+		str_contains( $dep_notice, 'kuka-island-core' ) ? 'yes' : 'NO',
+		str_contains( $dep_notice, 'kuka-island-edm' ) ? 'YES' : 'no'
+	)
+);
+
+/* --- The module loads from the EDM plugin, not from Core ------------------ */
+
+$report(
+	'EDM_MODULE_LOADS_FROM_EDM_PLUGIN',
+	true === ( $kuka_edm_module['ok'] ?? false )
+	&& str_contains( (string) ( $kuka_edm_module['path'] ?? '' ), '/kuka-island-edm/' )
+	&& 24 === (int) ( $kuka_edm_module['classes'] ?? 0 )
+	// Core must not carry the module any more, in either direction.
+	&& ! is_readable( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/class-invoice.php' )
+	&& ! is_dir( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice' ),
+	sprintf(
+		'measured:runtime_require|loaded:%s|reason:%s|files:%d|core_still_has_class_invoice:%s|core_still_has_invoice_dir:%s',
+		true === ( $kuka_edm_module['ok'] ?? false ) ? 'yes' : 'NO',
+		(string) ( $kuka_edm_module['reason'] ?? 'unknown' ),
+		(int) ( $kuka_edm_module['classes'] ?? 0 ),
+		is_readable( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/class-invoice.php' ) ? 'YES' : 'no',
+		is_dir( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice' ) ? 'YES' : 'no'
+	)
+);
 
 /* ========================================================================== */
 /* TEST 9 (audit item 5) - Fiscal fallbacks removed from the production path   */
@@ -4012,8 +4220,8 @@ foreach ( $autostart_cases as $case => $spec ) {
 }
 
 // Both entry points reach the same method, which is why they cannot diverge.
-$queue_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-invoice-queue.php' );
-$admin_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-invoice-admin.php' );
+$queue_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/class-invoice-queue.php' );
+$admin_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/class-invoice-admin.php' );
 $shared_entry = str_contains( $queue_source, '->process_order(' ) && str_contains( $admin_source, '->process_order(' );
 
 $report(
@@ -6092,7 +6300,7 @@ $specified_keys = array_values(
 	)
 );
 
-$isd_class_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-internet-sales-details.php' );
+$isd_class_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/class-internet-sales-details.php' );
 // A *Specified companion key written as an array key anywhere in the producer.
 // The class docblock mentions the name to explain why it is absent, which is
 // why the scan looks for a key assignment rather than the bare word.
@@ -6167,7 +6375,7 @@ kuka_test_delete_order( $gateway_order->get_id(), $test_run_id );
 // serialises it into SendInvoiceRequest/INVOICE/HEADER/INTERNETSALESDETAILS.
 $isd_orchestrators = array();
 foreach ( array( 'class-invoice-manager.php', 'class-edm-client.php' ) as $isd_file ) {
-	$isd_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $isd_file;
+	$isd_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/' . $isd_file;
 	if ( is_readable( $isd_path ) && str_contains( (string) file_get_contents( $isd_path ), 'internet_sales_details' ) ) {
 		$isd_orchestrators[] = $isd_file;
 	}
@@ -6177,7 +6385,7 @@ foreach ( array( 'class-invoice-manager.php', 'class-edm-client.php' ) as $isd_f
 // no business producing or reshaping a fiscal block.
 $isd_stray = array();
 foreach ( array( 'class-invoice-order-mapper.php', 'class-ubl-tr-builder.php', 'class-invoice-queue.php', 'class-invoice-status-poller.php' ) as $isd_file ) {
-	$isd_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $isd_file;
+	$isd_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/' . $isd_file;
 	if ( is_readable( $isd_path ) && str_contains( (string) file_get_contents( $isd_path ), 'Internet_Sales_Details::build' ) ) {
 		$isd_stray[] = $isd_file;
 	}
@@ -6226,7 +6434,7 @@ $report(
 );
 
 // The carrier identity is never inferred from a provider label.
-$isd_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-internet-sales-details.php' );
+$isd_source = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/class-internet-sales-details.php' );
 $invented   = array();
 foreach ( array( 'DHL', 'dhl', 'Yurtici', 'Aras', 'MNG', 'PTT', 'UPS' ) as $carrier ) {
 	if ( preg_match( '/[\'"]' . preg_quote( $carrier, '/' ) . '[\'"]\s*=>/', $isd_source ) ) {
@@ -6505,7 +6713,7 @@ foreach ( $delivery_cases as $case => $spec ) {
 // Nothing on the send or poll path can even reach EmailInvoice.
 $email_call_sites = array();
 foreach ( array( 'class-invoice-manager.php', 'class-invoice-queue.php', 'class-invoice-status-poller.php', 'class-invoice-recovery.php', 'class-invoice-admin.php' ) as $email_scan_file ) {
-	$email_scan_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/' . $email_scan_file;
+	$email_scan_path = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/' . $email_scan_file;
 	if ( is_readable( $email_scan_path ) && preg_match( '/->\s*email_invoice\s*\(/', (string) file_get_contents( $email_scan_path ) ) ) {
 		$email_call_sites[] = $email_scan_file;
 	}
@@ -8126,7 +8334,7 @@ try {
 }
 
 // And the client source states the rule where the retry lives.
-$client_source     = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/invoice/class-edm-client.php' );
+$client_source     = (string) file_get_contents( trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-edm/includes/invoice/class-edm-client.php' );
 $retry_flag_wired  = str_contains( $client_source, 'bool $allow_session_retry = true' )
 	&& str_contains( $client_source, '$allow_session_retry && $this->is_session_expired_fault( $fault )' );
 

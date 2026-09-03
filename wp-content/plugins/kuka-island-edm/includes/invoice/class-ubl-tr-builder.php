@@ -16,7 +16,7 @@
  * LineExtensionAmount is already net, so no document-level AllowanceTotalAmount
  * is emitted and the discount is never deducted twice.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -159,7 +159,7 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				sprintf( 'Mandatory UBL field "%s" is missing; refusing to emit a placeholder.', $field ),
 				'ubl_missing_field',
-				__( 'Zorunlu fatura alanı eksik olduğu için UBL belgesi üretilmedi.', 'kuka-island-core' )
+				__( 'Zorunlu fatura alanı eksik olduğu için UBL belgesi üretilmedi.', 'kuka-island-edm' )
 			);
 		}
 
@@ -351,7 +351,7 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Tax subtotal is missing its verified percentage.',
 					'ubl_missing_field',
-					__( 'Vergi oranı bilgisi eksik olduğu için UBL belgesi üretilmedi.', 'kuka-island-core' )
+					__( 'Vergi oranı bilgisi eksik olduğu için UBL belgesi üretilmedi.', 'kuka-island-edm' )
 				);
 			}
 
@@ -402,7 +402,7 @@ final class Kuka_Island_Core_UBL_TR_Builder {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				sprintf( 'Invoice line %d has no verified tax percentage.', $index ),
 				'ubl_missing_field',
-				__( 'Fatura satırının KDV oranı doğrulanmadığı için UBL belgesi üretilmedi.', 'kuka-island-core' )
+				__( 'Fatura satırının KDV oranı doğrulanmadığı için UBL belgesi üretilmedi.', 'kuka-island-edm' )
 			);
 		}
 

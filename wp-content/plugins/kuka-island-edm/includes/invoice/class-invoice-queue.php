@@ -5,7 +5,7 @@
  * Uses Action Scheduler (or wp-cron fallback) to asynchronously process
  * invoice generation and delivery only for settled orders with limited exponential backoff.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -128,7 +128,7 @@ final class Kuka_Island_Core_Invoice_Queue {
 		Kuka_Island_Core_Invoice_Order_Store::resolve_issue_date( $order );
 
 		// Mark status as queued.
-		Kuka_Island_Core_Invoice_Order_Store::set_status( $order, Kuka_Island_Core_Invoice_Status::STATUS_QUEUED, __( 'Fatura kuyruğa eklendi.', 'kuka-island-core' ) );
+		Kuka_Island_Core_Invoice_Order_Store::set_status( $order, Kuka_Island_Core_Invoice_Status::STATUS_QUEUED, __( 'Fatura kuyruğa eklendi.', 'kuka-island-edm' ) );
 
 		$this->schedule_action( $order_id );
 	}
@@ -214,7 +214,7 @@ final class Kuka_Island_Core_Invoice_Queue {
 			$this->clear_queue_retries( $order );
 			$this->escalate_to_manual_review(
 				$order,
-				__( 'Beklenmeyen hata sebebiyle işlem durduruldu.', 'kuka-island-core' )
+				__( 'Beklenmeyen hata sebebiyle işlem durduruldu.', 'kuka-island-edm' )
 			);
 		}
 	}
@@ -268,7 +268,7 @@ final class Kuka_Island_Core_Invoice_Queue {
 			// here rather than continuing on a counter that never moves.
 			$this->escalate_to_manual_review(
 				$order,
-				__( 'Otomatik deneme limiti aşıldı. Fatura manuel inceleme gerektiriyor.', 'kuka-island-core' )
+				__( 'Otomatik deneme limiti aşıldı. Fatura manuel inceleme gerektiriyor.', 'kuka-island-edm' )
 			);
 			// A fresh budget for the next chain: the cap is per chain, and a new
 			// chain only ever starts from a new order-status event.
@@ -337,7 +337,7 @@ final class Kuka_Island_Core_Invoice_Queue {
 			$order->add_order_note(
 				sprintf(
 					/* translators: %s: Invoice number */
-					__( 'Sipariş için iade işlemi yapıldı (Fatura No: %s). Faturanın iptali veya e-Arşiv/GİB iade faturası işlemleri için muhasebe kontrolü gereklidir.', 'kuka-island-core' ),
+					__( 'Sipariş için iade işlemi yapıldı (Fatura No: %s). Faturanın iptali veya e-Arşiv/GİB iade faturası işlemleri için muhasebe kontrolü gereklidir.', 'kuka-island-edm' ),
 					$inv_num ?: 'Belirtilmemiş'
 				),
 				0,

@@ -5,7 +5,7 @@
  * Coordinates provider authentication, user routing (e-Fatura vs e-Arşiv),
  * UBL XML generation, order persistence, network reconciliation and duplicate prevention.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -57,6 +57,9 @@ class Kuka_Island_Core_Invoice_Manager {
 	public const ERROR_RECONCILE_NO_UUID = 'post_transmission_uuid_missing';
 
 	/** A physical order whose goods have not all left yet. */
+	/** The EDM plugin was deactivated while a worker was already running. */
+	public const ERROR_RUNTIME_DISABLED = 'edm_runtime_disabled';
+
 	public const ERROR_SHIPMENT_INCOMPLETE = 'shipment_not_complete';
 	/** The internet-sales block could not be produced from observed facts. */
 	public const ERROR_INTERNET_SALES_INCOMPLETE = 'internet_sales_details_incomplete';
@@ -179,7 +182,7 @@ class Kuka_Island_Core_Invoice_Manager {
 	 * What the shop is told when a transmitted document cannot be resolved.
 	 */
 	public static function manual_query_message(): string {
-		return __( 'Fatura EDM sistemine gönderilmiş olabilir ve durumu doğrulanamadı. Mükerrer gönderim engellendi; lütfen EDM üzerinden fatura durumunu manuel olarak sorgulayın.', 'kuka-island-core' );
+		return __( 'Fatura EDM sistemine gönderilmiş olabilir ve durumu doğrulanamadı. Mükerrer gönderim engellendi; lütfen EDM üzerinden fatura durumunu manuel olarak sorgulayın.', 'kuka-island-edm' );
 	}
 
 	/**
@@ -220,7 +223,7 @@ class Kuka_Island_Core_Invoice_Manager {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Order payment is not settled.',
 				'unsettled_payment',
-				__( 'Ödemesi kesinleşmemiş sipariş için fatura oluşturulamaz.', 'kuka-island-core' )
+				__( 'Ödemesi kesinleşmemiş sipariş için fatura oluşturulamaz.', 'kuka-island-edm' )
 			);
 		}
 
@@ -230,7 +233,7 @@ class Kuka_Island_Core_Invoice_Manager {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Invoice has already reached terminal success and cannot be re-sent.',
 				'already_terminal_invoice',
-				__( 'Bu siparişin faturası zaten başarıyla kesilmiştir ve mükerrer gönderilemez.', 'kuka-island-core' )
+				__( 'Bu siparişin faturası zaten başarıyla kesilmiştir ve mükerrer gönderilemez.', 'kuka-island-edm' )
 			);
 		}
 
@@ -251,7 +254,7 @@ class Kuka_Island_Core_Invoice_Manager {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Invoice status cannot be retried automatically.',
 				'invalid_invoice_status_transition',
-				__( 'Fatura durumu şu anda yeniden gönderime uygun değildir.', 'kuka-island-core' )
+				__( 'Fatura durumu şu anda yeniden gönderime uygun değildir.', 'kuka-island-edm' )
 			);
 		}
 
@@ -261,7 +264,7 @@ class Kuka_Island_Core_Invoice_Manager {
 			throw new Kuka_Island_Core_Invoice_Transient_Exception(
 				'Invoice processing lock is currently held by another worker.',
 				'lock_collision',
-				__( 'Bu siparişin fatura işlemi şu anda başka bir süreç tarafından yürütülüyor.', 'kuka-island-core' )
+				__( 'Bu siparişin fatura işlemi şu anda başka bir süreç tarafından yürütülüyor.', 'kuka-island-edm' )
 			);
 		}
 
@@ -278,7 +281,7 @@ class Kuka_Island_Core_Invoice_Manager {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Invoice has already reached terminal success and cannot be re-sent.',
 					'already_terminal_invoice',
-					__( 'Bu siparişin faturası zaten başarıyla kesilmiştir ve mükerrer gönderilemez.', 'kuka-island-core' )
+					__( 'Bu siparişin faturası zaten başarıyla kesilmiştir ve mükerrer gönderilemez.', 'kuka-island-edm' )
 				);
 			}
 
@@ -307,7 +310,7 @@ class Kuka_Island_Core_Invoice_Manager {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Invoice status cannot be retried automatically.',
 					'invalid_invoice_status_transition',
-					__( 'Fatura durumu şu anda yeniden gönderime uygun değildir.', 'kuka-island-core' )
+					__( 'Fatura durumu şu anda yeniden gönderime uygun değildir.', 'kuka-island-edm' )
 				);
 			}
 
@@ -394,6 +397,30 @@ class Kuka_Island_Core_Invoice_Manager {
 				);
 			}
 
+			/*
+			 * 8b. The deactivation gate, checked as late as possible and BEFORE
+			 * any state is written.
+			 *
+			 * This worker may have started before the plugin was deactivated.
+			 * Removing hooks cannot stop a request that is already inside this
+			 * method, so the gate is read here, from the database, past the
+			 * object cache. Placing it above mark_sending() matters: a document
+			 * that is never transmitted must not leave a reserved UUID and a
+			 * `sending` status behind, because that residue is what the
+			 * duplicate-protection rules then have to reason about.
+			 *
+			 * ERROR_RUNTIME_DISABLED is a permanent refusal, not a transient
+			 * one: retrying while the plugin is off would fail identically, and
+			 * the order keeps the status it had.
+			 */
+			if ( Kuka_Island_Core_Invoice_Runtime_Gate::is_disabled() ) {
+				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
+					'EDM plugin is deactivated; transmission refused before any state was written.',
+					self::ERROR_RUNTIME_DISABLED,
+					Kuka_Island_Core_Invoice_Runtime_Gate::message()
+				);
+			}
+
 			// Store in-progress status AND atomic UUID/number in a SINGLE atomic store operation BEFORE transmitting.
 			// The number argument is '' on purpose: nothing local may be recorded
 			// as this document's number, and the sentinel least of all.
@@ -401,7 +428,7 @@ class Kuka_Island_Core_Invoice_Manager {
 				$fresh_order,
 				$invoice_data['uuid'],
 				'',
-				__( 'Fatura XML oluşturuldu, EDM gönderimi başlatılıyor.', 'kuka-island-core' )
+				__( 'Fatura XML oluşturuldu, EDM gönderimi başlatılıyor.', 'kuka-island-edm' )
 			);
 
 			// 9. Transmit to provider.
@@ -638,10 +665,10 @@ class Kuka_Island_Core_Invoice_Manager {
 	 */
 	public static function shipment_incomplete_message( string $shipment_state ): string {
 		if ( Kuka_Island_Core_Internet_Sales_Details::SHIPMENT_PARTIAL === $shipment_state ) {
-			return __( 'Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz.', 'kuka-island-core' );
+			return __( 'Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz.', 'kuka-island-edm' );
 		}
 
-		return __( 'Fatura için siparişin tamamen kargoya verilmesi bekleniyor.', 'kuka-island-core' );
+		return __( 'Fatura için siparişin tamamen kargoya verilmesi bekleniyor.', 'kuka-island-edm' );
 	}
 
 	/**
@@ -661,27 +688,27 @@ class Kuka_Island_Core_Invoice_Manager {
 		);
 
 		if ( array() !== array_intersect( $errors, $carrier_codes ) ) {
-			return __( 'Kargo firmasının mali bilgileri (VKN ve unvan) yapılandırılmamış; fatura oluşturulmadı.', 'kuka-island-core' );
+			return __( 'Kargo firmasının mali bilgileri (VKN ve unvan) yapılandırılmamış; fatura oluşturulmadı.', 'kuka-island-edm' );
 		}
 
 		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_CARRIER_MULTIPLE_PROVIDERS, $errors, true ) ) {
-			return __( 'Sipariş birden fazla kargo firmasıyla gönderilmiş; tek faturada tek taşıyıcı bildirilebildiği için manuel inceleme gerekiyor.', 'kuka-island-core' );
+			return __( 'Sipariş birden fazla kargo firmasıyla gönderilmiş; tek faturada tek taşıyıcı bildirilebildiği için manuel inceleme gerekiyor.', 'kuka-island-edm' );
 		}
 
 		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_SHIPMENT_DATE_INVALID, $errors, true ) ) {
-			return __( 'Kargoya verilme tarihi okunamadı; fatura oluşturulmadı.', 'kuka-island-core' );
+			return __( 'Kargoya verilme tarihi okunamadı; fatura oluşturulmadı.', 'kuka-island-edm' );
 		}
 
 		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_DATE_MISSING, $errors, true ) ) {
-			return __( 'Ödeme tarihi bulunamadı; fatura oluşturulmadı.', 'kuka-island-core' );
+			return __( 'Ödeme tarihi bulunamadı; fatura oluşturulmadı.', 'kuka-island-edm' );
 		}
 
 		if ( in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_UNMAPPED, $errors, true )
 			|| in_array( Kuka_Island_Core_Internet_Sales_Details::ERROR_PAYMENT_METHOD_MISSING, $errors, true ) ) {
-			return __( 'Ödeme yöntemi için doğrulanmış mali karşılık tanımlı değil; fatura oluşturulmadı.', 'kuka-island-core' );
+			return __( 'Ödeme yöntemi için doğrulanmış mali karşılık tanımlı değil; fatura oluşturulmadı.', 'kuka-island-edm' );
 		}
 
-		return __( 'İnternet satış bilgileri eksik olduğu için fatura oluşturulmadı.', 'kuka-island-core' );
+		return __( 'İnternet satış bilgileri eksik olduğu için fatura oluşturulmadı.', 'kuka-island-edm' );
 	}
 
 	/**
@@ -784,7 +811,7 @@ class Kuka_Island_Core_Invoice_Manager {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'In-flight order has no invoice UUID.',
 				'missing_invoice_uuid',
-				__( 'İşlemdeki faturanın UUID kaydı bulunamadı.', 'kuka-island-core' )
+				__( 'İşlemdeki faturanın UUID kaydı bulunamadı.', 'kuka-island-edm' )
 			);
 		}
 
@@ -819,7 +846,7 @@ class Kuka_Island_Core_Invoice_Manager {
 				throw new Kuka_Island_Core_Invoice_Transient_Exception(
 					'GİB CheckUser query failed with ambiguous result.',
 					'check_user_ambiguous',
-					__( 'Alıcının e-Fatura mükellefiyeti GİB üzerinden sorgulanamadı. Hatalı belge türü kesilmemesi için işlem durduruldu.', 'kuka-island-core' )
+					__( 'Alıcının e-Fatura mükellefiyeti GİB üzerinden sorgulanamadı. Hatalı belge türü kesilmemesi için işlem durduruldu.', 'kuka-island-edm' )
 				);
 			}
 
@@ -829,7 +856,7 @@ class Kuka_Island_Core_Invoice_Manager {
 					throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 						'e-Invoice recipient alias is missing.',
 						'missing_recipient_alias',
-						__( 'e-Fatura mükellefinin GİB posta kutusu etiketi (alias) bulunamadı.', 'kuka-island-core' )
+						__( 'e-Fatura mükellefinin GİB posta kutusu etiketi (alias) bulunamadı.', 'kuka-island-edm' )
 					);
 				}
 

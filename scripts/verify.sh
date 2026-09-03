@@ -48,6 +48,11 @@ invoice_keyset_line() {
     | grep -E '^INVOICE_DB_KEYSET=' | tail -n 1 | tr -d '\r\n'
 }
 
+# The passive delivery contract, measured before any suite loads the module.
+# Its own process: loading the invoice classes would destroy what it measures.
+edm_passive=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-edm-passive-contract.php 2>&1)
+printf '%s\n' "$edm_passive"
+
 invoice_pre_keyset=$(invoice_keyset_line)
 printf 'INVOICE_DB_KEYSET_PRE=%s\n' "${invoice_pre_keyset#INVOICE_DB_KEYSET=}"
 
@@ -65,6 +70,17 @@ printf '%s\n' "$edm_sandbox_harness"
 # run from inside the container it starts.
 edm_reset_offline=$(./scripts/verify-reset-offline.sh 2>&1 || true)
 printf '%s\n' "$edm_reset_offline"
+
+# The real activation lifecycle, driven through WP-CLI. Host-side because it
+# activates and deactivates the plugin and then measures each state in a FRESH
+# WordPress process. Snapshots and restores the starting state, on failure too.
+edm_lifecycle=$(./scripts/verify-edm-activation-lifecycle.sh 2>&1 || true)
+printf '%s\n' "$edm_lifecycle"
+
+# The deploy package, measured by building a throwaway archive and reading its
+# listing back rather than by scanning the tar command.
+edm_deploy_package=$(./scripts/verify-deploy-package.sh 2>&1 || true)
+printf '%s\n' "$edm_deploy_package"
 
 # The credential mount must be reachable only by the single allow-listed
 # read-only script. Every other value must be refused BEFORE the credential gate,
@@ -323,6 +339,36 @@ expect_sandbox_match() {
   label=$1
   pattern=$2
   if printf '%s\n' "$edm_sandbox_harness" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_lifecycle_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$edm_lifecycle" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_deploy_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$edm_deploy_package" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_passive_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$edm_passive" | grep -Eq "$pattern"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected pattern $pattern)" >&2
@@ -626,6 +672,30 @@ expect_invoice_line "Invoice live readiness validation" "INVOICE_LIVE_READINESS_
 # consumer title would be a fabricated party on a fiscal document and a missing
 # address means a document the buyer never receives.
 expect_invoice_line "the individual e-Archive receiver carries a real name" "INVOICE_INDIVIDUAL_EARCHIVE_RECEIVER_CONTRACT=PASS|measured:production_mapper_and_ubl|tckn:11111111111|id_scheme:TCKN|first_name:Zeynep|family_name:Aydın|party_name:none|electronic_mail:zeynep.aydin@example.com|cbc_id:ABC2009123456789|error:none"
+# A: the passive delivery contract, measured in a real WordPress runtime.
+expect_passive_match "the EDM plugin ships present but inactive" "^EDM_PASSIVE_PLUGIN_STATE=PASS\\|measured:wordpress_runtime\\|plugin_file_present:yes\\|plugin_active:no\\|core_active:yes\\|woocommerce_active:yes\\|header_declares_dependencies:yes$"
+expect_passive_match "no EDM class is loaded while the plugin is inactive" "^EDM_PASSIVE_CLASSES_ABSENT=PASS\\|measured:declared_classes\\|checked:12\\|declared:none\\|soap_client_loadable:no$"
+expect_passive_match "no EDM hook is registered while the plugin is inactive" "^EDM_PASSIVE_HOOKS_ABSENT=PASS\\|measured:wp_filter_registry\\|shared_hooks_checked:8\\|edm_callbacks:none\\|own_action_hooks_registered:none\\|admin_post_handlers:none$"
+expect_passive_match "no EDM scheduled action exists while the plugin is inactive" "^EDM_PASSIVE_ACTIONS_ABSENT=PASS\\|measured:action_scheduler_store\\|by_hook:none\\|by_group:none\\|"
+expect_passive_match "a real order lifecycle writes no invoice meta and books no job" "^EDM_PASSIVE_ORDER_LIFECYCLE=PASS\\|measured:real_woocommerce_order\\|transitions:processing->completed\\|invoice_meta_keys:none\\|actions_booked:none\\|woocommerce_still_works:yes\\|error:none$"
+expect_passive_match "Core works without the EDM plugin and never loads it" "^EDM_PASSIVE_CORE_INTACT=PASS\\|.*\\|core_classes_missing:none\\|core_loads_invoice_module:no\\|dependency_direction:edm_to_core_only$"
+expect_passive_match "the passive run leaves no fixture behind" "^EDM_PASSIVE_FIXTURE_RESIDUE=PASS\\|measured:post_cleanup\\|order_removed:yes\\|ownership_checked:yes$"
+
+# A2: the real activation lifecycle, through WP-CLI, in fresh processes.
+expect_lifecycle_match "the lifecycle test starts from the delivered state" "^EDM_LIFECYCLE_START=PASS\\|measured:wp_cli\\|edm:inactive\\|core:active\\|woocommerce:active\\|gate_option:absent\\|"
+expect_lifecycle_match "real activation boots the plugin and registers every hook" "^EDM_LIFECYCLE_ACTIVATION=PASS\\|measured:fresh_wp_process\\|active:yes\\|composition_root:loaded\\|booted:yes\\|missing_deps:none\\|classes_absent:none\\|hooks_unregistered:none\\|runtime_gate_open:yes\\|auto_send_off:yes\\|credentials_configured:no\\|actions_delta:0\\|invoice_meta_delta:0\\|SendInvoice:0\\|LoadInvoice:0$"
+expect_lifecycle_match "real deactivation unloads everything and keeps the audit trail" "^EDM_LIFECYCLE_DEACTIVATION=PASS\\|measured:fresh_wp_process\\|active:no\\|classes_declared:none\\|hooks_registered:none\\|pending_edm_actions:0\\|core_works:yes\\|woocommerce_works:yes\\|.*\\|invoice_meta_preserved:yes\\|actions_row_delta:0\\|SendInvoice:0\\|LoadInvoice:0$"
+expect_lifecycle_match "the lifecycle test restores the state it found" "^EDM_LIFECYCLE_RESTORED=PASS\\|measured:wp_cli\\|edm:inactive\\|gate_option:no\\|active_plugins_identical:yes\\|.*\\|edm_network_operations:0\\|sandbox_state_touched:no$"
+expect_lifecycle_match "the lifecycle suite passes as a whole" "^EDM_LIFECYCLE=PASS\\|activation_and_deactivation_measured_through_wp_cli$"
+
+# A3: the deploy package carries the plugin and the documents AGENTS.md cites.
+expect_deploy_match "the deploy package contains the plugin and every EDM document" "^DEPLOY_PACKAGE_CONTENTS=PASS\\|measured:built_archive_listing\\|required_paths:13\\|missing:none\\|edm_entries:[0-9]+\\|checksum:yes\\|credential_files:0\\|built_in_temp_dir:yes$"
+
+# B: the isolated active module, loaded from the new plugin path.
+expect_invoice_match "the dependency notice names the plugin that is missing" "^EDM_DEPENDENCY_NOTICE_NAMES_THE_MISSING_PLUGIN=PASS\\|measured:dependency_map_and_rendered_notice\\|pairs:WooCommerce=>woocommerce Kuka_Island_Core_Plugin=>kuka-island-core\\|own_slug:kuka-island-edm\\|self_dependency:none\\|slugs_without_plugin_dir:none\\|notice_names_core:yes\\|notice_names_self:no$"
+expect_invoice_match "the invoice module loads from the EDM plugin, not from Core" "^EDM_MODULE_LOADS_FROM_EDM_PLUGIN=PASS\\|measured:runtime_require\\|loaded:yes\\|reason:loaded_from_edm_plugin\\|files:24\\|core_still_has_class_invoice:no\\|core_still_has_invoice_dir:no$"
+expect_invoice_match "deactivation stops a worker that is already transmitting" "^EDM_DEACTIVATION_GATE_STOPS_INFLIGHT_SEND=PASS\\|measured:production_manager_and_tracking_transport\\|gate_closed_SendInvoice:0\\|error_code:edm_runtime_disabled\\|uuid_written:no\\|status_after:none\\|gate_open_SendInvoice:1\\|sees_change_past_object_cache:yes\\|control_error:none\\|unexpected:none$"
+
 expect_invoice_line "the individual buyer's cac:Person sits after cac:Contact" "INVOICE_INDIVIDUAL_PERSON_USES_VALID_PARTY_ORDER=PASS|measured:production_builder_xml_dom|individual_order:PartyIdentification,PostalAddress,PartyTaxScheme,Contact,Person|person_nodes:1|person_after_contact:yes|person_children:FirstName,FamilyName|first_name:present|family_name:present|id_scheme:TCKN|old_defective_order_producible:no|corporate_order:PartyIdentification,PartyName,PostalAddress,PartyTaxScheme,Contact|corporate_person_nodes:0|corporate_party_name:Kuka Test Kurumsal A.Ş.|corporate_id_scheme:VKN|error:none"
 # Omitting EDM's own GIB report dates is impossible against the live WSDL: the
 # encoder refuses before any transport. BLOCKED is the honest verdict, and the

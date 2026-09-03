@@ -43,8 +43,15 @@ final class Kuka_Island_Core_Plugin {
 			'class-iyzico-idempotency.php',
 			'class-iyzico-refund-guard.php',
 			'class-admin-experience.php',
-			'class-invoice.php',
 		);
+
+		/*
+		 * The invoice / EDM module is NOT loaded here any more. It lives in the
+		 * separate kuka-island-edm plugin, which ships inactive, and Core must
+		 * work without it: no require, no instantiation, no class_exists probe.
+		 * The dependency runs one way only -- kuka-island-edm depends on Core,
+		 * never the reverse.
+		 */
 
 		foreach ( $files as $file ) {
 			require_once KUKA_ISLAND_CORE_PATH . 'includes/' . $file;
@@ -73,7 +80,6 @@ final class Kuka_Island_Core_Plugin {
 			new Kuka_Island_Core_Iyzico_Idempotency(),
 			new Kuka_Island_Core_Iyzico_Refund_Guard(),
 			new Kuka_Island_Core_Admin_Experience(),
-			new Kuka_Island_Core_Invoice(),
 		);
 
 		foreach ( $this->modules as $module ) {

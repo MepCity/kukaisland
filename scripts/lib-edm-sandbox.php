@@ -15,6 +15,16 @@
 
 defined( 'WP_CLI' ) || exit( 1 );
 
+/*
+ * The EDM module ships as a separate plugin that is delivered INACTIVE, so its
+ * classes are not loaded for us. Every sandbox tool here uses the production
+ * classes on purpose -- that is what makes these measurements worth anything --
+ * so the module is required from the EDM plugin's own path. Requiring loads
+ * classes; it registers no hook and constructs nothing.
+ */
+require_once __DIR__ . '/lib-edm-module-loader.php';
+kuka_edm_load_module();
+
 /** Fixed synthetic VAT rate for the experiment. Never read from the shop. */
 const KUKA_SANDBOX_VAT_PERCENT = 20;
 /** Synthetic net line amount in kuruş (100.00 TRY). */

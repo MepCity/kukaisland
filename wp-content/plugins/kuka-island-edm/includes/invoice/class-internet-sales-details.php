@@ -44,7 +44,7 @@
  *   ...\Fulfillments\FulfillmentUtils::resolve_provider_name()
  * Nothing is read from rendered markup or CSS classes.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;

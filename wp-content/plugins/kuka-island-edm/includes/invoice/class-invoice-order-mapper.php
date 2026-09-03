@@ -37,7 +37,7 @@
  * and are internally consistent; the payable cross-check above is what
  * guarantees the invoice equals the charged amount.
  *
- * @package Kuka_Island_Core
+ * @package Kuka_Island_EDM
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -166,7 +166,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Invoice series prefix is missing or invalid.',
 				'invalid_invoice_series',
-				__( 'Fatura seri ön eki (3 karakter) yapılandırılmamış.', 'kuka-island-core' )
+				__( 'Fatura seri ön eki (3 karakter) yapılandırılmamış.', 'kuka-island-edm' )
 			);
 		}
 
@@ -181,7 +181,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'No document number was supplied to the mapper; cbc:ID cannot be empty.',
 				Kuka_Island_Core_Invoice_Numbering::ERROR_NUMBER_NOT_ASSIGNED,
-				__( 'Fatura numarası yalnızca EDM tarafından atanabilir.', 'kuka-island-core' )
+				__( 'Fatura numarası yalnızca EDM tarafından atanabilir.', 'kuka-island-edm' )
 			);
 		}
 
@@ -190,7 +190,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Order currency is missing.',
 				'missing_order_currency',
-				__( 'Sipariş para birimi bilgisi eksik olduğu için fatura oluşturulamaz.', 'kuka-island-core' )
+				__( 'Sipariş para birimi bilgisi eksik olduğu için fatura oluşturulamaz.', 'kuka-island-edm' )
 			);
 		}
 
@@ -215,7 +215,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Order creation date is missing.',
 				'missing_order_date',
-				__( 'Sipariş tarihi bulunamadığı için fatura oluşturulamaz.', 'kuka-island-core' )
+				__( 'Sipariş tarihi bulunamadığı için fatura oluşturulamaz.', 'kuka-island-edm' )
 			);
 		}
 		/*
@@ -293,7 +293,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Order line total exceeds its subtotal, discount attribution is not representable.',
 					'invalid_line_discount',
-					__( 'Sipariş satırında indirim tutarı hatalı olduğu için fatura oluşturulamadı.', 'kuka-island-core' )
+					__( 'Sipariş satırında indirim tutarı hatalı olduğu için fatura oluşturulamadı.', 'kuka-island-edm' )
 				);
 			}
 
@@ -302,7 +302,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Unable to resolve verified tax rate for order item.',
 					'missing_tax_rate',
-					__( 'Siparişteki ürün için doğrulanmış KDV oranı tespit edilemedi.', 'kuka-island-core' )
+					__( 'Siparişteki ürün için doğrulanmış KDV oranı tespit edilemedi.', 'kuka-island-edm' )
 				);
 			}
 
@@ -345,7 +345,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Negative shipping total is not representable on an invoice.',
 				'invalid_shipping_total',
-				__( 'Kargo tutarı negatif olduğu için fatura oluşturulamadı.', 'kuka-island-core' )
+				__( 'Kargo tutarı negatif olduğu için fatura oluşturulamadı.', 'kuka-island-edm' )
 			);
 		}
 
@@ -355,7 +355,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Unable to resolve verified shipping tax rate.',
 					'missing_shipping_tax_rate',
-					__( 'Kargo için doğrulanmış KDV oranı tespit edilemedi.', 'kuka-island-core' )
+					__( 'Kargo için doğrulanmış KDV oranı tespit edilemedi.', 'kuka-island-edm' )
 				);
 			}
 
@@ -382,7 +382,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 					$allowance_cents
 				),
 				'discount_allocation_mismatch',
-				__( 'Kupon indirimi satırlara birebir dağıtılamadığı için fatura oluşturulmadı.', 'kuka-island-core' )
+				__( 'Kupon indirimi satırlara birebir dağıtılamadığı için fatura oluşturulmadı.', 'kuka-island-edm' )
 			);
 		}
 
@@ -442,7 +442,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 					$granularity
 				),
 				'payable_total_mismatch',
-				__( 'Hesaplanan fatura tutarı, siparişte tahsil edilen tutarla yuvarlama farkının ötesinde ayrıştığı için fatura oluşturulmadı.', 'kuka-island-core' )
+				__( 'Hesaplanan fatura tutarı, siparişte tahsil edilen tutarla yuvarlama farkının ötesinde ayrıştığı için fatura oluşturulmadı.', 'kuka-island-edm' )
 			);
 		}
 
@@ -614,21 +614,21 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Corporate tax number is missing or invalid.',
 					'invalid_corporate_tax_number',
-					__( 'Kurumsal fatura için geçerli bir VKN/TCKN girilmelidir.', 'kuka-island-core' )
+					__( 'Kurumsal fatura için geçerli bir VKN/TCKN girilmelidir.', 'kuka-island-edm' )
 				);
 			}
 			if ( '' === $tax_office ) {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'Corporate tax office is missing.',
 					'missing_tax_office',
-					__( 'Kurumsal fatura için vergi dairesi bilgisi zorunludur.', 'kuka-island-core' )
+					__( 'Kurumsal fatura için vergi dairesi bilgisi zorunludur.', 'kuka-island-edm' )
 				);
 			}
 			if ( Kuka_Island_Core_Invoice_Status::TYPE_EINVOICE === $document_type && '' === trim( $receiver_alias ) ) {
 				throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 					'e-Invoice recipient alias is missing.',
 					'missing_recipient_alias',
-					__( 'e-Fatura alıcısı için GİB posta kutusu etiketi (alias) bulunamadı.', 'kuka-island-core' )
+					__( 'e-Fatura alıcısı için GİB posta kutusu etiketi (alias) bulunamadı.', 'kuka-island-edm' )
 				);
 			}
 		} elseif ( '' === $tax_number ) {
@@ -650,7 +650,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Individual TCKN must be exactly 11 digits.',
 				'invalid_individual_tckn',
-				__( 'Bireysel T.C. Kimlik Numarası 11 haneli olmalıdır.', 'kuka-island-core' )
+				__( 'Bireysel T.C. Kimlik Numarası 11 haneli olmalıdır.', 'kuka-island-edm' )
 			);
 		}
 
@@ -660,7 +660,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Billing address or city is missing on order.',
 				'missing_billing_address',
-				__( 'Fatura oluşturmak için alıcı adres ve şehir bilgisi zorunludur.', 'kuka-island-core' )
+				__( 'Fatura oluşturmak için alıcı adres ve şehir bilgisi zorunludur.', 'kuka-island-edm' )
 			);
 		}
 
@@ -680,7 +680,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 					'' === $last_name ? 'absent' : 'present'
 				),
 				'missing_individual_name',
-				__( 'Bireysel fatura için alıcının adı ve soyadı zorunludur.', 'kuka-island-core' )
+				__( 'Bireysel fatura için alıcının adı ve soyadı zorunludur.', 'kuka-island-edm' )
 			);
 		}
 
@@ -697,7 +697,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Recipient e-mail address is missing or malformed.',
 				'missing_customer_email',
-				__( 'Faturanın alıcıya iletilebilmesi için geçerli bir e-posta adresi zorunludur.', 'kuka-island-core' )
+				__( 'Faturanın alıcıya iletilebilmesi için geçerli bir e-posta adresi zorunludur.', 'kuka-island-edm' )
 			);
 		}
 
@@ -741,7 +741,7 @@ final class Kuka_Island_Core_Invoice_Order_Mapper {
 			throw new Kuka_Island_Core_Invoice_Permanent_Exception(
 				'Supplier legal configuration (VKN, Name, Tax Office, Address, District, City) is incomplete.',
 				'missing_supplier_configuration',
-				__( 'Satıcı kurumsal ve mali bilgileri (VKN, Unvan, Vergi Dairesi, Adres, İlçe, Şehir) eksik yapılandırılmış.', 'kuka-island-core' )
+				__( 'Satıcı kurumsal ve mali bilgileri (VKN, Unvan, Vergi Dairesi, Adres, İlçe, Şehir) eksik yapılandırılmış.', 'kuka-island-edm' )
 			);
 		}
 
