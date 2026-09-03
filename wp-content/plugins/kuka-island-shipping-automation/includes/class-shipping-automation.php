@@ -47,11 +47,27 @@ final class Kuka_Island_Shipping_Automation {
 	 * request which never touches shipping never constructs a client, a token
 	 * store or a configuration object.
 	 *
+	 * Attached only while the adapter's own switch is on; see
+	 * DHL_Config::is_adapter_enabled().
+	 *
 	 * @param array<int, mixed> $carriers Adapters registered so far.
 	 * @return array<int, mixed>
 	 */
 	public static function register_default_carrier( $carriers ): array {
-		$carriers   = is_array( $carriers ) ? $carriers : array();
+		$carriers = is_array( $carriers ) ? $carriers : array();
+
+		/*
+		 * The adapter has its own switch, separate from the plugin's. A shop
+		 * that has moved to another courier turns this one off and the registry
+		 * never learns about it: nothing is constructed, no client is built, and
+		 * every operation refuses with carrier_not_registered before the
+		 * network. An order pinned to it then refuses rather than being quietly
+		 * re-routed to whatever else is registered.
+		 */
+		if ( ! Kuka_Island_Shipping_DHL_Config::is_adapter_enabled() ) {
+			return $carriers;
+		}
+
 		$carriers[] = new Kuka_Island_Shipping_DHL_Provider();
 
 		return $carriers;

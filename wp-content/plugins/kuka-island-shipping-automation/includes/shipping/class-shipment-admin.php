@@ -118,6 +118,8 @@ final class Kuka_Island_Shipping_Admin {
 		return match ( $state ) {
 			Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED       => __( 'Taşıyıcıda sipariş kaydı var, gönderi/barkod aşaması tamamlanmamış. Sipariş yeniden oluşturulmaz; yalnız barkod aşaması sürdürülür.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Belirsiz taşıyıcı yanıtı var. Yeniden gönderim yapılmaz; önce mutabakat sorgusu çalıştırın.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED => __( 'İptal isteği taşıyıcıya gönderildi, sonucu doğrulanıyor. Yeni iptal gönderilmez; yalnız salt-okunur mutabakat sorgusu çalıştırılabilir.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED => __( 'Güncelleme isteği taşıyıcıya gönderildi, sonucu alan bazında doğrulanıyor. Yeni güncelleme gönderilmez; yalnız salt-okunur mutabakat sorgusu çalıştırılabilir.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Mutabakat taşıyıcıda kayıt olmadığını gösterdi. Yeniden oluşturma açık bir işlemdir.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Kargo durumu manuel inceleme bekliyor.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Gönderi teslim edildi.', 'kuka-island-shipping-automation' ),
@@ -158,6 +160,10 @@ final class Kuka_Island_Shipping_Admin {
 		echo '<p><strong>' . esc_html__( 'Durum:', 'kuka-island-shipping-automation' ) . '</strong> ';
 		echo esc_html( self::state_label( $data['state'] ) );
 		echo '</p>';
+
+		// Which of the four switches is on, stated where the operator is
+		// already looking.
+		echo '<p class="description">' . esc_html( self::module_status_line( self::module_status( $this->manager->get_registry() ) ) ) . '</p>';
 
 		if ( '' !== $data['reference'] ) {
 			echo '<p><strong>' . esc_html__( 'Referans:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['reference'] ) . '</code></p>';
@@ -214,7 +220,23 @@ final class Kuka_Island_Shipping_Admin {
 			$this->action_button( $order_id, 'kuka_shipping_resume', self::resume_button_label( $carrier ) );
 		}
 
-		if ( Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $data['state'] ) {
+		/*
+		 * The read-only door. It is the ONLY door offered in the three states
+		 * that carry an unresolved carrier write: an unresolved create, an
+		 * unresolved cancellation and an unresolved amendment. In all three the
+		 * next legal step is a read, never a second write.
+		 */
+		$reconcilable = in_array(
+			$data['state'],
+			array(
+				Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED,
+				Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED,
+				Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED,
+			),
+			true
+		);
+
+		if ( $reconcilable ) {
 			$this->action_button( $order_id, 'kuka_shipping_reconcile', __( 'Mutabakat sorgusu çalıştır (salt-okunur)', 'kuka-island-shipping-automation' ) );
 		}
 
@@ -242,6 +264,50 @@ final class Kuka_Island_Shipping_Admin {
 		}
 
 		echo '<p class="description">' . esc_html__( 'Manuel kargo yolu her zaman açıktır: WooCommerce kargo çekmecesinden takip numarasını elle girebilirsiniz.', 'kuka-island-shipping-automation' ) . '</p>';
+	}
+
+	/**
+	 * The module's own operating state, as four facts.
+	 *
+	 * An operator looking at a panel that does nothing needs to know WHICH of
+	 * the four switches is the reason: the plugin, the runtime gate, the
+	 * automation switch or the adapter. Reading them off four different files is
+	 * how "shipping is broken" tickets get written.
+	 *
+	 * Public and static so the exact wording can be asserted without rendering
+	 * an admin screen.
+	 *
+	 * @param Kuka_Island_Shipping_Carrier_Registry $registry Registry.
+	 * @return array{module: string, runtime: string, automation: string, adapters: string}
+	 */
+	public static function module_status( Kuka_Island_Shipping_Carrier_Registry $registry ): array {
+		$booted = class_exists( 'Kuka_Island_Shipping_Plugin' )
+			&& Kuka_Island_Shipping_Plugin::instance()->is_booted();
+
+		$keys = $registry->keys();
+
+		return array(
+			'module'     => $booted ? 'active' : 'loaded',
+			'runtime'    => Kuka_Island_Shipping_Runtime_Gate::is_disabled() ? 'closed' : 'open',
+			'automation' => Kuka_Island_Shipping_Status_Poller::automation_enabled() ? 'on' : 'off',
+			'adapters'   => array() === $keys ? 'none' : implode( '+', $keys ),
+		);
+	}
+
+	/**
+	 * The same four facts as one sentence an operator can read.
+	 *
+	 * @param array{module: string, runtime: string, automation: string, adapters: string} $status Status.
+	 */
+	public static function module_status_line( array $status ): string {
+		return sprintf(
+			/* translators: 1: module state, 2: runtime gate state, 3: automation state, 4: registered adapter keys. */
+			__( 'Modül: %1$s · Çalışma kapısı: %2$s · Otomatik durum sorgusu: %3$s · Kayıtlı taşıyıcı: %4$s', 'kuka-island-shipping-automation' ),
+			'active' === $status['module'] ? __( 'etkin', 'kuka-island-shipping-automation' ) : __( 'yüklü (eklenti etkin değil)', 'kuka-island-shipping-automation' ),
+			'open' === $status['runtime'] ? __( 'açık', 'kuka-island-shipping-automation' ) : __( 'kapalı', 'kuka-island-shipping-automation' ),
+			'on' === $status['automation'] ? __( 'açık', 'kuka-island-shipping-automation' ) : __( 'kapalı', 'kuka-island-shipping-automation' ),
+			'none' === $status['adapters'] ? __( 'yok', 'kuka-island-shipping-automation' ) : $status['adapters']
+		);
 	}
 
 	/**
@@ -323,6 +389,8 @@ final class Kuka_Island_Shipping_Admin {
 			Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED      => __( 'Taşıyıcıda sipariş oluşturuldu', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED   => __( 'Gönderi oluşturuldu', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Belirsiz — mutabakat gerekiyor', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED => __( 'İptal sonucu doğrulanıyor', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED => __( 'Güncelleme sonucu doğrulanıyor', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Taşıyıcıda kayıt yok (doğrulandı)', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Teslim edildi', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Manuel inceleme gerekiyor', 'kuka-island-shipping-automation' ),

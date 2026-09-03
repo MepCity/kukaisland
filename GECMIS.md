@@ -560,6 +560,85 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 
 ---
 
+## 15.1 Kargo otomasyonu — dört turda öğrenilenler
+
+EDM gibi, kargo da **ayrı ve varsayılan pasif** bir eklenti. Dört bağımsız
+düzeltme turu geçti ve her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu
+sıralamanın kendisi ders: her tur bir önceki turun "tamam" dediği yeri ölçtü.
+
+**Tur 1 — akış boşlukları.** İptal doğrulaması yanlış nesneyi sorguluyordu
+(`cancelorder` sonrası `getshipment`), `order_created` durumundan çıkış yolu
+yoktu, başarısız durum sorguları deneme bütçesinden düşmüyordu (sonsuz zincir),
+ve "taşıyıcıdan bağımsız" iddiası kaynakta doğru değildi. Bkz. K-14…K-17.
+
+**Tur 2 — mutasyon sınırı.** Güncelleme ve iptal ortak güvenlik kapısından hiç
+geçmiyordu, kilit yalnız oluşturma yolundaydı, ve `make verify` izin listesi
+kararını gerçek runner'ı çalıştırıp `head -n 1` ile alıyordu — PHP'yi durduran
+şey bir kural değil SIGPIPE zamanlamasıydı. Bkz. K-18…K-20.
+
+**Tur 3 — sahiplik.** Sipariş, mağazanın **güncel** varsayılan taşıyıcısına
+göre yönlendiriliyordu. İkinci kurye eklenip varsayılan değiştirildiğinde eski
+DHL siparişlerinin iptali yeni kuryeye gidiyor, o kuryenin "kayıt yok" cevabı
+**iptalin kanıtı** sayılıyordu. Bkz. K-21…K-23.
+
+**Tur 4 — yazma kanıtı.** Taşıyıcıya *ulaşmış* bir iptal, doğrulama başarısız
+olduğunda tekrar gönderilebiliyordu; belirsiz bir güncelleme nesnenin
+varlığıyla başarılı sayılıyordu; provider geçerli bir istek olmadan
+sabitleniyordu; test önbelleği sahipliği tahminle belirliyordu; ve deaktivasyon
+bekleyen işleri gerçekte iptal etmiyordu. Bkz. K-24…K-28.
+
+### Dört tekrarlayan ders
+
+1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"
+   demesi, iptalin uygulandığını söylemez. Bir yazma taşıyıcıya ulaştıysa
+   ikincisi gönderilemez; çıkış yalnız okumayladır. Tek istisna `permanent`
+   ret: reddedilmiş bir istek hiçbir şeyi değiştirmemiştir.
+2. **Nesnenin varlığı, işlemin uygulandığını kanıtlamaz.** Bir CREATE için
+   kaydı bulmak kanıttır; bir CANCEL için tam tersidir; bir UPDATE için ise
+   hiçbir şey söylemez — nesne güncellemeden önce de oradaydı. Bu yüzden üç
+   ayrı mutabakat vardır, biri değil.
+3. **Sahiplik siparişin, tercih mağazanın.** Varsayılan ayar yalnız hiç
+   dokunulmamış bir siparişe karar verebilir. Kanıt var ama sahip yazılı
+   değilse doğru davranış fail-closed'dur, tahmin değil.
+4. **Test, mağazanın verisine dokunmamalı; sahiplik bildirilir, çıkarılmaz.**
+   "Anlık görüntümde yoktu, demek ki benim" bir sahiplik kanıtı değildir.
+   Doğru çözüm koşuya ait bir anahtar alanı ve birebir ad bildirimidir.
+
+### Modül şu anda ne durumda
+
+- Eklenti **pasif**. Etkinleştirme `docs/DHL_AKTIVASYON_REHBERI.md`
+  Aşama 4'ün konusudur ve ayrı bir karardır.
+- Otomatik durum sorgusu **kapalı** (`KUKA_SHIPPING_AUTOMATION` tanımsız).
+- Adaptör açık; kendi anahtarı var (`KUKA_DHL_ADAPTER`).
+- Aktiflik tek başına kargo oluşturmaz: gönderi yalnız operatörün açık
+  basışıyla oluşur, hiçbir sipariş durumu kancası bu yola bağlı değildir.
+- Dört anahtar (eklenti / çalışma kapısı / otomatik sorgu / adaptör) sipariş
+  ekranında birlikte yazılıdır.
+
+### Sandbox: nerede kaldı
+
+Kimlik dosyasında **2/4** anahtar var; kargo hesabı çifti
+(`KUKA_DHL_CUSTOMER_NUMBER`, `KUKA_DHL_PASSWORD`) eksik. Salt-okunur bağlantı
+testi çalıştırıldı ve kimlik kapısında durdu: **dış çağrı 0**. Yani bu projede
+kargo tarafında henüz **hiçbir gerçek taşıyıcı çağrısı yapılmadı** — bütün
+kanıt mock transport ve offline ölçüm. `Ö-01`…`Ö-05` açık.
+
+Tek sandbox gönderisi için çalıştırılacak tam komut, beklenen dış etkileri ve
+geri alma zinciri `docs/DHL_BAKIM_HAFIZASI.md` → "Sandbox hazırlığı" Aşama 5'te
+yazılı ve **açık kullanıcı onayı bekliyor**.
+
+### Bakım sırasında izlenecek sıra
+
+`docs/DHL_BAKIM_HAFIZASI.md` → "Bakım sırası". Kısaca: hangi anahtar kapalı →
+sipariş hangi taşıyıcıya ait → bekleyen bir yazma kanıtı var mı → belirsizlik
+mi kesin ret mi → önce davranış ölçümleri, sonra `make verify`, gerçek sandbox
+en son ve yalnız operatör kontrolünde.
+
+Bu bölümde hiçbir kimlik bilgisi, token, parola veya müşteri numarası yoktur ve
+yazılmayacaktır.
+
+---
+
 ## 16. Bu belgeyi okuyan yapay zekâya
 
 1. **Ölç, tahmin etme.** Bu projede her "tamamlandı" iddiası ekran görüntüsü veya sayı ile desteklenir. Desteklenmiyorsa "doğrulanmadı" yaz.

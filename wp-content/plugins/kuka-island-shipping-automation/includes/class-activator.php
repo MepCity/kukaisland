@@ -67,6 +67,8 @@ final class Kuka_Island_Shipping_Activator {
 	 * another group is left alone. Completed and failed actions are not touched,
 	 * because they are the record of what happened.
 	 *
+	 * Only PENDING actions are enumerated, and each is cancelled by its own id.
+	 *
 	 * @return array<string, int> Cancelled marker per hook: 1 when nothing is
 	 *                            pending afterwards, 0 when something remains.
 	 */
@@ -76,15 +78,56 @@ final class Kuka_Island_Shipping_Activator {
 		foreach ( self::OWNED_HOOKS as $hook ) {
 			$cancelled[ $hook ] = 0;
 
-			if ( ! function_exists( 'as_unschedule_all_actions' ) ) {
+			if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler_Store' ) || ! class_exists( 'ActionScheduler' ) ) {
 				continue;
 			}
 
-			as_unschedule_all_actions( $hook, array(), self::OWNED_GROUP );
+			/*
+			 * Cancelled one action id at a time, enumerated by hook AND group.
+			 *
+			 * as_unschedule_all_actions( $hook, array(), $group ) does NOT do
+			 * this. An empty args array is not "any args" to the data store; it
+			 * is the args hash of an action called with no arguments at all. The
+			 * poller books its queries with array( 'order_id' => N ), so every
+			 * one of them survived a deactivation -- the unschedule matched
+			 * nothing and reported success, because nothing with empty args was
+			 * pending. The whole point of closing the module down is that its
+			 * booked work stops.
+			 */
+			$pending = (array) as_get_scheduled_actions(
+				array(
+					'hook'     => $hook,
+					'group'    => self::OWNED_GROUP,
+					'status'   => ActionScheduler_Store::STATUS_PENDING,
+					'per_page' => 500,
+					'orderby'  => 'none',
+				),
+				'ids'
+			);
 
-			if ( function_exists( 'as_has_scheduled_action' ) ) {
-				$cancelled[ $hook ] = as_has_scheduled_action( $hook, null, self::OWNED_GROUP ) ? 0 : 1;
+			$store = ActionScheduler::store();
+
+			foreach ( $pending as $action_id ) {
+				try {
+					$store->cancel_action( (int) $action_id );
+				} catch ( Throwable $e ) {
+					// Already gone, or gone while we looked. Either is fine:
+					// the count below is what decides the outcome.
+				}
 			}
+
+			$left = (array) as_get_scheduled_actions(
+				array(
+					'hook'     => $hook,
+					'group'    => self::OWNED_GROUP,
+					'status'   => ActionScheduler_Store::STATUS_PENDING,
+					'per_page' => 1,
+					'orderby'  => 'none',
+				),
+				'ids'
+			);
+
+			$cancelled[ $hook ] = array() === $left ? 1 : 0;
 		}
 
 		return $cancelled;

@@ -43,10 +43,28 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Shipping_DHL_Address_Resolver {
 
 	/** Bump when the cached array shape changes. */
-	private const CACHE_VERSION = 'v1';
+	public const CACHE_VERSION = 'v1';
 
-	private const CITIES_KEY_PREFIX    = 'kuka_dhl_cbs_cities_';
-	private const DISTRICTS_KEY_PREFIX = 'kuka_dhl_cbs_districts_';
+	public const CITIES_KEY_PREFIX    = 'kuka_dhl_cbs_cities_';
+	public const DISTRICTS_KEY_PREFIX = 'kuka_dhl_cbs_districts_';
+
+	/**
+	 * The suffix every cache key carries. Defaults to the shape version.
+	 *
+	 * Settable so a verification run can take a key space of its OWN. A suite
+	 * has to empty this cache before it resolves an address -- a warm cache
+	 * means the mock's /getcities is never called and the request counts stop
+	 * meaning anything -- and it used to do that by deleting and rewriting the
+	 * shop's rows. Then the cleanup had to put them back, and "put them back"
+	 * is a promise a crashed process cannot keep.
+	 *
+	 * With its own namespace the run never reads or writes the shop's rows at
+	 * all, so there is nothing to restore and nothing to get wrong. The only
+	 * rows it can leave behind are ones nothing else could have created.
+	 *
+	 * @var string
+	 */
+	private string $cache_namespace = self::CACHE_VERSION;
 
 	/** One day. Long enough to keep the network out of the order path, short
 	 *  enough that a genuine change to the carrier's coverage arrives by itself. */
@@ -245,7 +263,7 @@ final class Kuka_Island_Shipping_DHL_Address_Resolver {
 	 * @return array{ok: bool, places: array<int, array{code: string, name: string}>, result: Kuka_Island_Shipping_Result}
 	 */
 	public function cities(): array {
-		$key    = self::CITIES_KEY_PREFIX . self::CACHE_VERSION;
+		$key    = $this->cities_cache_key();
 		$cached = get_transient( $key );
 
 		if ( is_array( $cached ) && array() !== $cached ) {
@@ -286,7 +304,7 @@ final class Kuka_Island_Shipping_DHL_Address_Resolver {
 	 * @return array{ok: bool, places: array<int, array{code: string, name: string}>, result: Kuka_Island_Shipping_Result}
 	 */
 	public function districts( string $city_code ): array {
-		$key    = self::DISTRICTS_KEY_PREFIX . self::CACHE_VERSION . '_' . $city_code;
+		$key    = $this->districts_cache_key( $city_code );
 		$cached = get_transient( $key );
 
 		if ( is_array( $cached ) && array() !== $cached ) {
@@ -329,15 +347,48 @@ final class Kuka_Island_Shipping_DHL_Address_Resolver {
 	 * @param array<int, string> $city_codes City codes whose districts to drop.
 	 * @return int Number of cache entries removed.
 	 */
+	/**
+	 * Move this resolver onto its own cache key space.
+	 *
+	 * Only a verification run has a reason to call this. The namespace is
+	 * reduced to the characters a transient name may safely carry, and an empty
+	 * value puts the resolver back on the shop's own keys.
+	 *
+	 * @param string $namespace Key suffix.
+	 */
+	public function set_cache_namespace( string $namespace ): void {
+		$clean = preg_replace( '/[^A-Za-z0-9_-]/', '', $namespace );
+
+		$this->cache_namespace = '' !== (string) $clean ? (string) $clean : self::CACHE_VERSION;
+	}
+
+	public function cache_namespace(): string {
+		return $this->cache_namespace;
+	}
+
+	/** The transient name the city list is cached under. */
+	public function cities_cache_key(): string {
+		return self::CITIES_KEY_PREFIX . $this->cache_namespace;
+	}
+
+	/**
+	 * The transient name one city's district list is cached under.
+	 *
+	 * @param string $city_code Carrier city code.
+	 */
+	public function districts_cache_key( string $city_code ): string {
+		return self::DISTRICTS_KEY_PREFIX . $this->cache_namespace . '_' . $city_code;
+	}
+
 	public function purge_cache( array $city_codes = array() ): int {
 		$removed = 0;
 
-		if ( delete_transient( self::CITIES_KEY_PREFIX . self::CACHE_VERSION ) ) {
+		if ( delete_transient( $this->cities_cache_key() ) ) {
 			++$removed;
 		}
 
 		foreach ( $city_codes as $city_code ) {
-			if ( delete_transient( self::DISTRICTS_KEY_PREFIX . self::CACHE_VERSION . '_' . $city_code ) ) {
+			if ( delete_transient( $this->districts_cache_key( $city_code ) ) ) {
 				++$removed;
 			}
 		}

@@ -163,6 +163,28 @@ interface Kuka_Island_Shipping_Carrier_Interface {
 	public function read_shipment( string $reference ): Kuka_Island_Shipping_Result;
 
 	/**
+	 * Read back the AMENDABLE FIELDS of the registered order or shipment.
+	 *
+	 * The only thing that can prove an amendment took effect. That the object
+	 * still exists proves nothing: it existed before the amendment too.
+	 *
+	 * On success the data MUST carry the semantic field names of the shipment
+	 * request -- 'recipient_full_name', 'recipient_address', 'recipient_city_code',
+	 * 'recipient_district_code', 'recipient_mobile_phone', 'content',
+	 * 'description', 'desi', 'kg' -- with the values the carrier currently holds,
+	 * and it must carry EVERY field the adapter is able to answer for.
+	 *
+	 * An adapter whose query API does not return those fields, or returns only
+	 * some of them, MUST answer permanent 'readback_unsupported'. A partial or
+	 * guessed answer here would be read as proof, and proof is the one thing
+	 * this method exists to supply. Answering "unsupported" is the safe answer:
+	 * the order then waits for a person instead of being amended twice.
+	 *
+	 * @param string $reference Carrier reference.
+	 */
+	public function read_amendable_fields( string $reference ): Kuka_Island_Shipping_Result;
+
+	/**
 	 * Read the shipment's current status.
 	 *
 	 * On success the data MUST carry 'status_code' exactly as the carrier sent

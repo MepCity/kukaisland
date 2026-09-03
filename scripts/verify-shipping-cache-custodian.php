@@ -1,28 +1,37 @@
 <?php
 /**
- * Measure the cache custodian's SHUTDOWN path, in its own process.
+ * Measure the cache custodian in its own processes: normal, exit and fatal.
  *
- * The normal path is measured inside verify-shipping-automation.php. This
- * script exists for the path that cannot be measured there: a run that never
- * reaches its cleanup because it exited or crashed. That has to happen in a
- * separate process, because the measurement is "the process is gone and the
- * shop's rows are intact".
+ * Three properties, and none of them can be measured inside
+ * verify-shipping-automation.php: that file's own cleanup is the thing under
+ * test, and a run that dies takes the measurement with it.
  *
- * Usage: wp eval-file <this> <phase> [death] [expected-fingerprint]
+ *   THE SHOP'S ROWS ARE NEVER TOUCHED. The run works in a key namespace of its
+ *   own, so the production rows are not read, not written and not deleted. They
+ *   are read here only to prove they are byte-identical afterwards.
+ *
+ *   AN UNDECLARED ROW SURVIVES. A row that appears DURING the run and was never
+ *   declared by it belongs to somebody else -- a concurrent real request, for
+ *   instance. The previous custodian deleted exactly this row, having decided
+ *   ownership by subtraction: "not in my snapshot, therefore mine".
+ *
+ *   THE RUN'S OWN ROWS GO, however the process ends. The release is registered
+ *   as a shutdown function at construction and the normal path calls the same
+ *   idempotent method.
+ *
+ * Usage: wp eval-file <this> <phase> [namespace] [expected-foreign-fingerprint]
  *
  * Positional arguments, because wp eval-file rejects flags it does not know.
  *
- * Phases, driven by verify-shipping-cache-custodian.sh:
+ *   seed     Plant a shop-owned row and print the foreign fingerprint.
+ *   normal   Run, dirty the run's own namespace, release cleanly, report.
+ *   exit     Same, but leave through WP_CLI::error() without releasing.
+ *   fatal    Same, but leave through a call to a function that does not exist.
+ *   check    Compare everything against the seed's fingerprint.
+ *   cleanup  Remove this script's own sentinels, by exact name.
  *
- *   seed    Write a sentinel cache row -- value and timeout -- and print its
- *           fingerprint. This stands in for the shop's own cached city list.
- *   crash   Snapshot with the custodian, register the shutdown guard, overwrite
- *           the cache the way a real scenario does, then die. death 'exit' uses
- *           WP_CLI::error(); death 'fatal' calls a function that does not exist.
- *   check   Compare the cache against the fingerprint the seed printed.
- *   cleanup Remove the sentinel this script planted.
- *
- * No carrier is contacted and no credential is read at any point.
+ * There is no wildcard delete in this file. No carrier is contacted and no
+ * credential is read.
  *
  * @package Kuka_Island_Shipping_Automation
  */
@@ -31,32 +40,57 @@ defined( 'WP_CLI' ) || exit( 1 );
 
 require_once __DIR__ . '/lib-shipping-cache-custodian.php';
 
-const KUKA_CUSTODIAN_SENTINEL_KEY  = 'kuka_dhl_cbs_cities_v1';
-const KUKA_CUSTODIAN_SENTINEL_CITY = 'KUKA-CUSTODIAN-SENTINEL-CITY';
+/** The row that stands in for the shop's own cached city list. */
+const KUKA_CUSTODIAN_SHOP_TRANSIENT = 'kuka_dhl_cbs_cities_v1';
+const KUKA_CUSTODIAN_SHOP_CITY      = 'KUKA-CUSTODIAN-SHOP-CITY';
+
+/** The row another process creates while the run is going. */
+const KUKA_CUSTODIAN_FOREIGN_TRANSIENT = 'kuka_dhl_cbs_districts_v1_81';
+const KUKA_CUSTODIAN_FOREIGN_DISTRICT  = 'KUKA-CUSTODIAN-CONCURRENT-DISTRICT';
 
 $kuka_custodian_args  = array_values( (array) ( $args ?? array() ) );
 $kuka_custodian_phase = (string) ( $kuka_custodian_args[0] ?? 'check' );
-$kuka_custodian_death = (string) ( $kuka_custodian_args[1] ?? 'exit' );
+$kuka_custodian_ns    = (string) ( $kuka_custodian_args[1] ?? '' );
 $kuka_custodian_want  = (string) ( $kuka_custodian_args[2] ?? '' );
 
-/** The sentinel value a shop's own cached city list stands in for. */
-function kuka_custodian_sentinel_value(): array {
+/** The value the shop's row holds. */
+function kuka_custodian_shop_value(): array {
 	return array(
 		array(
 			'code' => '99',
-			'name' => KUKA_CUSTODIAN_SENTINEL_CITY,
+			'name' => KUKA_CUSTODIAN_SHOP_CITY,
 		),
 	);
 }
 
-if ( 'seed' === $kuka_custodian_phase ) {
-	set_transient( KUKA_CUSTODIAN_SENTINEL_KEY, kuka_custodian_sentinel_value(), DAY_IN_SECONDS );
+/** Exact option names, both rows, for one transient. */
+function kuka_custodian_option_names( string $transient ): array {
+	return array( '_transient_' . $transient, '_transient_timeout_' . $transient );
+}
 
-	$rows = Kuka_Shipping_Cache_Custodian::rows();
+/** Every cache row that is not in the given namespace. */
+function kuka_custodian_foreign_rows( string $namespace ): array {
+	$foreign = array();
+
+	foreach ( Kuka_Shipping_Cache_Custodian::rows() as $name => $row ) {
+		if ( '' !== $namespace && str_contains( (string) $name, $namespace ) ) {
+			continue;
+		}
+
+		$foreign[ (string) $name ] = $row;
+	}
+
+	return $foreign;
+}
+
+if ( 'seed' === $kuka_custodian_phase ) {
+	set_transient( KUKA_CUSTODIAN_SHOP_TRANSIENT, kuka_custodian_shop_value(), DAY_IN_SECONDS );
+
+	$rows = kuka_custodian_foreign_rows( '' );
 
 	WP_CLI::line(
 		sprintf(
-			'CUSTODIAN_SEED=ok|rows:%d|fingerprint:%s',
+			'CUSTODIAN_SEED=ok|foreign_rows:%d|foreign_fingerprint:%s',
 			count( $rows ),
 			Kuka_Shipping_Cache_Custodian::fingerprint( $rows )
 		)
@@ -65,62 +99,103 @@ if ( 'seed' === $kuka_custodian_phase ) {
 	return;
 }
 
-if ( 'crash' === $kuka_custodian_phase ) {
-	$custodian = ( new Kuka_Shipping_Cache_Custodian() )->guard();
+if ( in_array( $kuka_custodian_phase, array( 'normal', 'exit', 'fatal' ), true ) ) {
+	if ( '' === $kuka_custodian_ns ) {
+		WP_CLI::error( 'CUSTODIAN=FAIL|reason:namespace_required' );
+	}
+
+	$custodian = ( new Kuka_Shipping_Cache_Custodian( $kuka_custodian_ns ) )
+		->own_resolver_keys( array( '34', '06' ) )
+		->guard();
 
 	WP_CLI::line(
 		sprintf(
-			'CUSTODIAN_CRASH=starting|death:%s|snapshot_rows:%d|snapshot_fingerprint:%s',
-			$kuka_custodian_death,
-			count( $custodian->names_before() ),
-			$custodian->snapshot_fingerprint()
+			'CUSTODIAN_RUN=starting|phase:%s|namespace:%s|declared:%d',
+			$kuka_custodian_phase,
+			$custodian->namespace_key(),
+			count( $custodian->owned_names() )
 		)
 	);
 
-	/*
-	 * Exactly what a scenario does: empty the cache, then refill it with mock
-	 * data. If the custodian were not registered, these rows would be what the
-	 * shop is left with.
-	 */
-	delete_transient( KUKA_CUSTODIAN_SENTINEL_KEY );
-	set_transient( KUKA_CUSTODIAN_SENTINEL_KEY, array( array( 'code' => '34', 'name' => 'MOCK-ONLY' ) ), DAY_IN_SECONDS );
-	set_transient( 'kuka_dhl_cbs_districts_v1_34', array( array( 'code' => '1', 'name' => 'MOCK-ONLY' ) ), DAY_IN_SECONDS );
+	// Exactly what a scenario does, in the run's own namespace.
+	set_transient( 'kuka_dhl_cbs_cities_' . $kuka_custodian_ns, array( array( 'code' => '34', 'name' => 'MOCK-ONLY' ) ), DAY_IN_SECONDS );
+	set_transient( 'kuka_dhl_cbs_districts_' . $kuka_custodian_ns . '_34', array( array( 'code' => '1', 'name' => 'MOCK-ONLY' ) ), DAY_IN_SECONDS );
 
-	WP_CLI::line( 'CUSTODIAN_CRASH=dirtied|run_owned_rows_added:yes' );
+	// And a row nobody declared, appearing mid-run: another process's business.
+	set_transient(
+		KUKA_CUSTODIAN_FOREIGN_TRANSIENT,
+		array(
+			array(
+				'code' => '1',
+				'name' => KUKA_CUSTODIAN_FOREIGN_DISTRICT,
+			),
+		),
+		DAY_IN_SECONDS
+	);
 
-	if ( 'fatal' === $kuka_custodian_death ) {
+	WP_CLI::line( 'CUSTODIAN_RUN=dirtied|run_rows_added:yes|undeclared_row_added:yes' );
+
+	if ( 'fatal' === $kuka_custodian_phase ) {
 		// An uncatchable error, on purpose: shutdown functions still run.
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions
 		kuka_custodian_this_function_does_not_exist();
 	}
 
-	WP_CLI::error( 'CUSTODIAN_CRASH=exited_on_purpose' );
-}
-
-if ( 'check' === $kuka_custodian_phase ) {
-	$rows        = Kuka_Shipping_Cache_Custodian::rows();
-	$fingerprint = Kuka_Shipping_Cache_Custodian::fingerprint( $rows );
-	$cached      = get_transient( KUKA_CUSTODIAN_SENTINEL_KEY );
-	$sentinel_ok = kuka_custodian_sentinel_value() === $cached;
-	$matches     = '' === $kuka_custodian_want || $kuka_custodian_want === $fingerprint;
-
-	$mock_left = 0;
-	foreach ( $rows as $name => $row ) {
-		if ( str_contains( $row['option_value'], 'MOCK-ONLY' ) ) {
-			++$mock_left;
-		}
+	if ( 'exit' === $kuka_custodian_phase ) {
+		WP_CLI::error( 'CUSTODIAN_RUN=exited_on_purpose' );
 	}
+
+	$outcome = $custodian->release( 'normal' );
 
 	WP_CLI::line(
 		sprintf(
-			'CUSTODIAN_CHECK=%s|rows:%d|fingerprint:%s|expected:%s|fingerprint_match:%s|sentinel_value_intact:%s|run_owned_rows_left:%d',
-			( $matches && $sentinel_ok && 0 === $mock_left ) ? 'PASS' : 'FAIL',
-			count( $rows ),
-			$fingerprint,
-			'' !== $kuka_custodian_want ? $kuka_custodian_want : 'none',
-			$matches ? 'yes' : 'NO',
-			$sentinel_ok ? 'yes' : 'NO',
-			$mock_left
+			'CUSTODIAN_RUN=released|ok:%s|owned_declared:%d|owned_removed:%d|foreign_preserved:%d|foreign_changed:%d|refused:%d|invoked_by:%s',
+			$outcome['ok'] ? 'yes' : 'no',
+			(int) $outcome['owned_declared'],
+			(int) $outcome['owned_removed'],
+			(int) $outcome['foreign_preserved'],
+			(int) $outcome['foreign_changed'],
+			(int) $outcome['refused'],
+			(string) $outcome['invoked_by']
+		)
+	);
+
+	return;
+}
+
+if ( 'check' === $kuka_custodian_phase ) {
+	$foreign     = kuka_custodian_foreign_rows( $kuka_custodian_ns );
+	$fingerprint = Kuka_Shipping_Cache_Custodian::fingerprint( $foreign );
+
+	$shop_value_ok = kuka_custodian_shop_value() === get_transient( KUKA_CUSTODIAN_SHOP_TRANSIENT );
+
+	$undeclared = get_transient( KUKA_CUSTODIAN_FOREIGN_TRANSIENT );
+	$undeclared_ok = is_array( $undeclared )
+		&& KUKA_CUSTODIAN_FOREIGN_DISTRICT === (string) ( $undeclared[0]['name'] ?? '' );
+
+	$run_rows_left = 0;
+	foreach ( array_keys( Kuka_Shipping_Cache_Custodian::rows() ) as $name ) {
+		if ( '' !== $kuka_custodian_ns && str_contains( (string) $name, $kuka_custodian_ns ) ) {
+			++$run_rows_left;
+		}
+	}
+
+	// The seed's fingerprint covered the shop row only; the undeclared row was
+	// added afterwards, so it is compared on its own rather than folded in.
+	$expected_ok = '' === $kuka_custodian_want
+		|| $kuka_custodian_want === Kuka_Shipping_Cache_Custodian::fingerprint(
+			array_diff_key( $foreign, array_flip( kuka_custodian_option_names( KUKA_CUSTODIAN_FOREIGN_TRANSIENT ) ) )
+		);
+
+	WP_CLI::line(
+		sprintf(
+			'CUSTODIAN_CHECK=%s|foreign_rows:%d|shop_rows_fingerprint_match:%s|shop_value_intact:%s|undeclared_row_preserved:%s|run_rows_left:%d|fingerprint:%s',
+			( $expected_ok && $shop_value_ok && $undeclared_ok && 0 === $run_rows_left ) ? 'PASS' : 'FAIL',
+			count( $foreign ),
+			$expected_ok ? 'yes' : 'NO',
+			$shop_value_ok ? 'yes' : 'NO',
+			$undeclared_ok ? 'yes' : 'NO',
+			$run_rows_left,
+			$fingerprint
 		)
 	);
 
@@ -130,11 +205,31 @@ if ( 'check' === $kuka_custodian_phase ) {
 if ( 'cleanup' === $kuka_custodian_phase ) {
 	global $wpdb;
 
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", Kuka_Shipping_Cache_Custodian::LIKE ) );
+	$removed = 0;
+	$names   = array_merge(
+		kuka_custodian_option_names( KUKA_CUSTODIAN_SHOP_TRANSIENT ),
+		kuka_custodian_option_names( KUKA_CUSTODIAN_FOREIGN_TRANSIENT )
+	);
+
+	foreach ( $names as $name ) {
+		// One delete, one exact name. No pattern, ever.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		if ( false !== $wpdb->delete( $wpdb->options, array( 'option_name' => $name ) ) ) {
+			++$removed;
+		}
+
+		wp_cache_delete( $name, 'options' );
+	}
+
 	wp_cache_delete( 'alloptions', 'options' );
 
-	WP_CLI::line( sprintf( 'CUSTODIAN_CLEANUP=ok|rows_left:%d', count( Kuka_Shipping_Cache_Custodian::rows() ) ) );
+	WP_CLI::line(
+		sprintf(
+			'CUSTODIAN_CLEANUP=ok|sentinels_removed_by_exact_name:%d|rows_left:%d',
+			$removed,
+			count( Kuka_Shipping_Cache_Custodian::rows() )
+		)
+	);
 
 	return;
 }

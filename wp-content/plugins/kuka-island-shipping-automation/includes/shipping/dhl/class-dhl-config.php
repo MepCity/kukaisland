@@ -68,6 +68,47 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 */
 	public const IDENTITY_TYPE = 1;
 
+	/** Configuration name that switches this adapter off entirely. */
+	public const ADAPTER_SETTING = 'KUKA_DHL_ADAPTER';
+
+	/**
+	 * Is this adapter switched on?
+	 *
+	 * ON unless the configuration explicitly says otherwise, because the module
+	 * ships with one adapter and defaulting it off would leave a fresh install
+	 * with no carrier at all -- a state whose only symptom is
+	 * carrier_not_registered on a screen nobody has a reason to look at.
+	 *
+	 * OFF means the registry never learns about this adapter: it is not
+	 * constructed, no client is built, and every operation refuses with
+	 * carrier_not_registered before the network. That is the point of the
+	 * switch -- a shop that has moved to another courier can stop this one
+	 * without deactivating the whole module, and an order pinned to it then
+	 * refuses rather than being quietly re-routed.
+	 *
+	 * Only the four explicit negatives switch it off. Anything else, including
+	 * a typo, leaves it on: a mistyped value must not silently disable shipping.
+	 */
+	public static function is_adapter_enabled(): bool {
+		if ( defined( self::ADAPTER_SETTING ) ) {
+			$value = constant( self::ADAPTER_SETTING );
+
+			if ( is_bool( $value ) ) {
+				return $value;
+			}
+
+			return ! in_array( strtolower( trim( (string) $value ) ), array( '0', 'false', 'no', 'off' ), true );
+		}
+
+		$from_env = getenv( self::ADAPTER_SETTING );
+
+		if ( false === $from_env ) {
+			return true;
+		}
+
+		return ! in_array( strtolower( trim( (string) $from_env ) ), array( '0', 'false', 'no', 'off' ), true );
+	}
+
 	/**
 	 * Allowed values of the tracking-number source setting.
 	 *

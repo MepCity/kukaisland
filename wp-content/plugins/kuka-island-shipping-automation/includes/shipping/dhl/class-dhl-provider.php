@@ -164,6 +164,27 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		return $this->client->get_shipment( $reference );
 	}
 
+	/**
+	 * DHL cannot prove an amendment took effect, so it says so.
+	 *
+	 * The vendor's Standard Query documents describe getorder and getshipment as
+	 * returning identifiers, a transformation flag, a status code, a delivery
+	 * flag and a piece count. NONE of the amendable fields -- recipient name,
+	 * address, city and district codes, phone, content, description, desi, kg --
+	 * appear in either response. There is therefore nothing to compare an
+	 * amendment against, and inventing a comparison would turn "the shipment
+	 * still exists" into "the amendment was applied".
+	 *
+	 * This is a REFUSAL, not a failure: an uncertain amendment stays in
+	 * update_reconciliation_required and waits for a person. It becomes a real
+	 * read-back only if a documented, verified field-returning query endpoint is
+	 * added to DHL_Client and measured against the sandbox -- the same bar every
+	 * other open measurement in docs/DHL_BAKIM_HAFIZASI.md has to clear.
+	 */
+	public function read_amendable_fields( string $reference ): Kuka_Island_Shipping_Result {
+		return Kuka_Island_Shipping_Result::permanent( 'read_amendable_fields', 'readback_unsupported' );
+	}
+
 	public function read_shipment_status( string $reference ): Kuka_Island_Shipping_Result {
 		return $this->client->get_shipment_status( $reference );
 	}

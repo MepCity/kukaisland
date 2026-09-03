@@ -35,6 +35,11 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | Sipariş, mağazanın **güncel** varsayılan taşıyıcısına yönlendiriliyordu; timeout olan `createOrder` sahipliği kaybediyordu | Sahiplik ilk yazmadan önce sabitleniyor, tek merkezden çözülüyor, fail-closed (K-21) |
 | 2026-09-03 | "Her taşıyıcı operasyonu ortak kapıdan geçer" yorumu okumalar için doğru değildi | `guarded_read()`; bloke okuma yokluk kanıtı değil (K-22) |
 | 2026-09-03 | Test temizliği yalnız normal sona bağlıydı; assertion/fatal durumunda mağazanın önbelleği mock veriyle kalıyordu | Shutdown guard'lı, idempotent, sahipliği tam cleanup coordinator (K-23) |
+| 2026-09-03 | Taşıyıcıya ulaşmış bir iptal, doğrulama başarısız olduğunda tekrar gönderilebiliyordu | `cancel_reconciliation_required`: kanıt yazmadan önce, çıkış yalnız okumayla (K-24) |
+| 2026-09-03 | Belirsiz güncelleme, nesnenin varlığıyla başarılı sayılıyordu | `update_reconciliation_required` + alan bazında geri okuma; DHL `readback_unsupported` (K-25) |
+| 2026-09-03 | Provider, yerel adres doğrulaması başarısız olsa bile sabitleniyordu | Pin `guarded_write()` içine, geçerli istekten sonra ve yazmadan hemen önce taşındı (K-26) |
+| 2026-09-03 | Test önbelleği sahipliği çıkarma ile belirliyordu; cleanup wildcard silme kullanıyordu | Koşuya ait namespace + birebir ad bildirimi; wildcard silme kaldırıldı (K-27) |
+| 2026-09-03 | Deaktivasyon bekleyen Action Scheduler işlerini gerçekte iptal etmiyordu | Boş args hash'i yerine hook+grup ile numaralayıp id bazında iptal (K-28) |
 
 ---
 
@@ -313,6 +318,10 @@ geçmez.
 - **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
   (`handle_uncertain`, `reconcile`)
 - **Tekrar yaşanırsa ilk bak:** `Order_Store::states_blocking_create()`.
+- **Not (K-24, K-25):** Bu kayıt **create/barcode** için geçerlidir. Bir iptal
+  ya da bir güncellemeden sonra genel `reconcile()` **kullanılmaz**: kaydı
+  bulmak orada kanıt değildir. Onların kendi kanıt durumları ve kendi
+  mutabakatları vardır.
 - **Not (K-22):** Üçüncü bir cevapsızlık biçimi var: okuma **hiç yapılamazsa**
   (kapı kapalı) verdict `blocked` olur. Bu da yokluk değildir; durum
   `reconcile_required` kalır ve hiçbir şey yazılmaz.
@@ -430,6 +439,10 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `cancel()` içindeki `$confirmed_by` değişkeni.
   İki dal da aynı sorguya gidiyorsa hata geri gelmiştir. Sonuç satırındaki
   `confirmed_by:` alanı hangi sorgunun kanıt sayıldığını söyler.
+- **Bu kayıt tamamlanmamıştı (K-24):** doğrulayan sorgu düzeltildi, fakat
+  doğrulama **başarısız olduğunda** sipariş eski durumunda kalıyor ve iptal
+  düğmesi canlı kalıyordu. Gönderilmiş bir iptal artık kalıcı bir kanıt durumu
+  yazar. Bkz. K-24.
 - **Not (K-22):** Doğrulama okuması artık `guarded_read()` üzerinden geçer.
   Kapı yazma ile okuma arasında kapanırsa sonuç `cancel_unconfirmed` olur, durum
   değişmez ve sorgu zinciri iptal edilmez.
@@ -908,8 +921,390 @@ geçmez.
   `scripts/verify-shipping-cache-custodian.php`,
   `scripts/verify-shipping-cache-custodian.sh`,
   `scripts/verify-shipping-automation.php`
+- **Bu kayıt tamamlanmamıştı (K-27):** sahiplik **çıkarma** ile
+  belirleniyordu — "anlık görüntümde yoktu, demek ki benim" — ve cleanup fazı
+  geniş bir `DELETE ... LIKE` kullanıyordu. Koşu artık kendi anahtar alanında
+  çalışır ve yalnız birebir bildirdiği adları siler. Bkz. K-27.
 - **Tekrar yaşanırsa ilk bak:** custodian'ın `guard()` çağrısının anlık
   görüntüden hemen sonra gelip gelmediği. Kontrol ölçümünde ikinci bir custodian
   **guard edilmez**: nöbetçi bir fixture'dır, mağazanın verisi değil, ve ikinci
   bir shutdown fonksiyonu onu dıştaki geri yükleme sildikten sonra tekrar geri
   koyardı.
+
+---
+
+## K-24 — Gönderilmiş bir iptal tekrar gönderilebiliyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** `Taşıyıcı kaydını iptal et` basılıyor, taşıyıcı kabul ediyor,
+  doğrulama sorgusu cevap veremiyor (ya da kaydı "hâlâ var" diye buluyor).
+  Sipariş `shipment_created` kalıyor, düğme canlı kalıyor, ikinci basış aynı
+  iptali **tekrar** gönderiyor. Ya da: `uncertain` iptalden sonra genel
+  mutabakat kaydı buluyor, `shipment_created` yazıyor ve düğmeyi yeniden açıyor.
+- **Kesin kök neden — iki tane:**
+  1. Yalnız `uncertain` iptal kapıyı kapatıyordu. `success` cevabı ise
+     "acknowledgement"tan fazlası sayılıp doğrulama başarısız olduğunda **eski
+     durum korunuyordu**. Oysa `success`, ağ geçidinin isteği aldığını söyler;
+     iptalin uygulandığını söylemez.
+  2. `uncertain` iptal `reconcile_required`a gidiyordu ve o durumdan çıkış
+     **genel** `reconcile()` ile oluyordu. O metot bir CREATE için yazılmıştır:
+     kaydı bulduğunda `shipment_created` yazar. İptalden sonra bu tam tersidir
+     — kaydı bulmak iptalin **kanıtlanmadığı** anlamına gelir — ve
+     `shipment_created` yazmak iptal düğmesini yeniden açar.
+- **Uygulanan düzeltme:** İptale ait kalıcı, ayrı bir kanıt durumu:
+  `STATE_CANCEL_RECONCILE_REQUIRED` (`cancel_reconciliation_required`), yanında
+  `META_PENDING_MUTATION` içinde hangi nesnenin adreslendiği ve öncesinde hangi
+  durumda olunduğu.
+  - Durum, yazma taşıyıcıya ulaşır ulaşmaz — **okuma yapılmadan önce** —
+    yazılır. `success` de `uncertain` de aynı yere gider.
+  - Çıkış yalnız `reconcile_cancellation()` iledir ve o metot **yalnız okur**.
+    Tek çıkış `not_found`; "hâlâ var", "kapı kapalı" ve "cevap yok" durumda
+    hiçbir şeyi değiştirmez.
+  - `cancel()` bu durumda `cancel_in_progress` ile reddeder: ikinci basış, bayat
+    sipariş nesnesi, eşzamanlı ikinci istek — hepsi.
+  - Sorgu zinciri **iptal edilmez**: doğrulanmamış bir iptal hâlâ hareket
+    ediyor olabilecek bir pakettir, ve planlı sorgu onu izleyen tek şeydir.
+    `cancel_queries()` yalnız iptal kanıtlandığında çalışır.
+  - **Tek istisna:** `permanent` ret. Taşıyıcı hayır dediyse hiçbir şey
+    değişmemiştir, sipariş eski durumunda kalır ve düğme yeniden kullanılabilir.
+- **Kanıt (her ölçümde toplam iptal yazması 1):**
+  `SHIPPING_CANCEL_EVIDENCE_SURVIVES_BLOCKED_CONFIRM=PASS|first:cancel_unconfirmed_blocked|state:cancel_reconciliation_required|third_press_gate_open:cancel_in_progress|total_cancel_writes:1`,
+  `SHIPPING_CANCEL_EVIDENCE_SURVIVES_RECORD_PRESENT=PASS|reconcile_1:cancel_unconfirmed_record_present|reconcile_2:cancel_unconfirmed_record_present|state_after_two_reconciles:cancel_reconciliation_required|total_cancel_writes:1|reopened_to_shipment_created:no`,
+  `SHIPPING_CANCEL_EVIDENCE_SURVIVES_UNCERTAIN=PASS|cancel:uncertain|total_cancel_writes:1`,
+  `SHIPPING_CANCEL_EVIDENCE_CLEARED_ON_PROOF=PASS|reconcile_verdict:cancelled|pending_evidence:cleared|press_after:already_cancelled|total_cancel_writes:1`,
+  `SHIPPING_CANCEL_EVIDENCE_ORDER_BRANCH=PASS|cancel_order:1|cancel_shipment:0|read_order:1|read_shipment:0`,
+  `SHIPPING_PENDING_CANCEL_KEEPS_THE_POLL_BOOKING=PASS|pending_after_cancel:yes|status_reads:0`,
+  `SHIPPING_CANCEL_DEFINITIVE_REFUSAL_KEEPS_STATE=PASS|state_after_refusal:shipment_created|retry_allowed:yes|cancel_writes:2`
+- **İlgili dosyalar:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`STATE_CANCEL_RECONCILE_REQUIRED`, `META_PENDING_MUTATION`,
+  `save_cancel_pending`, `pending_mutation`, `clear_pending_mutation`),
+  `SHIP/includes/shipping/class-shipment-manager.php`
+  (`cancel`, `reconcile_cancellation`, `cancel_still_unproven`,
+  `reconcile_order` dağıtımı),
+  `SHIP/includes/shipping/class-shipment-admin.php`
+- **Tekrar yaşanırsa ilk bak:** `cancel()` içinde `save_cancel_pending()`
+  çağrısının doğrulama okumasından **önce** gelip gelmediği. Sonra gelirse,
+  aradaki bir çökme kapıyı yeniden açar. Bir de `reconcile_order()`'ın duruma
+  göre dağıtım yapıp yapmadığı: genel `reconcile()` bir iptalden sonra
+  çalıştırılırsa hata aynen geri gelir.
+
+---
+
+## K-25 — Belirsiz güncelleme, nesnenin varlığıyla başarılı sayılıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** `Taşıyıcı kaydını güncelle` basılıyor, istek timeout oluyor,
+  mutabakat "sipariş taşıyıcıda mevcut" diyor ve sipariş `order_created`a
+  dönüyor — güncelleme düğmesi yeniden canlı. İkinci basış aynı güncellemeyi
+  tekrar gönderiyor.
+- **Kesin kök neden:** `uncertain` güncelleme `save_uncertain()` ile
+  `reconcile_required`a gidiyordu ve oradan çıkış genel `reconcile()` ileydi. O
+  metot nesnenin **varlığını** kanıt sayar. Bir güncelleme için bu geçersizdir:
+  nesne güncellemeden **önce** de oradaydı. "Gönderi hâlâ var", "güncelleme
+  uygulandı" demek değildir.
+- **Uygulanan düzeltme:** Güncellemeye ait kalıcı, ayrı bir kanıt durumu:
+  `STATE_UPDATE_RECONCILE_REQUIRED`, yanında **gönderilen alan değerleri**.
+  - Tek kanıt alan bazında geri okumadır. Taşıyıcı sözleşmesine
+    `read_amendable_fields()` eklendi; taşıyıcının o an tuttuğu değerleri
+    semantik alan adlarıyla döndürür.
+  - Karşılaştırma **tam**dır: her beklenen alan cevapta bulunmalı ve eşit
+    olmalıdır. Cevapta **bulunmayan** alan eşleşmezliktir — "bizi yalanlamadı"
+    kanıt değildir.
+  - Birebir eşleşme → önceki duruma dönülür, kanıt temizlenir, yeni güncelleme
+    yapılabilir. Bir alan farklı/eksik → `manual_review`. Geri okuma
+    desteklenmiyorsa ya da yapılamıyorsa → durum korunur, **ikinci güncelleme
+    gönderilmez**.
+  - **DHL adaptörü `readback_unsupported` döndürür.** Satıcının Standard Query
+    yanıtlarında güncellenebilir alanların hiçbiri yoktur; uydurulmuş bir
+    karşılaştırma tam olarak düzeltilen hatayı geri getirirdi. Bu bir
+    başarısızlık değil, bir **rettir**.
+- **Kanıt:**
+  `SHIPPING_UPDATE_EVIDENCE_EXISTENCE_IS_NOT_PROOF=PASS|object_present:yes|state_after_reconcile:update_reconciliation_required|second_press:nothing_to_update|stale_handle:nothing_to_update|update_writes:1|read_shipment:0|read_amendable_fields:2|reopened:no`,
+  `SHIPPING_UPDATE_EVIDENCE_READBACK_UNSUPPORTED=PASS|expected_fields_recorded:9|dhl_adapter_answer:readback_unsupported`,
+  `SHIPPING_UPDATE_EVIDENCE_READBACK_MATCHES=PASS|fields_compared:9|code:update_confirmed|state:shipment_created|second_update_allowed:yes`,
+  `SHIPPING_UPDATE_EVIDENCE_READBACK_MISMATCH=PASS|code:update_mismatch|state:manual_review|absent_field_is_mismatch:yes`
+- **İlgili dosyalar:**
+  `SHIP/includes/shipping/interface-carrier-provider.php`
+  (`read_amendable_fields`),
+  `SHIP/includes/shipping/dhl/class-dhl-provider.php`,
+  `SHIP/includes/shipping/class-shipment-manager.php`
+  (`reconcile_update`, `amendable_fields`, `fields_match`,
+  `update_still_unproven`),
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`STATE_UPDATE_RECONCILE_REQUIRED`, `save_update_pending`)
+- **Tekrar yaşanırsa ilk bak:** `fields_match()` içindeki eksik-alan dalı.
+  Cevapta olmayan bir alan "eşleşti" sayılırsa kanıt çöker. Ve
+  `read_amendable_fields()` uygulaması kısmi bir cevap döndürmemeli:
+  ya tam, ya `readback_unsupported`.
+
+---
+
+## K-26 — Provider, geçerli bir istek olmadan sabitleniyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Adresi taşıyıcı listesinde bulunamayan bir siparişte
+  `gönderi oluştur` basılıyor, `city_not_found` ile reddediliyor — hiçbir
+  taşıyıcıya çağrı yapılmıyor — fakat sipariş o taşıyıcıya **kalıcı olarak**
+  bağlanmış oluyor. Başka bir taşıyıcı seçmek artık
+  `shipment_provider_mismatch` veriyor.
+- **Kesin kök neden:** K-21'in sırası şuydu:
+  `begin_carrier_session()` → `build_request()` → `guarded_write()`. Pin,
+  tamamen yerel olan adres/mapping doğrulamasından **önce** yapılıyordu.
+- **Uygulanan düzeltme:** Sıra tersine çevrildi ve pin yazmayla atomik hâle
+  getirildi:
+  1. Kilit alınır. 2. Sahiplik/varsayılan çözülür. 3. Referans yalnız yerel
+  hazırlanır (`prepare_reference()`, hiçbir şey yazmaz). 4. `build_request()` ve
+  bütün yerel doğrulamalar. 5. Kapı yeniden kontrol edilir; açıksa pin tek save
+  ile yazılır. 6. Yazma.
+  5 ve 6 arasında başka yerel başarısızlık yolu yoktur: pin,
+  `guarded_write()`'ın `$before_write` argümanı olarak çalışır — kapı
+  kontrolünden sonra, istekten hemen önce.
+- **Neden hâlâ yazmadan önce:** timeout olan bir `createOrder` kimin
+  sorulduğunu kaydetmemiş olurdu; K-21 tam olarak bunu düzeltmişti. İki
+  gereksinim çelişmiyor, sıralamayı belirliyor.
+- **Kanıt:**
+  `SHIPPING_PROVIDER_NOT_PINNED_WITHOUT_A_WRITE=PASS|local_validation_failed:city_not_found|provider_after_local_failure:empty|reference_after_local_failure:empty|writes_on_first_carrier:0|second_carrier_accepted:yes|owner_now:kuka-fallback-kargo|gate_closed_before_write:credentials_missing|provider_after_gate_close:empty|writes_on_gated_carrier:0`
+  ve değişmeyenler:
+  `SHIPPING_PROVIDER_PINNED_BEFORE_FIRST_WRITE`,
+  `SHIPPING_UNCERTAIN_CREATE_RETAINS_PROVIDER`
+- **İlgili dosyalar:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`prepare_reference`, `begin_carrier_session`),
+  `SHIP/includes/shipping/class-shipment-manager.php`
+  (`guarded_write` `$before_write`, `run_creation`, `run_barcode`,
+  `resume_barcode`)
+- **Tekrar yaşanırsa ilk bak:** `run_creation()` içinde
+  `begin_carrier_session()` çağrısının nerede olduğu. `build_request()`'ten
+  önce görürsen hata geri gelmiştir; `guarded_write()`'ın içinde değilse arada
+  bir başarısızlık penceresi var.
+
+---
+
+## K-27 — Test önbelleği, sahipliği tahminle belirliyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Doğrulama koşusu sırasında gerçek bir istek tarafından oluşturulan
+  bir `kuka_dhl_cbs_*` satırı, koşu bittiğinde yok.
+- **Kesin kök neden:** K-20/K-23'ün custodian'ı sahipliği **çıkarma** ile
+  belirliyordu: "bu satır anlık görüntümde yoktu, demek ki ben oluşturdum". Bu
+  sahiplik değildir. Bir satır koşu sırasında başka bir süreçte oluşabilir ve
+  onu silmek, tahmine dayanarak başkasının verisini silmektir. Ayrıca cleanup
+  fazı geniş bir `DELETE ... LIKE` kullanıyordu — bir LIKE deseni sahipliği
+  ifade edemez.
+- **Uygulanan düzeltme:** Paylaşılan anahtar alanı **tamamen** kaldırıldı.
+  - `DHL_Address_Resolver::set_cache_namespace()` eklendi. Doğrulama koşusu
+    kendi namespace'ini alır (`testrun-<hex>`), bu yüzden mağazanın satırlarını
+    ne okur, ne yazar, ne siler. Geri yüklenecek bir şey yoktur.
+  - Custodian, koşunun oluşturacağı **birebir option adlarını** önceden
+    bildirir (`own_resolver_keys()`), ve yalnız o adları siler — ad başına bir
+    `$wpdb->delete`. **Hiçbir yerde wildcard silme yok.**
+  - Bildirilmeyen her satır dokunulmadan bırakılır ve `foreign_preserved`
+    olarak sayılır. Mağazanın satırları ayrıca okunur ve bayt bayt
+    karşılaştırılır (`foreign_changed:0`).
+  - `$done` yalnız **temiz** bir release sonunda işaretlenir; yarım kalan bir
+    release açık kalır ve shutdown turu tekrar dener.
+- **Nasıl ölçüldü:** `verify-shipping-cache-custodian.sh` üç ayrı süreçle ve
+  **üç bitiş biçimiyle** çalışır — normal, `exit`, `fatal`. Her turda mağazaya
+  ait bir satır ekilir, koşu kendi namespace'inde satır oluşturur, **ve
+  bildirmediği bir satır** da oluşturur (eşzamanlı bir sürecin işi). Kontrol
+  süreci mağazanın satırının bayt bayt aynı olduğunu, bildirilmeyen satırın
+  **hâlâ orada** olduğunu ve koşunun kendi satırlarının gittiğini ölçer.
+- **Kanıt:**
+  `SHIPPING_CACHE_CUSTODIAN_normal=PASS|isolation:own_namespace|declared_exact_names:6|released_cleanly:yes|shop_rows_fingerprint_match:yes|undeclared_midrun_row_preserved:yes|run_rows_left:0|wildcard_delete:none`,
+  `SHIPPING_CACHE_CUSTODIAN_exit=PASS|...`, `SHIPPING_CACHE_CUSTODIAN_fatal=PASS|...`,
+  `SHIPPING_CBS_CACHE_PRESERVED=PASS|isolation:own_namespace|shop_row_bytes_identical:yes|undeclared_midrun_row_preserved:yes|foreign_changed:0|wildcard_delete:none`
+- **İlgili dosyalar:**
+  `SHIP/includes/shipping/dhl/class-dhl-address-resolver.php`
+  (`set_cache_namespace`, `cities_cache_key`, `districts_cache_key`),
+  `scripts/lib-shipping-cache-custodian.php`,
+  `scripts/verify-shipping-cache-custodian.php`,
+  `scripts/verify-shipping-cache-custodian.sh`,
+  `scripts/verify-shipping-automation.php`
+- **Tekrar yaşanırsa ilk bak:** `grep -rn "LIKE" scripts/ | grep -i delete`
+  boş dönmeli. Ve custodian'ın sahiplik listesinin **bildirim** ile mi yoksa
+  çıkarma ile mi kurulduğu.
+
+---
+
+## K-28 — Deaktivasyon bekleyen işleri gerçekte iptal etmiyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Eklenti devre dışı bırakıldıktan sonra
+  `kuka_island_shipping_query_status` işleri hâlâ `pending`. Deaktivasyon
+  başarılı raporlamıştı.
+- **Kesin kök neden:** `Activator::cancel_owned_actions()`
+  `as_unschedule_all_actions( $hook, array(), $group )` çağırıyordu. **Boş args
+  dizisi, "herhangi bir args" demek değildir**; hiç argümansız çağrılmış bir
+  action'ın args hash'idir. Poller sorgularını `array( 'order_id' => N )` ile
+  planlar, dolayısıyla hiçbiri eşleşmiyordu — unschedule hiçbir şey bulmuyor ve
+  başarılı raporluyordu, çünkü boş args'lı bekleyen bir iş yoktu.
+  Bu, ancak bekleyen bir iş varken görülebilir; önceki lifecycle ölçümü
+  otomasyon kapalıyken çalıştığı için hiçbir zaman bekleyen iş olmuyordu.
+- **Uygulanan düzeltme:** Bekleyen işler hook **ve** grup ile numaralanıp
+  action id bazında iptal ediliyor; sonra kalan bekleyen iş sayısı ölçülüyor.
+  Tamamlanmış ve başarısız kayıtlara dokunulmuyor.
+- **Kanıt:**
+  `SHIPPING_DEACTIVATION_PRESERVES_OWNERSHIP=PASS|pending_before:yes|gate_after_deactivate:closed|pending_after_deactivate:unscheduled|gate_after_activate:open|pending_after_activate:none|provider_unchanged:yes|state_unchanged:yes|reference_unchanged:yes`
+- **İlgili dosya:** `SHIP/includes/class-activator.php`
+  (`cancel_owned_actions`)
+- **Tekrar yaşanırsa ilk bak:** `as_unschedule_all_actions` çağrısına `array()`
+  geçilip geçilmediği. Args filtresi kullanılacaksa `null` olmalı; en güvenlisi
+  id bazında iptaldir.
+
+---
+
+## Bakım sırası
+
+Bir kargo belirtisi geldiğinde izlenecek sıra:
+
+1. **Modülün hangi anahtarı kapalı?** Sipariş ekranındaki durum satırı dördünü
+   birlikte yazar: eklenti, çalışma kapısı, otomatik sorgu, kayıtlı taşıyıcı.
+   Bkz. DHL_ENTEGRASYONU.md §17.
+2. **Sipariş hangi taşıyıcıya ait?** `_kuka_shipping_provider`. Boşsa ve
+   taşıyıcı kanıtı varsa `shipment_provider_missing` beklenir; bu bir hata
+   değil, fail-closed davranıştır (K-21).
+3. **Bekleyen bir yazma kanıtı var mı?** `_kuka_shipping_pending_mutation` ve
+   durum. `cancel_reconciliation_required` / `update_reconciliation_required`
+   ise doğru davranış **hiçbir şey göndermemektir**; yalnız salt-okunur
+   mutabakat çalıştırılır (K-24, K-25).
+4. **Belirsizlik mi, kesin ret mi?** `permanent` ret eski durumu korur ve
+   tekrar denenebilir; `uncertain` ve `success` kanıt durumuna gider.
+5. **Ölçümler.** Önce `docker compose run --rm wp-cli wp eval-file
+   /project-scripts/verify-shipping-automation.php`; sonra `make verify`.
+   Sandbox'a bağlanmadan bunların hepsi mock transport üzerinden çalışır.
+6. **Gerçek sandbox** yalnız ayrı ve operatör kontrollü komutlarla; bkz. bu
+   dosyanın altındaki "Sandbox hazırlığı".
+
+---
+
+## Sandbox hazırlığı — 2026-09-03
+
+Bu bölüm **ölçülen** durumu kaydeder. Gerçek sandbox kanıtı ile mock/offline
+kanıtı burada kasten ayrı tutulur; ikisi aynı şey değildir.
+
+### Aşama 1 — Kimlik dosyası: yalnız varlık
+
+`~/.config/kuka-island/dhl-sandbox.env`, mod `600`, repo dışında. Dosyanın
+**içeriği okunmadı, raporlanmadı, kopyalanmadı**; yalnız hangi anahtarların var
+olduğu sayıldı.
+
+```
+DHL_SANDBOX_CREDENTIALS=INCOMPLETE|reason:credentials_incomplete|present:2/4|missing:KUKA_DHL_CUSTOMER_NUMBER,KUKA_DHL_PASSWORD
+```
+
+İki anahtar **eksik**: `KUKA_DHL_CUSTOMER_NUMBER` ve `KUKA_DHL_PASSWORD` —
+yani kargo hesabı çifti. API ağ geçidi çifti (`KUKA_DHL_CLIENT_ID`,
+`KUKA_DHL_CLIENT_SECRET`) mevcut. Eksik değerler yalnız operatör tarafından,
+hiçbir şeyi ekrana yazmayan `./scripts/dhl-test-credentials.sh` ile eklenir.
+
+### Aşama 2 — Salt-okunur bağlantı testi: planlanan
+
+Komut: `./scripts/dhl-test-run.sh test-dhl-sandbox.php`
+
+Yapacağı **tam** dış çağrılar:
+
+| # | Metot | Yol | Yazma? |
+| --- | --- | --- | --- |
+| 1 | POST | `/mngapi/api/token` | hayır |
+| 2 | GET | `/mngapi/api/cbsinfoapi/getcities` | hayır |
+| 3 | GET | `/mngapi/api/cbsinfoapi/getdistricts/{cityCode}` | hayır |
+
+Host tek: `testapi.mngkargo.com.tr`. Kaynak denetimi: betik `Manager`'ı ve
+`Order_Mapper`'ı **hiç kurmaz** ve altı yazma metodundan hiçbirini çağırmaz —
+yazma yolu yapısal olarak yoktur, sözleşme gereği değil. Yerel etki: il/ilçe
+listesi üretim namespace'i transient'lerine yazılır ve betik sonunda
+`purge_cache()` ile silinir.
+
+### Aşama 3 — Salt-okunur test: ÇALIŞTIRILDI, ağa çıkmadı
+
+```
+DHL_TEST_RUN=STARTING|script:test-dhl-sandbox.php|allow_listed:yes|credentials:mounted_read_only|mode:600|writes:none
+DHL_SANDBOX_CONNECTION=BLOCKED|reason:credentials_incomplete|external_calls:0
+```
+
+Betik kimlik kapısında durdu. **Dış çağrı sayısı 0.** Kimlik doğrulama
+denenmedi, CBS listesi istenmedi, önbelleğe hiçbir satır yazılmadı
+(`cbs_rows` öncesi 0, sonrası 0).
+
+Bu, testin başarısız olduğu anlamına gelmez; **çalıştırılamadığı** anlamına
+gelir. Fail-closed davranış doğru çalıştı: eksik kimlikle hiçbir ağ isteği
+yapılmadı.
+
+### Aşama 4 — Yazma çağrıları: yapılmadı
+
+`createOrder`, `createbarcode`, `updateorder`, `updateshipment`, `cancelorder`,
+`cancelshipment` — hiçbiri çalıştırılmadı. Bu turda sandbox gönderisi
+oluşturulmadı.
+
+### Aşama 5 — Tek sandbox gönderisi: komut ve etkileri (ONAY BEKLİYOR)
+
+**Bu komut açık kullanıcı onayı olmadan çalıştırılmaz.** Önce Aşama 1'deki iki
+eksik anahtar eklenmeli ve Aşama 3 gerçekten `PASS` vermelidir.
+
+```
+./scripts/dhl-sandbox-run.sh --order=<WooCommerce sipariş id> --confirm=TEK-SANDBOX-GONDERISI-ONAYLIYORUM
+```
+
+Onay ifadesi tam olarak yazılmalıdır; eksik ya da yanlış ifadeyle araç
+`DHL_SANDBOX_RUN=BLOCKED|reason:confirmation_phrase_missing_or_wrong|external_calls:0`
+verir ve hiçbir çağrı yapmaz. Sipariş id'si sayısal olmalıdır.
+
+**Beklenen dış etkiler, sırayla:**
+
+1. `POST /token` — oturum alınır (JWT diske/DB'ye yazılmaz).
+2. CBS il/ilçe listeleri okunur (adres kodlarına çevirmek için).
+3. `POST /createOrder` — **taşıyıcıda gerçek bir sipariş kaydı oluşur.**
+4. `POST /createbarcode` — **taşıyıcıda gerçek bir gönderi ve barkod oluşur.**
+   WooCommerce'te fulfillment kaydı `unfulfilled` olarak açılır.
+5. `GET /getshipmentstatus/{ref}` — durum bir kez okunur.
+6. `PUT /cancelshipment` — gönderi iptal edilir.
+7. `GET /getshipment/{ref}` — iptal salt-okunur sorguyla doğrulanır.
+
+**Geri alma / iptal zinciri.** Adım 6–7 aracın kendi dizisinin parçasıdır:
+oluşturup iptal etmemek, kimsenin takip etmediği bir kargo bırakmak olurdu.
+Adım 7 `not_found` derse sipariş `cancelled` olur ve zincir kapanır. Adım 7
+kaydı **hâlâ mevcut** bulursa ya da cevap veremezse sipariş
+`cancel_reconciliation_required` durumunda kalır (K-24) ve **hiçbir ikinci
+iptal gönderilmez**; operatör yalnız salt-okunur mutabakat sorgusunu
+tekrarlar. Adım 3 veya 4 `uncertain` dönerse sipariş `reconcile_required`
+durumunda kalır ve yeniden gönderim **yapılmaz** (K-10).
+
+**Elle geri alma gerekirse** taşıyıcı panelinden iptal edilir; bu modül
+`cancel_reconciliation_required` durumundan yalnız okuma ile çıkar, yani panel
+tarafındaki iptal bir sonraki mutabakat sorgusunda `not_found` olarak görünür ve
+sipariş kendiliğinden `cancelled` olur.
+
+### Açık ölçümler bu turda kapanmadı
+
+`Ö-01`…`Ö-05` **ölçülmedi ve ölçülemedi**: hepsi gerçek bir sandbox
+bağlantısına bağlıdır ve bağlantı Aşama 3'te kimlik kapısında durdu.
+
+| Madde | Neden hâlâ açık |
+| --- | --- |
+| Ö-01 `Authorization` başlığı | Bir Query çağrısı yapılamadı |
+| Ö-02 CBS token gereksinimi | CBS çağrısı yapılamadı |
+| Ö-03 Takip numarası kaynağı | Gönderi oluşturulmadı; K-25 ile cevabın **nereden** sorulduğu değişti, cevap değişmedi |
+| Ö-04 `recipient.customerId` | Yük gönderilmedi |
+| Ö-05 Canlı uçlar | Canlı ortam hâlâ bloke |
+
+### Bu turda kanıtın türü
+
+| Kanıt | Türü |
+| --- | --- |
+| K-24…K-28 davranış ölçümleri | **mock transport / sahte adaptör**, ağ yok |
+| `SHIPPING_*` 599 kontrolü, iki ardışık `make verify` | **offline**, mock transport |
+| `DHL_OPENAPI_CONTRACT` | **offline**, satıcının dosyalarının SHA-256'sı |
+| `DHL_RUNNER_OFFLINE` | **offline**, süreç başlatılmadığı kanıtlanarak |
+| Kimlik `present:2/4` | **gerçek dosya**, yalnız varlık; içerik okunmadı |
+| Sandbox bağlantısı | **yapılmadı** — dış çağrı 0 |
+| Sandbox gönderisi | **yapılmadı** |
+
+### Modülün şu andaki teslim durumu
+
+- WordPress eklentisi: **pasif** (`kuka-island-shipping-automation,inactive`).
+  Bu turda etkinleştirilmedi; etkinleştirme Aşama 4'ün konusudur ve
+  DHL_AKTIVASYON_REHBERI.md'ye tabidir.
+- Çalışma kapısı: option yok (aktivasyon onu açar).
+- Otomatik durum sorgusu: **kapalı** (`KUKA_SHIPPING_AUTOMATION` tanımsız).
+- Adaptör: **açık** (`KUKA_DHL_ADAPTER` tanımsız → varsayılan açık).
+- Aktiflik tek başına kargo oluşturmaz; gönderi yalnız operatörün açık
+  basışıyla oluşur.
