@@ -21,6 +21,14 @@
  * meant to serve any registered adapter is how an operator ends up reading
  * "DHL" while a parcel goes to somebody else.
  *
+ * AND THE COURIER IS THE ORDER'S, NOT THE SHOP'S. The panel used to render
+ * whatever default_carrier_key() answered, so a shop that changed its default
+ * would show every historical order as belonging to the new courier -- and the
+ * buttons underneath would have acted on it. The carrier comes from
+ * Manager::carrier_ownership(), which reads the order; the default is used only
+ * for an order nothing has been sent for. A record whose owner is unknown says
+ * so and offers no buttons at all.
+ *
  * The manual route is stated on the panel itself, in every state, because an
  * operator looking at a failed automation needs to be told -- there, not in a
  * document -- that WooCommerce's own tracking-number field still works.
@@ -76,7 +84,11 @@ final class Kuka_Island_Shipping_Admin {
 	 * @param WC_Order                                     $order    Order.
 	 * @param Kuka_Island_Shipping_Carrier_Interface|null  $carrier  Carrier, or null when none is registered.
 	 */
-	public static function operator_hint( WC_Order $order, ?Kuka_Island_Shipping_Carrier_Interface $carrier ): string {
+	public static function operator_hint( WC_Order $order, ?Kuka_Island_Shipping_Carrier_Interface $carrier, string $ownership_code = '' ): string {
+		if ( 'shipment_provider_missing' === $ownership_code ) {
+			return __( 'Bu siparişte taşıyıcı kaydı var fakat hangi taşıyıcıya ait olduğu yazılı değil. Otomatik işlem yapılmaz; varsayılan taşıyıcı kullanılmaz. Manuel kargo süreci kullanılabilir.', 'kuka-island-shipping-automation' );
+		}
+
 		if ( null === $carrier ) {
 			return __( 'Kayıtlı kargo firması yok. Manuel kargo süreci kullanılabilir.', 'kuka-island-shipping-automation' );
 		}
@@ -126,13 +138,21 @@ final class Kuka_Island_Shipping_Admin {
 			return;
 		}
 
-		$carrier  = $this->manager->get_registry()->get( $this->manager->default_carrier_key() );
-		$data     = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
-		$hint     = self::operator_hint( $order, $carrier );
-		$order_id = (int) $order->get_id();
+		/*
+		 * The order's own carrier. carrier_ownership() writes nothing, which
+		 * matters here: the operations' resolver records a refusal on the order
+		 * and adds a note, and a page render must not do either.
+		 */
+		$ownership = $this->manager->carrier_ownership( $order );
+		$carrier   = '' === (string) $ownership['code']
+			? $this->manager->get_registry()->get( (string) $ownership['key'] )
+			: null;
+		$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+		$hint      = self::operator_hint( $order, $carrier, (string) $ownership['code'] );
+		$order_id  = (int) $order->get_id();
 
 		echo '<p><strong>' . esc_html__( 'Taşıyıcı:', 'kuka-island-shipping-automation' ) . '</strong> ';
-		echo esc_html( null !== $carrier ? $carrier->get_label() : __( 'kayıtlı değil', 'kuka-island-shipping-automation' ) );
+		echo esc_html( self::carrier_label( $carrier, (string) $ownership['key'], (string) $ownership['code'] ) );
 		echo '</p>';
 
 		echo '<p><strong>' . esc_html__( 'Durum:', 'kuka-island-shipping-automation' ) . '</strong> ';
@@ -222,6 +242,37 @@ final class Kuka_Island_Shipping_Admin {
 		}
 
 		echo '<p class="description">' . esc_html__( 'Manuel kargo yolu her zaman açıktır: WooCommerce kargo çekmecesinden takip numarasını elle girebilirsiniz.', 'kuka-island-shipping-automation' ) . '</p>';
+	}
+
+	/**
+	 * What the panel prints next to "Taşıyıcı:".
+	 *
+	 * The adapter's own label when it is registered; the stored key when the
+	 * order names a carrier this installation no longer has -- which is worth
+	 * seeing verbatim, because it is the reason nothing works -- and an explicit
+	 * "unknown" when the record has no owner at all.
+	 *
+	 * Public and static so the exact wording can be asserted without rendering
+	 * an admin screen.
+	 */
+	public static function carrier_label( ?Kuka_Island_Shipping_Carrier_Interface $carrier, string $key, string $ownership_code = '' ): string {
+		if ( null !== $carrier ) {
+			return $carrier->get_label();
+		}
+
+		if ( 'shipment_provider_missing' === $ownership_code ) {
+			return __( 'kayıtlı değil (siparişte taşıyıcı yazılı değil)', 'kuka-island-shipping-automation' );
+		}
+
+		if ( '' !== $key ) {
+			return sprintf(
+				/* translators: %s: stored carrier key, e.g. dhl. */
+				__( '%s (bu kurulumda kayıtlı değil)', 'kuka-island-shipping-automation' ),
+				$key
+			);
+		}
+
+		return __( 'kayıtlı değil', 'kuka-island-shipping-automation' );
 	}
 
 	/**

@@ -140,6 +140,13 @@ printf '%s\n' "$shipping_behaviour"
 shipping_lifecycle=$(./scripts/verify-shipping-activation-lifecycle.sh)
 printf '%s\n' "$shipping_lifecycle"
 
+# The cache custodian's SHUTDOWN path, which needs its own processes: a run that
+# exits or crashes before its cleanup must still leave the shop's carrier
+# reference cache byte-identical. Host-side, because the measurement is "the
+# process is gone and the rows are intact".
+shipping_custodian=$(./scripts/verify-shipping-cache-custodian.sh 2>&1 || true)
+printf '%s\n' "$shipping_custodian"
+
 # The DHL credential mount must be reachable only by the single allow-listed
 # read-only script.
 #
@@ -423,7 +430,7 @@ expect_sandbox_line() {
 expect_shipping_match() {
   label=$1
   pattern=$2
-  if printf '%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" "$dhl_runner_offline" | grep -Eq "$pattern"; then
+  if printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" "$dhl_runner_offline" "$shipping_custodian" | grep -Eq "$pattern"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected pattern $pattern)" >&2
@@ -840,7 +847,7 @@ expect_shipping_match "an uncertain cancellation is never repeated" "^SHIPPING_C
 
 # The way out of order_created: the barcode stage, and only the barcode stage.
 expect_shipping_match "the barcode stage resumes without registering a second order" "^SHIPPING_RESUME_ORDER_CREATED=PASS\\|state_before:order_created\\|create_again_code:already_in_progress\\|createOrder_calls_during_resume:0\\|createbarcode_calls_during_resume:1\\|state_after:shipment_created\\|shipment_id:stored\\|second_press_code:not_resumable\\|second_press_writes:0$"
-expect_shipping_match "every state but order_created refuses the resume" "^SHIPPING_RESUME_REFUSES_OTHER_STATES=PASS\\|states_refused:8\\|states_allowed:none\\|http_requests:0\\|codes:not_resumable$"
+expect_shipping_match "every state but order_created refuses the resume" "^SHIPPING_RESUME_REFUSES_OTHER_STATES=PASS\\|states_refused:8\\|states_allowed:none\\|http_requests:0\\|codes:not_resumable\\|carrier_pinned:yes$"
 expect_shipping_match "an uncertain resume hands over to the read-only reconciliation" "^SHIPPING_RESUME_UNCERTAIN_TO_RECONCILE=PASS\\|createOrder_calls:1\\|createbarcode_calls:1\\|state:reconcile_required\\|read_only_reconcile_calls:2\\|second_press_code:not_resumable$"
 expect_shipping_match "the resume action has its own nonce and its own capability check" "^SHIPPING_RESUME_ADMIN_ACTION=PASS\\|admin_user:found\\|separate_nonce:yes\\|wrong_nonce:refused\\|wrong_nonce_writes:0\\|no_capability:refused\\|no_capability_writes:0\\|authorised_press:ran\\|authorised_writes:1\\|state:shipment_created\\|button_label_uses_carrier_name:yes$"
 expect_shipping_match "the order screen names the carrier it actually books with" "^SHIPPING_ADMIN_TEXT_IS_CARRIER_AGNOSTIC=PASS\\|"
@@ -871,10 +878,33 @@ expect_shipping_match "an amendment is serialised and built from a fresh reading
 expect_shipping_match "every state but the two amendable ones sends nothing" "^SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE=PASS\\|states_checked:8\\|wrong:none\\|carrier_writes:0$"
 
 # The translation catalogue is generated from the source, and matches it.
-expect_shipping_match "the translation catalogue matches the source exactly" "^SHIPPING_POT_CATALOG=PASS\\|pot:readable\\|source_literals:[0-9]+\\|catalog_msgids:[0-9]+\\|missing_from_catalog:0\\|stale_in_catalog:0\\|required_new_strings:15/15\\|retired_hardcoded_carrier_string:removed$"
+expect_shipping_match "the translation catalogue matches the source exactly" "^SHIPPING_POT_CATALOG=PASS\\|pot:readable\\|source_literals:[0-9]+\\|catalog_msgids:[0-9]+\\|missing_from_catalog:0\\|stale_in_catalog:0\\|required_new_strings:22/22\\|retired_hardcoded_carrier_string:removed$"
 
-expect_shipping_match "the behavioural suite removes its fixtures and its notes and preserves the cache" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0\\|pre_existing_cache_rows:[0-9]+\\|cache_keyset_identical:yes\\|cache_fingerprint_identical:yes\\|run_owned_cache_residue:[0-9]+$"
-expect_shipping_match "a pre-existing carrier reference cache survives the run byte for byte" "^SHIPPING_CBS_CACHE_PRESERVED=PASS\\|control:planted_then_overwritten_then_restored\\|overwritten_by_run:yes\\|value_and_timeout_rows:2\\|.*fingerprint_recovered:yes\\|value_identical:yes\\|bytes_identical:yes$"
+# An order belongs to ITS carrier, whatever the shop's default becomes.
+expect_shipping_match "query, reconcile, amend and cancel stay with the order's own carrier" "^SHIPPING_PROVIDER_AFFINITY=PASS\\|stored_provider:dhl\\|default_now:kuka-other-kargo\\|resolved:dhl\\(order\\)\\|dhl.status_reads:1\\|dhl.reconcile_reads:1\\|dhl.updates:1\\|dhl.cancels:1\\|dhl.cancel_confirm_reads:1\\|other.reads:0\\|other.writes:0\\|other.contacts:0$"
+expect_shipping_match "the barcode resume stays with the order's own carrier" "^SHIPPING_PROVIDER_AFFINITY_RESUME=PASS\\|stored_provider:dhl\\|default_now:kuka-other-kargo\\|dhl.createbarcode:1\\|dhl.createOrder:0\\|other.reads:0\\|other.writes:0\\|other.contacts:0\\|state:shipment_created$"
+expect_shipping_match "the carrier is pinned in the database before the first write" "^SHIPPING_PROVIDER_PINNED_BEFORE_FIRST_WRITE=PASS\\|measured:database_read_inside_the_first_write\\|provider_before:empty\\|provider_at_first_write:kuka-test-kargo\\|reference_at_first_write:stored\\|.*create_order_calls:1$"
+expect_shipping_match "only an untouched order may take the configured default" "^SHIPPING_UNTOUCHED_ORDER_USES_DEFAULT=PASS\\|before_create:kuka-test-kargo\\(default\\)\\|after_create:kuka-test-kargo\\(order\\)\\|stored:kuka-test-kargo$"
+expect_shipping_match "a createOrder that timed out still records who was asked" "^SHIPPING_UNCERTAIN_CREATE_RETAINS_PROVIDER=PASS\\|createOrder:timeout\\|provider_after_timeout:dhl\\|state:reconcile_required\\|dhl.createOrder_total:1\\|reconcile_verdict:inconclusive\\|dhl.reconcile_reads:2\\|dhl.second_createOrder:0\\|other.reads:0\\|other.writes:0\\|other.contacts:0$"
+expect_shipping_match "an explicit carrier key that disagrees with the record is refused" "^SHIPPING_PROVIDER_MISMATCH_FAILS_CLOSED=PASS\\|stored:dhl\\|requested:kuka-other-kargo\\|doors:6\\|wrong:none\\|dhl.requests:0\\|other.reads:0\\|other.writes:0\\|other.contacts:0\\|stored_provider_unchanged:yes$"
+expect_shipping_match "a record with carrier evidence and no owner is refused, not guessed" "^SHIPPING_LEGACY_MISSING_PROVIDER_FAILS_CLOSED=PASS\\|carrier_evidence:yes\\|stored_provider:empty\\|doors:6\\|wrong:none\\|dhl.requests:0\\|other.reads:0\\|other.writes:0\\|other.contacts:0\\|default_written_in:no$"
+expect_shipping_match "the ownership read inside the lock beats the one at the door" "^SHIPPING_PROVIDER_FRESH_UNDER_LOCK=PASS\\|entry_answer:kuka-other-kargo\\|pinned_while_taking_lock:yes\\|winner:in_lock_reading\\|pinned.cancel_shipment:1\\|pinned.read_shipment:1\\|entry_default.reads:0\\|entry_default.writes:0\\|entry_default.contacts:0\\|state:cancelled$"
+
+# Reads cross the same boundary, and a blocked read is not an absent record.
+expect_shipping_match "every carrier read is gated, and none happens once the gate shuts" "^SHIPPING_READ_GATE_SHARED=PASS\\|operations:3\\|status_read.code:credentials_missing\\|status_read.reads:0\\|status_read.attempt_spent:no\\|reconcile.verdict:blocked\\|reconcile.reads:0\\|reconcile.state:reconcile_required\\|cancel_confirm.code:cancel_unconfirmed\\|cancel_confirm.writes:1\\|cancel_confirm.reads:0\\|cancel_confirm.state:shipment_created$"
+expect_shipping_match "an uncertain write whose reconciliation cannot read stays uncertain" "^SHIPPING_UNCERTAIN_READ_BLOCKED_STAYS_UNCERTAIN=PASS\\|createOrder:uncertain\\|gate_closed_after_write:yes\\|createOrder_calls:1\\|reconcile_reads:0\\|state:reconcile_required\\|absence_assumed:no\\|provider_retained:kuka-test-kargo\\|second_press_code:shipping_runtime_disabled\\|total_writes:1$"
+
+# The order screen shows the order's carrier, and writes nothing while doing it.
+expect_shipping_match "the order screen names the order's carrier, not the shop's default" "^SHIPPING_ADMIN_USES_STORED_PROVIDER=PASS\\|default_now:kuka-other-kargo\\|pinned_order:kuka-pinned-kargo\\(order\\)\\|.*untouched_order:kuka-other-kargo\\(default\\)\\|.*orphaned_code:shipment_provider_missing\\|render_wrote_notes:0\\|pinned.contacts:0\\|other.contacts:0$"
+
+# The cache custodian survives an exit and a fatal, in their own processes.
+expect_shipping_match "an exiting run still restores the shop's carrier cache" "^SHIPPING_CACHE_CUSTODIAN_exit=PASS\\|measured:separate_process\\|death:exit\\|snapshot_rows:2\\|cache_dirtied_before_death:yes\\|restored_by:shutdown_guard\\|fingerprint_match:yes\\|sentinel_value_intact:yes\\|run_owned_rows_left:0$"
+expect_shipping_match "a crashing run still restores the shop's carrier cache" "^SHIPPING_CACHE_CUSTODIAN_fatal=PASS\\|measured:separate_process\\|death:fatal\\|snapshot_rows:2\\|cache_dirtied_before_death:yes\\|restored_by:shutdown_guard\\|fingerprint_match:yes\\|sentinel_value_intact:yes\\|run_owned_rows_left:0$"
+expect_shipping_match "the custodian suite removes its own sentinel" "^SHIPPING_CACHE_CUSTODIAN_FIXTURE_REMOVED=PASS\\|rows_left:0$"
+expect_shipping_match "the cache custodian suite passes as a whole" "^SHIPPING_CACHE_CUSTODIAN_SUITE=PASS$"
+
+expect_shipping_match "the behavioural suite removes its fixtures and its notes and preserves the cache" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0\\|pre_existing_cache_rows:[0-9]+\\|cache_keyset_identical:yes\\|cache_fingerprint_identical:yes\\|run_owned_cache_residue:[0-9]+\\|cache_restore_refused:0$"
+expect_shipping_match "a pre-existing carrier reference cache survives the run byte for byte" "^SHIPPING_CBS_CACHE_PRESERVED=PASS\\|control:planted_then_overwritten_then_restored\\|coordinator:shared\\|overwritten_by_run:yes\\|value_and_timeout_rows:2\\|.*refused:0\\|fingerprint_recovered:yes\\|value_identical:yes\\|bytes_identical:yes\\|second_call_is_noop:yes$"
 expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIFY=PASS$"
 
 # Activation and deactivation, driven for real through WP-CLI.

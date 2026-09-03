@@ -52,14 +52,74 @@ Taşıyıcıya özgü hiçbir bilgi `Manager` ve üstüne çıkmaz. `Manager` `'
 `'sender'`, `'to_address'` gibi anlamsal jeton kullanır; bunları `3`, `1`, `1`
 sayılarına çevirmek adaptörün işidir.
 
-### 2.1 Yazma sınırı: iki katman, tek boğaz
+### 2.1 Sipariş–taşıyıcı sahipliği
+
+Bir siparişte taşıyıcı işlemi başladıktan sonra o kayıt, mağazanın **sonradan
+değişebilecek** varsayılan taşıyıcısına göre yönlendirilmez. Sahiplik siparişin
+kendi metasındadır (`_kuka_shipping_provider`) ve tek bir yerden çözülür:
+`Manager::carrier_ownership()`.
+
+Üç durum vardır ve **yalnız biri** varsayılanı kullanabilir:
+
+| Durum | Koşul | Sonuç |
+| --- | --- | --- |
+| **pinned** | siparişte provider yazılı | O taşıyıcı kullanılır. Açıkça verilen `carrier_key` çelişirse `shipment_provider_mismatch` ile reddedilir; dış çağrı 0, siparişin taşıyıcısı değişmez. |
+| **orphaned** | taşıyıcı kanıtı var, provider yok | `shipment_provider_missing` ile reddedilir; dış çağrı 0. Varsayılan **kullanılmaz**: hangi kuryenin paketi tuttuğunu kimse bilmiyor ve varsayılan, paketi olan bir tahmindir. |
+| **untouched** | hiç dış çağrı yapılmamış | Yalnız burada `KUKA_SHIPPING_DEFAULT_CARRIER`/filtre karar verir, ve karar ilk yazmadan **önce** sabitlenir. |
+
+"Taşıyıcı kanıtı" (`Order_Store::has_carrier_evidence()`): `order_created`,
+`shipment_created`, `reconcile_required`, `absent_confirmed`, `delivered`,
+`manual_review`, `cancelled` durumlarından biri; veya dolu `shipment_id`,
+`orderInvoiceId`, sıfırdan farklı durum kodu, ya da kayıtlı barkod. **Referansın
+tek başına var olması kanıt değildir** — referans yerel olarak, hiçbir şey
+gönderilmeden basılır.
+
+**Sabitleme ilk yazmadan önce, kilit altında, tek save içinde.**
+`Order_Store::begin_carrier_session()` provider'ı, referansı ve referans
+geçmişini birlikte yazar. Provider eskiden yalnız `save_order_created()`
+tarafından, yani taşıyıcının **onayladığı** bir `createOrder`dan sonra
+yazılıyordu; timeout olan bir `createOrder` bu yüzden kimin sorulduğunu
+kaydetmeden `reconcile_required`da bırakıyor, mutabakat da o an varsayılan olan
+taşıyıcıyı okuyordu. Sabitleme önce yapıldığı için pin timeout'tan sağ çıkar.
+
+**Üzerine yazılmaz.** Zaten yazılı bir provider, çağrıcı ne gönderirse
+göndersin olduğu gibi kalır. Canlı bir siparişi başka bir kuryeye yöneltmek bu
+kodun yapabileceği bir şey değildir.
+
+Sabitlendikten sonra **resume, mutabakat, sorgu, poller, güncelleme, iptal ve
+iptal doğrulama okumaları** yalnız bu kayıtlı provider üzerinden yürür. Yönetim
+paneli de aynı soruyu sorar; varsayılan yalnız işlem görmemiş siparişte
+kullanılır. İkinci taşıyıcı desteği yine yalnız adaptör eklemekle sınırlıdır ve
+eski kayıtların sahipliği korunur.
+
+Her mutation kilidi alındıktan sonra sipariş yeniden okunur ve **sahiplik
+yeniden doğrulanır**; kilit öncesi snapshot'a güvenilmez.
+
+Ölçüm: `SHIPPING_PROVIDER_AFFINITY`, `SHIPPING_PROVIDER_AFFINITY_RESUME`,
+`SHIPPING_PROVIDER_PINNED_BEFORE_FIRST_WRITE`,
+`SHIPPING_UNTOUCHED_ORDER_USES_DEFAULT`,
+`SHIPPING_UNCERTAIN_CREATE_RETAINS_PROVIDER`,
+`SHIPPING_PROVIDER_MISMATCH_FAILS_CLOSED`,
+`SHIPPING_LEGACY_MISSING_PROVIDER_FAILS_CLOSED`,
+`SHIPPING_PROVIDER_FRESH_UNDER_LOCK`, `SHIPPING_ADMIN_USES_STORED_PROVIDER`.
+Hepsi iki kayıt tutan adaptörle ölçülür ve her adaptörün okuma/yazma sayacı
+ayrı raporlanır.
+
+### 2.2 Yazma ve okuma sınırı: iki katman, iki boğaz
 
 Taşıyıcıya yazan **altı** operasyon vardır: `create_order`, `create_barcode`,
 `update_order`, `update_shipment`, `cancel_order`, `cancel_shipment`.
+Taşıyıcıdan okuyan **üç** operasyon vardır: `read_shipment`, `read_order`,
+`read_shipment_status`.
 
-**Katman 1 — `Manager::carrier_gate()`.** Her taşıyıcı operasyonunun geçtiği
-ortak sınır: taşıyıcı kayıtlı mı, çalışma kapısı açık mı, ortam bloke değil mi,
-kimlikler tam mı. Bunlardan biri sağlanmıyorsa dış çağrı sayısı **0**'dır.
+**Katman 0 — `Manager::carrier_ownership()`.** §2.1. Her operasyonun ilk
+sorusu.
+
+**Katman 1 — `Manager::carrier_gate()`.** Her taşıyıcı operasyonunun —
+**okumalar dâhil** — geçtiği ortak sınır: çalışma kapısı açık mı, ortam bloke
+değil mi, kimlikler tam mı. Bunlardan biri sağlanmıyorsa dış çağrı sayısı
+**0**'dır. `reconcile_order()` ve `query_status()` bu kapıyı eskiden hiç
+kontrol etmiyordu.
 
 **Katman 2 — `Manager::create_policy()`.** Yalnız **oluşturma** ve **barkod
 sürdürme** işlemlerinin tabi olduğu iş kuralı: kapıda ödeme. Bu kural bilinçli
@@ -67,7 +127,7 @@ olarak katman 1'in dışındadır. Kapıda ödeme kontrolünü iptale de uygulam
 siparişini **geri alınamaz** hâle getirirdi; tehlikeli olan COD siparişini
 peşin gibi kargolamaktır, iptal etmek çözümdür.
 
-**Tek boğaz — `Manager::guarded_write()`.** Altı yazmanın tamamı bu metottan
+**Yazma boğazı — `Manager::guarded_write()`.** Altı yazmanın tamamı bu metottan
 geçer ve başka hiçbir yerden geçmez. Metot, taşıyıcıya dokunmadan **hemen önce**
 katman 1'i yeniden sorar. Giriş kontrolü kilit alınmadan önce yapılmıştı; o
 noktayla yazma arasında operatör eklentiyi devre dışı bırakabilir — çalışma
@@ -75,10 +135,28 @@ kapısı tam olarak bu senaryo için vardır. `Runtime_Gate::is_disabled()` her
 çağrıda option tablosundan doğrudan okur, bu yüzden ikinci okuma birincinin
 tekrarı değildir.
 
-Ölçüm: `SHIPPING_MUTATION_GATE_SHARED` (dört kapı × üç koşul, yazma 0) ve
+**Okuma boğazı — `Manager::guarded_read()`.** Üç okumanın tamamı buradan geçer
+ve kapı yine okumadan **hemen önce** sorulur.
+
+**Bloke okuma, kaydın yokluğu değildir.** `guarded_read()` bir `Result` değil,
+bir **ret** döndürür; hiçbir çağrıcı kapalı kapıyı 404 sanamaz. Bu ayrım
+okumaların ayrı boğazdan geçmesinin bütün sebebidir: `reconcile()` yokluğu
+`not_found`dan kanıtlar, ve `not_found` döndüren bir kapı yokluğu **kapalı
+olduğu için** kanıtlamış olurdu. Okuma bloke olursa:
+
+- `reconcile()` → verdict `blocked`, durum `reconcile_required` kalır, hiçbir
+  şey yazılmaz, yokluk varsayılmaz.
+- `query_status()` → gate kodu döner; **deneme harcanmaz** (hiçbir çağrı
+  yapılmadı).
+- İptal doğrulaması → `cancel_unconfirmed`, durum değişmez, sorgu zinciri
+  iptal edilmez.
+
+Ölçüm: `SHIPPING_MUTATION_GATE_SHARED` (dört kapı × üç koşul, yazma 0),
 `SHIPPING_GATE_RECHECKED_UNDER_LOCK` (dört kapıda `readiness` sorgusu 2, yazma
 0), `SHIPPING_RUNTIME_GATE_CLOSED_MIDFLIGHT` (kapı kilit altındayken kapanıyor,
-yazma 0).
+yazma 0), `SHIPPING_READ_GATE_SHARED` (üç okuma, okuma 0) ve
+`SHIPPING_UNCERTAIN_READ_BLOCKED_STAYS_UNCERTAIN` (belirsiz yazmadan sonra
+okuma bloke; durum belirsiz kalır, ikinci yazma yok).
 
 **İkinci kargo firması eklemek** için tek gereken:
 `Kuka_Island_Shipping_Carrier_Interface` uygulayan bir sınıf yazmak ve
@@ -386,6 +464,10 @@ için tek bağlantıda yapılan iki ardışık çağrı eşzamanlılık kanıtı
 
 Tümü WooCommerce CRUD üzerinden yazılır; `$wpdb` kullanılmaz.
 
+`_kuka_shipping_provider` sahiplik alanıdır: ilk dış yazmadan önce, mutation
+kilidi altında, referansla **aynı save** içinde yazılır ve bir daha üzerine
+yazılmaz. Bkz. §2.1.
+
 | Meta | İçerik |
 | --- | --- |
 | `_kuka_shipping_provider` | taşıyıcı anahtarı (`dhl`) |
@@ -519,11 +601,12 @@ tarafından mutabakatlandığı, mağazaya nasıl ulaştığı ve bu arada WooCo
 | `scripts/verify-shipping-automation.php` | 30 davranış ölçümü, mock transport |
 | `scripts/verify-shipping-activation-lifecycle.sh` | gerçek `wp plugin activate/deactivate` |
 | `scripts/verify-dhl-runner-offline.sh` | runner'ın çevrimdışı izin listesi modu hiçbir süreç başlatmıyor |
+| `scripts/verify-shipping-cache-custodian.sh` | çıkış/fatal durumunda bile mağazanın CBS önbelleği birebir geri yükleniyor |
 | `scripts/verify-deploy-package.sh` | paket içeriği |
 | `scripts/test-dhl-sandbox.php` | salt-okunur Identity + CBS bağlantısı |
 | `scripts/dhl-sandbox-shipment.php` | onaylı tek sandbox gönderisi: oluştur, sorgula, iptal |
 
-`make verify` bu tablonun **ilk beş** satırını çalıştırır ve çıktılarını satır
+`make verify` bu tablonun **ilk altı** satırını çalıştırır ve çıktılarını satır
 satır sabitler: OpenAPI sözleşmesi, pasif teslim sözleşmesi, davranış ölçümleri
 (mock transport), gerçek etkinleştirme/devre dışı bırakma turu ve paket içeriği.
 Bu beşinin hiçbiri ağa çıkmaz, hiçbir kimlik bilgisi okumaz ve taşıyıcıda

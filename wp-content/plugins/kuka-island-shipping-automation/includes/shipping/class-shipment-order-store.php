@@ -13,6 +13,12 @@
  * produced it. A shipment whose existence is unknown is resolved by reading,
  * never by writing again.
  *
+ * OWNERSHIP IS PART OF THE STATE. META_PROVIDER says which carrier this order
+ * belongs to, it is pinned by begin_carrier_session() before the first external
+ * write, and it is never overwritten. Everything afterwards -- resume, query,
+ * poll, amend, cancel and every reconciliation read -- addresses that carrier
+ * and not the shop's current default, which may since have changed.
+ *
  *   none                 nothing has been attempted
  *     -> order_created       createOrder confirmed
  *     -> reconcile_required  a write returned an uncertain answer
@@ -90,6 +96,112 @@ final class Kuka_Island_Shipping_Order_Store {
 		$state = (string) $order->get_meta( self::META_STATE, true );
 
 		return '' !== $state ? $state : self::STATE_NONE;
+	}
+
+	/**
+	 * The carrier this order BELONGS to, or '' when nothing has been pinned.
+	 *
+	 * Ownership, not preference. Once a carrier has been addressed under this
+	 * order's reference, every later query, amendment, cancellation and
+	 * reconciliation has to go to THAT carrier -- the shop's current default is
+	 * irrelevant and following it would send a cancellation to a courier that
+	 * never had the parcel.
+	 */
+	public static function provider( WC_Order $order ): string {
+		return trim( (string) $order->get_meta( self::META_PROVIDER, true ) );
+	}
+
+	/**
+	 * Is there any sign that SOME carrier was addressed under this reference?
+	 *
+	 * The question exists for records written before ownership was pinned. If
+	 * this is true and provider() is empty, nobody knows which courier holds
+	 * the parcel, and guessing is how a cancellation reaches the wrong one. The
+	 * caller must fail closed rather than fall back to a default.
+	 *
+	 * A bare reference is NOT evidence: reference() mints one locally, before
+	 * anything is sent. The evidence is a state that only a carrier answer can
+	 * produce, or a value that only a carrier can supply.
+	 */
+	public static function has_carrier_evidence( WC_Order $order ): bool {
+		$evidence_states = array(
+			self::STATE_ORDER_CREATED,
+			self::STATE_SHIPMENT_CREATED,
+			self::STATE_RECONCILE_REQUIRED,
+			self::STATE_ABSENT_CONFIRMED,
+			self::STATE_DELIVERED,
+			self::STATE_MANUAL_REVIEW,
+			self::STATE_CANCELLED,
+		);
+
+		if ( in_array( self::get_state( $order ), $evidence_states, true ) ) {
+			return true;
+		}
+
+		if ( '' !== trim( (string) $order->get_meta( self::META_SHIPMENT_ID, true ) )
+			|| '' !== trim( (string) $order->get_meta( self::META_ORDER_INVOICE_ID, true ) )
+			|| 0 !== (int) $order->get_meta( self::META_STATUS_CODE, true ) ) {
+			return true;
+		}
+
+		return array() !== array_filter( array_map( 'strval', (array) ( $order->get_meta( self::META_BARCODES, true ) ?: array() ) ) );
+	}
+
+	/**
+	 * Pin this order to one carrier and hand back its reference.
+	 *
+	 * CALLED BEFORE THE FIRST EXTERNAL WRITE, WITH THE MUTATION LOCK HELD. The
+	 * provider used to be written by save_order_created(), which only runs after
+	 * a createOrder the carrier CONFIRMED. A createOrder that timed out
+	 * therefore left the order in reconcile_required with no record of who had
+	 * been asked -- and the reconciliation then read whichever carrier happened
+	 * to be the default. Pinning first closes that window: the pin survives the
+	 * timeout because it was already stored when the request went out.
+	 *
+	 * ONE SAVE. The provider, the reference and the reference history are
+	 * written together, so there is no instant in which the reference exists
+	 * without an owner.
+	 *
+	 * NEVER OVERWRITES. A provider that is already stored is returned as it is,
+	 * whatever the caller passed. Re-pointing a live order at another courier is
+	 * not something this code may do; the caller has already been refused with
+	 * shipment_provider_mismatch before reaching here.
+	 *
+	 * @param WC_Order $order        Order.
+	 * @param string   $provider_key Carrier key to pin.
+	 * @return array{reference: string, provider: string, pinned: bool}
+	 */
+	public static function begin_carrier_session( WC_Order $order, string $provider_key ): array {
+		$stored    = self::provider( $order );
+		$reference = (string) $order->get_meta( self::META_REFERENCE, true );
+		$has_ref   = Kuka_Island_Shipping_Reference::is_valid( $reference );
+		$pinning   = '' === $stored && '' !== trim( $provider_key );
+
+		if ( ! $pinning && $has_ref ) {
+			return array(
+				'reference' => $reference,
+				'provider'  => $stored,
+				'pinned'    => false,
+			);
+		}
+
+		if ( ! $has_ref ) {
+			$reference = Kuka_Island_Shipping_Reference::build( (int) $order->get_id() );
+			$order->update_meta_data( self::META_REFERENCE, $reference );
+			self::append_reference_history( $order, $reference );
+		}
+
+		if ( $pinning ) {
+			$order->update_meta_data( self::META_PROVIDER, trim( $provider_key ) );
+		}
+
+		$order->save_meta_data();
+
+		return array(
+			'reference' => $reference,
+			'provider'  => $pinning ? trim( $provider_key ) : $stored,
+			'pinned'    => $pinning,
+		);
 	}
 
 	/** How many carrier status queries this order has actually spent. */
@@ -246,7 +358,15 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * @param string   $order_invoice_id Carrier's own order receipt id, '' when absent.
 	 */
 	public static function save_order_created( WC_Order $order, string $provider_key, string $order_invoice_id ): void {
-		$order->update_meta_data( self::META_PROVIDER, $provider_key );
+		// Ownership is pinned by begin_carrier_session() BEFORE the request goes
+		// out, so this is normally a no-op. It writes only when the field is
+		// empty, and it never re-points an order that already has an owner:
+		// this method is also reached from a reconciliation, and a
+		// reconciliation must not be able to change whose parcel this is.
+		if ( '' === self::provider( $order ) && '' !== trim( $provider_key ) ) {
+			$order->update_meta_data( self::META_PROVIDER, trim( $provider_key ) );
+		}
+
 		$order->update_meta_data( self::META_STATE, self::STATE_ORDER_CREATED );
 		$order->update_meta_data( self::META_LAST_OPERATION, 'create_order' );
 		$order->update_meta_data( self::META_LAST_ERROR, '' );

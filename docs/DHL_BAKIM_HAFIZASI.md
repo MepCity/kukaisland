@@ -32,6 +32,9 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | İptal ve güncelleme kilitsizdi; iptal yalnız `reconcile_required` durumunu engelliyordu | Tek mutation kilidi, kilit içinde taze okuma, izin listesi ve `already_cancelled` (K-18) |
 | 2026-09-03 | `make verify` izin listesi kararını gerçek runner'ı çalıştırıp `head -n 1` ile alıyordu; PHP'yi durduran şey SIGPIPE zamanlamasıydı | Açık çevrimdışı mod `--check-script`; süreç/ağ/kimlik okuması 0 ölçüldü (K-19) |
 | 2026-09-03 | Suite temizliği, kendisinin oluşturmadığı CBS önbellek satırlarını da siliyordu | Anlık görüntü + bayt bayt geri yükleme; ölçüm "korundu, kalıntı 0" (K-20) |
+| 2026-09-03 | Sipariş, mağazanın **güncel** varsayılan taşıyıcısına yönlendiriliyordu; timeout olan `createOrder` sahipliği kaybediyordu | Sahiplik ilk yazmadan önce sabitleniyor, tek merkezden çözülüyor, fail-closed (K-21) |
+| 2026-09-03 | "Her taşıyıcı operasyonu ortak kapıdan geçer" yorumu okumalar için doğru değildi | `guarded_read()`; bloke okuma yokluk kanıtı değil (K-22) |
+| 2026-09-03 | Test temizliği yalnız normal sona bağlıydı; assertion/fatal durumunda mağazanın önbelleği mock veriyle kalıyordu | Shutdown guard'lı, idempotent, sahipliği tam cleanup coordinator (K-23) |
 
 ---
 
@@ -310,6 +313,9 @@ geçmez.
 - **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
   (`handle_uncertain`, `reconcile`)
 - **Tekrar yaşanırsa ilk bak:** `Order_Store::states_blocking_create()`.
+- **Not (K-22):** Üçüncü bir cevapsızlık biçimi var: okuma **hiç yapılamazsa**
+  (kapı kapalı) verdict `blocked` olur. Bu da yokluk değildir; durum
+  `reconcile_required` kalır ve hiçbir şey yazılmaz.
 - **Not (K-15):** Mutabakat yalnız **siparişi** bulursa durum `order_created`
   olur ve bu da `states_blocking_create()` içindedir. Oradan çıkış
   `Manager::resume_barcode()`'dur — `createOrder`'ı tekrar çağırmayan, yalnız
@@ -424,6 +430,9 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `cancel()` içindeki `$confirmed_by` değişkeni.
   İki dal da aynı sorguya gidiyorsa hata geri gelmiştir. Sonuç satırındaki
   `confirmed_by:` alanı hangi sorgunun kanıt sayıldığını söyler.
+- **Not (K-22):** Doğrulama okuması artık `guarded_read()` üzerinden geçer.
+  Kapı yazma ile okuma arasında kapanırsa sonuç `cancel_unconfirmed` olur, durum
+  değişmez ve sorgu zinciri iptal edilmez.
 - **Bu kayıt tamamlanmamıştı (K-18):** doğrulama nesnesi düzeltildi ama
   `cancel()` hâlâ **kilitsizdi** ve yalnız `reconcile_required` durumunu
   engelliyordu. İki eşzamanlı basış iki iptal yazımı gönderebiliyor,
@@ -574,6 +583,10 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `SHIPPING_CORE_NAMES_NO_ADAPTER` ölçümünün
   dosya listesi. Yeni bir ortak sınıf eklendiğinde o listeye girmelidir; yoksa
   bağımlılık sessizce geri döner.
+- **Bu kayıt tamamlanmamıştı (K-21):** "ikinci taşıyıcı yalnız adaptör
+  eklemekle" iddiası doğruydu, fakat ikinci taşıyıcı **eklendiği anda** eski
+  kayıtların sahipliği kayboluyordu: her giriş noktası boş anahtarda güncel
+  varsayılana düşüyordu. Bkz. K-21.
 - **Not:** Bu düzeltme Ö-03'ü **kapatmaz**. Hangi değerin gerçek takip numarası
   olduğu hâlâ ölçülmemiştir; değişen tek şey, cevabın nereden sorulduğudur.
 - **Bu kayıt tamamlanmamıştı (K-18):** ortak `preflight()` metodu oluşturma
@@ -747,3 +760,156 @@ geçmez.
   (`kuka_ship_cbs_rows`, `kuka_ship_cbs_fingerprint`, `kuka_ship_cbs_restore`)
 - **Tekrar yaşanırsa ilk bak:** temizlik bloğunda `purge_cache()` çağrısı olup
   olmadığı. Orada bir purge görürsen, koşu yine mağazanın verisini siliyor.
+- **Bu kayıt tamamlanmamıştı (K-23):** geri yükleme yalnız dosyanın altında,
+  yani **normal sonda** çalışıyordu. Bir ölçüm patladığında ya da fatal
+  olduğunda hiç çalışmıyordu. Bkz. K-23.
+
+---
+
+## K-21 — Sipariş, mağazanın güncel varsayılan taşıyıcısına yönlendiriliyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** İkinci taşıyıcı eklenip varsayılan değiştirildikten sonra:
+  sipariş ekranı eski DHL siparişini yeni kuryenin adıyla gösteriyor; durum
+  sorgusu yeni kuryeye gidiyor ve "kayıt yok" cevabı alıyor; iptal düğmesi
+  paketi hiç görmemiş bir kuryeye `cancelorder` gönderiyor ve o kuryenin
+  `not_found` cevabı **iptalin kanıtı** sayılıyor. Sonuç: sipariş `cancelled`
+  yazılıyor, sorgu zinciri iptal ediliyor, canlı paket izlenmez oluyor.
+- **Kesin kök nedenler — dört tane:**
+  1. `render_meta_box()` siparişin `_kuka_shipping_provider` değerini hiç
+     okumuyor, `default_carrier_key()` kullanıyordu.
+  2. `reconcile_order()`, `query_status()`, `resume_barcode()`,
+     `update_shipment()` ve `cancel()` boş `carrier_key` aldığında — yani
+     poller'ın ve yönetim ekranının yaptığı her çağrıda — siparişte saklanan
+     provider yerine **güncel** varsayılanı seçiyordu.
+  3. `META_PROVIDER` yalnız `save_order_created()` tarafından, yani taşıyıcının
+     **onayladığı** bir `createOrder`dan sonra yazılıyordu. İlk `createOrder`
+     timeout dönerse hangi taşıyıcının sahibi olduğu kayboluyor, mutabakat da
+     o an varsayılan olanı okuyordu.
+  4. Sahiplik hiçbir yerde tek merkezden çözülmüyordu; her giriş noktası kendi
+     `registry->get( ... ?: default )` satırını taşıyordu.
+- **Uygulanan çözüm:**
+  - Tek merkez: `Manager::carrier_ownership()` (yan etkisiz karar) ve
+    `resolve_carrier()` (aynı karar + registry + ret kaydı). `admit()` ikisini
+    kapıyla birlikte uygular ve **her mutation kilidi alındıktan sonra tekrar**
+    çağrılır.
+  - Üç durum, yalnız biri varsayılanı kullanabilir: **pinned** (siparişteki
+    provider), **orphaned** (taşıyıcı kanıtı var, provider yok →
+    `shipment_provider_missing`, dış çağrı 0), **untouched** (hiç çağrı
+    yapılmamış → varsayılan, ve ilk yazmadan önce sabitlenir).
+  - Açıkça verilen `carrier_key` kayıtlı provider ile çelişirse
+    `shipment_provider_mismatch`; dış çağrı 0, siparişin provider'ı değişmez.
+  - `Order_Store::begin_carrier_session()` provider'ı, referansı ve referans
+    geçmişini **tek save** içinde, ilk dış yazmadan önce yazar. Pin bu yüzden
+    timeout'tan sağ çıkar. `save_order_created()` artık yalnız alan boşsa yazar;
+    mutabakat siparişin sahibini değiştiremez.
+  - Yönetim paneli `carrier_ownership()` sorar. Bu metot **yan etkisiz** olmak
+    zorundadır: `resolve_carrier()` reddi siparişe kaydeder ve not düşer, ve bir
+    sayfa render'ı her yüklemede not bırakamaz.
+- **Neden varsayılan yasak:** varsayılan, paketi olan bir tahmindir. Yanlış
+  kuryeye sorulan "bu gönderi sende mi" sorusunun cevabı her zaman "hayır"dır ve
+  bu kod "hayır"ı yokluk kanıtı sayar.
+- **Kanıt (iki kayıt tutan adaptör, sayaçlar ayrı):**
+  `SHIPPING_PROVIDER_AFFINITY=PASS|stored_provider:dhl|default_now:kuka-other-kargo|dhl.status_reads:1|dhl.reconcile_reads:1|dhl.updates:1|dhl.cancels:1|dhl.cancel_confirm_reads:1|other.contacts:0`,
+  `SHIPPING_PROVIDER_AFFINITY_RESUME=PASS|dhl.createbarcode:1|dhl.createOrder:0|other.contacts:0`,
+  `SHIPPING_PROVIDER_PINNED_BEFORE_FIRST_WRITE=PASS|measured:database_read_inside_the_first_write|provider_at_first_write:kuka-test-kargo|reference_at_first_write:stored`,
+  `SHIPPING_UNCERTAIN_CREATE_RETAINS_PROVIDER=PASS|provider_after_timeout:dhl|dhl.createOrder_total:1|dhl.second_createOrder:0|other.contacts:0`,
+  `SHIPPING_PROVIDER_MISMATCH_FAILS_CLOSED=PASS|doors:6|wrong:none|dhl.requests:0|other.contacts:0|stored_provider_unchanged:yes`,
+  `SHIPPING_LEGACY_MISSING_PROVIDER_FAILS_CLOSED=PASS|carrier_evidence:yes|doors:6|dhl.requests:0|other.contacts:0|default_written_in:no`,
+  `SHIPPING_UNTOUCHED_ORDER_USES_DEFAULT=PASS|before_create:kuka-test-kargo(default)|after_create:kuka-test-kargo(order)`,
+  `SHIPPING_PROVIDER_FRESH_UNDER_LOCK=PASS|entry_answer:kuka-other-kargo|winner:in_lock_reading|entry_default.contacts:0`,
+  `SHIPPING_ADMIN_USES_STORED_PROVIDER=PASS|pinned_order:kuka-pinned-kargo(order)|untouched_order:kuka-other-kargo(default)|render_wrote_notes:0`
+- **İlgili dosyalar:**
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`provider`, `has_carrier_evidence`, `begin_carrier_session`,
+  `save_order_created`),
+  `SHIP/includes/shipping/class-shipment-manager.php`
+  (`carrier_ownership`, `resolve_carrier`, `admit`, tüm giriş noktaları),
+  `SHIP/includes/shipping/class-shipment-admin.php`
+  (`render_meta_box`, `carrier_label`, `operator_hint`)
+- **Tekrar yaşanırsa ilk bak:** `default_carrier_key()` çağrılarının nerede
+  olduğu. `carrier_ownership()` dışında bir yerde geçiyorsa hata geri gelmiştir.
+  Bir de `SHIPPING_PROVIDER_FRESH_UNDER_LOCK`: kilit altındaki kararın kilit
+  öncesindekini yenmesi bu ölçümle kilitli.
+
+---
+
+## K-22 — "Her taşıyıcı operasyonu kapıdan geçer" yorumu doğru değildi
+
+- **Tarih:** 2026-09-03
+- **Belirti:** —
+- **Kesin kök neden:** Manager sınıf docblock'u "EVERY carrier operation
+  crosses carrier_gate()" diyordu. Üç okuma operasyonundan (`read_shipment`,
+  `read_order`, `read_shipment_status`) ikisinin çağrıcısı — `reconcile_order()`
+  ve `query_status()` — kapıyı **hiç** kontrol etmiyordu, hiçbiri de dış
+  çağrıdan hemen önce yeniden kontrol etmiyordu. Yorum, kodun yapmadığı bir şeyi
+  anlatıyordu; bu, sonraki geliştiriciyi yanlış yönlendiren en pahalı hata
+  türüdür.
+- **Uygulanan çözüm:** `Manager::guarded_read()`. Üç okumanın tamamı buradan
+  geçer, kapı okumadan hemen önce yeniden sorulur, ve metot bir `Result` değil
+  **ret** döndürür.
+- **Neden ret, Result değil:** `reconcile()` yokluğu `not_found`dan kanıtlar.
+  Kapalı kapı `not_found` döndürseydi, yokluğu **kapalı olduğu için** kanıtlamış
+  olurdu ve bu, ikinci bir `createOrder`a izin verirdi — aynı paketin iki kez
+  kargolanması. Bloke okuma sonucu:
+  `reconcile()` → verdict `blocked`, durum `reconcile_required` kalır;
+  `query_status()` → gate kodu, **deneme harcanmaz**;
+  iptal doğrulaması → `cancel_unconfirmed`, durum değişmez, sorgu zinciri iptal
+  edilmez.
+- **Kanıt:**
+  `SHIPPING_READ_GATE_SHARED=PASS|operations:3|status_read.reads:0|status_read.attempt_spent:no|reconcile.verdict:blocked|reconcile.reads:0|reconcile.state:reconcile_required|cancel_confirm.code:cancel_unconfirmed|cancel_confirm.writes:1|cancel_confirm.reads:0`
+  ve `SHIPPING_UNCERTAIN_READ_BLOCKED_STAYS_UNCERTAIN=PASS|createOrder_calls:1|reconcile_reads:0|state:reconcile_required|absence_assumed:no|total_writes:1`
+- **Nasıl ölçüldü:** iptal doğrulaması için sahte adaptör, yazmayı kabul ettiği
+  **anda gerçek çalışma kapısını kapatıyor**. Yani kapının kapanması yazma ile
+  okuma arasına, tam olarak acıdığı yere yerleştiriliyor; çağrı sırası tahmin
+  edilmiyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`guarded_read`, `reconcile_blocked`, `reconcile`, `query_status`, `cancel`)
+- **Tekrar yaşanırsa ilk bak:** `grep -nE '\\$carrier->(read_|create_|update_|cancel_)'`
+  on bir satır vermeli ve on biri de closure içinde olmalı — altısı
+  `guarded_write()`, beşi `guarded_read()`.
+
+---
+
+## K-23 — Test temizliği yalnız normal sona bağlıydı
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Doğrulama koşusu bir assertion'da patladıktan sonra mağazanın
+  `kuka_dhl_cbs*` önbelleğinde tek illik mock verisi kalıyor.
+- **Kesin kök neden:** K-20'de eklenen anlık görüntü/geri yükleme dosyanın
+  **altında** çalışıyordu. Bir ölçüm başarısız olduğunda `WP_CLI::error()`
+  süreci bitirir; fatal hata daha da sert bitirir. İki durumda da geri yükleme
+  hiç çalışmıyordu ve mağazanın satırları mock veriyle kalıyordu.
+- **Uygulanan çözüm:** `Kuka_Shipping_Cache_Custodian`
+  (`scripts/lib-shipping-cache-custodian.php`). Anlık görüntü alınır **alınmaz**
+  `register_shutdown_function()` ile geri yükleme kaydedilir. Normal yol da aynı
+  metodu çağırır; metot idempotenttir, hangisi önce çalışırsa o kazanır, ikinci
+  çağrı no-op'tur.
+  - Sahiplik **tam**, çıkarım değil: anlık görüntü koşudan önceki **birebir
+    option adlarını** tutar. Sonrasında adı o kümede olan satır kaydedilen
+    değer ve `autoload` ile geri yazılır; adı kümede olmayan satır koşunun
+    kendisine aittir ve silinir. Zaman damgasından ya da değerin şeklinden
+    hiçbir şey tahmin edilmez.
+  - Bir yazma reddedilirse (`$wpdb->update`/`insert`/`delete` `false`) sonuç
+    `ok:false` olur; **temizlik başarılı raporlanmaz**.
+- **Nasıl ölçüldü:** `scripts/verify-shipping-cache-custodian.sh` üç ayrı süreç
+  kullanır: birinci süreç nöbetçi bir satır eker ve parmak izini basar; ikinci
+  süreç custodian'ı kurar, önbelleği gerçek bir senaryo gibi kirletir ve **ölür**;
+  üçüncü süreç nöbetçinin bayt bayt döndüğünü ve koşuya ait satır kalmadığını
+  ölçer. İki ölüm biçimi ayrı ayrı ölçülür — açık çıkış (`WP_CLI::error()`) ve
+  yakalanmayan fatal (var olmayan bir fonksiyon çağrısı) — çünkü PHP'den farklı
+  kapılardan çıkarlar.
+- **Kanıt:**
+  `SHIPPING_CACHE_CUSTODIAN_exit=PASS|measured:separate_process|cache_dirtied_before_death:yes|restored_by:shutdown_guard|fingerprint_match:yes|sentinel_value_intact:yes|run_owned_rows_left:0`,
+  `SHIPPING_CACHE_CUSTODIAN_fatal=PASS|...|run_owned_rows_left:0`,
+  `SHIPPING_CBS_CACHE_PRESERVED=PASS|coordinator:shared|refused:0|second_call_is_noop:yes`,
+  `SHIPPING_FIXTURES_REMOVED=PASS|cache_keyset_identical:yes|cache_fingerprint_identical:yes|cache_restore_refused:0`
+- **İlgili dosyalar:** `scripts/lib-shipping-cache-custodian.php`,
+  `scripts/verify-shipping-cache-custodian.php`,
+  `scripts/verify-shipping-cache-custodian.sh`,
+  `scripts/verify-shipping-automation.php`
+- **Tekrar yaşanırsa ilk bak:** custodian'ın `guard()` çağrısının anlık
+  görüntüden hemen sonra gelip gelmediği. Kontrol ölçümünde ikinci bir custodian
+  **guard edilmez**: nöbetçi bir fixture'dır, mağazanın verisi değil, ve ikinci
+  bir shutdown fonksiyonu onu dıştaki geri yükleme sildikten sonra tekrar geri
+  koyardı.

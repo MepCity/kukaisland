@@ -169,6 +169,47 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 
 	public const KEY = 'kuka-test-kargo';
 
+	/**
+	 * This instance's key.
+	 *
+	 * Per-instance rather than a constant, because the ownership measurements
+	 * need TWO adapters registered at once and have to be able to tell which of
+	 * them the manager reached.
+	 */
+	private string $key;
+
+	public function __construct( string $key = self::KEY ) {
+		$this->key = strtolower( trim( $key ) );
+	}
+
+	/**
+	 * Called at the START of every write, before the write is recorded.
+	 *
+	 * The seam that produces "the world changed between the write and the
+	 * confirming read" without guessing at call ordering.
+	 *
+	 * @var callable|null
+	 */
+	public $on_write = null;
+
+	/**
+	 * Close the REAL runtime gate immediately after a write.
+	 *
+	 * Which puts the gate's closure exactly where it hurts: after the carrier
+	 * has been told to cancel and before anybody can confirm it.
+	 */
+	public bool $close_runtime_gate_after_write = false;
+
+	/**
+	 * Scripted answers, keyed by operation.
+	 *
+	 * Lets one adapter produce the uncertain write the reconciliation rules
+	 * exist for, without a second class that would drift from this one.
+	 *
+	 * @var array<string, Kuka_Island_Shipping_Result>
+	 */
+	public array $results = array();
+
 	/** @var array<string, int> */
 	public array $calls = array();
 
@@ -203,6 +244,19 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 		$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
 	}
 
+	/** Record a WRITE, running the injected hooks around it. */
+	private function record_write( string $operation ): void {
+		if ( is_callable( $this->on_write ) ) {
+			call_user_func( $this->on_write, $operation, $this );
+		}
+
+		$this->record( $operation );
+
+		if ( $this->close_runtime_gate_after_write ) {
+			Kuka_Island_Shipping_Runtime_Gate::disable();
+		}
+	}
+
 	public function count_for( string $operation ): int {
 		return (int) ( $this->calls[ $operation ] ?? 0 );
 	}
@@ -222,17 +276,49 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 		return $total;
 	}
 
+	/**
+	 * The reads that cross the manager's read boundary.
+	 *
+	 * resolve_location() and ping() are deliberately NOT here: they are not
+	 * shipment reads and counting them would make "the reconciliation read
+	 * nothing" false the moment an address was resolved.
+	 */
+	public function read_calls(): int {
+		$total = 0;
+
+		foreach ( array( 'read_order', 'read_shipment', 'read_shipment_status', 'track_shipment' ) as $operation ) {
+			$total += $this->count_for( $operation );
+		}
+
+		return $total;
+	}
+
+	/** Was this adapter contacted AT ALL, for any reason? */
+	public function contacts(): int {
+		return $this->read_calls()
+			+ $this->write_calls()
+			+ $this->count_for( 'resolve_location' )
+			+ $this->count_for( 'ping' );
+	}
+
+	/** The scripted answer for an operation, or the default one. */
+	private function answer( string $operation, Kuka_Island_Shipping_Result $default ): Kuka_Island_Shipping_Result {
+		return $this->results[ $operation ] ?? $default;
+	}
+
 	public function reset_counters(): void {
 		$this->calls            = array();
 		$this->readiness_checks = 0;
 	}
 
 	public function get_key(): string {
-		return self::KEY;
+		return $this->key;
 	}
 
 	public function get_label(): string {
-		return 'Kuka Test Kargo';
+		return self::KEY === $this->key
+			? 'Kuka Test Kargo'
+			: 'Kuka Test Kargo (' . $this->key . ')';
 	}
 
 	/**
@@ -275,22 +361,25 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	 * @param array<string, mixed> $shipment Shipment request.
 	 */
 	public function create_order( array $shipment ): Kuka_Island_Shipping_Result {
-		$this->record( 'create_order' );
+		$this->record_write( 'create_order' );
 
-		return Kuka_Island_Shipping_Result::success( 'create_order', array( 'order_invoice_id' => 'FAKE-OINV-1' ) );
+		return $this->answer( 'create_order', Kuka_Island_Shipping_Result::success( 'create_order', array( 'order_invoice_id' => 'FAKE-OINV-1' ) ) );
 	}
 
 	/**
 	 * @param array<string, mixed> $shipment Shipment request.
 	 */
 	public function create_barcode( array $shipment ): Kuka_Island_Shipping_Result {
-		$this->record( 'create_barcode' );
+		$this->record_write( 'create_barcode' );
 
-		return Kuka_Island_Shipping_Result::success(
+		return $this->answer(
 			'create_barcode',
-			array(
-				'shipment_id' => 'FAKE-SHIP-1',
-				'barcodes'    => 'FAKE-BC-1',
+			Kuka_Island_Shipping_Result::success(
+				'create_barcode',
+				array(
+					'shipment_id' => 'FAKE-SHIP-1',
+					'barcodes'    => 'FAKE-BC-1',
+				)
 			)
 		);
 	}
@@ -299,13 +388,13 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	 * @param array<string, mixed> $shipment Shipment request.
 	 */
 	public function update_order( array $shipment ): Kuka_Island_Shipping_Result {
-		$this->record( 'update_order' );
+		$this->record_write( 'update_order' );
 
 		return Kuka_Island_Shipping_Result::success( 'update_order', array( 'acknowledged' => true ) );
 	}
 
 	public function cancel_order( string $reference ): Kuka_Island_Shipping_Result {
-		$this->record( 'cancel_order' );
+		$this->record_write( 'cancel_order' );
 
 		return Kuka_Island_Shipping_Result::success( 'cancel_order', array( 'acknowledged' => true ) );
 	}
@@ -314,13 +403,13 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	 * @param array<string, mixed> $shipment Shipment request.
 	 */
 	public function update_shipment( array $shipment ): Kuka_Island_Shipping_Result {
-		$this->record( 'update_shipment' );
+		$this->record_write( 'update_shipment' );
 
 		return Kuka_Island_Shipping_Result::success( 'update_shipment', array( 'acknowledged' => true ) );
 	}
 
 	public function cancel_shipment( string $reference, string $shipment_id ): Kuka_Island_Shipping_Result {
-		$this->record( 'cancel_shipment' );
+		$this->record_write( 'cancel_shipment' );
 
 		return Kuka_Island_Shipping_Result::success( 'cancel_shipment', array( 'acknowledged' => true ) );
 	}
@@ -328,14 +417,14 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	public function read_order( string $reference ): Kuka_Island_Shipping_Result {
 		$this->record( 'read_order' );
 
-		return Kuka_Island_Shipping_Result::permanent( 'get_order', 'not_found', 404 );
+		return $this->answer( 'read_order', Kuka_Island_Shipping_Result::permanent( 'get_order', 'not_found', 404 ) );
 	}
 
 	public function read_shipment( string $reference ): Kuka_Island_Shipping_Result {
 		$this->record( 'read_shipment' );
 
 		// Gone, which is what a confirmed cancellation looks like.
-		return Kuka_Island_Shipping_Result::permanent( 'get_shipment', 'not_found', 404 );
+		return $this->answer( 'read_shipment', Kuka_Island_Shipping_Result::permanent( 'get_shipment', 'not_found', 404 ) );
 	}
 
 	public function read_shipment_status( string $reference ): Kuka_Island_Shipping_Result {
@@ -846,132 +935,21 @@ $report(
 
 /*
  * Every scenario purges the CBS cache before resolving an address, because a
- * cached list means the mock's /getcities is never called and the call counts
- * stop meaning anything. That purge used to be the end of the story, and it
- * deleted whatever the shop already had: a previous verification run wiped four
- * pre-existing rows it had never created.
+ * warm cache means the mock's /getcities is never called and the request counts
+ * stop meaning anything. That purge used to be paired with a purge in the
+ * cleanup block, which deleted whatever the shop already had: an earlier run
+ * wiped four rows it had never created.
  *
- * So the rows are SNAPSHOT first and RESTORED afterwards, byte for byte --
- * name, value and autoload flag, the timeout companion rows included. The suite
- * owns nothing here; it borrows.
+ * The custodian snapshots those rows by exact name, restores them byte for byte
+ * -- value and autoload flag, timeout companions included -- and removes only
+ * what this run created. It is registered as a SHUTDOWN function as well, so a
+ * failed assertion or a fatal error cannot leave the shop's cache holding
+ * one-city mock data. Both entry points are the same idempotent method.
  */
 
-/** Every option row the carrier's reference cache uses, raw. */
-function kuka_ship_cbs_rows(): array {
-	global $wpdb;
+require_once __DIR__ . '/lib-shipping-cache-custodian.php';
 
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-	$rows = (array) $wpdb->get_results(
-		"SELECT option_name, option_value, autoload FROM {$wpdb->options} WHERE option_name LIKE '%kuka\\_dhl\\_cbs\\_%' ORDER BY option_name ASC",
-		ARRAY_A
-	);
-
-	return $rows;
-}
-
-/**
- * A fingerprint over the CACHE'S MEANING: which rows exist, what they hold and
- * whether they autoload.
- *
- * option_id is deliberately excluded. A transient that is deleted and written
- * again lands on a new row id while holding the same value, and an identifier
- * the shop never reads is not part of what has to be preserved.
- *
- * @param array<int, array<string, mixed>> $rows Raw rows.
- */
-function kuka_ship_cbs_fingerprint( array $rows ): string {
-	$parts = array();
-
-	foreach ( $rows as $row ) {
-		$parts[] = (string) $row['option_name'] . "\x1f" . (string) $row['option_value'] . "\x1f" . (string) $row['autoload'];
-	}
-
-	sort( $parts );
-
-	return md5( implode( "\x1e", $parts ) );
-}
-
-/**
- * Put the cache back exactly as it was found.
- *
- * A row that still exists is UPDATED rather than deleted and re-inserted, so a
- * row the suite only overwrote keeps its identity. A row the suite created and
- * the snapshot does not know about is deleted: that is the run's own residue.
- * The object cache entries are dropped as well, or a later get_transient() in
- * this process would answer from the value that was just replaced.
- *
- * @param array<int, array<string, mixed>> $snapshot Rows as found.
- * @return array{restored: int, inserted: int, run_owned_removed: int}
- */
-function kuka_ship_cbs_restore( array $snapshot ): array {
-	global $wpdb;
-
-	$wanted   = array();
-	$restored = 0;
-	$inserted = 0;
-
-	foreach ( $snapshot as $row ) {
-		$name            = (string) $row['option_name'];
-		$wanted[ $name ] = true;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$exists = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = %s", $name ) );
-
-		if ( $exists > 0 ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$wpdb->update(
-				$wpdb->options,
-				array(
-					'option_value' => (string) $row['option_value'],
-					'autoload'     => (string) $row['autoload'],
-				),
-				array( 'option_name' => $name )
-			);
-			++$restored;
-		} else {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$wpdb->insert(
-				$wpdb->options,
-				array(
-					'option_name'  => $name,
-					'option_value' => (string) $row['option_value'],
-					'autoload'     => (string) $row['autoload'],
-				)
-			);
-			++$inserted;
-		}
-
-		wp_cache_delete( $name, 'options' );
-	}
-
-	$removed = 0;
-
-	foreach ( kuka_ship_cbs_rows() as $row ) {
-		$name = (string) $row['option_name'];
-
-		if ( isset( $wanted[ $name ] ) ) {
-			continue;
-		}
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->delete( $wpdb->options, array( 'option_name' => $name ) );
-		wp_cache_delete( $name, 'options' );
-		++$removed;
-	}
-
-	wp_cache_delete( 'alloptions', 'options' );
-	wp_cache_delete( 'notoptions', 'options' );
-
-	return array(
-		'restored'          => $restored,
-		'inserted'          => $inserted,
-		'run_owned_removed' => $removed,
-	);
-}
-
-// Taken before any scenario resolves an address.
-$cbs_snapshot    = kuka_ship_cbs_rows();
-$cbs_fingerprint = kuka_ship_cbs_fingerprint( $cbs_snapshot );
+$cbs_custodian = ( new Kuka_Shipping_Cache_Custodian() )->guard();
 
 /* ========================================================================== */
 /* 10. Turkish place-name folding, and exact matching only                     */
@@ -2425,12 +2403,27 @@ $resume_guard = kuka_ship_scenario(
 	static function ( string $method, string $url ): array {
 		$common = kuka_ship_common_reads( $url );
 
-		return null !== $common ? $common : array( 'status' => 500, 'body' => '' );
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		return array( 'status' => 500, 'body' => '' );
 	}
 );
 
-$resume_guard_order = $resume_guard['order'];
-Kuka_Island_Shipping_Order_Store::reference( $resume_guard_order );
+/*
+ * Driven through the real create path first, so the order has a pinned carrier
+ * and a reference exactly as a live one would. Setting states on an order that
+ * never had an owner would measure the ownership refusal instead of the state
+ * gate -- a different, and separately measured, property.
+ */
+$resume_guard['manager']->create_shipment( $resume_guard['order'] );
+$resume_guard_order = wc_get_order( $resume_guard['order']->get_id() );
+$resume_guard['transport']->reset();
 
 $resume_refused = array();
 $resume_allowed = array();
@@ -2447,6 +2440,7 @@ foreach (
 		Kuka_Island_Shipping_Order_Store::STATE_BLOCKED,
 	) as $guard_state
 ) {
+	$resume_guard_order = wc_get_order( $resume_guard_order->get_id() );
 	Kuka_Island_Shipping_Order_Store::set_state( $resume_guard_order, $guard_state );
 	$guard_result = $resume_guard['manager']->resume_barcode( wc_get_order( $resume_guard_order->get_id() ) );
 
@@ -2463,7 +2457,7 @@ $report(
 		&& array() === $resume_allowed
 		&& 0 === count( $resume_guard['transport']->log ),
 	sprintf(
-		'states_refused:%d|states_allowed:%s|http_requests:%d|codes:not_resumable',
+		'states_refused:%d|states_allowed:%s|http_requests:%d|codes:not_resumable|carrier_pinned:yes',
 		count( $resume_refused ),
 		array() === $resume_allowed ? 'none' : implode( '+', $resume_allowed ),
 		count( $resume_guard['transport']->log )
@@ -3571,6 +3565,14 @@ $pot_required = array(
 	'Kargo otomasyonu eklentisi devre dışı bırakıldığı için çağrı yapılmadı. Gönderi oluşturulmadı.',
 	'Canlı ortam bloke: resmî üretim uçları doğrulanmadı. Hiçbir çağrı yapılmadı.',
 	'Bu sipariş için başka bir kargo işlemi sürüyor. Yeni çağrı yapılmadı.',
+	// This round: order-to-carrier ownership, and the gated reads.
+	'Bu siparişin kargo kaydı başka bir taşıyıcıya ait. İstenen taşıyıcıya hiçbir çağrı yapılmadı; siparişin taşıyıcısı değiştirilmedi.',
+	'Bu siparişte taşıyıcı kaydı var fakat hangi taşıyıcıya ait olduğu yazılı değil. Varsayılan taşıyıcı kullanılmadı; hiçbir çağrı yapılmadı. Kayıt elle belirlenmelidir.',
+	'Bu siparişte taşıyıcı kaydı var fakat hangi taşıyıcıya ait olduğu yazılı değil. Otomatik işlem yapılmaz; varsayılan taşıyıcı kullanılmaz. Manuel kargo süreci kullanılabilir.',
+	'Mutabakat yapılamadı: taşıyıcıya salt-okunur sorgu bile gönderilemedi. Durum belirsiz kaldı, yokluk varsayılmadı, hiçbir şey gönderilmedi.',
+	'Taşıyıcı iptali kabul etti fakat doğrulama sorgusu yapılamadı. Durum değiştirilmedi.',
+	'kayıtlı değil (siparişte taşıyıcı yazılı değil)',
+	'%s (bu kurulumda kayıtlı değil)',
 );
 
 $pot_required_missing = array();
@@ -4183,7 +4185,858 @@ $report(
 );
 
 /* ========================================================================== */
-/* 36. Cleanup and verdict                                                     */
+/* 37. An order belongs to ITS carrier, not to the shop's current default      */
+/* ========================================================================== */
+
+/*
+ * The scenario every measurement below shares: a shipment is booked with the
+ * REAL DHL adapter (mock transport), a second adapter is registered alongside
+ * it, and the shop's default is then switched to the second one -- which is
+ * exactly what happens the day a second courier is added.
+ *
+ * Two recording adapters, reported separately. The DHL side records through its
+ * mock transport's request log; the second adapter counts every read and write
+ * it is handed. "Only DHL was contacted" is therefore two numbers, not an
+ * inspection of which class the manager mentions.
+ */
+
+/**
+ * The transport script for the affinity scenarios.
+ *
+ * Stateful on purpose: getshipment answers "present" until a cancellation has
+ * been accepted and "not found" afterwards. A fixed answer cannot serve both a
+ * reconciliation (which must find the shipment) and a cancellation
+ * confirmation (which must not), and faking them with two transports would
+ * stop measuring one order's life.
+ */
+function kuka_ship_affinity_responder(): callable {
+	$cancelled = false;
+
+	return static function ( string $method, string $url ) use ( &$cancelled ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok( '313131313', 'BC-AFFINITY' );
+		}
+
+		if ( str_contains( $url, '/getshipmentstatus/' ) ) {
+			return array(
+				'status' => 200,
+				'body'   => (string) wp_json_encode(
+					array(
+						'referenceId'        => 'ECHO',
+						'shipmentId'         => '313131313',
+						'shipmentStatusCode' => 2,
+						'trackingUrl'        => 'https://kargotakip.example/313131313',
+					)
+				),
+			);
+		}
+
+		if ( str_contains( $url, '/updateshipment' ) || str_contains( $url, '/updateorder' ) ) {
+			return array( 'status' => 200, 'body' => '{}' );
+		}
+
+		if ( str_contains( $url, '/cancelshipment' ) || str_contains( $url, '/cancelorder/' ) ) {
+			$cancelled = true;
+
+			return array( 'status' => 200, 'body' => '{}' );
+		}
+
+		if ( str_contains( $url, '/getshipment/' ) && ! $cancelled ) {
+			return array(
+				'status' => 200,
+				'body'   => (string) wp_json_encode(
+					array(
+						'shipment' => array(
+							'referenceId'        => 'ECHO',
+							'shipmentId'         => '313131313',
+							'shipmentStatusCode' => 2,
+							'pieceCount'         => 1,
+						),
+					)
+				),
+			);
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	};
+}
+
+/**
+ * Two adapters registered: the real DHL one on a mock transport, and a second
+ * recording adapter. No create is run and no default is chosen yet.
+ *
+ * @return array{order: WC_Order, dhl: Kuka_Island_Shipping_DHL_Provider, transport: Kuka_Shipping_Mock_Transport, other: Kuka_Shipping_Fake_Carrier, manager: Kuka_Island_Shipping_Manager, filter: callable}
+ */
+function kuka_ship_affinity_scenario(): array {
+	$transport = new Kuka_Shipping_Mock_Transport( kuka_ship_affinity_responder() );
+	$dhl       = kuka_ship_provider( $transport );
+	$other     = new Kuka_Shipping_Fake_Carrier( 'kuka-other-kargo' );
+	$manager   = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $dhl, $other ) ) );
+
+	$dhl->get_resolver()->purge_cache( array( '34' ) );
+
+	return array(
+		'order'     => kuka_ship_fixture_order(),
+		'dhl'       => $dhl,
+		'transport' => $transport,
+		'other'     => $other,
+		'manager'   => $manager,
+		'filter'    => static function (): string {
+			return 'kuka-other-kargo';
+		},
+	);
+}
+
+/** THE DAY THE SHOP ADDS A COURIER: the default becomes the other adapter. */
+function kuka_ship_affinity_flip( array $scenario ): void {
+	add_filter( 'kuka_island_shipping_default_carrier', $scenario['filter'], 999 );
+}
+
+/** Put the shop's default back where the rest of the suite expects it. */
+function kuka_ship_affinity_unflip( array $scenario ): void {
+	remove_filter( 'kuka_island_shipping_default_carrier', $scenario['filter'], 999 );
+}
+
+// --- Query, reconcile, amend and cancel all stay with DHL -----------------
+
+$affinity    = kuka_ship_affinity_scenario();
+$affinity_id = (int) $affinity['order']->get_id();
+
+// Explicit key: two adapters are registered and nothing is configured, so the
+// shop has not yet said which one it books with.
+$affinity['manager']->create_shipment( $affinity['order'], 'dhl' );
+$affinity_provider_stored = Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $affinity_id ) );
+
+kuka_ship_affinity_flip( $affinity );
+$affinity_default_now = $affinity['manager']->default_carrier_key();
+$affinity['transport']->reset();
+$affinity['other']->reset_counters();
+
+// Every call below passes NO carrier key -- the way the poller and the admin
+// screen call them.
+$affinity_query     = $affinity['manager']->query_status( wc_get_order( $affinity_id ) );
+$affinity_status_reads = $affinity['transport']->count_for( '/getshipmentstatus/' );
+
+$affinity_reconcile = $affinity['manager']->reconcile_order( wc_get_order( $affinity_id ) );
+$affinity_recon_reads = $affinity['transport']->count_for( '/getshipment/' ) + $affinity['transport']->count_for( '/getorder/' );
+
+$affinity_update = $affinity['manager']->update_shipment( wc_get_order( $affinity_id ) );
+$affinity_writes_update = $affinity['transport']->count_for( '/updateshipment' );
+
+$affinity_cancel  = $affinity['manager']->cancel( wc_get_order( $affinity_id ) );
+$affinity_cancels = $affinity['transport']->count_for( '/cancelshipment' );
+$affinity_confirms = $affinity['transport']->count_for( '/getshipment/' ) - 1;
+
+$affinity_ownership = $affinity['manager']->carrier_ownership( wc_get_order( $affinity_id ) );
+
+kuka_ship_affinity_unflip( $affinity );
+
+$report(
+	'SHIPPING_PROVIDER_AFFINITY',
+	'dhl' === $affinity_provider_stored
+		&& 'kuka-other-kargo' === $affinity_default_now
+		&& 'dhl' === (string) $affinity_ownership['key']
+		&& 'order' === (string) $affinity_ownership['source']
+		&& $affinity_query['ok']
+		&& 1 === $affinity_status_reads
+		&& 'shipment_present' === (string) $affinity_reconcile['verdict']
+		&& 1 === $affinity_recon_reads
+		&& $affinity_update['ok']
+		&& 1 === $affinity_writes_update
+		&& $affinity_cancel['ok']
+		&& 1 === $affinity_cancels
+		&& 1 === $affinity_confirms
+		// The second adapter was never contacted, for any operation.
+		&& 0 === $affinity['other']->contacts(),
+	sprintf(
+		'stored_provider:%s|default_now:%s|resolved:%s(%s)|dhl.status_reads:%d|dhl.reconcile_reads:%d|dhl.updates:%d|dhl.cancels:%d|dhl.cancel_confirm_reads:%d|other.reads:%d|other.writes:%d|other.contacts:%d',
+		$affinity_provider_stored,
+		$affinity_default_now,
+		(string) $affinity_ownership['key'],
+		(string) $affinity_ownership['source'],
+		$affinity_status_reads,
+		$affinity_recon_reads,
+		$affinity_writes_update,
+		$affinity_cancels,
+		$affinity_confirms,
+		$affinity['other']->read_calls(),
+		$affinity['other']->write_calls(),
+		$affinity['other']->contacts()
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $affinity_id ) );
+
+// --- Resume stays with DHL too --------------------------------------------
+
+$resume_affinity  = kuka_ship_affinity_scenario();
+$resume_aff_order = $resume_affinity['order'];
+
+// Reach order_created through the real create path, with DHL named.
+$resume_affinity['manager']->create_shipment( $resume_aff_order, 'dhl' );
+$resume_aff_order = wc_get_order( $resume_aff_order->get_id() );
+Kuka_Island_Shipping_Order_Store::set_state( $resume_aff_order, Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED );
+
+$resume_aff_stored = Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $resume_aff_order->get_id() ) );
+
+// Now flip the default and resume with NO key.
+kuka_ship_affinity_flip( $resume_affinity );
+$resume_affinity['transport']->reset();
+$resume_affinity['other']->reset_counters();
+
+$resume_aff_result   = $resume_affinity['manager']->resume_barcode( wc_get_order( $resume_aff_order->get_id() ) );
+$resume_aff_barcodes = $resume_affinity['transport']->count_for( '/createbarcode' );
+$resume_aff_orders   = $resume_affinity['transport']->count_for( '/createOrder' );
+
+kuka_ship_affinity_unflip( $resume_affinity );
+
+$report(
+	'SHIPPING_PROVIDER_AFFINITY_RESUME',
+	'dhl' === $resume_aff_stored
+		&& $resume_aff_result['ok']
+		&& 1 === $resume_aff_barcodes
+		&& 0 === $resume_aff_orders
+		&& 0 === $resume_affinity['other']->contacts(),
+	sprintf(
+		'stored_provider:%s|default_now:kuka-other-kargo|dhl.createbarcode:%d|dhl.createOrder:%d|other.reads:%d|other.writes:%d|other.contacts:%d|state:%s',
+		$resume_aff_stored,
+		$resume_aff_barcodes,
+		$resume_aff_orders,
+		$resume_affinity['other']->read_calls(),
+		$resume_affinity['other']->write_calls(),
+		$resume_affinity['other']->contacts(),
+		Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $resume_aff_order->get_id() ) )
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $resume_aff_order->get_id() ) );
+
+/* ========================================================================== */
+/* 38. Ownership is pinned before the first write, and never guessed           */
+/* ========================================================================== */
+
+/**
+ * One order meta value, read straight out of the database.
+ *
+ * Bypasses WC_Order and every object cache on purpose: the question is whether
+ * the value was PERSISTED before the request went out, not whether some
+ * in-memory object happened to be holding it.
+ *
+ * @param int    $order_id Order id.
+ * @param string $meta_key Meta key.
+ */
+function kuka_ship_meta_in_db( int $order_id, string $meta_key ): string {
+	global $wpdb;
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$hpos = $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT meta_value FROM {$wpdb->prefix}wc_orders_meta WHERE order_id = %d AND meta_key = %s ORDER BY id DESC LIMIT 1",
+			$order_id,
+			$meta_key
+		)
+	);
+
+	if ( null !== $hpos ) {
+		return (string) $hpos;
+	}
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$legacy = $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s LIMIT 1",
+			$order_id,
+			$meta_key
+		)
+	);
+
+	return (string) $legacy;
+}
+
+// --- The pin is in the database when the first request is issued ----------
+
+$pin_adapter = new Kuka_Shipping_Fake_Carrier();
+$pin_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $pin_adapter ) ) );
+$pin_order   = kuka_ship_fixture_order();
+$pin_id      = (int) $pin_order->get_id();
+
+$pin_before = kuka_ship_meta_in_db( $pin_id, Kuka_Island_Shipping_Order_Store::META_PROVIDER );
+
+/** @var array<string, array<string, string>> $pin_seen */
+$pin_seen              = array();
+$pin_adapter->on_write = static function ( string $operation ) use ( &$pin_seen, $pin_id ): void {
+	$pin_seen[ $operation ] = array(
+		'provider'  => kuka_ship_meta_in_db( $pin_id, Kuka_Island_Shipping_Order_Store::META_PROVIDER ),
+		'reference' => kuka_ship_meta_in_db( $pin_id, Kuka_Island_Shipping_Order_Store::META_REFERENCE ),
+		'state'     => kuka_ship_meta_in_db( $pin_id, Kuka_Island_Shipping_Order_Store::META_STATE ),
+	);
+};
+
+$pin_result = $pin_manager->create_shipment( $pin_order );
+$pin_order  = wc_get_order( $pin_id );
+$pin_data   = Kuka_Island_Shipping_Order_Store::get_shipment_data( $pin_order );
+
+$pin_at_first_write = $pin_seen['create_order'] ?? array();
+
+$report(
+	'SHIPPING_PROVIDER_PINNED_BEFORE_FIRST_WRITE',
+	'' === $pin_before
+		&& $pin_result['ok']
+		&& array() !== $pin_at_first_write
+		&& Kuka_Shipping_Fake_Carrier::KEY === (string) ( $pin_at_first_write['provider'] ?? '' )
+		// Same save: the reference cannot exist without an owner.
+		&& Kuka_Island_Shipping_Reference::is_valid( (string) ( $pin_at_first_write['reference'] ?? '' ) )
+		&& (string) ( $pin_at_first_write['reference'] ?? '' ) === (string) $pin_data['reference']
+		&& Kuka_Shipping_Fake_Carrier::KEY === (string) $pin_data['provider']
+		&& 1 === $pin_adapter->count_for( 'create_order' ),
+	sprintf(
+		'measured:database_read_inside_the_first_write|provider_before:%s|provider_at_first_write:%s|reference_at_first_write:%s|state_at_first_write:%s|provider_after:%s|create_order_calls:%d',
+		'' === $pin_before ? 'empty' : $pin_before,
+		'' !== (string) ( $pin_at_first_write['provider'] ?? '' ) ? (string) $pin_at_first_write['provider'] : 'EMPTY',
+		Kuka_Island_Shipping_Reference::is_valid( (string) ( $pin_at_first_write['reference'] ?? '' ) ) ? 'stored' : 'MISSING',
+		'' !== (string) ( $pin_at_first_write['state'] ?? '' ) ? (string) $pin_at_first_write['state'] : 'none',
+		(string) $pin_data['provider'],
+		$pin_adapter->count_for( 'create_order' )
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $pin_id ) );
+
+// --- An untouched order, and only an untouched order, may use the default -
+
+$untouched_adapter = new Kuka_Shipping_Fake_Carrier();
+$untouched_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $untouched_adapter ) ) );
+$untouched_order   = kuka_ship_fixture_order();
+
+$untouched_before = $untouched_manager->carrier_ownership( $untouched_order );
+$untouched_result = $untouched_manager->create_shipment( $untouched_order );
+$untouched_order  = wc_get_order( $untouched_order->get_id() );
+$untouched_after  = $untouched_manager->carrier_ownership( $untouched_order );
+
+$report(
+	'SHIPPING_UNTOUCHED_ORDER_USES_DEFAULT',
+	'default' === (string) $untouched_before['source']
+		&& Kuka_Shipping_Fake_Carrier::KEY === (string) $untouched_before['key']
+		&& '' === (string) $untouched_before['code']
+		&& $untouched_result['ok']
+		// Once pinned, the SAME question is answered from the order.
+		&& 'order' === (string) $untouched_after['source']
+		&& Kuka_Shipping_Fake_Carrier::KEY === (string) $untouched_after['key']
+		&& Kuka_Shipping_Fake_Carrier::KEY === Kuka_Island_Shipping_Order_Store::provider( $untouched_order ),
+	sprintf(
+		'before_create:%s(%s)|after_create:%s(%s)|stored:%s',
+		(string) $untouched_before['key'],
+		(string) $untouched_before['source'],
+		(string) $untouched_after['key'],
+		(string) $untouched_after['source'],
+		Kuka_Island_Shipping_Order_Store::provider( $untouched_order )
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $untouched_order->get_id() ) );
+
+// --- An uncertain createOrder keeps the owner -----------------------------
+
+$uncertain_affinity = kuka_ship_affinity_scenario();
+$uncertain_aff_id   = (int) $uncertain_affinity['order']->get_id();
+
+// A transport that goes silent on the write and cannot answer the reads.
+$uncertain_aff_transport = new Kuka_Shipping_Mock_Transport(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return array( 'status' => 0, 'body' => '', 'error' => 'cURL error 28: Operation timed out' );
+		}
+
+		// The reads cannot answer either, so absence is NOT proved.
+		return array( 'status' => 503, 'body' => '' );
+	}
+);
+$uncertain_aff_dhl     = kuka_ship_provider( $uncertain_aff_transport );
+$uncertain_aff_other   = new Kuka_Shipping_Fake_Carrier( 'kuka-other-kargo' );
+$uncertain_aff_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $uncertain_aff_dhl, $uncertain_aff_other ) ) );
+$uncertain_aff_dhl->get_resolver()->purge_cache( array( '34' ) );
+
+$uncertain_aff_order = wc_get_order( $uncertain_aff_id );
+$uncertain_aff_manager->create_shipment( $uncertain_aff_order, 'dhl' );
+
+$uncertain_aff_stored = Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $uncertain_aff_id ) );
+$uncertain_aff_state  = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $uncertain_aff_id ) );
+$uncertain_aff_creates = $uncertain_aff_transport->count_for( '/createOrder' );
+
+// Now the shop changes its default, and the operator reconciles.
+kuka_ship_affinity_flip( $uncertain_affinity );
+$uncertain_aff_transport->reset();
+$uncertain_aff_other->reset_counters();
+
+$uncertain_aff_verdict = $uncertain_aff_manager->reconcile_order( wc_get_order( $uncertain_aff_id ) );
+$uncertain_aff_reads   = $uncertain_aff_transport->count_for( '/getshipment/' ) + $uncertain_aff_transport->count_for( '/getorder/' );
+$uncertain_aff_recreate = $uncertain_aff_transport->count_for( '/createOrder' );
+
+kuka_ship_affinity_unflip( $uncertain_affinity );
+
+$report(
+	'SHIPPING_UNCERTAIN_CREATE_RETAINS_PROVIDER',
+	'dhl' === $uncertain_aff_stored
+		&& Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $uncertain_aff_state
+		&& 1 === $uncertain_aff_creates
+		&& 'inconclusive' === (string) $uncertain_aff_verdict['verdict']
+		&& $uncertain_aff_reads > 0
+		&& 0 === $uncertain_aff_recreate
+		&& 0 === $uncertain_aff_other->contacts(),
+	sprintf(
+		'createOrder:timeout|provider_after_timeout:%s|state:%s|dhl.createOrder_total:%d|reconcile_verdict:%s|dhl.reconcile_reads:%d|dhl.second_createOrder:%d|other.reads:%d|other.writes:%d|other.contacts:%d',
+		'' !== $uncertain_aff_stored ? $uncertain_aff_stored : 'LOST',
+		$uncertain_aff_state,
+		$uncertain_aff_creates,
+		(string) $uncertain_aff_verdict['verdict'],
+		$uncertain_aff_reads,
+		$uncertain_aff_recreate,
+		$uncertain_aff_other->read_calls(),
+		$uncertain_aff_other->write_calls(),
+		$uncertain_aff_other->contacts()
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $uncertain_aff_id ) );
+
+// --- An explicit key that disagrees with the record is refused ------------
+
+$mismatch          = kuka_ship_affinity_scenario();
+$mismatch_id       = (int) $mismatch['order']->get_id();
+$mismatch['manager']->create_shipment( $mismatch['order'], 'dhl' );
+$mismatch['transport']->reset();
+$mismatch['other']->reset_counters();
+
+$mismatch_codes = array(
+	'create'    => (string) $mismatch['manager']->create_shipment( wc_get_order( $mismatch_id ), 'kuka-other-kargo' )['code'],
+	'resume'    => (string) $mismatch['manager']->resume_barcode( wc_get_order( $mismatch_id ), 'kuka-other-kargo' )['code'],
+	'update'    => (string) $mismatch['manager']->update_shipment( wc_get_order( $mismatch_id ), 'kuka-other-kargo' )['code'],
+	'cancel'    => (string) $mismatch['manager']->cancel( wc_get_order( $mismatch_id ), 'kuka-other-kargo' )['code'],
+	'query'     => (string) $mismatch['manager']->query_status( wc_get_order( $mismatch_id ), 'kuka-other-kargo' )['code'],
+	'reconcile' => (string) $mismatch['manager']->reconcile_order( wc_get_order( $mismatch_id ), 'kuka-other-kargo' )['verdict'],
+);
+
+$mismatch_wrong = array();
+foreach ( $mismatch_codes as $mismatch_door => $mismatch_code ) {
+	if ( 'shipment_provider_mismatch' !== $mismatch_code ) {
+		$mismatch_wrong[] = $mismatch_door . '=>' . $mismatch_code;
+	}
+}
+
+$mismatch_still_dhl = 'dhl' === Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $mismatch_id ) );
+
+$report(
+	'SHIPPING_PROVIDER_MISMATCH_FAILS_CLOSED',
+	array() === $mismatch_wrong
+		&& 0 === count( $mismatch['transport']->log )
+		&& 0 === $mismatch['other']->contacts()
+		&& $mismatch_still_dhl,
+	sprintf(
+		'stored:dhl|requested:kuka-other-kargo|doors:6|wrong:%s|dhl.requests:%d|other.reads:%d|other.writes:%d|other.contacts:%d|stored_provider_unchanged:%s',
+		array() === $mismatch_wrong ? 'none' : implode( '+', $mismatch_wrong ),
+		count( $mismatch['transport']->log ),
+		$mismatch['other']->read_calls(),
+		$mismatch['other']->write_calls(),
+		$mismatch['other']->contacts(),
+		$mismatch_still_dhl ? 'yes' : 'NO'
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $mismatch_id ) );
+
+// --- A record with carrier evidence and no owner is refused, not guessed --
+
+$legacy    = kuka_ship_affinity_scenario();
+$legacy_id = (int) $legacy['order']->get_id();
+$legacy['manager']->create_shipment( $legacy['order'], 'dhl' );
+
+// Exactly what a record written before ownership was pinned looks like:
+// state, reference and shipment id, but no provider.
+$legacy_order = wc_get_order( $legacy_id );
+$legacy_order->delete_meta_data( Kuka_Island_Shipping_Order_Store::META_PROVIDER );
+$legacy_order->save_meta_data();
+
+$legacy_evidence = Kuka_Island_Shipping_Order_Store::has_carrier_evidence( wc_get_order( $legacy_id ) );
+$legacy_stored   = Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $legacy_id ) );
+
+kuka_ship_affinity_flip( $legacy );
+$legacy['transport']->reset();
+$legacy['other']->reset_counters();
+
+$legacy_codes = array(
+	'create'    => (string) $legacy['manager']->create_shipment( wc_get_order( $legacy_id ) )['code'],
+	'resume'    => (string) $legacy['manager']->resume_barcode( wc_get_order( $legacy_id ) )['code'],
+	'update'    => (string) $legacy['manager']->update_shipment( wc_get_order( $legacy_id ) )['code'],
+	'cancel'    => (string) $legacy['manager']->cancel( wc_get_order( $legacy_id ) )['code'],
+	'query'     => (string) $legacy['manager']->query_status( wc_get_order( $legacy_id ) )['code'],
+	'reconcile' => (string) $legacy['manager']->reconcile_order( wc_get_order( $legacy_id ) )['verdict'],
+);
+
+kuka_ship_affinity_unflip( $legacy );
+
+$legacy_wrong = array();
+foreach ( $legacy_codes as $legacy_door => $legacy_code ) {
+	if ( 'shipment_provider_missing' !== $legacy_code ) {
+		$legacy_wrong[] = $legacy_door . '=>' . $legacy_code;
+	}
+}
+
+$report(
+	'SHIPPING_LEGACY_MISSING_PROVIDER_FAILS_CLOSED',
+	$legacy_evidence
+		&& '' === $legacy_stored
+		&& array() === $legacy_wrong
+		&& 0 === count( $legacy['transport']->log )
+		&& 0 === $legacy['other']->contacts()
+		// And no default was written in as a repair.
+		&& '' === Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $legacy_id ) ),
+	sprintf(
+		'carrier_evidence:%s|stored_provider:%s|doors:6|wrong:%s|dhl.requests:%d|other.reads:%d|other.writes:%d|other.contacts:%d|default_written_in:%s',
+		$legacy_evidence ? 'yes' : 'NO',
+		'' === $legacy_stored ? 'empty' : $legacy_stored,
+		array() === $legacy_wrong ? 'none' : implode( '+', $legacy_wrong ),
+		count( $legacy['transport']->log ),
+		$legacy['other']->read_calls(),
+		$legacy['other']->write_calls(),
+		$legacy['other']->contacts(),
+		'' === Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $legacy_id ) ) ? 'no' : 'YES'
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $legacy_id ) );
+
+// --- The decision taken INSIDE the lock is the one that counts ------------
+//
+// The owner is pinned while the caller is taking the lock, by hooking the very
+// query that takes it. At entry the order was untouched and the default pointed
+// at the OTHER adapter; if the entry answer survived, the other adapter would
+// get the cancellation. It must not.
+
+$fresh_a       = new Kuka_Shipping_Fake_Carrier( 'kuka-pinned-kargo' );
+$fresh_b       = new Kuka_Shipping_Fake_Carrier( 'kuka-other-kargo' );
+$fresh_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $fresh_a, $fresh_b ) ) );
+$fresh_order   = kuka_ship_fixture_order();
+$fresh_id      = (int) $fresh_order->get_id();
+
+$fresh_default = static function (): string {
+	return 'kuka-other-kargo';
+};
+add_filter( 'kuka_island_shipping_default_carrier', $fresh_default, 999 );
+
+$fresh_entry_answer = (string) $fresh_manager->carrier_ownership( wc_get_order( $fresh_id ) )['key'];
+
+$fresh_pinned = false;
+$fresh_pinner = static function ( $query ) use ( &$fresh_pinned, $fresh_id ) {
+	if ( $fresh_pinned || ! is_string( $query ) ) {
+		return $query;
+	}
+
+	if ( ! str_contains( $query, 'GET_LOCK' ) || ! str_contains( $query, 'kuka_ship_mutate_' . $fresh_id ) ) {
+		return $query;
+	}
+
+	// Guard first: the writes below run their own queries through this filter.
+	$fresh_pinned = true;
+
+	$racer = wc_get_order( $fresh_id );
+	$racer->update_meta_data( Kuka_Island_Shipping_Order_Store::META_PROVIDER, 'kuka-pinned-kargo' );
+	$racer->update_meta_data( Kuka_Island_Shipping_Order_Store::META_REFERENCE, Kuka_Island_Shipping_Reference::build( $fresh_id ) );
+	$racer->update_meta_data( Kuka_Island_Shipping_Order_Store::META_STATE, Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED );
+	$racer->update_meta_data( Kuka_Island_Shipping_Order_Store::META_SHIPMENT_ID, 'LOCKWIN-1' );
+	$racer->save_meta_data();
+
+	return $query;
+};
+
+add_filter( 'query', $fresh_pinner, 999 );
+$fresh_result = $fresh_manager->cancel( wc_get_order( $fresh_id ) );
+remove_filter( 'query', $fresh_pinner, 999 );
+remove_filter( 'kuka_island_shipping_default_carrier', $fresh_default, 999 );
+
+$fresh_state = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $fresh_id ) );
+
+$report(
+	'SHIPPING_PROVIDER_FRESH_UNDER_LOCK',
+	'kuka-other-kargo' === $fresh_entry_answer
+		&& $fresh_pinned
+		&& $fresh_result['ok']
+		&& 1 === $fresh_a->count_for( 'cancel_shipment' )
+		&& 1 === $fresh_a->count_for( 'read_shipment' )
+		&& 0 === $fresh_b->contacts()
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $fresh_state,
+	sprintf(
+		'entry_answer:%s|pinned_while_taking_lock:%s|winner:%s|pinned.cancel_shipment:%d|pinned.read_shipment:%d|entry_default.reads:%d|entry_default.writes:%d|entry_default.contacts:%d|state:%s',
+		$fresh_entry_answer,
+		$fresh_pinned ? 'yes' : 'NO',
+		$fresh_a->count_for( 'cancel_shipment' ) > 0 ? 'in_lock_reading' : 'ENTRY_SNAPSHOT',
+		$fresh_a->count_for( 'cancel_shipment' ),
+		$fresh_a->count_for( 'read_shipment' ),
+		$fresh_b->read_calls(),
+		$fresh_b->write_calls(),
+		$fresh_b->contacts(),
+		$fresh_state
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $fresh_id ) );
+
+/* ========================================================================== */
+/* 39. Reads cross the same boundary, and a blocked read is not an absence     */
+/* ========================================================================== */
+
+/*
+ * The class docblock used to claim that EVERY carrier operation crossed
+ * carrier_gate(). Two of the three read callers never called it at all, and
+ * none of the reads re-checked the gate before the request. Each measurement
+ * below closes the gate at the last possible instant and counts the reads the
+ * adapter was actually handed.
+ */
+
+/** A fake-carrier manager plus an order already at shipment_created. */
+function kuka_ship_read_gate_fixture(): array {
+	$adapter = new Kuka_Shipping_Fake_Carrier();
+	$manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $adapter ) ) );
+	$order   = kuka_ship_fixture_order();
+
+	$manager->create_shipment( $order );
+	$adapter->reset_counters();
+
+	return array(
+		'order'   => wc_get_order( $order->get_id() ),
+		'adapter' => $adapter,
+		'manager' => $manager,
+	);
+}
+
+$not_ready = array(
+	'ready'        => false,
+	'gaps'         => array( 'KUKA_DHL_CLIENT_ID' ),
+	'environment'  => 'test',
+	'live_blocked' => false,
+);
+
+// --- read_shipment_status: the poller's read ------------------------------
+
+$gate_status = kuka_ship_read_gate_fixture();
+$gate_status_attempts_before = Kuka_Island_Shipping_Order_Store::query_attempts( $gate_status['order'] );
+$gate_status['adapter']->readiness_after_first = $not_ready;
+
+$gate_status_result = $gate_status['manager']->query_status( wc_get_order( $gate_status['order']->get_id() ) );
+$gate_status_attempts_after = Kuka_Island_Shipping_Order_Store::query_attempts( wc_get_order( $gate_status['order']->get_id() ) );
+
+// --- read_shipment / read_order: the reconciliation reads -----------------
+
+$gate_recon = kuka_ship_read_gate_fixture();
+Kuka_Island_Shipping_Order_Store::set_state( $gate_recon['order'], Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED );
+$gate_recon['adapter']->readiness_after_first = $not_ready;
+
+$gate_recon_verdict = $gate_recon['manager']->reconcile_order( wc_get_order( $gate_recon['order']->get_id() ) );
+$gate_recon_state   = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $gate_recon['order']->get_id() ) );
+
+// --- the cancellation confirmation, blocked by the REAL runtime gate ------
+//
+// The adapter closes the gate itself, the instant after it has accepted the
+// cancellation. The write is done; the confirming read must not go out, the
+// state must not move to cancelled, and the poll chain must stay booked.
+
+$gate_confirm = kuka_ship_read_gate_fixture();
+$gate_confirm['adapter']->close_runtime_gate_after_write = true;
+
+$gate_confirm_result = $gate_confirm['manager']->cancel( wc_get_order( $gate_confirm['order']->get_id() ) );
+$gate_confirm_closed = Kuka_Island_Shipping_Runtime_Gate::is_disabled();
+Kuka_Island_Shipping_Runtime_Gate::enable();
+$gate_confirm_state = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $gate_confirm['order']->get_id() ) );
+
+$report(
+	'SHIPPING_READ_GATE_SHARED',
+	// read_shipment_status
+	! $gate_status_result['ok']
+	&& 'credentials_missing' === (string) $gate_status_result['code']
+	&& 0 === $gate_status['adapter']->count_for( 'read_shipment_status' )
+	&& 0 === $gate_status['adapter']->read_calls()
+	// nothing was sent, so nothing was spent
+	&& $gate_status_attempts_before === $gate_status_attempts_after
+	// read_shipment / read_order
+	&& 'blocked' === (string) $gate_recon_verdict['verdict']
+	&& 0 === $gate_recon['adapter']->read_calls()
+	&& Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $gate_recon_state
+	// the cancellation confirmation
+	&& ! $gate_confirm_result['ok']
+	&& 'cancel_unconfirmed' === (string) $gate_confirm_result['code']
+	&& 1 === $gate_confirm['adapter']->count_for( 'cancel_shipment' )
+	&& 0 === $gate_confirm['adapter']->count_for( 'read_shipment' )
+	&& $gate_confirm_closed
+	&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED !== $gate_confirm_state,
+	sprintf(
+		'operations:3|status_read.code:%s|status_read.reads:%d|status_read.attempt_spent:%s|reconcile.verdict:%s|reconcile.reads:%d|reconcile.state:%s|cancel_confirm.code:%s|cancel_confirm.writes:%d|cancel_confirm.reads:%d|cancel_confirm.state:%s',
+		(string) $gate_status_result['code'],
+		$gate_status['adapter']->read_calls(),
+		$gate_status_attempts_before === $gate_status_attempts_after ? 'no' : 'YES',
+		(string) $gate_recon_verdict['verdict'],
+		$gate_recon['adapter']->read_calls(),
+		$gate_recon_state,
+		(string) $gate_confirm_result['code'],
+		$gate_confirm['adapter']->count_for( 'cancel_shipment' ),
+		$gate_confirm['adapter']->count_for( 'read_shipment' ),
+		$gate_confirm_state
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $gate_status['order']->get_id() ) );
+kuka_ship_destroy_order( wc_get_order( $gate_recon['order']->get_id() ) );
+kuka_ship_destroy_order( wc_get_order( $gate_confirm['order']->get_id() ) );
+
+// --- An uncertain write whose reconciliation cannot read stays uncertain --
+//
+// The most expensive mistake in this module would be to read a blocked gate as
+// "nothing is there" and then create the shipment again.
+
+$blocked_recon_adapter = new Kuka_Shipping_Fake_Carrier();
+$blocked_recon_adapter->results['create_order'] = Kuka_Island_Shipping_Result::uncertain( 'create_order', 'timeout', 0 );
+$blocked_recon_adapter->close_runtime_gate_after_write = true;
+
+$blocked_recon_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $blocked_recon_adapter ) ) );
+$blocked_recon_order   = kuka_ship_fixture_order();
+
+$blocked_recon_result = $blocked_recon_manager->create_shipment( $blocked_recon_order );
+$blocked_recon_closed = Kuka_Island_Shipping_Runtime_Gate::is_disabled();
+
+// A second press, with the gate still shut.
+$blocked_recon_second = $blocked_recon_manager->create_shipment( wc_get_order( $blocked_recon_order->get_id() ) );
+
+Kuka_Island_Shipping_Runtime_Gate::enable();
+
+$blocked_recon_state    = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $blocked_recon_order->get_id() ) );
+$blocked_recon_provider = Kuka_Island_Shipping_Order_Store::provider( wc_get_order( $blocked_recon_order->get_id() ) );
+
+$report(
+	'SHIPPING_UNCERTAIN_READ_BLOCKED_STAYS_UNCERTAIN',
+	! $blocked_recon_result['ok']
+		&& 1 === $blocked_recon_adapter->count_for( 'create_order' )
+		// The reconciliation could not read, so it proved nothing.
+		&& 0 === $blocked_recon_adapter->read_calls()
+		&& Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $blocked_recon_state
+		&& Kuka_Shipping_Fake_Carrier::KEY === $blocked_recon_provider
+		&& $blocked_recon_closed
+		// And nothing was written a second time.
+		&& ! $blocked_recon_second['ok']
+		&& 1 === $blocked_recon_adapter->count_for( 'create_order' )
+		&& 1 === $blocked_recon_adapter->write_calls(),
+	sprintf(
+		'createOrder:uncertain|gate_closed_after_write:%s|createOrder_calls:%d|reconcile_reads:%d|state:%s|absence_assumed:%s|provider_retained:%s|second_press_code:%s|total_writes:%d',
+		$blocked_recon_closed ? 'yes' : 'NO',
+		$blocked_recon_adapter->count_for( 'create_order' ),
+		$blocked_recon_adapter->read_calls(),
+		$blocked_recon_state,
+		Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED === $blocked_recon_state ? 'YES' : 'no',
+		'' !== $blocked_recon_provider ? $blocked_recon_provider : 'LOST',
+		(string) $blocked_recon_second['code'],
+		$blocked_recon_adapter->write_calls()
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $blocked_recon_order->get_id() ) );
+
+/* ========================================================================== */
+/* 40. The order screen names the order's carrier, not the shop's default      */
+/* ========================================================================== */
+
+$panel_a       = new Kuka_Shipping_Fake_Carrier( 'kuka-pinned-kargo' );
+$panel_b       = new Kuka_Shipping_Fake_Carrier( 'kuka-other-kargo' );
+$panel_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $panel_a, $panel_b ) ) );
+$panel         = new Kuka_Island_Shipping_Admin( $panel_manager );
+
+$panel_order = kuka_ship_fixture_order();
+$panel_manager->create_shipment( $panel_order, 'kuka-pinned-kargo' );
+$panel_order = wc_get_order( $panel_order->get_id() );
+
+// From here on, any contact would be one the RENDERING path caused.
+$panel_a->reset_counters();
+$panel_b->reset_counters();
+
+// An order nothing has been sent for, for the contrast.
+$panel_new = kuka_ship_fixture_order();
+
+$panel_default = static function (): string {
+	return 'kuka-other-kargo';
+};
+add_filter( 'kuka_island_shipping_default_carrier', $panel_default, 999 );
+
+$panel_pinned_ownership = $panel_manager->carrier_ownership( $panel_order );
+$panel_pinned_carrier   = $panel_manager->get_registry()->get( (string) $panel_pinned_ownership['key'] );
+$panel_pinned_label     = Kuka_Island_Shipping_Admin::carrier_label( $panel_pinned_carrier, (string) $panel_pinned_ownership['key'], (string) $panel_pinned_ownership['code'] );
+
+$panel_new_ownership = $panel_manager->carrier_ownership( $panel_new );
+$panel_new_carrier   = $panel_manager->get_registry()->get( (string) $panel_new_ownership['key'] );
+$panel_new_label     = Kuka_Island_Shipping_Admin::carrier_label( $panel_new_carrier, (string) $panel_new_ownership['key'], (string) $panel_new_ownership['code'] );
+
+// And a record whose owner is unknown: the panel says so and offers nothing.
+$panel_legacy = wc_get_order( $panel_order->get_id() );
+$panel_legacy->delete_meta_data( Kuka_Island_Shipping_Order_Store::META_PROVIDER );
+$panel_legacy->save_meta_data();
+$panel_legacy_ownership = $panel_manager->carrier_ownership( wc_get_order( $panel_order->get_id() ) );
+$panel_legacy_label     = Kuka_Island_Shipping_Admin::carrier_label( null, (string) $panel_legacy_ownership['key'], (string) $panel_legacy_ownership['code'] );
+$panel_legacy_hint      = Kuka_Island_Shipping_Admin::operator_hint( wc_get_order( $panel_order->get_id() ), null, (string) $panel_legacy_ownership['code'] );
+
+remove_filter( 'kuka_island_shipping_default_carrier', $panel_default, 999 );
+
+// Rendering must not have written anything to the order.
+$panel_notes = count( (array) wc_get_order_notes( array( 'order_id' => $panel_new->get_id(), 'limit' => 50 ) ) );
+
+$report(
+	'SHIPPING_ADMIN_USES_STORED_PROVIDER',
+	'kuka-pinned-kargo' === (string) $panel_pinned_ownership['key']
+		&& 'order' === (string) $panel_pinned_ownership['source']
+		&& $panel_pinned_label === $panel_a->get_label()
+		&& ! str_contains( $panel_pinned_label, 'other' )
+		// The untouched order is the only one the default may claim.
+		&& 'kuka-other-kargo' === (string) $panel_new_ownership['key']
+		&& 'default' === (string) $panel_new_ownership['source']
+		&& $panel_new_label === $panel_b->get_label()
+		// The orphaned record says so instead of naming a courier.
+		&& 'shipment_provider_missing' === (string) $panel_legacy_ownership['code']
+		&& str_contains( $panel_legacy_label, 'taşıyıcı yazılı değil' )
+		&& str_contains( $panel_legacy_hint, 'varsayılan taşıyıcı kullanılmaz' )
+		// Asking the question wrote nothing.
+		&& 0 === $panel_notes
+		&& 0 === $panel_a->contacts()
+		&& 0 === $panel_b->contacts(),
+	sprintf(
+		'default_now:kuka-other-kargo|pinned_order:%s(%s)|pinned_label:%s|untouched_order:%s(%s)|untouched_label:%s|orphaned_code:%s|render_wrote_notes:%d|pinned.contacts:%d|other.contacts:%d',
+		(string) $panel_pinned_ownership['key'],
+		(string) $panel_pinned_ownership['source'],
+		$panel_pinned_label,
+		(string) $panel_new_ownership['key'],
+		(string) $panel_new_ownership['source'],
+		$panel_new_label,
+		(string) $panel_legacy_ownership['code'],
+		$panel_notes,
+		$panel_a->contacts(),
+		$panel_b->contacts()
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $panel_order->get_id() ) );
+kuka_ship_destroy_order( wc_get_order( $panel_new->get_id() ) );
+
+/* ========================================================================== */
+/* 41. Cleanup and verdict                                                     */
 /* ========================================================================== */
 
 $leftover = get_posts(
@@ -4247,9 +5100,11 @@ $report(
  * THE CONTROL, before the real restore. A restore that is never seen to restore
  * anything is not a measurement, and today's snapshot may legitimately be
  * empty, so a sentinel is planted, overwritten by a real scenario and then
- * required to come back byte for byte. The sentinel is this block's own
- * property; the final restore below removes it along with everything else the
- * run created.
+ * required to come back byte for byte.
+ *
+ * This custodian is deliberately NOT guarded: registering a second shutdown
+ * function would restore the sentinel again after the outer one had removed it,
+ * and the sentinel is a fixture, not the shop's data.
  */
 $control_key     = '_transient_kuka_dhl_cbs_cities_v1';
 $control_timeout = '_transient_timeout_kuka_dhl_cbs_cities_v1';
@@ -4257,37 +5112,39 @@ $control_cities  = array( array( 'code' => '99', 'name' => 'KUKA-CONTROL-CITY' )
 
 set_transient( 'kuka_dhl_cbs_cities_v1', $control_cities, DAY_IN_SECONDS );
 
-$control_before = array();
-foreach ( kuka_ship_cbs_rows() as $control_row ) {
-	if ( in_array( (string) $control_row['option_name'], array( $control_key, $control_timeout ), true ) ) {
-		$control_before[ (string) $control_row['option_name'] ] = $control_row;
+$control_custodian = new Kuka_Shipping_Cache_Custodian();
+$control_before    = array();
+
+foreach ( Kuka_Shipping_Cache_Custodian::rows() as $control_name => $control_row ) {
+	if ( in_array( (string) $control_name, array( $control_key, $control_timeout ), true ) ) {
+		$control_before[ (string) $control_name ] = $control_row;
 	}
 }
-
-$control_snapshot    = kuka_ship_cbs_rows();
-$control_fingerprint = kuka_ship_cbs_fingerprint( $control_snapshot );
 
 // A real scenario: it purges the cache and refills it from the mock, which is
 // exactly what would have destroyed the shop's own rows.
 $control_scenario = kuka_ship_scenario( kuka_ship_happy_responder() );
 $control_scenario['manager']->create_shipment( $control_scenario['order'] );
-$control_overwritten = $control_fingerprint !== kuka_ship_cbs_fingerprint( kuka_ship_cbs_rows() );
+$control_overwritten = $control_custodian->snapshot_fingerprint() !== Kuka_Shipping_Cache_Custodian::fingerprint( Kuka_Shipping_Cache_Custodian::rows() );
 kuka_ship_destroy_order( wc_get_order( $control_scenario['order']->get_id() ) );
 
-$control_restore   = kuka_ship_cbs_restore( $control_snapshot );
-$control_recovered = $control_fingerprint === kuka_ship_cbs_fingerprint( kuka_ship_cbs_rows() );
+$control_restore = $control_custodian->restore( 'normal' );
+
+// Called twice on purpose: the shutdown path calls the same method, so a second
+// call has to be a no-op rather than a second restore.
+$control_second  = $control_custodian->restore( 'shutdown' );
+$control_rows    = Kuka_Shipping_Cache_Custodian::rows();
+$control_recovered = $control_custodian->snapshot_fingerprint() === Kuka_Shipping_Cache_Custodian::fingerprint( $control_rows );
 $control_value_ok  = $control_cities === get_transient( 'kuka_dhl_cbs_cities_v1' );
 
 $control_bytes_ok = array() !== $control_before;
-foreach ( kuka_ship_cbs_rows() as $control_row ) {
-	$control_name = (string) $control_row['option_name'];
-
-	if ( ! isset( $control_before[ $control_name ] ) ) {
+foreach ( $control_rows as $control_name => $control_row ) {
+	if ( ! isset( $control_before[ (string) $control_name ] ) ) {
 		continue;
 	}
 
-	if ( (string) $control_row['option_value'] !== (string) $control_before[ $control_name ]['option_value']
-		|| (string) $control_row['autoload'] !== (string) $control_before[ $control_name ]['autoload'] ) {
+	if ( $control_row['option_value'] !== $control_before[ (string) $control_name ]['option_value']
+		|| $control_row['autoload'] !== $control_before[ (string) $control_name ]['autoload'] ) {
 		$control_bytes_ok = false;
 	}
 }
@@ -4295,34 +5152,41 @@ foreach ( kuka_ship_cbs_rows() as $control_row ) {
 $report(
 	'SHIPPING_CBS_CACHE_PRESERVED',
 	$control_overwritten
+		&& $control_restore['ok']
+		&& 0 === (int) $control_restore['refused']
 		&& $control_recovered
 		&& $control_value_ok
 		&& $control_bytes_ok
-		&& 2 === count( $control_before ),
+		&& 2 === count( $control_before )
+		// Idempotent: the second call reported the first call's outcome.
+		&& $control_second === $control_restore
+		&& 'normal' === (string) $control_second['invoked_by'],
 	sprintf(
-		'control:planted_then_overwritten_then_restored|overwritten_by_run:%s|value_and_timeout_rows:%d|restored_rows:%d|inserted_rows:%d|run_owned_removed:%d|fingerprint_recovered:%s|value_identical:%s|bytes_identical:%s',
+		'control:planted_then_overwritten_then_restored|coordinator:shared|overwritten_by_run:%s|value_and_timeout_rows:%d|restored_rows:%d|inserted_rows:%d|run_owned_removed:%d|refused:%d|fingerprint_recovered:%s|value_identical:%s|bytes_identical:%s|second_call_is_noop:%s',
 		$control_overwritten ? 'yes' : 'NO',
 		count( $control_before ),
-		$control_restore['restored'],
-		$control_restore['inserted'],
-		$control_restore['run_owned_removed'],
+		(int) $control_restore['restored'],
+		(int) $control_restore['inserted'],
+		(int) $control_restore['run_owned_removed'],
+		(int) $control_restore['refused'],
 		$control_recovered ? 'yes' : 'NO',
 		$control_value_ok ? 'yes' : 'NO',
-		$control_bytes_ok ? 'yes' : 'NO'
+		$control_bytes_ok ? 'yes' : 'NO',
+		$control_second === $control_restore ? 'yes' : 'NO'
 	)
 );
 
 /*
- * And now the real thing: the cache as it was BEFORE this suite existed. The
+ * And now the real thing: the cache as it was BEFORE this suite touched it. The
  * sentinel planted above is not in that snapshot, so this restore removes it --
  * whatever the run created is the run's residue and goes.
  */
-$cbs_restore     = kuka_ship_cbs_restore( $cbs_snapshot );
-$cbs_after       = kuka_ship_cbs_rows();
-$cbs_after_print = kuka_ship_cbs_fingerprint( $cbs_after );
+$cbs_restore     = $cbs_custodian->restore( 'normal' );
+$cbs_after       = Kuka_Shipping_Cache_Custodian::rows();
+$cbs_after_print = Kuka_Shipping_Cache_Custodian::fingerprint( $cbs_after );
 
-$cbs_names_before = array_map( static fn ( $row ): string => (string) $row['option_name'], $cbs_snapshot );
-$cbs_names_after  = array_map( static fn ( $row ): string => (string) $row['option_name'], $cbs_after );
+$cbs_names_before = $cbs_custodian->names_before();
+$cbs_names_after  = array_keys( $cbs_after );
 sort( $cbs_names_before );
 sort( $cbs_names_after );
 
@@ -4330,16 +5194,19 @@ $report(
 	'SHIPPING_FIXTURES_REMOVED',
 	0 === $still_there
 		&& $notes_before === $notes_after
-		&& $cbs_fingerprint === $cbs_after_print
+		&& $cbs_restore['ok']
+		&& 0 === (int) $cbs_restore['refused']
+		&& $cbs_custodian->snapshot_fingerprint() === $cbs_after_print
 		&& $cbs_names_before === $cbs_names_after,
 	sprintf(
-		'remaining_fixture_orders:%d|order_note_delta:%d|pre_existing_cache_rows:%d|cache_keyset_identical:%s|cache_fingerprint_identical:%s|run_owned_cache_residue:%d',
+		'remaining_fixture_orders:%d|order_note_delta:%d|pre_existing_cache_rows:%d|cache_keyset_identical:%s|cache_fingerprint_identical:%s|run_owned_cache_residue:%d|cache_restore_refused:%d',
 		$still_there,
 		$notes_after - $notes_before,
-		count( $cbs_snapshot ),
+		count( $cbs_names_before ),
 		$cbs_names_before === $cbs_names_after ? 'yes' : 'NO',
-		$cbs_fingerprint === $cbs_after_print ? 'yes' : 'NO',
-		$cbs_restore['run_owned_removed']
+		$cbs_custodian->snapshot_fingerprint() === $cbs_after_print ? 'yes' : 'NO',
+		(int) $cbs_restore['run_owned_removed'],
+		(int) $cbs_restore['refused']
 	)
 );
 
