@@ -109,6 +109,7 @@ $hooks = array(
   "poller_worker"     => has_action( "kuka_island_shipping_query_status" ),
   "admin_metabox"     => has_action( "add_meta_boxes" ),
   "admin_create"      => has_action( "admin_post_kuka_shipping_create" ),
+  "admin_resume"      => has_action( "admin_post_kuka_shipping_resume" ),
   "admin_requery"     => has_action( "admin_post_kuka_shipping_requery" ),
   "admin_reconcile"   => has_action( "admin_post_kuka_shipping_reconcile" ),
   "carrier_registry"  => has_filter( "kuka_island_shipping_carriers" ),
@@ -169,7 +170,7 @@ $classes = array( "Kuka_Island_Shipping_Plugin", "Kuka_Island_Shipping_Automatio
 $declared = array();
 foreach ( $classes as $c ) { if ( class_exists( $c, false ) ) { $declared[] = $c; } }
 
-$hooks = array( "kuka_island_shipping_query_status", "admin_post_kuka_shipping_create", "admin_post_kuka_shipping_requery" );
+$hooks = array( "kuka_island_shipping_query_status", "admin_post_kuka_shipping_create", "admin_post_kuka_shipping_resume", "admin_post_kuka_shipping_requery" );
 $registered = array();
 foreach ( $hooks as $h ) { if ( has_action( $h ) ) { $registered[] = $h; } }
 

@@ -24,9 +24,11 @@
  *   2. Plugin active,         -- admin panel visible, every carrier call
  *      credentials absent        refused before the network. Read-only and
  *                                write paths alike.
- *   3. Plugin active,         -- an operator may press "DHL gönderisi oluştur"
- *      credentials present,      on one order at a time. Nothing happens on its
- *      automation off            own: no order status hook books a shipment.
+ *   3. Plugin active,         -- an operator may press the carrier's own
+ *      credentials present,      "<carrier> gönderisi oluştur" button on one
+ *      automation off            order at a time, and continue a half-finished
+ *                                one from its barcode stage. Nothing happens on
+ *                                its own: no order status hook books anything.
  *   4. Plugin active,         -- the bounded status poller runs for orders that
  *      KUKA_DHL_AUTOMATION       already have a shipment. Even here nothing
  *      on                        CREATES a shipment without an operator.

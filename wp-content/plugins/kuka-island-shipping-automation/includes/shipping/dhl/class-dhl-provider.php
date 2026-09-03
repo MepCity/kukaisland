@@ -68,6 +68,18 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		);
 	}
 
+	/**
+	 * Which DHL value WooCommerce should track.
+	 *
+	 * Read from this adapter's own configuration, which is where the answer
+	 * belongs: it is a fact about DHL's response shape and it has not been
+	 * measured against a real shipment yet, so the shipped default is UNSET.
+	 * See the open measurement O-03 in docs/DHL_BAKIM_HAFIZASI.md.
+	 */
+	public function get_tracking_number_source(): string {
+		return $this->config->get_tracking_number_source();
+	}
+
 	public function ping(): Kuka_Island_Shipping_Result {
 		return $this->client->authenticate();
 	}

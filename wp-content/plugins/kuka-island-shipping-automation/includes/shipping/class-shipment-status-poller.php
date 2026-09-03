@@ -8,6 +8,12 @@
  * shipment was created. A poll chain with no ceiling is a poll chain that is
  * still running a year later against an order nobody remembers.
  *
+ * The attempt count is not derived here. It is returned by the query that spent
+ * it, because a query that FAILS spends an attempt too: this worker used to read
+ * the count from a snapshot taken before the call and add one, and since a failed
+ * query wrote no counter, every turn of a failing chain re-derived the same
+ * number. The ceiling was unreachable and the chain was, in practice, infinite.
+ *
  * INCREASING. The delay grows with each attempt, from a quarter of an hour to a
  * day. A parcel does not change state every five minutes, and a fixed short
  * interval is how an integration turns into a source of load on somebody else's
@@ -275,29 +281,39 @@ final class Kuka_Island_Shipping_Status_Poller {
 
 		$queried = $this->manager->query_status( $order );
 
-		if ( ! $queried['ok'] ) {
-			// A failed READ is safe to try again, within the same ceilings.
-			$decision = self::decide(
-				Kuka_Island_Shipping_Status::LIFECYCLE_UNKNOWN,
-				(int) $data['query_attempts'] + 1,
-				time() - (int) $data['created_at']
-			);
-		} else {
-			$decision = self::decide(
-				$queried['lifecycle'],
-				(int) $data['query_attempts'] + 1,
-				time() - (int) $data['created_at']
-			);
-		}
+		/*
+		 * The attempt number comes back FROM the query, which is the only thing
+		 * that knows a request was issued. The fallback re-reads the persisted
+		 * counter rather than computing one, so even a caller that returned no
+		 * attempt cannot make the budget stand still.
+		 */
+		$attempts = isset( $queried['attempts'] )
+			? (int) $queried['attempts']
+			: Kuka_Island_Shipping_Order_Store::query_attempts( $order );
+
+		// A failed READ is safe to try again, within the same ceilings; it is
+		// not safe to try again for ever, which is what the attempt costs.
+		$decision = self::decide(
+			$queried['ok'] ? (string) $queried['lifecycle'] : Kuka_Island_Shipping_Status::LIFECYCLE_UNKNOWN,
+			$attempts,
+			time() - (int) $data['created_at']
+		);
 
 		if ( 'reschedule' !== $decision['action'] ) {
 			if ( 'give_up' === $decision['action'] ) {
-				Kuka_Island_Shipping_Order_Store::save_failure(
-					$order,
-					'poll',
-					'poll_exhausted',
-					__( 'Otomatik kargo durum sorgusu sınırına ulaşıldı. Durum artık manuel sorgulanmalı.', 'kuka-island-shipping-automation' )
+				$exhausted = sprintf(
+					/* translators: 1: attempts made, 2: attempt ceiling. */
+					__( 'Otomatik kargo durum sorgusu sınırına ulaşıldı (%1$d/%2$d deneme). Yeni sorgu planlanmadı; durum artık manuel sorgulanmalı.', 'kuka-island-shipping-automation' ),
+					$attempts,
+					self::MAX_ATTEMPTS
 				);
+
+				Kuka_Island_Shipping_Order_Store::save_failure( $order, 'poll', 'poll_exhausted', $exhausted );
+
+				// Meta and history are where a suite looks; a note is where an
+				// operator looks. Exhaustion is the one poll outcome that needs
+				// a person, so it is written to all three.
+				$order->add_order_note( $exhausted );
 			}
 
 			return $decision['action'] . ':' . $decision['reason'];

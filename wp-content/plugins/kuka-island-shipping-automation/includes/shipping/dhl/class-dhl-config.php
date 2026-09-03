@@ -68,10 +68,16 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 */
 	public const IDENTITY_TYPE = 1;
 
-	/** Allowed values of the tracking-number source setting. */
-	public const TRACKING_SOURCE_UNSET       = '';
-	public const TRACKING_SOURCE_SHIPMENT_ID = 'shipment_id';
-	public const TRACKING_SOURCE_BARCODE     = 'barcode';
+	/**
+	 * Allowed values of the tracking-number source setting.
+	 *
+	 * Aliases of the carrier contract's own constants, not a second vocabulary:
+	 * the fulfilment writer compares against the interface, so a value this
+	 * class accepted but the interface did not would silently write nothing.
+	 */
+	public const TRACKING_SOURCE_UNSET       = Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_UNSET;
+	public const TRACKING_SOURCE_SHIPMENT_ID = Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_SHIPMENT_ID;
+	public const TRACKING_SOURCE_BARCODE     = Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_BARCODE;
 
 	private string $environment;
 	private string $client_id;

@@ -3,8 +3,9 @@
  * Write what the carrier confirmed into WooCommerce's own Fulfillments entity.
  *
  * The record this class creates is an ORDINARY WooCommerce fulfilment. Same
- * table, same entity, same provider key ('dhl') a person would pick from the
- * drawer's own list, same tracking fields. That is what keeps the manual route
+ * table, same entity, same provider key -- whatever the carrier adapter's own
+ * get_key() returns, which is the key a person would pick from the drawer's own
+ * list -- and the same tracking fields. That is what keeps the manual route
  * alive: nothing here creates a parallel notion of "shipped" that the standard
  * screens cannot see or edit, and an operator can still open the drawer and
  * type a tracking number by hand at any point.
@@ -98,7 +99,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 	 * @param string            $shipment_id  Carrier shipment id.
 	 * @param array<int,string> $barcodes     Piece barcodes.
 	 * @param string            $tracking_url Carrier tracking URL, '' when unknown.
-	 * @param string            $tracking_number_source One of the config's TRACKING_SOURCE_* values.
+	 * @param string            $tracking_number_source One of the carrier contract's TRACKING_SOURCE_* values.
 	 * @return array{ok: bool, action: string, fulfillment_id: int, reason: string, tracking_number_set: bool}
 	 */
 	public static function record_shipment(
@@ -156,8 +157,9 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 			 * been measured against the sandbox, so by default none is written.
 			 * A tracking number that does not track is worse than an absent one:
 			 * it goes into the customer's e-mail and into support conversations.
-			 * The operator sets KUKA_DHL_TRACKING_NUMBER_SOURCE once the sandbox
-			 * has answered, and only then does a number appear.
+			 * The carrier adapter answers get_tracking_number_source() once its
+			 * own measurement is in, and only then does a number appear. This
+			 * class never learns which courier that was.
 			 */
 			$tracking_number = self::tracking_number( $tracking_number_source, $shipment_id, $barcodes );
 
@@ -305,16 +307,16 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 	/**
 	 * The tracking number to write, or '' when the mapping is unmeasured.
 	 *
-	 * @param string            $source      Configured source.
+	 * @param string            $source      One of Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_*.
 	 * @param string            $shipment_id Carrier shipment id.
 	 * @param array<int,string> $barcodes    Piece barcodes.
 	 */
 	public static function tracking_number( string $source, string $shipment_id, array $barcodes ): string {
-		if ( Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_SHIPMENT_ID === $source ) {
+		if ( Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_SHIPMENT_ID === $source ) {
 			return trim( $shipment_id );
 		}
 
-		if ( Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_BARCODE === $source ) {
+		if ( Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_BARCODE === $source ) {
 			foreach ( $barcodes as $barcode ) {
 				$barcode = trim( (string) $barcode );
 				if ( '' !== $barcode ) {

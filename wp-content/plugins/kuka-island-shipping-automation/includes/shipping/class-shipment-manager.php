@@ -24,9 +24,19 @@
  * would be a check-then-act race: two requests can both read 'none' and both
  * proceed. The state is therefore re-read after the lock is held.
  *
+ * TWO DOORS, ONE LOCK. create_shipment() begins at createOrder;
+ * resume_barcode() begins at createbarcode and can never reach createOrder.
+ * They share the lock and each accepts a disjoint set of states, so an order
+ * whose carrier order exists but whose barcode does not can be finished without
+ * the order ever being registered twice.
+ *
+ * A CANCELLATION IS CONFIRMED BY READING THE OBJECT THAT WAS CANCELLED. Not by
+ * the carrier's acknowledgement, and not by reading a different object: see
+ * cancel().
+ *
  * NOTHING RUNS BY ITSELF. There is no order-status hook, no checkout hook and
- * no cron entry that calls create_shipment(). It is reached from the order
- * screen's explicit button and from nowhere else.
+ * no cron entry that calls create_shipment() or resume_barcode(). Both are
+ * reached from the order screen's explicit buttons and from nowhere else.
  *
  * @package Kuka_Island_Shipping_Automation
  */
@@ -36,6 +46,16 @@ defined( 'ABSPATH' ) || exit;
 final class Kuka_Island_Shipping_Manager {
 
 	private const CREATE_LOCK_PREFIX = 'kuka_ship_create_';
+
+	/**
+	 * Configuration name that selects the carrier this shop books with.
+	 *
+	 * A constant or an environment variable, read by name so this class never
+	 * has to mention an adapter. Nothing is shipped set: an unconfigured shop
+	 * with one adapter registered uses that one, and a shop with two must say
+	 * which.
+	 */
+	public const DEFAULT_CARRIER_SETTING = 'KUKA_SHIPPING_DEFAULT_CARRIER';
 
 	private Kuka_Island_Shipping_Carrier_Registry $registry;
 
@@ -52,23 +72,133 @@ final class Kuka_Island_Shipping_Manager {
 	 *
 	 * A single default rather than a per-order choice, because a per-order
 	 * choice with one registered carrier is a setting nobody would ever change
-	 * and a screen nobody would read. The filter is the seam a multi-carrier
-	 * shop uses later.
+	 * and a screen nobody would read.
+	 *
+	 * DELIBERATELY NOT AN ADAPTER NAME. This class must be readable, and
+	 * testable, without knowing which couriers exist; naming one here is what
+	 * made the "a second carrier is only an adapter plus a filter" claim
+	 * untrue. The key comes from configuration and the filter is the seam a
+	 * multi-carrier shop uses.
+	 *
+	 * FAIL-CLOSED IN BOTH DIRECTIONS.
+	 *
+	 * A configured key that no adapter answers to is returned UNCHANGED, so the
+	 * caller looks it up, finds nothing and refuses with carrier_not_registered
+	 * before any network call. Substituting "the carrier that happens to be
+	 * registered" would hand a parcel to a courier nobody chose.
+	 *
+	 * With nothing configured, one registered adapter is used -- one adapter is
+	 * not a choice -- and two or more yield '', which is again a refusal rather
+	 * than a guess.
 	 */
 	public function default_carrier_key(): string {
+		$configured = '';
+
+		if ( defined( self::DEFAULT_CARRIER_SETTING ) ) {
+			$configured = (string) constant( self::DEFAULT_CARRIER_SETTING );
+		} else {
+			$from_env = getenv( self::DEFAULT_CARRIER_SETTING );
+
+			if ( false !== $from_env ) {
+				$configured = (string) $from_env;
+			}
+		}
+
 		/**
 		 * The carrier key used when an order does not name one.
 		 *
 		 * @since 0.1.0
 		 *
-		 * @param string $key Default carrier key.
+		 * @param string             $key  Configured carrier key, '' when unset.
+		 * @param array<int, string> $keys Keys every registered adapter answers to.
 		 */
-		return (string) apply_filters( 'kuka_island_shipping_default_carrier', Kuka_Island_Shipping_DHL_Provider::KEY );
+		$configured = strtolower( trim( (string) apply_filters( 'kuka_island_shipping_default_carrier', $configured, $this->registry->keys() ) ) );
+
+		if ( '' !== $configured ) {
+			return $configured;
+		}
+
+		$keys = $this->registry->keys();
+
+		return 1 === count( $keys ) ? (string) $keys[0] : '';
 	}
 
 	/* ---------------------------------------------------------------------- */
 	/* Creation                                                                */
 	/* ---------------------------------------------------------------------- */
+
+	/**
+	 * The gates every operator action that WRITES at the carrier shares.
+	 *
+	 * Extracted so the barcode-resume door cannot accidentally have fewer of
+	 * them than the create door: a second copy of five checks is a second copy
+	 * that drifts. Every refusal here happens BEFORE any network call and is
+	 * recorded on the order.
+	 *
+	 * @param WC_Order $order       Order.
+	 * @param string   $carrier_key Carrier key, '' for the default.
+	 * @return array{carrier: ?Kuka_Island_Shipping_Carrier_Interface, refusal: array<string, mixed>}
+	 */
+	private function preflight( WC_Order $order, string $carrier_key ): array {
+		$carrier_key = '' !== $carrier_key ? $carrier_key : $this->default_carrier_key();
+		$carrier     = $this->registry->get( $carrier_key );
+
+		if ( null === $carrier ) {
+			return array(
+				'carrier' => null,
+				'refusal' => $this->refuse( $order, 'carrier_not_registered', __( 'Bu kargo firması kayıtlı değil; hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ) ),
+			);
+		}
+
+		if ( Kuka_Island_Shipping_Runtime_Gate::is_disabled() ) {
+			return array(
+				'carrier' => $carrier,
+				'refusal' => $this->refuse( $order, Kuka_Island_Shipping_Runtime_Gate::CODE, Kuka_Island_Shipping_Runtime_Gate::message() ),
+			);
+		}
+
+		$readiness = $carrier->get_readiness();
+
+		if ( $readiness['live_blocked'] ) {
+			return array(
+				'carrier' => $carrier,
+				'refusal' => $this->refuse(
+					$order,
+					'live_environment_blocked',
+					__( 'Canlı ortam bloke: resmî üretim uçları doğrulanmadı. Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' )
+				),
+			);
+		}
+
+		if ( ! $readiness['ready'] ) {
+			return array(
+				'carrier' => $carrier,
+				'refusal' => $this->refuse(
+					$order,
+					'credentials_missing',
+					sprintf(
+						/* translators: %s: comma separated configuration field names. */
+						__( 'Kargo kimlik yapılandırması eksik (%s). Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
+						implode( ', ', $readiness['gaps'] )
+					)
+				),
+			);
+		}
+
+		$cod = self::cod_gate( $order );
+
+		if ( ! $cod['ok'] ) {
+			return array(
+				'carrier' => $carrier,
+				'refusal' => $this->refuse( $order, 'cod_not_supported', $cod['message'] ),
+			);
+		}
+
+		return array(
+			'carrier' => $carrier,
+			'refusal' => array(),
+		);
+	}
 
 	/**
 	 * Book a shipment for one order.
@@ -78,44 +208,13 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	public function create_shipment( WC_Order $order, string $carrier_key = '' ): array {
-		$carrier_key = '' !== $carrier_key ? $carrier_key : $this->default_carrier_key();
-		$carrier     = $this->registry->get( $carrier_key );
+		$preflight = $this->preflight( $order, $carrier_key );
 
-		if ( null === $carrier ) {
-			return $this->refuse( $order, 'carrier_not_registered', __( 'Bu kargo firması kayıtlı değil; hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ) );
+		if ( array() !== $preflight['refusal'] ) {
+			return $preflight['refusal'];
 		}
 
-		if ( Kuka_Island_Shipping_Runtime_Gate::is_disabled() ) {
-			return $this->refuse( $order, Kuka_Island_Shipping_Runtime_Gate::CODE, Kuka_Island_Shipping_Runtime_Gate::message() );
-		}
-
-		$readiness = $carrier->get_readiness();
-
-		if ( $readiness['live_blocked'] ) {
-			return $this->refuse(
-				$order,
-				'live_environment_blocked',
-				__( 'Canlı ortam bloke: resmî üretim uçları doğrulanmadı. Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' )
-			);
-		}
-
-		if ( ! $readiness['ready'] ) {
-			return $this->refuse(
-				$order,
-				'credentials_missing',
-				sprintf(
-					/* translators: %s: comma separated configuration field names. */
-					__( 'Kargo kimlik yapılandırması eksik (%s). Hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
-					implode( ', ', $readiness['gaps'] )
-				)
-			);
-		}
-
-		$cod = self::cod_gate( $order );
-
-		if ( ! $cod['ok'] ) {
-			return $this->refuse( $order, 'cod_not_supported', $cod['message'] );
-		}
+		$carrier = $preflight['carrier'];
 
 		if ( ! $this->acquire_lock( self::CREATE_LOCK_PREFIX . $order->get_id() ) ) {
 			// Somebody else holds it. Not queued behind, and nothing recorded:
@@ -248,6 +347,92 @@ final class Kuka_Island_Shipping_Manager {
 	}
 
 	/**
+	 * Continue a shipment whose carrier ORDER exists but whose barcode never did.
+	 *
+	 * THE DEAD END THIS EXISTS FOR. createOrder succeeded and createbarcode did
+	 * not -- it failed, or it timed out and the reconciliation then found the
+	 * order and nothing else. The order sits in STATE_ORDER_CREATED, which
+	 * states_blocking_create() refuses, and refuses correctly: create_shipment()
+	 * begins by calling createOrder, and calling it again would register a
+	 * second order at the carrier. Before this method existed the shipment could
+	 * not be finished at all, and the operator's only route was to cancel a
+	 * carrier order they could not see.
+	 *
+	 * createOrder IS UNREACHABLE FROM HERE. The only carrier write on this path
+	 * is create_barcode(), through the same run_barcode() the create path uses,
+	 * so an uncertain barcode still lands in read-only reconciliation and is
+	 * still never repeated.
+	 *
+	 * EXACTLY ONE STATE IS ACCEPTED. Not "anything that is not shipment_created"
+	 * -- a list of what is refused grows a hole the first time a state is added.
+	 * The state is re-read INSIDE the lock, and the lock is the SAME one
+	 * create_shipment() takes, so a create and a resume can never overlap and a
+	 * double press cannot produce a second barcode: the second holder finds
+	 * shipment_created and stops.
+	 *
+	 * @param WC_Order $order       Order.
+	 * @param string   $carrier_key Carrier key, '' for the default.
+	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
+	 */
+	public function resume_barcode( WC_Order $order, string $carrier_key = '' ): array {
+		$preflight = $this->preflight( $order, $carrier_key );
+
+		if ( array() !== $preflight['refusal'] ) {
+			return $preflight['refusal'];
+		}
+
+		$carrier = $preflight['carrier'];
+
+		if ( ! $this->acquire_lock( self::CREATE_LOCK_PREFIX . $order->get_id() ) ) {
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+				'code'    => 'lock_contended',
+				'message' => __( 'Bu sipariş için başka bir kargo işlemi sürüyor. Yeni çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
+				'detail'  => '',
+			);
+		}
+
+		try {
+			// Re-read INSIDE the lock. The state read before the lock was taken
+			// belongs to a moment that has passed, and the moment that matters
+			// is this one.
+			$order = wc_get_order( $order->get_id() ) ?: $order;
+			$state = Kuka_Island_Shipping_Order_Store::get_state( $order );
+
+			if ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED !== $state ) {
+				return array(
+					'ok'      => false,
+					'state'   => $state,
+					'code'    => 'not_resumable',
+					'message' => self::resume_refusal_message( $state ),
+					'detail'  => '',
+				);
+			}
+
+			$reference = Kuka_Island_Shipping_Order_Store::reference( $order );
+			$request   = $this->build_request( $order, $carrier, $reference );
+
+			if ( ! $request['ok'] ) {
+				Kuka_Island_Shipping_Order_Store::save_blocked( $order, $request['code'], $request['message'] );
+				$this->note( $order, $request['message'] );
+
+				return array(
+					'ok'      => false,
+					'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+					'code'    => $request['code'],
+					'message' => $request['message'],
+					'detail'  => '',
+				);
+			}
+
+			return $this->run_barcode( $order, $carrier, $reference, $request['shipment'] );
+		} finally {
+			$this->release_lock( self::CREATE_LOCK_PREFIX . $order->get_id() );
+		}
+	}
+
+	/**
 	 * Write the confirmed shipment into WooCommerce's own fulfilment record.
 	 *
 	 * A failure here never undoes the shipment: the parcel exists at the
@@ -261,10 +446,15 @@ final class Kuka_Island_Shipping_Manager {
 	 * @param array<int, string>                     $barcodes    Piece barcodes.
 	 */
 	private function write_fulfillment( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, string $shipment_id, array $barcodes ): void {
-		$data   = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
-		$source = $carrier instanceof Kuka_Island_Shipping_DHL_Provider
-			? $carrier->get_config()->get_tracking_number_source()
-			: Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_UNSET;
+		$data = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+
+		/*
+		 * Asked of the CONTRACT, not of a class name. The previous
+		 * `instanceof DHL_Provider` here meant every other adapter silently got
+		 * "unmeasured" for ever, however well its own mapping was known -- which
+		 * is not carrier-agnostic, it is one carrier with a fallback.
+		 */
+		$source = $carrier->get_tracking_number_source();
 
 		$written = Kuka_Island_Shipping_Fulfillment_Writer::record_shipment(
 			$order,
@@ -436,9 +626,15 @@ final class Kuka_Island_Shipping_Manager {
 	/**
 	 * Read the carrier status once and record it.
 	 *
+	 * THE ATTEMPT IS BOOKED HERE, once, for every query that was actually
+	 * issued -- successful, transient or permanent alike. This method is the only
+	 * place in the plugin that knows a status request left the building, so it is
+	 * the only place that may spend the poller's budget. The refusals above the
+	 * call made no request and are therefore not attempts.
+	 *
 	 * @param WC_Order $order       Order.
 	 * @param string   $carrier_key Carrier key, '' for the default.
-	 * @return array{ok: bool, lifecycle: string, code: string, message: string, detail: string}
+	 * @return array{ok: bool, lifecycle: string, code: string, message: string, detail: string, attempts: int}
 	 */
 	public function query_status( WC_Order $order, string $carrier_key = '' ): array {
 		$carrier = $this->registry->get( '' !== $carrier_key ? $carrier_key : $this->default_carrier_key() );
@@ -450,6 +646,7 @@ final class Kuka_Island_Shipping_Manager {
 				'code'      => 'carrier_not_registered',
 				'message'   => __( 'Bu kargo firması kayıtlı değil; hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
 				'detail'    => '',
+				'attempts'  => Kuka_Island_Shipping_Order_Store::query_attempts( $order ),
 			);
 		}
 
@@ -463,10 +660,21 @@ final class Kuka_Island_Shipping_Manager {
 				'code'      => 'no_reference',
 				'message'   => __( 'Bu siparişte taşıyıcı referansı yok.', 'kuka-island-shipping-automation' ),
 				'detail'    => '',
+				'attempts'  => (int) $data['query_attempts'],
 			);
 		}
 
 		$result = $carrier->read_shipment_status( $reference );
+
+		/*
+		 * The query happened. Whatever came back -- an answer, a 500, silence --
+		 * it costs one attempt, and the cost is recorded before the outcome is
+		 * even looked at so no branch below can forget it. The counter used to
+		 * move only on success, which meant a chain of failures re-derived the
+		 * same "attempts + 1" from the same stale value on every turn and the
+		 * ceiling was never reached.
+		 */
+		$attempts = Kuka_Island_Shipping_Order_Store::record_query_attempt( $order );
 
 		if ( ! $result->is_success() ) {
 			Kuka_Island_Shipping_Order_Store::save_failure(
@@ -474,9 +682,11 @@ final class Kuka_Island_Shipping_Manager {
 				'get_shipment_status',
 				$result->get_safe_error_code(),
 				sprintf(
-					/* translators: %s: safe operation summary. */
-					__( 'Durum sorgusu başarısız (%s).', 'kuka-island-shipping-automation' ),
-					$result->to_safe_line()
+					/* translators: 1: safe operation summary, 2: attempt number, 3: attempt ceiling. */
+					__( 'Durum sorgusu başarısız (%1$s). Deneme %2$d/%3$d.', 'kuka-island-shipping-automation' ),
+					$result->to_safe_line(),
+					$attempts,
+					Kuka_Island_Shipping_Status_Poller::MAX_ATTEMPTS
 				)
 			);
 
@@ -486,6 +696,7 @@ final class Kuka_Island_Shipping_Manager {
 				'code'      => $result->get_safe_error_code(),
 				'message'   => __( 'Kargo durumu okunamadı.', 'kuka-island-shipping-automation' ),
 				'detail'    => $result->to_safe_line(),
+				'attempts'  => $attempts,
 			);
 		}
 
@@ -511,6 +722,7 @@ final class Kuka_Island_Shipping_Manager {
 			'code'      => '',
 			'message'   => Kuka_Island_Shipping_Status::label_for( $raw_code ),
 			'detail'    => $result->to_safe_line(),
+			'attempts'  => $attempts,
 		);
 	}
 
@@ -576,9 +788,25 @@ final class Kuka_Island_Shipping_Manager {
 	/**
 	 * Cancel the shipment, or the registered order when no shipment exists.
 	 *
-	 * The cancellation is CONFIRMED BY A READ before the state moves. A carrier
-	 * that answered "canceled" and did not is a carrier this shop would
-	 * otherwise stop tracking a live parcel for.
+	 * THE CONFIRMING READ MUST ASK ABOUT THE OBJECT THAT WAS CANCELLED. Both
+	 * branches used to be confirmed with read_shipment(), and on the ORDER
+	 * branch that is not a confirmation at all: no shipment was ever created
+	 * under this reference, so getshipment answers not_found whether the
+	 * cancellation worked or not. A cancelorder the carrier acknowledged but
+	 * did not perform was therefore written down as `cancelled`, the status
+	 * chain was unscheduled, and a live carrier order stopped being watched by
+	 * anybody. The read now follows the write: shipment for cancelshipment,
+	 * order for cancelorder.
+	 *
+	 * AN ACKNOWLEDGEMENT IS NOT EVIDENCE. A 200 on the cancel call moves
+	 * nothing on its own. Only not_found from the matching read moves the state,
+	 * and a read that says "still there" or cannot answer at all leaves the
+	 * order exactly where it was -- which keeps the parcel being tracked.
+	 *
+	 * AN UNCERTAIN CANCELLATION IS NOT REPEATED. It lands in
+	 * STATE_RECONCILE_REQUIRED, and this method refuses to run again from
+	 * there: a second cancel would be a second write against a state nobody has
+	 * established. The read-only reconciliation is the only way out.
 	 *
 	 * @param WC_Order $order       Order.
 	 * @param string   $carrier_key Carrier key, '' for the default.
@@ -598,10 +826,21 @@ final class Kuka_Island_Shipping_Manager {
 			return $this->simple( false, 'no_reference', __( 'Bu siparişte taşıyıcı referansı yok.', 'kuka-island-shipping-automation' ) );
 		}
 
+		if ( Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $data['state'] ) {
+			return $this->simple(
+				false,
+				'reconcile_required',
+				__( 'Bu siparişte belirsiz bir taşıyıcı yanıtı var. İptal tekrarlanmadı; önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' )
+			);
+		}
+
+		// WHICH object is cancelled decides WHICH read confirms it.
 		if ( '' !== $data['shipment_id'] ) {
-			$result = $carrier->cancel_shipment( $reference, (string) $data['shipment_id'] );
+			$result       = $carrier->cancel_shipment( $reference, (string) $data['shipment_id'] );
+			$confirmed_by = 'read_shipment';
 		} else {
-			$result = $carrier->cancel_order( $reference );
+			$result       = $carrier->cancel_order( $reference );
+			$confirmed_by = 'read_order';
 		}
 
 		if ( $result->is_uncertain() ) {
@@ -617,9 +856,11 @@ final class Kuka_Island_Shipping_Manager {
 			return $this->simple( false, $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
 		}
 
-		// Confirm by reading. Only a 'not found' on the shipment proves it is
-		// gone; anything else leaves the state where it was.
-		$confirm = $carrier->read_shipment( $reference );
+		$confirm = 'read_shipment' === $confirmed_by
+			? $carrier->read_shipment( $reference )
+			: $carrier->read_order( $reference );
+
+		$detail = $confirm->to_safe_line() . '|confirmed_by:' . $confirmed_by;
 
 		if ( 'not_found' === $confirm->get_safe_error_code() ) {
 			Kuka_Island_Shipping_Order_Store::set_state(
@@ -628,17 +869,17 @@ final class Kuka_Island_Shipping_Manager {
 				__( 'Taşıyıcı kaydı iptal edildi ve iptal salt-okunur sorguyla doğrulandı.', 'kuka-island-shipping-automation' )
 			);
 			Kuka_Island_Shipping_Status_Poller::cancel_queries( (int) $order->get_id() );
-			$this->note( $order, __( 'Kargo kaydı iptal edildi (sorguyla doğrulandı).', 'kuka-island-shipping-automation' ) );
+			$this->note( $order, __( 'Kargo kaydı iptal edildi (sorguyla doğrulandı).', 'kuka-island-shipping-automation' ) . ' ' . $detail );
 
-			return $this->simple( true, '', __( 'Kargo kaydı iptal edildi.', 'kuka-island-shipping-automation' ), $confirm->to_safe_line() );
+			return $this->simple( true, '', __( 'Kargo kaydı iptal edildi.', 'kuka-island-shipping-automation' ), $detail );
 		}
 
 		$this->note(
 			$order,
-			__( 'Taşıyıcı iptali kabul etti fakat doğrulama sorgusu kaydın hâlâ var olduğunu ya da cevapsız kaldığını gösterdi. Durum değiştirilmedi.', 'kuka-island-shipping-automation' ) . ' ' . $confirm->to_safe_line()
+			__( 'Taşıyıcı iptali kabul etti fakat doğrulama sorgusu kaydın hâlâ var olduğunu ya da cevapsız kaldığını gösterdi. Durum değiştirilmedi.', 'kuka-island-shipping-automation' ) . ' ' . $detail
 		);
 
-		return $this->simple( false, 'cancel_unconfirmed', __( 'İptal doğrulanamadı; durum değiştirilmedi.', 'kuka-island-shipping-automation' ), $confirm->to_safe_line() );
+		return $this->simple( false, 'cancel_unconfirmed', __( 'İptal doğrulanamadı; durum değiştirilmedi.', 'kuka-island-shipping-automation' ), $detail );
 	}
 
 	/* ---------------------------------------------------------------------- */
@@ -897,6 +1138,23 @@ final class Kuka_Island_Shipping_Manager {
 			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Bu sipariş teslim edilmiş. Yeni gönderi oluşturulmadı.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor. Yeni gönderi oluşturulmadı.', 'kuka-island-shipping-automation' ),
 			default                                                    => __( 'Bu sipariş için yeni gönderi oluşturulmadı.', 'kuka-island-shipping-automation' ),
+		};
+	}
+
+	/**
+	 * Operator-facing sentence for a state the barcode stage cannot resume from.
+	 *
+	 * Public and static so the exact wording can be asserted without an admin
+	 * screen, exactly like state_message().
+	 */
+	public static function resume_refusal_message( string $state ): string {
+		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED   => __( 'Bu siparişin kargo gönderisi zaten oluşturulmuş. Yeni barkod istenmedi.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Bu siparişte belirsiz bir taşıyıcı yanıtı var. Barkod aşaması sürdürülmedi; önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Bu sipariş teslim edilmiş. Barkod aşaması sürdürülmedi.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor. Barkod aşaması sürdürülmedi.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_CANCELLED          => __( 'Bu siparişin taşıyıcı kaydı iptal edilmiş. Barkod aşaması sürdürülmedi.', 'kuka-island-shipping-automation' ),
+			default                                                    => __( 'Bu siparişte taşıyıcıda bekleyen bir sipariş kaydı yok; sürdürülecek bir barkod aşaması bulunmuyor.', 'kuka-island-shipping-automation' ),
 		};
 	}
 

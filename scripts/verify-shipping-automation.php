@@ -31,6 +31,31 @@ add_filter( 'woocommerce_email_enabled_customer_processing_order', '__return_fal
 add_filter( 'woocommerce_email_enabled_customer_completed_order', '__return_false' );
 add_filter( 'woocommerce_fulfillment_email_enabled', '__return_false' );
 
+/*
+ * A real request to the carrier would invalidate this whole run, so one is made
+ * impossible rather than merely avoided. Every WordPress HTTP call to the
+ * vendor's host is short-circuited AND COUNTED here, before anything is loaded.
+ * The count is asserted at the end: a mock that silently stopped being used, or
+ * a new code path that reached for wp_remote_*, shows up as a number instead of
+ * as a surprise on somebody's bill.
+ */
+$kuka_ship_real_requests = array();
+
+add_filter(
+	'pre_http_request',
+	static function ( $preempt, $args, $url ) use ( &$kuka_ship_real_requests ) {
+		if ( str_contains( (string) $url, 'mngkargo.com.tr' ) ) {
+			$kuka_ship_real_requests[] = (string) $url;
+
+			return new WP_Error( 'kuka_ship_network_blocked', 'Blocked by verify-shipping-automation.php' );
+		}
+
+		return $preempt;
+	},
+	1,
+	3
+);
+
 require_once __DIR__ . '/lib-shipping-module-loader.php';
 
 $module = kuka_shipping_load_module();
@@ -126,6 +151,165 @@ final class Kuka_Shipping_Mock_Transport implements Kuka_Island_Shipping_HTTP_Tr
 
 	public function reset(): void {
 		$this->log = array();
+	}
+}
+
+/**
+ * A second carrier, written the way the contract says one may be written.
+ *
+ * It implements Kuka_Island_Shipping_Carrier_Interface and touches NOTHING
+ * else: no DHL class, no DHL constant, no DHL configuration, no HTTP client and
+ * no OpenAPI document. That is the whole point. The claim "a second courier is
+ * one adapter attached to one filter" was previously measured by registering
+ * the DHL adapter a second time, which could not have failed and therefore
+ * proved nothing. This class can fail, and it counts every call it receives so
+ * the manager's use of it is observed rather than assumed.
+ */
+final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_Interface {
+
+	public const KEY = 'kuka-test-kargo';
+
+	/** @var array<string, int> */
+	public array $calls = array();
+
+	private function record( string $operation ): void {
+		$this->calls[ $operation ] = ( $this->calls[ $operation ] ?? 0 ) + 1;
+	}
+
+	public function count_for( string $operation ): int {
+		return (int) ( $this->calls[ $operation ] ?? 0 );
+	}
+
+	public function total_calls(): int {
+		return (int) array_sum( $this->calls );
+	}
+
+	public function get_key(): string {
+		return self::KEY;
+	}
+
+	public function get_label(): string {
+		return 'Kuka Test Kargo';
+	}
+
+	/**
+	 * @return array{ready: bool, gaps: array<int, string>, environment: string, live_blocked: bool}
+	 */
+	public function get_readiness(): array {
+		return array(
+			'ready'        => true,
+			'gaps'         => array(),
+			'environment'  => 'test',
+			'live_blocked' => false,
+		);
+	}
+
+	public function get_tracking_number_source(): string {
+		// This carrier HAS answered the question: the piece barcode tracks.
+		return self::TRACKING_SOURCE_BARCODE;
+	}
+
+	public function ping(): Kuka_Island_Shipping_Result {
+		$this->record( 'ping' );
+
+		return Kuka_Island_Shipping_Result::success( 'ping' );
+	}
+
+	public function resolve_location( string $city, string $district ): Kuka_Island_Shipping_Result {
+		$this->record( 'resolve_location' );
+
+		return Kuka_Island_Shipping_Result::success(
+			'resolve_location',
+			array(
+				'city_code'     => 7,
+				'district_code' => 77,
+			)
+		);
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function create_order( array $shipment ): Kuka_Island_Shipping_Result {
+		$this->record( 'create_order' );
+
+		return Kuka_Island_Shipping_Result::success( 'create_order', array( 'order_invoice_id' => 'FAKE-OINV-1' ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function create_barcode( array $shipment ): Kuka_Island_Shipping_Result {
+		$this->record( 'create_barcode' );
+
+		return Kuka_Island_Shipping_Result::success(
+			'create_barcode',
+			array(
+				'shipment_id' => 'FAKE-SHIP-1',
+				'barcodes'    => 'FAKE-BC-1',
+			)
+		);
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function update_order( array $shipment ): Kuka_Island_Shipping_Result {
+		$this->record( 'update_order' );
+
+		return Kuka_Island_Shipping_Result::success( 'update_order', array( 'acknowledged' => true ) );
+	}
+
+	public function cancel_order( string $reference ): Kuka_Island_Shipping_Result {
+		$this->record( 'cancel_order' );
+
+		return Kuka_Island_Shipping_Result::success( 'cancel_order', array( 'acknowledged' => true ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function update_shipment( array $shipment ): Kuka_Island_Shipping_Result {
+		$this->record( 'update_shipment' );
+
+		return Kuka_Island_Shipping_Result::success( 'update_shipment', array( 'acknowledged' => true ) );
+	}
+
+	public function cancel_shipment( string $reference, string $shipment_id ): Kuka_Island_Shipping_Result {
+		$this->record( 'cancel_shipment' );
+
+		return Kuka_Island_Shipping_Result::success( 'cancel_shipment', array( 'acknowledged' => true ) );
+	}
+
+	public function read_order( string $reference ): Kuka_Island_Shipping_Result {
+		$this->record( 'read_order' );
+
+		return Kuka_Island_Shipping_Result::permanent( 'get_order', 'not_found', 404 );
+	}
+
+	public function read_shipment( string $reference ): Kuka_Island_Shipping_Result {
+		$this->record( 'read_shipment' );
+
+		// Gone, which is what a confirmed cancellation looks like.
+		return Kuka_Island_Shipping_Result::permanent( 'get_shipment', 'not_found', 404 );
+	}
+
+	public function read_shipment_status( string $reference ): Kuka_Island_Shipping_Result {
+		$this->record( 'read_shipment_status' );
+
+		return Kuka_Island_Shipping_Result::success(
+			'get_shipment_status',
+			array(
+				'status_code'  => 2,
+				'tracking_url' => 'https://fake-kargo.example/FAKE-SHIP-1',
+			)
+		);
+	}
+
+	public function track_shipment( string $reference ): Kuka_Island_Shipping_Result {
+		$this->record( 'track_shipment' );
+
+		return Kuka_Island_Shipping_Result::success( 'track_shipment', array( 'status_code' => 2 ) );
 	}
 }
 
@@ -848,12 +1032,29 @@ function kuka_ship_provider( Kuka_Shipping_Mock_Transport $transport, array $ove
 
 /**
  * A manager whose registry holds exactly the given carrier.
+ *
+ * Typed on the CONTRACT, not on the DHL adapter, because the second-carrier
+ * measurements below hand it an adapter that has never heard of DHL.
  */
-function kuka_ship_manager( Kuka_Island_Shipping_DHL_Provider $provider ): Kuka_Island_Shipping_Manager {
+function kuka_ship_manager( Kuka_Island_Shipping_Carrier_Interface $provider ): Kuka_Island_Shipping_Manager {
+	return new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $provider ) ) );
+}
+
+/**
+ * A registry holding exactly the given adapters, built through the PUBLIC
+ * filter and through nothing else.
+ *
+ * The filter is the only seam the contract promises, so every measurement that
+ * puts a carrier in front of the manager goes through it. A registry populated
+ * by any other means would prove nothing about how a second courier arrives.
+ *
+ * @param array<int, mixed> $carriers Adapter instances, in registration order.
+ */
+function kuka_ship_registry_of( array $carriers ): Kuka_Island_Shipping_Carrier_Registry {
 	$registry = new Kuka_Island_Shipping_Carrier_Registry();
 
-	$filter = static function ( $carriers ) use ( $provider ): array {
-		return array( $provider );
+	$filter = static function () use ( $carriers ): array {
+		return $carriers;
 	};
 
 	add_filter( 'kuka_island_shipping_carriers', $filter, 999 );
@@ -861,7 +1062,199 @@ function kuka_ship_manager( Kuka_Island_Shipping_DHL_Provider $provider ): Kuka_
 	$registry->all();
 	remove_filter( 'kuka_island_shipping_carriers', $filter, 999 );
 
-	return new Kuka_Island_Shipping_Manager( $registry );
+	return $registry;
+}
+
+/**
+ * One transport, one carrier, one manager and one fresh fixture order.
+ *
+ * @param callable $responder Transport script.
+ * @return array{order: WC_Order, transport: Kuka_Shipping_Mock_Transport, provider: Kuka_Island_Shipping_DHL_Provider, manager: Kuka_Island_Shipping_Manager}
+ */
+function kuka_ship_scenario( callable $responder ): array {
+	$transport = new Kuka_Shipping_Mock_Transport( $responder );
+	$provider  = kuka_ship_provider( $transport );
+	$manager   = kuka_ship_manager( $provider );
+	$provider->get_resolver()->purge_cache( array( '34' ) );
+
+	return array(
+		'order'     => kuka_ship_fixture_order(),
+		'transport' => $transport,
+		'provider'  => $provider,
+		'manager'   => $manager,
+	);
+}
+
+/** The reference-data and token answers every scenario needs. */
+function kuka_ship_common_reads( string $url ): ?array {
+	if ( str_contains( $url, '/token' ) ) {
+		return array( 'status' => 200, 'body' => kuka_ship_token_body() );
+	}
+
+	if ( str_contains( $url, '/getcities' ) ) {
+		return array( 'status' => 200, 'body' => (string) wp_json_encode( array( array( 'code' => '34', 'name' => 'İSTANBUL' ) ) ) );
+	}
+
+	if ( str_contains( $url, '/getdistricts/34' ) ) {
+		return array( 'status' => 200, 'body' => (string) wp_json_encode( array( array( 'code' => '1', 'name' => 'KADIKÖY' ) ) ) );
+	}
+
+	return null;
+}
+
+/** A confirmed createOrder answer. */
+function kuka_ship_create_order_ok(): array {
+	return array(
+		'status' => 200,
+		'body'   => (string) wp_json_encode( array( 'referenceId' => 'ECHO', 'orderInvoiceId' => 'OINV-R1' ) ),
+	);
+}
+
+/** A confirmed createbarcode answer. */
+function kuka_ship_create_barcode_ok( string $shipment_id = '556677889', string $barcode = 'BC-R1' ): array {
+	return array(
+		'status' => 200,
+		'body'   => (string) wp_json_encode(
+			array(
+				'referenceId' => 'ECHO',
+				'invoiceId'   => 'INV-R1',
+				'shipmentId'  => $shipment_id,
+				'barcodes'    => array( array( 'pieceNumber' => 1, 'value' => $barcode ) ),
+			)
+		),
+	);
+}
+
+/** A getorder answer that says the carrier order EXISTS. */
+function kuka_ship_get_order_present(): array {
+	return array(
+		'status' => 200,
+		'body'   => (string) wp_json_encode(
+			array(
+				'order' => array(
+					'referenceId'             => 'ECHO',
+					'shipmentId'              => '',
+					'isTransformedToShipment' => 0,
+				),
+			)
+		),
+	);
+}
+
+/**
+ * Drive the pending status chain for one order through the REAL Action
+ * Scheduler execution path.
+ *
+ * ActionScheduler_QueueRunner::process_action() is the method the WP-Cron and
+ * async queue runners call for each action they claim: it refuses anything not
+ * PENDING, writes the execution log, sets the row to in-progress, dispatches
+ * the hook with do_action(), and marks the row complete or failed. Driving the
+ * chain through it means the worker really is reached the way production
+ * reaches it -- through the registered hook, out of the store -- rather than by
+ * this suite calling run() itself.
+ *
+ * Due dates are not simulated. Claiming is what respects them; execution does
+ * not, so the ladder's fifteen minutes do not have to be waited out.
+ *
+ * @param int $order_id  Order id.
+ * @param int $max_turns Refuses to loop for ever, so a chain that will not stop
+ *                       shows up as a measurement rather than as a hung run.
+ * @return array{processed: array<int, int>, errors: int}
+ */
+function kuka_ship_drive_status_chain( int $order_id, int $max_turns = 15 ): array {
+	$processed = array();
+	$errors    = 0;
+
+	if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
+		return array(
+			'processed' => $processed,
+			'errors'    => $errors,
+		);
+	}
+
+	for ( $turn = 0; $turn < $max_turns; $turn++ ) {
+		$pending = (array) as_get_scheduled_actions(
+			array(
+				'hook'     => Kuka_Island_Shipping_Status_Poller::ACTION,
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => Kuka_Island_Shipping_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 1,
+				'orderby'  => 'none',
+			),
+			'ids'
+		);
+
+		if ( array() === $pending ) {
+			break;
+		}
+
+		$action_id = (int) reset( $pending );
+
+		try {
+			ActionScheduler::runner()->process_action( $action_id, 'Kuka Island verification' );
+		} catch ( Throwable $e ) {
+			++$errors;
+		}
+
+		$processed[] = $action_id;
+	}
+
+	return array(
+		'processed' => $processed,
+		'errors'    => $errors,
+	);
+}
+
+/** Every scheduled action this order ever had, whatever its status. */
+function kuka_ship_action_ids( int $order_id ): array {
+	if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+		return array();
+	}
+
+	return array_map(
+		'intval',
+		(array) as_get_scheduled_actions(
+			array(
+				'hook'     => Kuka_Island_Shipping_Status_Poller::ACTION,
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => Kuka_Island_Shipping_Status_Poller::GROUP,
+				'per_page' => 200,
+				'orderby'  => 'none',
+			),
+			'ids'
+		)
+	);
+}
+
+/**
+ * Remove every action row this suite caused, completed ones included.
+ *
+ * The activation-lifecycle suite counts rows for this hook in EVERY status, not
+ * only pending, so a completed chain left behind would fail a measurement in a
+ * different file and in a different process. delete_action() also clears the
+ * action's log rows: the DB logger hooks itself onto that deletion.
+ *
+ * @param int $order_id Order id.
+ */
+function kuka_ship_purge_actions( int $order_id ): int {
+	if ( ! class_exists( 'ActionScheduler' ) ) {
+		return 0;
+	}
+
+	$store   = ActionScheduler::store();
+	$removed = 0;
+
+	foreach ( kuka_ship_action_ids( $order_id ) as $action_id ) {
+		try {
+			$store->delete_action( $action_id );
+			++$removed;
+		} catch ( Throwable $e ) {
+			// Already gone.
+		}
+	}
+
+	return $removed;
 }
 
 /** The transport script for a completely successful shipment. */
@@ -1020,8 +1413,16 @@ $report(
 		&& '838302813413' === Kuka_Island_Shipping_Fulfillment_Writer::tracking_number( Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_SHIPMENT_ID, '838302813413', array( 'BC-0001' ) )
 		&& 'BC-0001' === Kuka_Island_Shipping_Fulfillment_Writer::tracking_number( Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_BARCODE, '838302813413', array( 'BC-0001' ) )
 		&& Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_UNSET === kuka_ship_config()->get_tracking_number_source()
-		&& Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_UNSET === kuka_ship_config( array( 'tracking_number_source' => 'invoiceId' ) )->get_tracking_number_source(),
-	'default:unmeasured|shipment_id:selectable|barcode:selectable|unknown_value_falls_back_to_unmeasured:yes'
+		&& Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_UNSET === kuka_ship_config( array( 'tracking_number_source' => 'invoiceId' ) )->get_tracking_number_source()
+		// The adapter's constants and the CONTRACT's constants are the same
+		// values. Two vocabularies would mean a value the config accepted and
+		// the writer silently ignored.
+		&& Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_UNSET === Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_UNSET
+		&& Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_SHIPMENT_ID === Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_SHIPMENT_ID
+		&& Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_BARCODE === Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_BARCODE
+		// And the adapter answers the CONTRACT, not only its own config.
+		&& Kuka_Island_Shipping_DHL_Config::TRACKING_SOURCE_UNSET === kuka_ship_provider( new Kuka_Shipping_Mock_Transport( kuka_ship_happy_responder() ) )->get_tracking_number_source(),
+	'default:unmeasured|shipment_id:selectable|barcode:selectable|unknown_value_falls_back_to_unmeasured:yes|contract_constants_identical:yes|adapter_answers_contract:yes'
 );
 
 /* ========================================================================== */
@@ -1489,7 +1890,646 @@ $report(
 kuka_ship_destroy_order( $gate_order );
 
 /* ========================================================================== */
-/* 22. Polling is bounded, increasing and finite -- and off by default         */
+/* 22. A cancellation is confirmed by reading THE OBJECT THAT WAS CANCELLED    */
+/* ========================================================================== */
+
+/*
+ * Both branches used to be confirmed with getshipment. On the ORDER branch that
+ * is not a confirmation: no shipment was ever created under the reference, so
+ * getshipment answers not_found whether cancelorder worked or not. The three
+ * measurements below drive the REAL Manager::cancel() and read the transport log
+ * to see WHICH query was asked.
+ */
+
+// --- Shipment branch: cancelshipment, then getshipment ---------------------
+
+$cancel_ship = kuka_ship_scenario(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok();
+		}
+
+		if ( str_contains( $url, '/cancelshipment' ) ) {
+			return array( 'status' => 200, 'body' => '{}' );
+		}
+
+		// The parcel really is gone.
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$cancel_ship['manager']->create_shipment( $cancel_ship['order'] );
+$cancel_ship_order = wc_get_order( $cancel_ship['order']->get_id() );
+$cancel_ship_state = Kuka_Island_Shipping_Order_Store::get_shipment_data( $cancel_ship_order )['state'];
+
+$cancel_ship_result = $cancel_ship['manager']->cancel( $cancel_ship_order );
+$cancel_ship_order  = wc_get_order( $cancel_ship_order->get_id() );
+$cancel_ship_after  = Kuka_Island_Shipping_Order_Store::get_shipment_data( $cancel_ship_order );
+
+$report(
+	'SHIPPING_CANCEL_SHIPMENT_BRANCH',
+	Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $cancel_ship_state
+		&& $cancel_ship_result['ok']
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $cancel_ship_after['state']
+		&& 1 === $cancel_ship['transport']->count_for( '/cancelshipment' )
+		&& 0 === $cancel_ship['transport']->count_for( '/cancelorder/' )
+		&& 1 === $cancel_ship['transport']->count_for( '/getshipment/' )
+		&& 0 === $cancel_ship['transport']->count_for( '/getorder/' )
+		&& str_contains( (string) $cancel_ship_result['detail'], 'confirmed_by:read_shipment' ),
+	sprintf(
+		'branch:shipment|cancelshipment_calls:%d|cancelorder_calls:%d|getshipment_calls:%d|getorder_calls:%d|state:%s|confirmed_by:%s',
+		$cancel_ship['transport']->count_for( '/cancelshipment' ),
+		$cancel_ship['transport']->count_for( '/cancelorder/' ),
+		$cancel_ship['transport']->count_for( '/getshipment/' ),
+		$cancel_ship['transport']->count_for( '/getorder/' ),
+		$cancel_ship_after['state'],
+		str_contains( (string) $cancel_ship_result['detail'], 'confirmed_by:read_shipment' ) ? 'read_shipment' : 'OTHER'
+	)
+);
+
+kuka_ship_destroy_order( $cancel_ship_order );
+
+// --- Order branch, cancellation proved: cancelorder, then getorder ---------
+
+$cancel_order_scenario = kuka_ship_scenario(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			// PERMANENT, not uncertain: the order is registered, the shipment
+			// never existed, and nothing has to be reconciled. This is the
+			// order_created dead end exactly as an operator meets it.
+			return array( 'status' => 400, 'body' => '{"title":"Bad Request"}' );
+		}
+
+		if ( str_contains( $url, '/cancelorder/' ) ) {
+			return array( 'status' => 200, 'body' => '{}' );
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$cancel_order_scenario['manager']->create_shipment( $cancel_order_scenario['order'] );
+$cancel_order_order = wc_get_order( $cancel_order_scenario['order']->get_id() );
+$cancel_order_pre   = Kuka_Island_Shipping_Order_Store::get_shipment_data( $cancel_order_order );
+
+$cancel_order_result = $cancel_order_scenario['manager']->cancel( $cancel_order_order );
+$cancel_order_order  = wc_get_order( $cancel_order_order->get_id() );
+$cancel_order_after  = Kuka_Island_Shipping_Order_Store::get_shipment_data( $cancel_order_order );
+
+$report(
+	'SHIPPING_CANCEL_ORDER_BRANCH',
+	Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $cancel_order_pre['state']
+		&& '' === $cancel_order_pre['shipment_id']
+		&& $cancel_order_result['ok']
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $cancel_order_after['state']
+		&& 1 === $cancel_order_scenario['transport']->count_for( '/cancelorder/' )
+		&& 0 === $cancel_order_scenario['transport']->count_for( '/cancelshipment' )
+		&& 1 === $cancel_order_scenario['transport']->count_for( '/getorder/' )
+		&& 0 === $cancel_order_scenario['transport']->count_for( '/getshipment/' )
+		&& str_contains( (string) $cancel_order_result['detail'], 'confirmed_by:read_order' ),
+	sprintf(
+		'branch:order|state_before:%s|shipment_id_before:%s|cancelorder_calls:%d|cancelshipment_calls:%d|getorder_calls:%d|getshipment_calls:%d|state:%s|confirmed_by:%s',
+		$cancel_order_pre['state'],
+		'' === $cancel_order_pre['shipment_id'] ? 'none' : 'PRESENT',
+		$cancel_order_scenario['transport']->count_for( '/cancelorder/' ),
+		$cancel_order_scenario['transport']->count_for( '/cancelshipment' ),
+		$cancel_order_scenario['transport']->count_for( '/getorder/' ),
+		$cancel_order_scenario['transport']->count_for( '/getshipment/' ),
+		$cancel_order_after['state'],
+		str_contains( (string) $cancel_order_result['detail'], 'confirmed_by:read_order' ) ? 'read_order' : 'OTHER'
+	)
+);
+
+kuka_ship_destroy_order( $cancel_order_order );
+
+// --- THE NEGATIVE CASE ------------------------------------------------------
+//
+// cancelorder answers success, getshipment answers not_found, getorder answers
+// PRESENT. The old code asked getshipment, saw not_found and wrote `cancelled`
+// on an order the carrier still holds. Nothing here may write `cancelled`.
+
+$false_cancel = kuka_ship_scenario(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return array( 'status' => 400, 'body' => '{"title":"Bad Request"}' );
+		}
+
+		if ( str_contains( $url, '/cancelorder/' ) ) {
+			// The carrier says yes.
+			return array( 'status' => 200, 'body' => '{}' );
+		}
+
+		if ( str_contains( $url, '/getorder/' ) ) {
+			// ...and the order is still there.
+			return kuka_ship_get_order_present();
+		}
+
+		// A shipment never existed under this reference, so of course it is
+		// absent. This 404 proves nothing about the cancellation.
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$false_cancel['manager']->create_shipment( $false_cancel['order'] );
+$false_cancel_order = wc_get_order( $false_cancel['order']->get_id() );
+$false_cancel_pre   = Kuka_Island_Shipping_Order_Store::get_shipment_data( $false_cancel_order );
+
+$false_cancel_result = $false_cancel['manager']->cancel( $false_cancel_order );
+$false_cancel_order  = wc_get_order( $false_cancel_order->get_id() );
+$false_cancel_after  = Kuka_Island_Shipping_Order_Store::get_shipment_data( $false_cancel_order );
+
+// A cancelled order stops being polled. An order that may still be live must
+// not have had its queries unscheduled either.
+$false_cancel_pending = Kuka_Island_Shipping_Status_Poller::has_pending_query( (int) $false_cancel_order->get_id() );
+
+$report(
+	'SHIPPING_CANCEL_ORDER_NOT_CANCELLED_ON_SHIPMENT_404',
+	Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $false_cancel_pre['state']
+		&& ! $false_cancel_result['ok']
+		&& 'cancel_unconfirmed' === $false_cancel_result['code']
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED !== $false_cancel_after['state']
+		&& Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $false_cancel_after['state']
+		&& 1 === $false_cancel['transport']->count_for( '/cancelorder/' )
+		&& 1 === $false_cancel['transport']->count_for( '/getorder/' )
+		&& 0 === $false_cancel['transport']->count_for( '/getshipment/' )
+		&& ! $false_cancel_pending,
+	sprintf(
+		'cancel_order:success|read_shipment:not_found|read_order:present|cancelorder_calls:%d|getorder_calls:%d|getshipment_calls:%d|code:%s|state:%s|cancelled_written:%s',
+		$false_cancel['transport']->count_for( '/cancelorder/' ),
+		$false_cancel['transport']->count_for( '/getorder/' ),
+		$false_cancel['transport']->count_for( '/getshipment/' ),
+		$false_cancel_result['code'],
+		$false_cancel_after['state'],
+		Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $false_cancel_after['state'] ? 'YES' : 'no'
+	)
+);
+
+kuka_ship_destroy_order( $false_cancel_order );
+
+// --- An uncertain cancellation is not repeated -----------------------------
+
+$uncertain_cancel = kuka_ship_scenario(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok();
+		}
+
+		if ( str_contains( $url, '/cancelshipment' ) ) {
+			// Silence on a write: it may or may not have taken effect.
+			return array( 'status' => 0, 'body' => '', 'error' => 'cURL error 28: Operation timed out' );
+		}
+
+		return array( 'status' => 503, 'body' => '' );
+	}
+);
+
+$uncertain_cancel['manager']->create_shipment( $uncertain_cancel['order'] );
+$uncertain_cancel_order = wc_get_order( $uncertain_cancel['order']->get_id() );
+
+$uncertain_cancel_first = $uncertain_cancel['manager']->cancel( $uncertain_cancel_order );
+$uncertain_cancel_order = wc_get_order( $uncertain_cancel_order->get_id() );
+$uncertain_cancel_state = Kuka_Island_Shipping_Order_Store::get_state( $uncertain_cancel_order );
+
+$uncertain_cancel_second = $uncertain_cancel['manager']->cancel( $uncertain_cancel_order );
+
+$report(
+	'SHIPPING_CANCEL_UNCERTAIN_NOT_REPEATED',
+	! $uncertain_cancel_first['ok']
+		&& Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $uncertain_cancel_state
+		&& ! $uncertain_cancel_second['ok']
+		&& 'reconcile_required' === $uncertain_cancel_second['code']
+		&& 1 === $uncertain_cancel['transport']->count_for( '/cancelshipment' ),
+	sprintf(
+		'first_code:%s|state:%s|second_code:%s|cancelshipment_calls:%d',
+		$uncertain_cancel_first['code'],
+		$uncertain_cancel_state,
+		$uncertain_cancel_second['code'],
+		$uncertain_cancel['transport']->count_for( '/cancelshipment' )
+	)
+);
+
+kuka_ship_destroy_order( $uncertain_cancel_order );
+
+/* ========================================================================== */
+/* 23. The barcode stage can be resumed -- and only from order_created         */
+/* ========================================================================== */
+
+/*
+ * The dead end: createOrder succeeded, createbarcode was refused, and
+ * order_created blocks create_shipment(). Everything below drives the REAL
+ * Manager::resume_barcode() and the REAL admin handler, and counts the carrier
+ * calls each press produced.
+ */
+
+$resume_barcode_calls = 0;
+
+$resume = kuka_ship_scenario(
+	static function ( string $method, string $url ) use ( &$resume_barcode_calls ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			++$resume_barcode_calls;
+
+			// The first attempt is refused permanently; the resume succeeds.
+			return 1 === $resume_barcode_calls
+				? array( 'status' => 400, 'body' => '{"title":"Bad Request"}' )
+				: kuka_ship_create_barcode_ok( '445566778', 'BC-RESUMED' );
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$resume['manager']->create_shipment( $resume['order'] );
+$resume_order = wc_get_order( $resume['order']->get_id() );
+$resume_pre   = Kuka_Island_Shipping_Order_Store::get_shipment_data( $resume_order );
+
+// The create door is shut, and shut for the right reason.
+$resume_create_again = $resume['manager']->create_shipment( $resume_order );
+$resume_order        = wc_get_order( $resume_order->get_id() );
+
+$resume_before_create_order = $resume['transport']->count_for( '/createOrder' );
+$resume_before_barcode      = $resume['transport']->count_for( '/createbarcode' );
+
+$resume_result = $resume['manager']->resume_barcode( $resume_order );
+$resume_order  = wc_get_order( $resume_order->get_id() );
+$resume_after  = Kuka_Island_Shipping_Order_Store::get_shipment_data( $resume_order );
+
+$resume_delta_create_order = $resume['transport']->count_for( '/createOrder' ) - $resume_before_create_order;
+$resume_delta_barcode      = $resume['transport']->count_for( '/createbarcode' ) - $resume_before_barcode;
+
+// The double press. Same lock, and the state is now shipment_created.
+$resume_second        = $resume['manager']->resume_barcode( $resume_order );
+$resume_second_delta  = $resume['transport']->count_for( '/createbarcode' ) - $resume_before_barcode - 1;
+$resume_order         = wc_get_order( $resume_order->get_id() );
+$resume_after_second  = Kuka_Island_Shipping_Order_Store::get_shipment_data( $resume_order );
+
+$report(
+	'SHIPPING_RESUME_ORDER_CREATED',
+	Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $resume_pre['state']
+		&& ! $resume_create_again['ok']
+		&& 'already_in_progress' === $resume_create_again['code']
+		&& $resume_result['ok']
+		&& 0 === $resume_delta_create_order
+		&& 1 === $resume_delta_barcode
+		&& Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $resume_after['state']
+		&& '445566778' === $resume_after['shipment_id']
+		&& array( 'BC-RESUMED' ) === $resume_after['barcodes']
+		&& ! $resume_second['ok']
+		&& 'not_resumable' === $resume_second['code']
+		&& 0 === $resume_second_delta
+		&& '445566778' === $resume_after_second['shipment_id'],
+	sprintf(
+		'state_before:%s|create_again_code:%s|createOrder_calls_during_resume:%d|createbarcode_calls_during_resume:%d|state_after:%s|shipment_id:%s|second_press_code:%s|second_press_writes:%d',
+		$resume_pre['state'],
+		$resume_create_again['code'],
+		$resume_delta_create_order,
+		$resume_delta_barcode,
+		$resume_after['state'],
+		'' !== $resume_after['shipment_id'] ? 'stored' : 'NONE',
+		$resume_second['code'],
+		$resume_second_delta
+	)
+);
+
+// --- Every other state is refused, and refused before the network ----------
+
+$resume_guard = kuka_ship_scenario(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		return null !== $common ? $common : array( 'status' => 500, 'body' => '' );
+	}
+);
+
+$resume_guard_order = $resume_guard['order'];
+Kuka_Island_Shipping_Order_Store::reference( $resume_guard_order );
+
+$resume_refused = array();
+$resume_allowed = array();
+
+foreach (
+	array(
+		Kuka_Island_Shipping_Order_Store::STATE_NONE,
+		Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED,
+		Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED,
+		Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED,
+		Kuka_Island_Shipping_Order_Store::STATE_DELIVERED,
+		Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+		Kuka_Island_Shipping_Order_Store::STATE_CANCELLED,
+		Kuka_Island_Shipping_Order_Store::STATE_BLOCKED,
+	) as $guard_state
+) {
+	Kuka_Island_Shipping_Order_Store::set_state( $resume_guard_order, $guard_state );
+	$guard_result = $resume_guard['manager']->resume_barcode( wc_get_order( $resume_guard_order->get_id() ) );
+
+	if ( ! $guard_result['ok'] && 'not_resumable' === $guard_result['code'] && '' !== $guard_result['message'] ) {
+		$resume_refused[] = $guard_state;
+	} else {
+		$resume_allowed[] = $guard_state . ':' . $guard_result['code'];
+	}
+}
+
+$report(
+	'SHIPPING_RESUME_REFUSES_OTHER_STATES',
+	8 === count( $resume_refused )
+		&& array() === $resume_allowed
+		&& 0 === count( $resume_guard['transport']->log ),
+	sprintf(
+		'states_refused:%d|states_allowed:%s|http_requests:%d|codes:not_resumable',
+		count( $resume_refused ),
+		array() === $resume_allowed ? 'none' : implode( '+', $resume_allowed ),
+		count( $resume_guard['transport']->log )
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $resume_guard_order->get_id() ) );
+
+// --- An uncertain resume is not repeated; the read decides -----------------
+
+$resume_uncertain = kuka_ship_scenario(
+	static function ( string $method, string $url ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			// Silence on a write. It may have produced a shipment.
+			return array( 'status' => 0, 'body' => '', 'error' => 'cURL error 28: Operation timed out' );
+		}
+
+		// The reads cannot answer either, so absence is NOT proved.
+		return array( 'status' => 503, 'body' => '' );
+	}
+);
+
+$resume_uncertain['manager']->create_shipment( $resume_uncertain['order'] );
+$resume_uncertain_order = wc_get_order( $resume_uncertain['order']->get_id() );
+$resume_uncertain_data  = Kuka_Island_Shipping_Order_Store::get_shipment_data( $resume_uncertain_order );
+
+$resume_uncertain_second = $resume_uncertain['manager']->resume_barcode( $resume_uncertain_order );
+
+$report(
+	'SHIPPING_RESUME_UNCERTAIN_TO_RECONCILE',
+	1 === $resume_uncertain['transport']->count_for( '/createOrder' )
+		&& 1 === $resume_uncertain['transport']->count_for( '/createbarcode' )
+		&& Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $resume_uncertain_data['state']
+		&& 1 === $resume_uncertain['transport']->count_for( '/getshipment/' )
+		&& 1 === $resume_uncertain['transport']->count_for( '/getorder/' )
+		&& ! $resume_uncertain_second['ok']
+		&& 'not_resumable' === $resume_uncertain_second['code']
+		&& 1 === $resume_uncertain['transport']->count_for( '/createbarcode' ),
+	sprintf(
+		'createOrder_calls:%d|createbarcode_calls:%d|state:%s|read_only_reconcile_calls:%d|second_press_code:%s',
+		$resume_uncertain['transport']->count_for( '/createOrder' ),
+		$resume_uncertain['transport']->count_for( '/createbarcode' ),
+		$resume_uncertain_data['state'],
+		$resume_uncertain['transport']->count_for( '/getshipment/' ) + $resume_uncertain['transport']->count_for( '/getorder/' ),
+		$resume_uncertain_second['code']
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $resume_uncertain_order->get_id() ) );
+
+/* ========================================================================== */
+/* 24. The resume action, through the real admin handler                       */
+/* ========================================================================== */
+
+/*
+ * Kuka_Island_Shipping_Admin::run_resume() IS the handler: nonce, capability,
+ * order lookup and the manager call. Only the redirect is separate, because a
+ * redirect ends the request and a measurement after it would never run.
+ *
+ * wp_die() is turned into an exception for the duration, so the two refusal
+ * paths -- a nonce issued for a different action, and a user without the
+ * capability -- can be observed instead of ending the process.
+ */
+
+$admin_resume_barcode_calls = 0;
+
+$admin_resume = kuka_ship_scenario(
+	static function ( string $method, string $url ) use ( &$admin_resume_barcode_calls ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			++$admin_resume_barcode_calls;
+
+			return 1 === $admin_resume_barcode_calls
+				? array( 'status' => 400, 'body' => '{"title":"Bad Request"}' )
+				: kuka_ship_create_barcode_ok( '112233445', 'BC-ADMIN' );
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$admin_resume['manager']->create_shipment( $admin_resume['order'] );
+$admin_resume_order    = wc_get_order( $admin_resume['order']->get_id() );
+$admin_resume_order_id = (int) $admin_resume_order->get_id();
+$admin_resume_state    = Kuka_Island_Shipping_Order_Store::get_state( $admin_resume_order );
+
+$admin_panel     = new Kuka_Island_Shipping_Admin( $admin_resume['manager'] );
+$admin_carrier   = $admin_resume['provider'];
+$admin_hint_open = Kuka_Island_Shipping_Admin::operator_hint( $admin_resume_order, $admin_carrier );
+$admin_user_ids  = (array) get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ) );
+$admin_user_id   = array() !== $admin_user_ids ? (int) $admin_user_ids[0] : 0;
+$previous_user   = get_current_user_id();
+
+$throwing_die = static function (): callable {
+	return static function ( $message = '', $title = '', $args = array() ): void {
+		throw new RuntimeException( 'wp_die' );
+	};
+};
+add_filter( 'wp_die_handler', $throwing_die, 99 );
+
+/**
+ * Drive run_resume() with a given nonce and user, and say what happened.
+ *
+ * @param Kuka_Island_Shipping_Admin $panel    Panel.
+ * @param int                        $order_id Order id.
+ * @param string                     $nonce    Nonce value to submit.
+ * @param int                        $user_id  User to act as.
+ * @return array{outcome: string, result: array<string, mixed>}
+ */
+$press_resume = static function ( Kuka_Island_Shipping_Admin $panel, int $order_id, string $nonce, int $user_id ): array {
+	wp_set_current_user( $user_id );
+
+	$_POST                       = array();
+	$_REQUEST                    = array();
+	$_POST['order_id']           = (string) $order_id;
+	$_POST['_kuka_ship_nonce']   = $nonce;
+	$_REQUEST['order_id']        = (string) $order_id;
+	$_REQUEST['_kuka_ship_nonce'] = $nonce;
+
+	try {
+		$result = $panel->run_resume();
+
+		return array(
+			'outcome' => 'ran',
+			'result'  => $result,
+		);
+	} catch ( RuntimeException $e ) {
+		return array(
+			'outcome' => 'refused',
+			'result'  => array(),
+		);
+	} finally {
+		$_POST    = array();
+		$_REQUEST = array();
+	}
+};
+
+// 1. A nonce minted for the CREATE action must not open the RESUME action.
+wp_set_current_user( $admin_user_id );
+$create_nonce = wp_create_nonce( 'kuka_shipping_create_' . $admin_resume_order_id );
+$resume_nonce = wp_create_nonce( 'kuka_shipping_resume_' . $admin_resume_order_id );
+$nonce_namespaces_differ = $create_nonce !== $resume_nonce
+	&& false === wp_verify_nonce( $create_nonce, 'kuka_shipping_resume_' . $admin_resume_order_id )
+	&& false === wp_verify_nonce( $resume_nonce, 'kuka_shipping_create_' . $admin_resume_order_id );
+
+$admin_before_barcode = $admin_resume['transport']->count_for( '/createbarcode' );
+$wrong_nonce_press    = $press_resume( $admin_panel, $admin_resume_order_id, $create_nonce, $admin_user_id );
+$after_wrong_nonce    = $admin_resume['transport']->count_for( '/createbarcode' );
+
+// 2. Without the capability, nothing is reached either -- with a nonce that is
+//    valid for the user making the request.
+wp_set_current_user( 0 );
+$logged_out_nonce  = wp_create_nonce( 'kuka_shipping_resume_' . $admin_resume_order_id );
+$no_cap_press      = $press_resume( $admin_panel, $admin_resume_order_id, $logged_out_nonce, 0 );
+$after_no_cap      = $admin_resume['transport']->count_for( '/createbarcode' );
+
+// 3. The real press.
+wp_set_current_user( $admin_user_id );
+$good_nonce   = wp_create_nonce( 'kuka_shipping_resume_' . $admin_resume_order_id );
+$good_press   = $press_resume( $admin_panel, $admin_resume_order_id, $good_nonce, $admin_user_id );
+$after_good   = $admin_resume['transport']->count_for( '/createbarcode' );
+
+remove_filter( 'wp_die_handler', $throwing_die, 99 );
+wp_set_current_user( $previous_user );
+
+$admin_resume_order = wc_get_order( $admin_resume_order_id );
+$admin_resume_after = Kuka_Island_Shipping_Order_Store::get_shipment_data( $admin_resume_order );
+
+/*
+ * The wording an operator reads. The carrier's name comes from get_label(), and
+ * the hint shown in order_created has to say what the button will and will not
+ * do -- an operator staring at a half-finished shipment is exactly the person
+ * who needs to be told that pressing it cannot register a second order.
+ */
+$admin_labels_dynamic = str_contains( Kuka_Island_Shipping_Admin::resume_button_label( $admin_carrier ), $admin_carrier->get_label() )
+	&& str_contains( Kuka_Island_Shipping_Admin::create_button_label( $admin_carrier ), $admin_carrier->get_label() )
+	&& str_contains( Kuka_Island_Shipping_Admin::resume_button_label( $admin_carrier ), 'sürdür' )
+	&& ! str_contains( Kuka_Island_Shipping_Admin::create_button_label( new Kuka_Shipping_Fake_Carrier() ), 'DHL' )
+	&& str_contains( $admin_hint_open, 'barkod' );
+
+$report(
+	'SHIPPING_RESUME_ADMIN_ACTION',
+	$admin_user_id > 0
+		&& Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $admin_resume_state
+		&& $nonce_namespaces_differ
+		&& 'refused' === $wrong_nonce_press['outcome']
+		&& $after_wrong_nonce === $admin_before_barcode
+		&& 'refused' === $no_cap_press['outcome']
+		&& $after_no_cap === $admin_before_barcode
+		&& 'ran' === $good_press['outcome']
+		&& true === ( $good_press['result']['ok'] ?? false )
+		&& $after_good === $admin_before_barcode + 1
+		&& Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $admin_resume_after['state']
+		&& '112233445' === $admin_resume_after['shipment_id']
+		&& $admin_labels_dynamic,
+	sprintf(
+		'admin_user:%s|separate_nonce:%s|wrong_nonce:%s|wrong_nonce_writes:%d|no_capability:%s|no_capability_writes:%d|authorised_press:%s|authorised_writes:%d|state:%s|button_label_uses_carrier_name:%s',
+		$admin_user_id > 0 ? 'found' : 'MISSING',
+		$nonce_namespaces_differ ? 'yes' : 'NO',
+		$wrong_nonce_press['outcome'],
+		$after_wrong_nonce - $admin_before_barcode,
+		$no_cap_press['outcome'],
+		$after_no_cap - $admin_before_barcode,
+		$good_press['outcome'],
+		$after_good - $admin_before_barcode,
+		$admin_resume_after['state'],
+		$admin_labels_dynamic ? 'yes' : 'NO'
+	)
+);
+
+$report(
+	'SHIPPING_ADMIN_TEXT_IS_CARRIER_AGNOSTIC',
+	$admin_labels_dynamic
+		&& 'Kuka Test Kargo gönderisi oluştur' === Kuka_Island_Shipping_Admin::create_button_label( new Kuka_Shipping_Fake_Carrier() ),
+	sprintf(
+		'create_label:%s|resume_label_mentions_carrier:%s|order_created_hint_mentions_barcode:%s',
+		Kuka_Island_Shipping_Admin::create_button_label( new Kuka_Shipping_Fake_Carrier() ),
+		str_contains( Kuka_Island_Shipping_Admin::resume_button_label( $admin_carrier ), $admin_carrier->get_label() ) ? 'yes' : 'NO',
+		str_contains( $admin_hint_open, 'barkod' ) ? 'yes' : 'NO'
+	)
+);
+
+kuka_ship_destroy_order( $admin_resume_order );
+
+/* ========================================================================== */
+/* 25. Polling is bounded, increasing and finite -- and off by default         */
 /* ========================================================================== */
 
 $delays = array();
@@ -1532,7 +2572,286 @@ $report(
 );
 
 /* ========================================================================== */
-/* 23. No Action Scheduler residue                                             */
+/* 26. A failing status chain spends its budget and then stops                 */
+/* ========================================================================== */
+
+/*
+ * Driven through the REAL Action Scheduler: the poller's worker hook is
+ * registered, the first query is booked by the create path itself, and each
+ * pending row is executed by ActionScheduler_QueueRunner::process_action() --
+ * the same method the WP-Cron and async runners call. Nothing here calls run()
+ * directly.
+ *
+ * Automation is switched on through the ENVIRONMENT for the duration and
+ * switched off again, because a constant cannot be unset and the later
+ * measurements assert the shipped default is off.
+ */
+
+/**
+ * Remove the poller's Action Scheduler GROUP row when this run created it.
+ *
+ * delete_action() removes actions and their log rows but never the group row,
+ * and that row is the one piece of residue a completed chain would otherwise
+ * leave behind for ever. It goes only when it did not exist before the chain
+ * ran AND no action references it any more, so a shop that already books
+ * shipping queries keeps its own.
+ */
+function kuka_ship_purge_orphan_group( bool $existed_before ): string {
+	global $wpdb;
+
+	if ( $existed_before ) {
+		return 'preexisting';
+	}
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$group_id = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT group_id FROM {$wpdb->prefix}actionscheduler_groups WHERE slug = %s LIMIT 1",
+			Kuka_Island_Shipping_Status_Poller::GROUP
+		)
+	);
+
+	if ( 0 === $group_id ) {
+		return 'absent';
+	}
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$referencing = (int) $wpdb->get_var(
+		$wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}actionscheduler_actions WHERE group_id = %d", $group_id )
+	);
+
+	if ( $referencing > 0 ) {
+		return 'still_referenced:' . $referencing;
+	}
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}actionscheduler_groups WHERE group_id = %d", $group_id ) );
+
+	return 'removed';
+}
+
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$chain_group_existed = 0 < (int) $wpdb->get_var(
+	$wpdb->prepare(
+		"SELECT COUNT(*) FROM {$wpdb->prefix}actionscheduler_groups WHERE slug = %s",
+		Kuka_Island_Shipping_Status_Poller::GROUP
+	)
+);
+
+putenv( 'KUKA_SHIPPING_AUTOMATION=1' );
+$chain_automation_on = Kuka_Island_Shipping_Status_Poller::automation_enabled();
+
+$fail_status_calls = 0;
+
+$fail_chain = kuka_ship_scenario(
+	static function ( string $method, string $url ) use ( &$fail_status_calls ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok( '990011223', 'BC-CHAIN' );
+		}
+
+		if ( str_contains( $url, '/getshipmentstatus/' ) ) {
+			++$fail_status_calls;
+
+			// A gateway that will not answer, for ever.
+			return array( 'status' => 503, 'body' => '' );
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$fail_chain['manager']->create_shipment( $fail_chain['order'] );
+$fail_order_id   = (int) $fail_chain['order']->get_id();
+$fail_chain_state = Kuka_Island_Shipping_Order_Store::get_state( wc_get_order( $fail_order_id ) );
+$fail_first_booked = Kuka_Island_Shipping_Status_Poller::has_pending_query( $fail_order_id );
+
+$fail_poller = new Kuka_Island_Shipping_Status_Poller( $fail_chain['manager'] );
+$fail_poller->register();
+
+$fail_run = kuka_ship_drive_status_chain( $fail_order_id, 20 );
+
+// A second sweep: if anything were still booked, this would issue an
+// eleventh query. It must find nothing.
+$fail_sweep = kuka_ship_drive_status_chain( $fail_order_id, 5 );
+
+remove_action( Kuka_Island_Shipping_Status_Poller::ACTION, array( $fail_poller, 'run' ), 10 );
+
+$fail_order   = wc_get_order( $fail_order_id );
+$fail_data    = Kuka_Island_Shipping_Order_Store::get_shipment_data( $fail_order );
+$fail_pending = Kuka_Island_Shipping_Status_Poller::has_pending_query( $fail_order_id );
+
+$fail_history_has_exhaustion = false;
+foreach ( (array) $fail_data['history'] as $entry ) {
+	if ( str_contains( (string) ( $entry['message'] ?? '' ), 'sınırına ulaşıldı' ) ) {
+		$fail_history_has_exhaustion = true;
+	}
+}
+
+$fail_note_has_exhaustion = false;
+foreach ( (array) wc_get_order_notes( array( 'order_id' => $fail_order_id, 'limit' => 200 ) ) as $fail_note ) {
+	if ( str_contains( (string) $fail_note->content, 'sınırına ulaşıldı' ) ) {
+		$fail_note_has_exhaustion = true;
+	}
+}
+
+$report(
+	'SHIPPING_POLL_FAILURE_CHAIN_BOUNDED',
+	$chain_automation_on
+		&& Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $fail_chain_state
+		&& $fail_first_booked
+		&& Kuka_Island_Shipping_Status_Poller::MAX_ATTEMPTS === count( $fail_run['processed'] )
+		&& Kuka_Island_Shipping_Status_Poller::MAX_ATTEMPTS === $fail_status_calls
+		&& Kuka_Island_Shipping_Status_Poller::MAX_ATTEMPTS === $fail_chain['transport']->count_for( '/getshipmentstatus/' )
+		&& Kuka_Island_Shipping_Status_Poller::MAX_ATTEMPTS === (int) $fail_data['query_attempts']
+		&& 0 === count( $fail_sweep['processed'] )
+		&& ! $fail_pending
+		&& 0 === $fail_run['errors']
+		&& 'poll_exhausted' === $fail_data['last_error']
+		&& $fail_history_has_exhaustion
+		&& $fail_note_has_exhaustion,
+	sprintf(
+		'runner:action_scheduler|actions_executed:%d|external_status_reads:%d|query_attempts:%d|pending_after:%d|eleventh_call:%s|runner_errors:%d|poll_exhausted_meta:%s|poll_exhausted_history:%s|poll_exhausted_note:%s',
+		count( $fail_run['processed'] ),
+		$fail_chain['transport']->count_for( '/getshipmentstatus/' ),
+		(int) $fail_data['query_attempts'],
+		$fail_pending ? 1 : 0,
+		0 === count( $fail_sweep['processed'] ) ? 'none' : 'HAPPENED',
+		$fail_run['errors'],
+		'poll_exhausted' === $fail_data['last_error'] ? 'yes' : 'NO',
+		$fail_history_has_exhaustion ? 'yes' : 'NO',
+		$fail_note_has_exhaustion ? 'yes' : 'NO'
+	)
+);
+
+$fail_actions_removed = kuka_ship_purge_actions( $fail_order_id );
+kuka_ship_destroy_order( $fail_order );
+
+/* ========================================================================== */
+/* 27. A successful status chain behaves exactly as it did                     */
+/* ========================================================================== */
+
+$ok_status_calls = 0;
+
+$ok_chain = kuka_ship_scenario(
+	static function ( string $method, string $url ) use ( &$ok_status_calls ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok( '778899001', 'BC-OK' );
+		}
+
+		if ( str_contains( $url, '/getshipmentstatus/' ) ) {
+			++$ok_status_calls;
+
+			// Moving, moving, delivered.
+			return array(
+				'status' => 200,
+				'body'   => (string) wp_json_encode(
+					array(
+						'referenceId'        => 'ECHO',
+						'shipmentId'         => '778899001',
+						'shipmentStatusCode' => $ok_status_calls >= 3 ? 5 : 2,
+						'isDelivered'        => $ok_status_calls >= 3 ? 1 : 0,
+						'trackingUrl'        => 'https://kargotakip.example/778899001',
+					)
+				),
+			);
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$ok_chain['manager']->create_shipment( $ok_chain['order'] );
+$ok_order_id  = (int) $ok_chain['order']->get_id();
+$ok_reference = (string) Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $ok_order_id ) )['reference'];
+
+$ok_poller = new Kuka_Island_Shipping_Status_Poller( $ok_chain['manager'] );
+$ok_poller->register();
+
+$ok_run   = kuka_ship_drive_status_chain( $ok_order_id, 20 );
+$ok_sweep = kuka_ship_drive_status_chain( $ok_order_id, 5 );
+
+remove_action( Kuka_Island_Shipping_Status_Poller::ACTION, array( $ok_poller, 'run' ), 10 );
+
+$ok_order       = wc_get_order( $ok_order_id );
+$ok_data        = Kuka_Island_Shipping_Order_Store::get_shipment_data( $ok_order );
+$ok_pending     = Kuka_Island_Shipping_Status_Poller::has_pending_query( $ok_order_id );
+$ok_fulfillment = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $ok_order, $ok_reference );
+
+$report(
+	'SHIPPING_POLL_SUCCESS_CHAIN_INTACT',
+	3 === count( $ok_run['processed'] )
+		&& 3 === $ok_status_calls
+		&& 3 === $ok_chain['transport']->count_for( '/getshipmentstatus/' )
+		// One attempt per query and NOT two: the counter has a single owner.
+		&& 3 === (int) $ok_data['query_attempts']
+		&& Kuka_Island_Shipping_Order_Store::STATE_DELIVERED === $ok_data['state']
+		&& 5 === (int) $ok_data['status_code']
+		&& 'https://kargotakip.example/778899001' === $ok_data['tracking_url']
+		&& 0 === count( $ok_sweep['processed'] )
+		&& ! $ok_pending
+		&& 0 === $ok_run['errors']
+		&& 'poll_exhausted' !== $ok_data['last_error']
+		&& null !== $ok_fulfillment
+		&& $ok_fulfillment->get_is_fulfilled()
+		&& '' !== (string) $ok_fulfillment->get_meta( Kuka_Island_Shipping_Fulfillment_Writer::META_DELIVERED_AT, true ),
+	sprintf(
+		'runner:action_scheduler|actions_executed:%d|external_status_reads:%d|query_attempts:%d|attempts_equal_reads:%s|state:%s|stored_code:%d|pending_after:%d|fulfilled:%s|delivered_at:%s',
+		count( $ok_run['processed'] ),
+		$ok_chain['transport']->count_for( '/getshipmentstatus/' ),
+		(int) $ok_data['query_attempts'],
+		( (int) $ok_data['query_attempts'] === $ok_status_calls ) ? 'yes' : 'NO',
+		$ok_data['state'],
+		(int) $ok_data['status_code'],
+		$ok_pending ? 1 : 0,
+		( null !== $ok_fulfillment && $ok_fulfillment->get_is_fulfilled() ) ? 'yes' : 'NO',
+		( null !== $ok_fulfillment && '' !== (string) $ok_fulfillment->get_meta( Kuka_Island_Shipping_Fulfillment_Writer::META_DELIVERED_AT, true ) ) ? 'stored' : 'NONE'
+	)
+);
+
+$ok_actions_removed = kuka_ship_purge_actions( $ok_order_id );
+kuka_ship_destroy_order( $ok_order );
+
+putenv( 'KUKA_SHIPPING_AUTOMATION' );
+$chain_group_state    = kuka_ship_purge_orphan_group( $chain_group_existed );
+$chain_automation_off = ! Kuka_Island_Shipping_Status_Poller::automation_enabled();
+
+$report(
+	'SHIPPING_POLL_CHAIN_LEAVES_NOTHING',
+	$chain_automation_off
+		&& 10 === $fail_actions_removed
+		&& 3 === $ok_actions_removed
+		&& in_array( $chain_group_state, array( 'removed', 'preexisting' ), true ),
+	sprintf(
+		'automation_restored:%s|failure_chain_actions_removed:%d|success_chain_actions_removed:%d|group_row:%s',
+		$chain_automation_off ? 'off' : 'ON',
+		$fail_actions_removed,
+		$ok_actions_removed,
+		$chain_group_state
+	)
+);
+
+/* ========================================================================== */
+/* 28. No Action Scheduler residue                                             */
 /* ========================================================================== */
 
 $pending_by_group = 0;
@@ -1571,7 +2890,7 @@ $report(
 );
 
 /* ========================================================================== */
-/* 24. Loading the module registers nothing                                    */
+/* 29. Loading the module registers nothing                                    */
 /* ========================================================================== */
 
 global $wp_filter;
@@ -1579,6 +2898,7 @@ global $wp_filter;
 $our_hooks = array(
 	Kuka_Island_Shipping_Status_Poller::ACTION,
 	'admin_post_kuka_shipping_create',
+	'admin_post_kuka_shipping_resume',
 	'admin_post_kuka_shipping_requery',
 	'admin_post_kuka_shipping_reconcile',
 	'admin_post_kuka_shipping_update',
@@ -1599,38 +2919,263 @@ $report(
 );
 
 /* ========================================================================== */
-/* 25. The registry is the seam for a second carrier                           */
+/* 30. A second carrier is an adapter plus a filter -- measured, not asserted  */
 /* ========================================================================== */
 
-$registry = new Kuka_Island_Shipping_Carrier_Registry();
+// --- The registry accepts both, keyed by each adapter's own get_key() ------
 
-$second_carrier_filter = static function ( $carriers ): array {
-	$carriers   = is_array( $carriers ) ? $carriers : array();
-	$carriers[] = new Kuka_Island_Shipping_DHL_Provider();
-	$carriers[] = 'not-an-adapter';
-	$carriers[] = new stdClass();
+$dhl_adapter  = kuka_ship_provider( new Kuka_Shipping_Mock_Transport( kuka_ship_happy_responder() ) );
+$fake_adapter = new Kuka_Shipping_Fake_Carrier();
 
-	return $carriers;
-};
+$mixed_registry = kuka_ship_registry_of(
+	array(
+		$dhl_adapter,
+		$fake_adapter,
+		'not-an-adapter',
+		new stdClass(),
+	)
+);
 
-add_filter( 'kuka_island_shipping_carriers', $second_carrier_filter, 999 );
-$registry->reset();
-$keys = $registry->keys();
-remove_filter( 'kuka_island_shipping_carriers', $second_carrier_filter, 999 );
+$mixed_keys = $mixed_registry->keys();
 
 $report(
 	'SHIPPING_CARRIER_REGISTRY',
-	array( 'dhl' ) === $keys
-		&& null === $registry->get( 'aras-kargo' )
-		&& $registry->get( 'dhl' ) instanceof Kuka_Island_Shipping_Carrier_Interface,
+	array( 'dhl', Kuka_Shipping_Fake_Carrier::KEY ) === $mixed_keys
+		&& null === $mixed_registry->get( 'aras-kargo' )
+		&& $mixed_registry->get( 'dhl' ) instanceof Kuka_Island_Shipping_Carrier_Interface
+		&& $mixed_registry->get( Kuka_Shipping_Fake_Carrier::KEY ) instanceof Kuka_Island_Shipping_Carrier_Interface,
 	sprintf(
 		'registered:%s|non_adapters_dropped:yes|unknown_key_returns:null|filter:kuka_island_shipping_carriers',
-		implode( '+', $keys )
+		implode( '+', $mixed_keys )
+	)
+);
+
+// --- The whole manager lifecycle, on the fake adapter alone ----------------
+
+$fake_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $fake_adapter ) ) );
+$fake_order   = kuka_ship_fixture_order();
+
+$fake_created   = $fake_manager->create_shipment( $fake_order );
+$fake_order     = wc_get_order( $fake_order->get_id() );
+$fake_data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $fake_order );
+$fake_reference = (string) $fake_data['reference'];
+$fake_record    = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $fake_order, $fake_reference );
+
+$fake_queried = $fake_manager->query_status( $fake_order );
+$fake_order   = wc_get_order( $fake_order->get_id() );
+
+$fake_cancelled = $fake_manager->cancel( $fake_order );
+$fake_order     = wc_get_order( $fake_order->get_id() );
+$fake_after     = Kuka_Island_Shipping_Order_Store::get_shipment_data( $fake_order );
+
+// The adapter itself must not need anything of DHL's to exist.
+$fake_reflection    = new ReflectionClass( Kuka_Shipping_Fake_Carrier::class );
+$fake_dhl_types     = 0;
+foreach ( $fake_reflection->getMethods( ReflectionMethod::IS_PUBLIC ) as $fake_method ) {
+	$fake_types = array();
+
+	foreach ( $fake_method->getParameters() as $fake_parameter ) {
+		$fake_types[] = (string) $fake_parameter->getType();
+	}
+
+	$fake_types[] = (string) $fake_method->getReturnType();
+
+	foreach ( $fake_types as $fake_type ) {
+		if ( str_contains( $fake_type, 'Kuka_Island_Shipping_DHL' ) ) {
+			++$fake_dhl_types;
+		}
+	}
+}
+
+$fake_standalone = false === $fake_reflection->getParentClass()
+	&& array( 'Kuka_Island_Shipping_Carrier_Interface' ) === array_values( $fake_reflection->getInterfaceNames() )
+	&& 0 === $fake_dhl_types;
+
+$report(
+	'SHIPPING_SECOND_CARRIER_ADAPTER_ONLY',
+	$fake_created['ok']
+		&& 1 === $fake_adapter->count_for( 'create_order' )
+		&& 1 === $fake_adapter->count_for( 'create_barcode' )
+		&& 'FAKE-SHIP-1' === $fake_data['shipment_id']
+		&& array( 'FAKE-BC-1' ) === $fake_data['barcodes']
+		&& Kuka_Shipping_Fake_Carrier::KEY === $fake_data['provider']
+		&& null !== $fake_record
+		&& Kuka_Shipping_Fake_Carrier::KEY === (string) $fake_record->get_shipment_provider()
+		&& 'FAKE-BC-1' === (string) $fake_record->get_tracking_number()
+		&& $fake_queried['ok']
+		&& Kuka_Island_Shipping_Status::LIFECYCLE_IN_PROGRESS === $fake_queried['lifecycle']
+		&& 1 === (int) $fake_queried['attempts']
+		&& 1 === $fake_adapter->count_for( 'read_shipment_status' )
+		&& $fake_cancelled['ok']
+		&& 1 === $fake_adapter->count_for( 'cancel_shipment' )
+		&& 0 === $fake_adapter->count_for( 'cancel_order' )
+		&& 1 === $fake_adapter->count_for( 'read_shipment' )
+		&& Kuka_Island_Shipping_Order_Store::STATE_CANCELLED === $fake_after['state']
+		&& $fake_standalone,
+	sprintf(
+		'carrier:%s|create_order:%d|create_barcode:%d|status_reads:%d|cancel_shipment:%d|cancel_order:%d|fulfillment_provider:%s|fulfillment_tracking:%s|state:%s|needs_no_dhl_class:%s|dhl_types_in_adapter:%d',
+		Kuka_Shipping_Fake_Carrier::KEY,
+		$fake_adapter->count_for( 'create_order' ),
+		$fake_adapter->count_for( 'create_barcode' ),
+		$fake_adapter->count_for( 'read_shipment_status' ),
+		$fake_adapter->count_for( 'cancel_shipment' ),
+		$fake_adapter->count_for( 'cancel_order' ),
+		null !== $fake_record ? (string) $fake_record->get_shipment_provider() : 'NONE',
+		null !== $fake_record ? (string) $fake_record->get_tracking_number() : 'NONE',
+		$fake_after['state'],
+		$fake_standalone ? 'yes' : 'NO',
+		$fake_dhl_types
+	)
+);
+
+kuka_ship_destroy_order( $fake_order );
+
+/* ========================================================================== */
+/* 31. The default carrier comes from configuration, and fails closed          */
+/* ========================================================================== */
+
+$default_unconfigured = ! defined( Kuka_Island_Shipping_Manager::DEFAULT_CARRIER_SETTING )
+	&& false === getenv( Kuka_Island_Shipping_Manager::DEFAULT_CARRIER_SETTING );
+
+// Two adapters, nothing configured: nobody chose, so nothing is chosen.
+$ambiguous_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $dhl_adapter, $fake_adapter ) ) );
+$ambiguous_key     = $ambiguous_manager->default_carrier_key();
+
+// One adapter, nothing configured: one adapter is not a choice.
+$single_manager = new Kuka_Island_Shipping_Manager( kuka_ship_registry_of( array( $fake_adapter ) ) );
+$single_key     = $single_manager->default_carrier_key();
+
+// The filter selects, by key, out of the registered set.
+$select_fake = static function ( $key, $keys = array() ): string {
+	return Kuka_Shipping_Fake_Carrier::KEY;
+};
+add_filter( 'kuka_island_shipping_default_carrier', $select_fake, 999 );
+$selected_key = $ambiguous_manager->default_carrier_key();
+remove_filter( 'kuka_island_shipping_default_carrier', $select_fake, 999 );
+
+// An unknown key is NOT substituted for a registered one: it is refused, and
+// refused before anything is contacted.
+$select_unknown = static function ( $key, $keys = array() ): string {
+	return 'kargo-yok';
+};
+add_filter( 'kuka_island_shipping_default_carrier', $select_unknown, 999 );
+$unknown_key      = $ambiguous_manager->default_carrier_key();
+$unknown_order    = kuka_ship_fixture_order();
+$fake_calls_pre   = $fake_adapter->total_calls();
+$unknown_result   = $ambiguous_manager->create_shipment( $unknown_order );
+$fake_calls_after = $fake_adapter->total_calls();
+remove_filter( 'kuka_island_shipping_default_carrier', $select_unknown, 999 );
+
+$report(
+	'SHIPPING_DEFAULT_CARRIER_FAIL_CLOSED',
+	$default_unconfigured
+		&& '' === $ambiguous_key
+		&& Kuka_Shipping_Fake_Carrier::KEY === $single_key
+		&& Kuka_Shipping_Fake_Carrier::KEY === $selected_key
+		&& 'kargo-yok' === $unknown_key
+		&& ! $unknown_result['ok']
+		&& 'carrier_not_registered' === $unknown_result['code']
+		&& $fake_calls_after === $fake_calls_pre,
+	sprintf(
+		'setting:%s|two_registered_none_configured:%s|one_registered:%s|filter_selects:%s|unknown_key_returned_verbatim:%s|unknown_key_code:%s|carrier_calls_on_unknown:%d',
+		Kuka_Island_Shipping_Manager::DEFAULT_CARRIER_SETTING,
+		'' === $ambiguous_key ? 'refused' : $ambiguous_key,
+		$single_key,
+		$selected_key,
+		$unknown_key,
+		$unknown_result['code'],
+		$fake_calls_after - $fake_calls_pre
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $unknown_order->get_id() ) );
+
+/* ========================================================================== */
+/* 32. The carrier-agnostic core names no adapter                              */
+/* ========================================================================== */
+
+/*
+ * Source-level, and deliberately so: the behavioural measurements above prove a
+ * second adapter WORKS, and this one proves the shared classes cannot quietly
+ * grow a dependency back. Comments are stripped before the scan, exactly as the
+ * drawer-protection scan strips them (K-06): a sentence explaining why a
+ * dependency was removed must not count as the dependency.
+ */
+
+$agnostic_files = array(
+	'class-shipment-manager.php',
+	'class-shipment-status-poller.php',
+	'class-fulfillment-writer.php',
+	'class-shipment-admin.php',
+	'class-shipment-order-store.php',
+	'class-carrier-registry.php',
+	'class-shipment-status.php',
+	'interface-carrier-provider.php',
+);
+
+$strip_php_comments = static function ( string $source ): string {
+	$kept = '';
+
+	foreach ( token_get_all( $source ) as $token ) {
+		if ( is_array( $token ) ) {
+			if ( in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) {
+				continue;
+			}
+
+			$kept .= $token[1];
+			continue;
+		}
+
+		$kept .= $token;
+	}
+
+	return $kept;
+};
+
+$agnostic_dir        = trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-shipping-automation/includes/shipping/';
+$agnostic_violations = array();
+$agnostic_scanned    = 0;
+
+foreach ( $agnostic_files as $agnostic_file ) {
+	$agnostic_path = $agnostic_dir . $agnostic_file;
+
+	if ( ! is_readable( $agnostic_path ) ) {
+		$agnostic_violations[] = $agnostic_file . ':unreadable';
+		continue;
+	}
+
+	++$agnostic_scanned;
+	$agnostic_code = $strip_php_comments( (string) file_get_contents( $agnostic_path ) );
+
+	foreach ( array( 'Kuka_Island_Shipping_DHL', 'KUKA_DHL_' ) as $agnostic_needle ) {
+		if ( str_contains( $agnostic_code, $agnostic_needle ) ) {
+			$agnostic_violations[] = $agnostic_file . ':' . $agnostic_needle;
+		}
+	}
+}
+
+// The control: the scan must find the adapter's own name where it belongs, or
+// the scan is not looking at anything.
+$agnostic_control = str_contains(
+	$strip_php_comments( (string) file_get_contents( $agnostic_dir . 'dhl/class-dhl-provider.php' ) ),
+	'Kuka_Island_Shipping_DHL'
+);
+
+$report(
+	'SHIPPING_CORE_NAMES_NO_ADAPTER',
+	count( $agnostic_files ) === $agnostic_scanned
+		&& array() === $agnostic_violations
+		&& $agnostic_control,
+	sprintf(
+		'files:%d|dhl_class_or_constant_references:%s|comments_stripped:yes|scan_control_positive:%s',
+		$agnostic_scanned,
+		array() === $agnostic_violations ? '0' : implode( '+', $agnostic_violations ),
+		$agnostic_control ? 'yes' : 'NO'
 	)
 );
 
 /* ========================================================================== */
-/* 26. Cleanup and verdict                                                     */
+/* 33. Cleanup and verdict                                                     */
 /* ========================================================================== */
 
 $leftover = get_posts(
@@ -1682,9 +3227,39 @@ $still_there = function_exists( 'wc_get_orders' )
 $notes_after = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_type = 'order_note'" );
 
 $report(
+	'SHIPPING_NO_REAL_CARRIER_REQUEST',
+	array() === $kuka_ship_real_requests,
+	sprintf(
+		'guard:pre_http_request|carrier_host:mngkargo.com.tr|real_requests_attempted:%d|transport:mock_only',
+		count( $kuka_ship_real_requests )
+	)
+);
+
+/*
+ * The mock reference data this run cached is removed too. Every scenario purges
+ * the cache BEFORE it resolves an address, so the mock's one-city list was left
+ * behind in wp_options afterwards -- harmless, since it is version-keyed and
+ * expires in a day, but it is still this suite's residue and an operator
+ * reading the options table should not find a carrier city list with one entry.
+ */
+kuka_ship_provider( new Kuka_Shipping_Mock_Transport( kuka_ship_happy_responder() ) )
+	->get_resolver()
+	->purge_cache( array( '34', '06' ) );
+
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$cbs_cache_left = (int) $wpdb->get_var(
+	"SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE '\_transient\_kuka\_dhl\_cbs\_%'"
+);
+
+$report(
 	'SHIPPING_FIXTURES_REMOVED',
-	0 === $still_there && $notes_before === $notes_after,
-	sprintf( 'remaining_fixture_orders:%d|order_note_delta:%d', $still_there, $notes_after - $notes_before )
+	0 === $still_there && $notes_before === $notes_after && 0 === $cbs_cache_left,
+	sprintf(
+		'remaining_fixture_orders:%d|order_note_delta:%d|cbs_cache_entries_left:%d',
+		$still_there,
+		$notes_after - $notes_before,
+		$cbs_cache_left
+	)
 );
 
 if ( array() !== $failures ) {

@@ -11,7 +11,15 @@
  *
  * Every action is a POST with a nonce and a capability check, and every one of
  * them is a DELIBERATE press. There is no automatic path from an order status
- * change, a payment or a checkout to any of these buttons.
+ * change, a payment or a checkout to any of these buttons. Each action carries
+ * its OWN nonce, namespaced by the action name and the order id, so a form
+ * issued for one action cannot be replayed as another -- the resume action in
+ * particular is a carrier write and does not ride on the create action's nonce.
+ *
+ * Every button label that names the courier gets the name from
+ * $carrier->get_label(). Hard-coding one courier's name on a screen that is
+ * meant to serve any registered adapter is how an operator ends up reading
+ * "DHL" while a parcel goes to somebody else.
  *
  * The manual route is stated on the panel itself, in every state, because an
  * operator looking at a failed automation needs to be told -- there, not in a
@@ -33,6 +41,7 @@ final class Kuka_Island_Shipping_Admin {
 	public function register(): void {
 		add_action( 'add_meta_boxes', array( $this, 'add_meta_box' ), 20, 2 );
 		add_action( 'admin_post_kuka_shipping_create', array( $this, 'handle_create' ) );
+		add_action( 'admin_post_kuka_shipping_resume', array( $this, 'handle_resume' ) );
 		add_action( 'admin_post_kuka_shipping_requery', array( $this, 'handle_requery' ) );
 		add_action( 'admin_post_kuka_shipping_reconcile', array( $this, 'handle_reconcile' ) );
 		add_action( 'admin_post_kuka_shipping_update', array( $this, 'handle_update' ) );
@@ -95,6 +104,7 @@ final class Kuka_Island_Shipping_Admin {
 		$state = Kuka_Island_Shipping_Order_Store::get_state( $order );
 
 		return match ( $state ) {
+			Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED       => __( 'Taşıyıcıda sipariş kaydı var, gönderi/barkod aşaması tamamlanmamış. Sipariş yeniden oluşturulmaz; yalnız barkod aşaması sürdürülür.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Belirsiz taşıyıcı yanıtı var. Yeniden gönderim yapılmaz; önce mutabakat sorgusu çalıştırın.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Mutabakat taşıyıcıda kayıt olmadığını gösterdi. Yeniden oluşturma açık bir işlemdir.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Kargo durumu manuel inceleme bekliyor.', 'kuka-island-shipping-automation' ),
@@ -167,7 +177,21 @@ final class Kuka_Island_Shipping_Admin {
 			&& ! in_array( $data['state'], Kuka_Island_Shipping_Order_Store::states_blocking_create(), true );
 
 		if ( $creatable ) {
-			$this->action_button( $order_id, 'kuka_shipping_create', __( 'DHL gönderisi oluştur', 'kuka-island-shipping-automation' ) );
+			$this->action_button( $order_id, 'kuka_shipping_create', self::create_button_label( $carrier ) );
+		}
+
+		/*
+		 * The way out of order_created. The carrier already holds an order, so
+		 * the create button is correctly absent; this one continues from the
+		 * barcode stage and never re-registers the order.
+		 */
+		$resumable = null !== $carrier
+			&& $carrier->get_readiness()['ready']
+			&& Kuka_Island_Shipping_Manager::cod_gate( $order )['ok']
+			&& Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state'];
+
+		if ( $resumable ) {
+			$this->action_button( $order_id, 'kuka_shipping_resume', self::resume_button_label( $carrier ) );
 		}
 
 		if ( Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED === $data['state'] ) {
@@ -184,6 +208,36 @@ final class Kuka_Island_Shipping_Admin {
 		}
 
 		echo '<p class="description">' . esc_html__( 'Manuel kargo yolu her zaman açıktır: WooCommerce kargo çekmecesinden takip numarasını elle girebilirsiniz.', 'kuka-island-shipping-automation' ) . '</p>';
+	}
+
+	/**
+	 * "Create a shipment at <carrier>", in the carrier's own name.
+	 *
+	 * Public and static so the wording an operator reads can be asserted
+	 * without an admin request, and so a second adapter's label appears here by
+	 * construction rather than by somebody remembering to change a string.
+	 */
+	public static function create_button_label( Kuka_Island_Shipping_Carrier_Interface $carrier ): string {
+		return sprintf(
+			/* translators: %s: carrier name, e.g. DHL eCommerce Türkiye. */
+			__( '%s gönderisi oluştur', 'kuka-island-shipping-automation' ),
+			$carrier->get_label()
+		);
+	}
+
+	/**
+	 * "Continue the shipment/barcode stage at <carrier>".
+	 *
+	 * Says what it does and what it does NOT do, because the state it appears in
+	 * is the one where an operator most needs to know that pressing it cannot
+	 * register a second order at the carrier.
+	 */
+	public static function resume_button_label( Kuka_Island_Shipping_Carrier_Interface $carrier ): string {
+		return sprintf(
+			/* translators: %s: carrier name, e.g. DHL eCommerce Türkiye. */
+			__( '%s gönderi/barkod oluşturmayı sürdür (sipariş yeniden oluşturulmaz)', 'kuka-island-shipping-automation' ),
+			$carrier->get_label()
+		);
 	}
 
 	/**
@@ -225,6 +279,39 @@ final class Kuka_Island_Shipping_Admin {
 		}
 
 		$this->go_back();
+	}
+
+	/**
+	 * Continue the barcode stage for an order the carrier already registered.
+	 *
+	 * Its own action name, therefore its own nonce namespace: the nonce a create
+	 * form carries does not verify here and cannot. The capability is checked
+	 * independently of every other action, in authorise(), before the manager is
+	 * reached.
+	 */
+	public function handle_resume(): void {
+		$this->run_resume();
+		$this->go_back();
+	}
+
+	/**
+	 * The resume handler without the redirect.
+	 *
+	 * Split out for one reason: go_back() ends the request, so a test driving
+	 * handle_resume() would measure nothing. This method is the whole handler --
+	 * nonce, capability, order lookup and the manager call -- so a measurement
+	 * against it exercises the real authorisation path rather than a copy of it.
+	 *
+	 * @return array<string, mixed> The manager's result, or [] when there was no order.
+	 */
+	public function run_resume(): array {
+		$order = $this->authorise( 'kuka_shipping_resume' );
+
+		if ( ! $order instanceof WC_Order ) {
+			return array();
+		}
+
+		return $this->manager->resume_barcode( $order );
 	}
 
 	public function handle_requery(): void {

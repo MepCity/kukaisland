@@ -111,6 +111,7 @@ $owned_hooks = array(
 	'kuka_island_shipping_query_status',
 	'kuka_island_shipping_carriers',
 	'admin_post_kuka_shipping_create',
+	'admin_post_kuka_shipping_resume',
 	'admin_post_kuka_shipping_requery',
 	'admin_post_kuka_shipping_reconcile',
 	'admin_post_kuka_shipping_update',

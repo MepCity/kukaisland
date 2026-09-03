@@ -30,6 +30,25 @@ defined( 'ABSPATH' ) || exit;
 interface Kuka_Island_Shipping_Carrier_Interface {
 
 	/**
+	 * WHICH of the values a carrier returns is the WooCommerce tracking number
+	 * is a property of that carrier, not of this plugin, so the vocabulary for
+	 * saying it belongs here rather than inside one adapter's configuration
+	 * class. The fulfilment writer speaks only these three words; it never
+	 * learns which courier produced them.
+	 *
+	 * UNSET is the default and it means "not measured yet". A tracking number
+	 * that does not track is worse than an absent one: it reaches the customer's
+	 * e-mail and the support conversation.
+	 */
+	public const TRACKING_SOURCE_UNSET = '';
+
+	/** The carrier's own shipment id is the number that tracks. */
+	public const TRACKING_SOURCE_SHIPMENT_ID = 'shipment_id';
+
+	/** A piece barcode is the number that tracks. */
+	public const TRACKING_SOURCE_BARCODE = 'barcode';
+
+	/**
 	 * Stable machine key.
 	 *
 	 * MUST equal the WooCommerce Fulfillments shipment provider key this
@@ -52,6 +71,16 @@ interface Kuka_Island_Shipping_Carrier_Interface {
 	 * @return array{ready: bool, gaps: array<int, string>, environment: string, live_blocked: bool}
 	 */
 	public function get_readiness(): array;
+
+	/**
+	 * Which value of this carrier's answer WooCommerce should track.
+	 *
+	 * One of the TRACKING_SOURCE_* constants above. An adapter that has not had
+	 * the question answered against a real shipment returns
+	 * TRACKING_SOURCE_UNSET, and the fulfilment writer then writes no tracking
+	 * number at all.
+	 */
+	public function get_tracking_number_source(): string;
 
 	/**
 	 * Read-only connection test. Contacts authentication only.

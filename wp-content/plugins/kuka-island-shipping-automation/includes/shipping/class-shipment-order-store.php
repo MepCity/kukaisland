@@ -17,7 +17,10 @@
  *     -> order_created       createOrder confirmed
  *     -> reconcile_required  a write returned an uncertain answer
  *   order_created
- *     -> shipment_created    createbarcode confirmed, shipmentId known
+ *     -> shipment_created    createbarcode confirmed, shipmentId known; reached
+ *                            only through Manager::resume_barcode(), which is a
+ *                            separate operator action and never calls
+ *                            createOrder again
  *     -> reconcile_required
  *   shipment_created
  *     -> delivered           status code 5
@@ -87,6 +90,36 @@ final class Kuka_Island_Shipping_Order_Store {
 		$state = (string) $order->get_meta( self::META_STATE, true );
 
 		return '' !== $state ? $state : self::STATE_NONE;
+	}
+
+	/** How many carrier status queries this order has actually spent. */
+	public static function query_attempts( WC_Order $order ): int {
+		return (int) $order->get_meta( self::META_QUERY_ATTEMPTS, true );
+	}
+
+	/**
+	 * Spend one unit of this order's status-query budget.
+	 *
+	 * THE ONLY PLACE THE COUNTER MOVES, and it moves for every query that was
+	 * actually issued -- successful, transient or permanent alike. It used to
+	 * move inside save_status(), which is reached only by a SUCCESSFUL reading:
+	 * a failed query therefore spent nothing, the poller recomputed the same
+	 * "attempts + 1" from the same stale value on every turn, and MAX_ATTEMPTS
+	 * never arrived. A chain of failures rescheduled itself for ever.
+	 *
+	 * A refusal that made no call is not an attempt and must not reach here.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return int The attempt this query is, counting from one.
+	 */
+	public static function record_query_attempt( WC_Order $order ): int {
+		$attempts = self::query_attempts( $order ) + 1;
+
+		$order->update_meta_data( self::META_QUERY_ATTEMPTS, $attempts );
+		$order->update_meta_data( self::META_LAST_QUERIED_AT, time() );
+		$order->save_meta_data();
+
+		return $attempts;
 	}
 
 	/**
@@ -265,6 +298,10 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * The lifecycle is derived by the dictionary, never by the caller, so an
 	 * unrecognised code cannot be written as if it were in progress.
 	 *
+	 * It does NOT touch the attempt counter or the query timestamp: those belong
+	 * to record_query_attempt(), which every issued query passes through whether
+	 * it succeeded or not. Counting here would count successes only.
+	 *
 	 * @param WC_Order $order        Order.
 	 * @param mixed    $raw_code     Status value exactly as it arrived.
 	 * @param string   $tracking_url Tracking URL the carrier returned, '' when absent.
@@ -275,15 +312,11 @@ final class Kuka_Island_Shipping_Order_Store {
 
 		$order->update_meta_data( self::META_STATUS_CODE, $code );
 		$order->update_meta_data( self::META_STATUS_LIFECYCLE, $lifecycle );
-		$order->update_meta_data( self::META_LAST_QUERIED_AT, time() );
 		$order->update_meta_data( self::META_LAST_OPERATION, 'get_shipment_status' );
 
 		if ( '' !== $tracking_url ) {
 			$order->update_meta_data( self::META_TRACKING_URL, $tracking_url );
 		}
-
-		$attempts = (int) $order->get_meta( self::META_QUERY_ATTEMPTS, true );
-		$order->update_meta_data( self::META_QUERY_ATTEMPTS, $attempts + 1 );
 
 		if ( Kuka_Island_Shipping_Status::LIFECYCLE_DELIVERED === $lifecycle ) {
 			$order->update_meta_data( self::META_STATE, self::STATE_DELIVERED );
@@ -313,6 +346,10 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * Used for permanent and transient failures alike: neither of them can have
 	 * created anything, so neither of them may move the order out of the state
 	 * it was in.
+	 *
+	 * It does not touch the attempt counter either. A failed status query does
+	 * spend an attempt, but it spends it through record_query_attempt() at the
+	 * call site, so the budget has exactly one owner.
 	 *
 	 * @param WC_Order $order           Order.
 	 * @param string   $operation       Logical operation name.

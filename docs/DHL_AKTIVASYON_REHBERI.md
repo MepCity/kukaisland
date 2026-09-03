@@ -148,9 +148,10 @@ Bu turda **not edilmesi gereken iki ölçüm** vardır:
 1. `DHL_SANDBOX_IDENTITY` başarısız ve `code:unauthorized` ise
    `Authorization` başlığı biçimi ya da müşteri numarası/parola yanlıştır.
    Başlık biçimi için `KUKA_DHL_AUTHORIZATION_SCHEME=raw` denenir
-   (bkz. bakım hafızası K-03).
+   (bkz. bakım hafızası **Ö-01 — `Authorization` başlığının biçimi**).
 2. `DHL_SANDBOX_CBS_CITIES` `code:unauthorized` verirse CBS uçları dokümanda
-   yazmasa da token istiyor demektir (bkz. bakım hafızası K-04).
+   yazmasa da token istiyor demektir (bkz. bakım hafızası
+   **Ö-02 — CBS uçlarının token isteyip istemediği**).
 
 Her iki sonucu da bakım hafızasına yazın. Bunlar **ölçülecek** maddelerdir,
 tahmin edilecek değil.

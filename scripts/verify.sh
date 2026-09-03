@@ -805,7 +805,7 @@ expect_shipping_match "a failed reference-data listing is never cached" "^SHIPPI
 expect_shipping_match "one order books exactly one order and one barcode" "^SHIPPING_CREATE_ONCE=PASS\\|first:created\\|second:refused\\|second_code:already_in_progress\\|createOrder_calls:1\\|createbarcode_calls:1\\|state:shipment_created\\|"
 expect_shipping_match "the reference persists in HPOS-compatible order meta" "^SHIPPING_REFERENCE_PERSISTED=PASS\\|stable_across_reads:yes\\|uppercase:yes\\|in_history:yes\\|hpos_meta:yes$"
 expect_shipping_match "the fulfilment record carries provider dhl and no invented tracking number" "^SHIPPING_FULFILLMENT_RECORD=PASS\\|record:created\\|provider_key:dhl\\|tracking_number:unset_because_unmeasured\\|status_on_create:unfulfilled$"
-expect_shipping_match "the tracking-number source stays unmeasured until it is measured" "^SHIPPING_TRACKING_NUMBER_SOURCE=PASS\\|default:unmeasured\\|"
+expect_shipping_match "the tracking-number source stays unmeasured until it is measured" "^SHIPPING_TRACKING_NUMBER_SOURCE=PASS\\|default:unmeasured\\|.*contract_constants_identical:yes\\|adapter_answers_contract:yes$"
 expect_shipping_match "a carrier status reading reaches the WooCommerce fulfilment" "^SHIPPING_STATUS_TO_FULFILLMENT=PASS\\|lifecycle:in_progress\\|stored_code:2\\|tracking_url_stored:yes\\|fulfilled_at_code_2:yes$"
 expect_shipping_match "an undocumented status code falls to manual review" "^SHIPPING_UNKNOWN_STATUS_TO_MANUAL_REVIEW=PASS\\|raw_code:42\\|lifecycle:manual_review\\|state:manual_review\\|stored_code:0\\|fulfilment_not_downgraded:yes\\|polling_stops:yes$"
 expect_shipping_match "no credential reaches a note, a meta value or a result line" "^SHIPPING_NO_SECRET_LEAK=PASS\\|sentinels:5\\|leaks_in_notes_meta_and_results:0\\|scan_control_positive:yes\\|"
@@ -818,9 +818,33 @@ expect_shipping_match "the payload uses the vendor's enumerations and defaults n
 expect_shipping_match "the runtime gate stops a call that is already under way" "^SHIPPING_RUNTIME_GATE=PASS\\|closed_blocks:yes\\|http_requests_while_closed:0\\|code:shipping_runtime_disabled\\|restored:yes$"
 expect_shipping_match "polling is bounded, increasing, finite and off by default" "^SHIPPING_POLL_POLICY=PASS\\|ladder:15m,30m,60m,120m,240m,480m,720m,1440m\\|monotonic:yes\\|max_attempts:10\\|max_elapsed_days:14\\|terminal_stops:yes\\|automation_default:off$"
 expect_shipping_match "the suite leaves no Action Scheduler residue" "^SHIPPING_NO_SCHEDULER_RESIDUE=PASS\\|pending_by_group:0\\|pending_by_hook:0\\|automation_off_books_nothing:yes$"
-expect_shipping_match "loading the module registers no hook" "^SHIPPING_LOAD_REGISTERS_NOTHING=PASS\\|hooks_checked:6\\|registered:0\\|register_called:no$"
-expect_shipping_match "a second carrier is added through the registry filter alone" "^SHIPPING_CARRIER_REGISTRY=PASS\\|registered:dhl\\|non_adapters_dropped:yes\\|unknown_key_returns:null\\|filter:kuka_island_shipping_carriers$"
-expect_shipping_match "the behavioural suite removes its fixtures and its notes" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0$"
+expect_shipping_match "loading the module registers no hook" "^SHIPPING_LOAD_REGISTERS_NOTHING=PASS\\|hooks_checked:7\\|registered:0\\|register_called:no$"
+expect_shipping_match "a second carrier is added through the registry filter alone" "^SHIPPING_CARRIER_REGISTRY=PASS\\|registered:dhl\\+kuka-test-kargo\\|non_adapters_dropped:yes\\|unknown_key_returns:null\\|filter:kuka_island_shipping_carriers$"
+# A cancellation is only cancelled when the read that FOLLOWS THE WRITE says so.
+expect_shipping_match "cancelling a shipment is confirmed by reading the shipment" "^SHIPPING_CANCEL_SHIPMENT_BRANCH=PASS\\|branch:shipment\\|cancelshipment_calls:1\\|cancelorder_calls:0\\|getshipment_calls:1\\|getorder_calls:0\\|state:cancelled\\|confirmed_by:read_shipment$"
+expect_shipping_match "cancelling a registered order is confirmed by reading the order" "^SHIPPING_CANCEL_ORDER_BRANCH=PASS\\|branch:order\\|state_before:order_created\\|shipment_id_before:none\\|cancelorder_calls:1\\|cancelshipment_calls:0\\|getorder_calls:1\\|getshipment_calls:0\\|state:cancelled\\|confirmed_by:read_order$"
+expect_shipping_match "an absent shipment never proves a cancelled order" "^SHIPPING_CANCEL_ORDER_NOT_CANCELLED_ON_SHIPMENT_404=PASS\\|cancel_order:success\\|read_shipment:not_found\\|read_order:present\\|cancelorder_calls:1\\|getorder_calls:1\\|getshipment_calls:0\\|code:cancel_unconfirmed\\|state:order_created\\|cancelled_written:no$"
+expect_shipping_match "an uncertain cancellation is never repeated" "^SHIPPING_CANCEL_UNCERTAIN_NOT_REPEATED=PASS\\|first_code:timeout\\|state:reconcile_required\\|second_code:reconcile_required\\|cancelshipment_calls:1$"
+
+# The way out of order_created: the barcode stage, and only the barcode stage.
+expect_shipping_match "the barcode stage resumes without registering a second order" "^SHIPPING_RESUME_ORDER_CREATED=PASS\\|state_before:order_created\\|create_again_code:already_in_progress\\|createOrder_calls_during_resume:0\\|createbarcode_calls_during_resume:1\\|state_after:shipment_created\\|shipment_id:stored\\|second_press_code:not_resumable\\|second_press_writes:0$"
+expect_shipping_match "every state but order_created refuses the resume" "^SHIPPING_RESUME_REFUSES_OTHER_STATES=PASS\\|states_refused:8\\|states_allowed:none\\|http_requests:0\\|codes:not_resumable$"
+expect_shipping_match "an uncertain resume hands over to the read-only reconciliation" "^SHIPPING_RESUME_UNCERTAIN_TO_RECONCILE=PASS\\|createOrder_calls:1\\|createbarcode_calls:1\\|state:reconcile_required\\|read_only_reconcile_calls:2\\|second_press_code:not_resumable$"
+expect_shipping_match "the resume action has its own nonce and its own capability check" "^SHIPPING_RESUME_ADMIN_ACTION=PASS\\|admin_user:found\\|separate_nonce:yes\\|wrong_nonce:refused\\|wrong_nonce_writes:0\\|no_capability:refused\\|no_capability_writes:0\\|authorised_press:ran\\|authorised_writes:1\\|state:shipment_created\\|button_label_uses_carrier_name:yes$"
+expect_shipping_match "the order screen names the carrier it actually books with" "^SHIPPING_ADMIN_TEXT_IS_CARRIER_AGNOSTIC=PASS\\|"
+
+# The poll budget, spent through the real Action Scheduler.
+expect_shipping_match "ten failing status queries exhaust the budget and stop" "^SHIPPING_POLL_FAILURE_CHAIN_BOUNDED=PASS\\|runner:action_scheduler\\|actions_executed:10\\|external_status_reads:10\\|query_attempts:10\\|pending_after:0\\|eleventh_call:none\\|runner_errors:0\\|poll_exhausted_meta:yes\\|poll_exhausted_history:yes\\|poll_exhausted_note:yes$"
+expect_shipping_match "a successful status chain still counts one attempt per query" "^SHIPPING_POLL_SUCCESS_CHAIN_INTACT=PASS\\|runner:action_scheduler\\|actions_executed:3\\|external_status_reads:3\\|query_attempts:3\\|attempts_equal_reads:yes\\|state:delivered\\|stored_code:5\\|pending_after:0\\|fulfilled:yes\\|delivered_at:stored$"
+expect_shipping_match "the poll chains leave no action, no log and no group row" "^SHIPPING_POLL_CHAIN_LEAVES_NOTHING=PASS\\|automation_restored:off\\|failure_chain_actions_removed:10\\|success_chain_actions_removed:3\\|group_row:(removed|preexisting)$"
+
+# The carrier abstraction, measured on an adapter that has never heard of DHL.
+expect_shipping_match "a second carrier needs only an adapter and the filter" "^SHIPPING_SECOND_CARRIER_ADAPTER_ONLY=PASS\\|carrier:kuka-test-kargo\\|create_order:1\\|create_barcode:1\\|status_reads:1\\|cancel_shipment:1\\|cancel_order:0\\|fulfillment_provider:kuka-test-kargo\\|fulfillment_tracking:FAKE-BC-1\\|state:cancelled\\|needs_no_dhl_class:yes\\|dhl_types_in_adapter:0$"
+expect_shipping_match "the default carrier comes from configuration and fails closed" "^SHIPPING_DEFAULT_CARRIER_FAIL_CLOSED=PASS\\|setting:KUKA_SHIPPING_DEFAULT_CARRIER\\|two_registered_none_configured:refused\\|one_registered:kuka-test-kargo\\|filter_selects:kuka-test-kargo\\|unknown_key_returned_verbatim:kargo-yok\\|unknown_key_code:carrier_not_registered\\|carrier_calls_on_unknown:0$"
+expect_shipping_match "the carrier-agnostic core names no adapter class or constant" "^SHIPPING_CORE_NAMES_NO_ADAPTER=PASS\\|files:8\\|dhl_class_or_constant_references:0\\|comments_stripped:yes\\|scan_control_positive:yes$"
+
+expect_shipping_match "the behavioural suite makes no real carrier request" "^SHIPPING_NO_REAL_CARRIER_REQUEST=PASS\\|guard:pre_http_request\\|carrier_host:mngkargo.com.tr\\|real_requests_attempted:0\\|transport:mock_only$"
+expect_shipping_match "the behavioural suite removes its fixtures, its notes and its cache" "^SHIPPING_FIXTURES_REMOVED=PASS\\|remaining_fixture_orders:0\\|order_note_delta:0\\|cbs_cache_entries_left:0$"
 expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIFY=PASS$"
 
 # Activation and deactivation, driven for real through WP-CLI.
