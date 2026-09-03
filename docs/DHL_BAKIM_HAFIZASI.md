@@ -51,6 +51,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | `has_carrier_evidence()` iki korumalı durumu ve intent kaydını kanıt saymıyordu; sahipsiz bir iptal-bekleyen kayıt varsayılan taşıyıcıya düşüyordu | Kanıt listesine iki durum + dolu `pending_mutation` eklendi (K-37) |
 | 2026-09-03 | İptali kanıtlanmış bir sipariş üzerinden `createbarcode` gönderilebiliyordu; create kapısı deny-list soruyordu ve `cancelled` listede yoktu | Tek merkezî allow-list: createOrder 3 durum, createbarcode 1 durum; barkod aşaması ayrıca kapılandı (K-38) |
 | 2026-09-03 | EDM pasifken gerçek `make verify` exit 2; 21 mock ölçümü `edm_runtime_disabled` ile düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-39) |
+| 2026-09-04 | Sandbox uygulamasında ürün aboneliği yoktu; uygulama anahtarı tek başına API erişimi vermiyordu | Identity 1.0.1, CBS Info, Standard Command, Barcode Command ve Standard Query Default Plan abonelikleri portalda tamamlandı; test müşteri numarası/parolası destekten istendi |
 
 ---
 
@@ -59,7 +60,7 @@ olarak aşağıda `SHIP/` kullanılır.
 Bunlar **bilinmeyen**dir, varsayım değil. Her biri ölçüldüğünde bu dosyaya
 sonucu yazılır.
 
-**2026-09-03 itibarıyla Ö-01…Ö-05'in hiçbiri ölçülmemiştir.** Aşağıdaki K
+**2026-09-04 itibarıyla Ö-01…Ö-05'in hiçbiri ölçülmemiştir.** Aşağıdaki K
 kayıtlarının hiçbiri bunları kapatmaz; kod düzeltmeleri sandbox ölçümünün yerine
 geçmez.
 
@@ -1572,10 +1573,25 @@ Bir kargo belirtisi geldiğinde izlenecek sıra:
 
 ---
 
-## Sandbox hazırlığı — 2026-09-03
+## Sandbox hazırlığı — 2026-09-04
 
 Bu bölüm **ölçülen** durumu kaydeder. Gerçek sandbox kanıtı ile mock/offline
 kanıtı burada kasten ayrı tutulur; ikisi aynı şey değildir.
+
+### Aşama 0 — Portal uygulaması ve ürün abonelikleri
+
+`Kuka Island WooCommerce Sandbox` uygulaması portalda etkin durumdadır. 4 Eylül
+2026'da uygulamanın abonelik tablosunda şu beş ücretsiz Default Plan ayrı ayrı
+doğrulandı: Identity 1.0.1, CBS Info 1.0.0, Standard Command 1.0.0, Barcode
+Command 1.0.0 ve Standard Query 1.0.0.
+
+Portal uygulama anahtarı/güvenlik dizgisi üretir; Identity isteğinin ayrıca
+beklediği test `customerNumber` ve `password` değerlerini göstermiyor. Identity
+ürün sayfasında başka geliştiricilerin de aynı iki test bilgisini talep ettiği
+görüldü. Portal destek formundan, uygulama ve kuruluş adıyla bu iki değer ve
+`Authorization` başlığı biçimi soruldu; portal `Mesajınız gönderildi.` sonucunu
+verdi. Kimlik değeri, API anahtarı veya gizli dizi mesaja ve bu belgeye
+yazılmadı.
 
 ### Aşama 1 — Kimlik dosyası: yalnız varlık
 
@@ -1697,22 +1713,16 @@ bağlantısına bağlıdır ve bağlantı Aşama 3'te kimlik kapısında durdu.
 
 ### `make verify` bu ortamda nerede duruyor
 
-`scripts/verify.sh` `set -eu` ile çalışır ve kargo bloğundan **önce**
-`verify-invoice-integration.php` çağrılır. O suite `kuka-island-edm` eklentisi
-pasifken "EDM plugin is deactivated" ile 21 ölçümü FAIL eder ve komut sıfırdan
-farklı dönerek betiği **orada keser** — kargo bloğuna hiç ulaşılmaz. EDM
-eklentisi varsayılan olarak pasif teslim edildiği için bu, kargo tarafının
-değil ortamın durumudur ve bu turda EDM'ye dokunulmadı (görev kapsamı dışı).
+K-39'dan sonra standart `make verify`, EDM pasif ve kargo eklentisi aktif teslim
+durumunda scratchpad, `|| true` veya çıktı filtresi olmadan çalışır. 3 Eylül
+2026'daki iki geliştirme koşusu ve bir bağımsız kontrol koşusu `exit 0`,
+`VERIFY=PASS` verdi; bağımsız koşuda `SHIPPING_VERIFY=PASS`, EDM pasif yaşam
+döngüsü PASS ve öncesi/sonrası veritabanı keyset'i aynıydı.
 
-Kargo bloğunu ölçmek için o tek atamanın sonuna `|| true` eklenmiş bir kopya
-kullanıldı: `INVOICE_*` ölçümleri gizlenmedi, yalnız betiğin devam etmesi
-sağlandı. Tam yeşil bir `make verify` turu, `docs/EDM_AKTIVASYON_REHBERI.md`
-etkinleştirme adımından sonra alınabilir.
-
-`EDM_LIFECYCLE_START` de bu ortamda FAIL raporlar (`gate_option:yes`): EDM
-deaktivasyonu çalışma kapısı option'ını yazmış durumda, ölçüm ise teslim
-durumunu (`gate_option:absent`) bekliyor. Yine EDM tarafı, yine bu turun
-kapsamı dışı; lifecycle betiği bulduğu durumu aynen geri yükledi.
+EDM testleri üretimdeki kapıyı gevşetmez: test seam'i yalnız mock gönderim
+önkoşulunu açıkça enjekte eder; üretim kurulumlarının tamamı varsayılan gerçek
+`Runtime_Gate` kullanır. Test, çalışma kapısı option satırının varlık, değer ve
+autoload durumunu başlangıçtaki baytlarla geri yükler.
 
 ### Modülün şu andaki teslim durumu
 

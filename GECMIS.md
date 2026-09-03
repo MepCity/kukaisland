@@ -544,7 +544,10 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 - İngilizce ilk geçişin müşteri tarafından, sekiz İngilizce yasal metnin hukuk danışmanı tarafından gözden geçirilmesi/doldurulması
 - Safari / Firefox / iOS / Android turu ve gerçek cihazda Core Web Vitals — hiç yapılmadı
 - EDM sandbox belgesinde terminal `SEND - SUCCEED` henüz gözlemlenmedi; son ölçüm `PACKAGE - PROCESSING`
-- DHL eCommerce sandbox uygulaması oluşturuldu; API ürün abonelikleri ve token için gereken test müşteri numarası/şifresi henüz tamamlanmadı
+- DHL eCommerce sandbox uygulaması oluşturuldu; Identity, CBS Info, Standard
+  Command, Barcode Command ve Standard Query abonelikleri 4 Eylül 2026'da
+  portalda tamamlandı. Token için gereken test müşteri numarası/şifresi portal
+  destek formundan istendi; yanıt bekleniyor
 
 ### Müşteride
 

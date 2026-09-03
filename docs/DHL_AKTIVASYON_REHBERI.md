@@ -89,6 +89,11 @@ makinede beklenir.
 
 Şu anda dosyada API ağ geçidi çifti vardır, Identity çifti yoktur:
 
+Portal hazırlığı 4 Eylül 2026'da tamamlandı: `Kuka Island WooCommerce
+Sandbox` uygulaması Identity, CBS Info, Standard Command, Barcode Command ve
+Standard Query ürünlerinin Default Plan'larına abonedir. Eksik Identity çifti
+portal destek formundan istendi; yanıt gelmeden değer uydurulmaz.
+
 ```bash
 ./scripts/dhl-test-credentials.sh --status
 ```
