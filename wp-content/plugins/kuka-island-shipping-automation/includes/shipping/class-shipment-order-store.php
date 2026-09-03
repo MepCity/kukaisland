@@ -14,10 +14,17 @@
  * never by writing again.
  *
  * OWNERSHIP IS PART OF THE STATE. META_PROVIDER says which carrier this order
- * belongs to, it is pinned by begin_carrier_session() before the first external
- * write, and it is never overwritten. Everything afterwards -- resume, query,
- * poll, amend, cancel and every reconciliation read -- addresses that carrier
- * and not the shop's current default, which may since have changed.
+ * belongs to, it is pinned by begin_mutation() before the first external write,
+ * and it is never overwritten. Everything afterwards -- resume, query, poll,
+ * amend, cancel and every reconciliation read -- addresses that carrier and not
+ * the shop's current default, which may since have changed.
+ *
+ * AND SO IS INTENT. Before any of the six external writes, begin_mutation()
+ * moves the order into that operation's protected state and records what is
+ * about to be attempted, in one save, and then READS IT BACK FROM THE DATABASE
+ * before the caller is allowed to send anything. A process that dies with a
+ * request in flight therefore leaves behind an order that already knows a write
+ * was started, which is what stops the retry from sending it again.
  *
  *   none                 nothing has been attempted
  *     -> order_created       createOrder confirmed
@@ -84,6 +91,18 @@ final class Kuka_Island_Shipping_Order_Store {
 	 */
 	public const META_PENDING_MUTATION   = '_kuka_shipping_pending_mutation';
 
+	/**
+	 * The three kinds of external mutation, and nothing else.
+	 *
+	 * Each one has its own protected state, because leaving each one takes
+	 * different evidence: a create is resolved by finding or not finding the
+	 * record, a cancellation only by the record being GONE, an amendment only
+	 * by reading the amended fields back.
+	 */
+	public const MUTATION_CREATE = 'create';
+	public const MUTATION_UPDATE = 'update';
+	public const MUTATION_CANCEL = 'cancel';
+
 	public const STATE_NONE                = 'none';
 	public const STATE_ORDER_CREATED       = 'order_created';
 	public const STATE_SHIPMENT_CREATED    = 'shipment_created';
@@ -141,10 +160,407 @@ final class Kuka_Island_Shipping_Order_Store {
 		);
 	}
 
+	/**
+	 * The ONE place this class writes to the database.
+	 *
+	 * Every method above routes through here, which is what makes "one
+	 * transition, one save" a property that can be MEASURED rather than
+	 * asserted: the counter below says how many times the order was written,
+	 * and a transition that leaves the state and the pending-mutation record in
+	 * two separate saves shows up as two.
+	 *
+	 * That mattered because the two were separated by a window. Cancellation
+	 * used to move the state in one save and clear the pending record in
+	 * another; a crash in between left an order whose state said "resolved"
+	 * and whose meta still described a write in flight -- or the reverse.
+	 *
+	 * @param WC_Order $order Order.
+	 */
+	private static function persist( WC_Order $order ): void {
+		++self::$saves;
+
+		$order->save_meta_data();
+	}
+
+	/** How many times this class has written an order in this process. */
+	private static int $saves = 0;
+
+	public static function save_count(): int {
+		return self::$saves;
+	}
+
+	public static function reset_save_count(): void {
+		self::$saves = 0;
+	}
+
 	public static function get_state( WC_Order $order ): string {
 		$state = (string) $order->get_meta( self::META_STATE, true );
 
 		return '' !== $state ? $state : self::STATE_NONE;
+	}
+
+	/**
+	 * Which state an order must sit in while a mutation of this kind is in
+	 * flight, or '' for a kind this version does not know.
+	 *
+	 * @param string $kind One of the MUTATION_* constants.
+	 */
+	public static function protected_state_for( string $kind ): string {
+		return match ( $kind ) {
+			self::MUTATION_CREATE => self::STATE_RECONCILE_REQUIRED,
+			self::MUTATION_UPDATE => self::STATE_UPDATE_RECONCILE_REQUIRED,
+			self::MUTATION_CANCEL => self::STATE_CANCEL_RECONCILE_REQUIRED,
+			default               => '',
+		};
+	}
+
+	/**
+	 * WRITE THE INTENT DOWN, AND PROVE IT IS ON DISK, BEFORE ANYTHING IS SENT.
+	 *
+	 * THE HOLE THIS CLOSES. The provider and the reference were pinned before
+	 * the first external write, and that was read as "the intent is durable".
+	 * It was not. If the process died between the request leaving and the answer
+	 * arriving -- a fatal, a timeout kill, a deploy, a lost database connection
+	 * -- what survived was an order whose state still said 'none' and whose
+	 * only trace of the attempt was a provider key. The next press read 'none',
+	 * passed states_blocking_create(), and sent the create again. One parcel,
+	 * two bookings, and the second one invisible to this shop.
+	 *
+	 * So the order is moved INTO its operation's protected state, and the full
+	 * description of what is about to be attempted is written with it, in ONE
+	 * save, BEFORE the caller is allowed to open a socket:
+	 *
+	 *   mutation_id     a value unique to this attempt, so a later reading can
+	 *                   tell THIS attempt's record from a previous one's
+	 *   kind            create / update / cancel -- which evidence closes it
+	 *   operation       the exact operation name, e.g. 'cancel_shipment'
+	 *   target          'order' or 'shipment' -- WHICH object to read back
+	 *   previous_state  where to return to if it turns out nothing was sent
+	 *   provider        whose parcel this is, so the read-back goes to the
+	 *                   carrier that was actually addressed
+	 *   reference       the identifier the request carries
+	 *   expected        for an amendment, the exact canonical field values sent
+	 *   created_at      when the attempt began
+	 *
+	 * AND THEN IT IS READ BACK FROM THE DATABASE. Writing is not persisting.
+	 * update_meta_data() populates an object; save_meta_data() can still fail,
+	 * silently, on a lost connection or a filter that intercepts the query, and
+	 * the object in memory looks exactly the same either way. So a FRESH order
+	 * is loaded -- with every cache dropped first, see fresh_copy() -- and every
+	 * critical field is compared byte-for-byte against what was meant. Only if
+	 * that comparison passes may the caller write to the carrier.
+	 *
+	 * A FAILURE HERE COSTS NOTHING AT THE CARRIER. No request has gone out, so
+	 * the honest outcome is to refuse the operation entirely; guarded_write()
+	 * does exactly that and the carrier call count stays at zero.
+	 *
+	 * AND IT IS NOT ROLLED BACK. A verification failure means this process
+	 * cannot trust what it writes, so writing again -- to undo the state change
+	 * -- would be trusting the same mechanism that just failed, and the failure
+	 * mode it could produce is the dangerous one: an order back in a state
+	 * whose write button is live while a record describing a write in flight
+	 * survives. The order is therefore LEFT in the protected state, which is
+	 * the restrictive side of the mistake, and a read-only reconciliation is
+	 * what moves it afterwards. Manager::reconcile_cancellation() is written to
+	 * cope with the intent record being the part that did not survive.
+	 *
+	 * @param WC_Order             $order Order.
+	 * @param array<string, mixed> $spec  kind, operation, target, provider, reference, expected.
+	 * @return array{ok: bool, code: string, message: string, detail: string, intent: array<string, mixed>}
+	 */
+	public static function begin_mutation( WC_Order $order, array $spec ): array {
+		$kind      = (string) ( $spec['kind'] ?? '' );
+		$operation = trim( (string) ( $spec['operation'] ?? '' ) );
+		$target    = (string) ( $spec['target'] ?? '' );
+		$provider  = trim( (string) ( $spec['provider'] ?? '' ) );
+		$reference = (string) ( $spec['reference'] ?? '' );
+		$expected  = self::canonical_expected( (array) ( $spec['expected'] ?? array() ) );
+		$protected = self::protected_state_for( $kind );
+
+		if ( '' === $protected
+			|| '' === $operation
+			|| '' === $provider
+			|| ! in_array( $target, array( 'order', 'shipment' ), true )
+			|| ! Kuka_Island_Shipping_Reference::is_valid( $reference )
+			|| ( self::MUTATION_UPDATE === $kind && array() === $expected ) ) {
+
+			return self::intent_refused(
+				'mutation_intent_invalid',
+				__( 'Kargo işlemi başlatılmadı: yapılacak işlemin kalıcı kaydı eksiksiz kurulamadı. Taşıyıcıya hiçbir istek gönderilmedi.', 'kuka-island-shipping-automation' ),
+				'kind:' . $kind . '|operation:' . $operation . '|target:' . $target
+			);
+		}
+
+		$stored_provider = self::provider( $order );
+
+		if ( '' !== $stored_provider && $stored_provider !== $provider ) {
+			// Belongs to somebody else. The caller was already refused with
+			// shipment_provider_mismatch before reaching here; this is the
+			// second lock on the same door.
+			return self::intent_refused(
+				'mutation_intent_provider_conflict',
+				__( 'Kargo işlemi başlatılmadı: bu sipariş başka bir taşıyıcıya kayıtlı. Taşıyıcıya hiçbir istek gönderilmedi.', 'kuka-island-shipping-automation' ),
+				'stored:' . $stored_provider
+			);
+		}
+
+		$intent = array(
+			'mutation_id'    => self::mint_mutation_id(),
+			'kind'           => $kind,
+			'operation'      => $operation,
+			'target'         => $target,
+			'previous_state' => self::get_state( $order ),
+			'provider'       => $provider,
+			'reference'      => $reference,
+			'expected'       => $expected,
+			'created_at'     => time(),
+		);
+
+		$existing_reference = (string) $order->get_meta( self::META_REFERENCE, true );
+
+		if ( ! Kuka_Island_Shipping_Reference::is_valid( $existing_reference ) ) {
+			$order->update_meta_data( self::META_REFERENCE, $reference );
+			self::append_reference_history( $order, $reference );
+		}
+
+		if ( '' === $stored_provider ) {
+			$order->update_meta_data( self::META_PROVIDER, $provider );
+		}
+
+		$order->update_meta_data( self::META_STATE, $protected );
+		$order->update_meta_data( self::META_LAST_OPERATION, $operation );
+		$order->update_meta_data( self::META_PENDING_MUTATION, $intent );
+
+		self::add_history_entry(
+			$order,
+			$protected,
+			sprintf(
+				/* translators: 1: operation name, 2: object addressed, 3: attempt identifier. */
+				__( 'Taşıyıcı isteği başlatılıyor (%1$s / %2$s / %3$s). Kayıt gönderim ÖNCESİNDE yazıldı; süreç burada kesilse bile yeni yazma açılmaz, yalnız salt-okunur mutabakat yapılır.', 'kuka-island-shipping-automation' ),
+				$operation,
+				$target,
+				(string) $intent['mutation_id']
+			)
+		);
+
+		self::persist( $order );
+
+		$fresh = self::fresh_copy( (int) $order->get_id() );
+
+		if ( ! $fresh instanceof WC_Order ) {
+			return self::intent_refused(
+				'mutation_intent_unreadable',
+				__( 'Kargo işlemi başlatılmadı: işlem kaydı veritabanından geri okunamadı. Taşıyıcıya hiçbir istek gönderilmedi.', 'kuka-island-shipping-automation' ),
+				'order:' . (string) $order->get_id()
+			);
+		}
+
+		$verified = self::verify_mutation_intent( $fresh, $intent );
+
+		if ( ! $verified['ok'] ) {
+			return self::intent_refused(
+				'mutation_intent_unverified',
+				__( 'Kargo işlemi başlatılmadı: işlem kaydı diske yazıldığı gibi geri okunamadı. Taşıyıcıya hiçbir istek gönderilmedi.', 'kuka-island-shipping-automation' ),
+				'mismatched:' . implode( ',', $verified['mismatched'] )
+			);
+		}
+
+		return array(
+			'ok'      => true,
+			'code'    => '',
+			'message' => '',
+			'detail'  => 'mutation:' . (string) $intent['mutation_id'] . '|state:' . $protected,
+			'intent'  => $intent,
+		);
+	}
+
+	/**
+	 * @return array{ok: bool, code: string, message: string, detail: string, intent: array<string, mixed>}
+	 */
+	private static function intent_refused( string $code, string $message, string $detail ): array {
+		return array(
+			'ok'      => false,
+			'code'    => $code,
+			'message' => $message,
+			'detail'  => $detail,
+			'intent'  => array(),
+		);
+	}
+
+	/**
+	 * Is what the DATABASE holds byte-for-byte what was meant?
+	 *
+	 * Every field is compared with !== against the value that was written, and
+	 * a field the stored record does not have at all is a mismatch rather than
+	 * a pass. Strict comparison matters after a round trip through meta: an
+	 * integer that came back as the string '1' is not the value that was
+	 * written, and treating it as equal would hide exactly the kind of
+	 * persistence fault this check exists to catch.
+	 *
+	 * @param WC_Order             $fresh  Order re-read from the database.
+	 * @param array<string, mixed> $intent What was meant to be stored.
+	 * @return array{ok: bool, mismatched: array<int, string>}
+	 */
+	public static function verify_mutation_intent( WC_Order $fresh, array $intent ): array {
+		$mismatched = array();
+		$expected   = (array) ( $intent['expected'] ?? array() );
+
+		if ( self::get_state( $fresh ) !== self::protected_state_for( (string) ( $intent['kind'] ?? '' ) ) ) {
+			$mismatched[] = 'state';
+		}
+
+		if ( self::provider( $fresh ) !== (string) ( $intent['provider'] ?? '' ) ) {
+			$mismatched[] = 'provider';
+		}
+
+		if ( (string) $fresh->get_meta( self::META_REFERENCE, true ) !== (string) ( $intent['reference'] ?? '' ) ) {
+			$mismatched[] = 'reference';
+		}
+
+		$stored = self::pending_mutation( $fresh );
+
+		foreach ( array( 'mutation_id', 'kind', 'operation', 'target', 'previous_state', 'provider', 'reference', 'created_at' ) as $field ) {
+			if ( ! array_key_exists( $field, $stored ) || $stored[ $field ] !== ( $intent[ $field ] ?? null ) ) {
+				$mismatched[] = 'intent.' . $field;
+			}
+		}
+
+		$stored_expected = is_array( $stored['expected'] ?? null ) ? (array) $stored['expected'] : array();
+
+		if ( count( $stored_expected ) !== count( $expected ) ) {
+			$mismatched[] = 'intent.expected.count';
+		}
+
+		foreach ( $expected as $field => $value ) {
+			if ( ! array_key_exists( $field, $stored_expected ) || $stored_expected[ $field ] !== $value ) {
+				$mismatched[] = 'intent.expected.' . (string) $field;
+			}
+		}
+
+		return array(
+			'ok'         => array() === $mismatched,
+			'mismatched' => $mismatched,
+		);
+	}
+
+	/**
+	 * A copy of the order loaded from the DATABASE, not from any cache.
+	 *
+	 * The verification is worthless if it reads back the same object, or a
+	 * cached copy populated from it: both would agree with the write even when
+	 * the write never landed. So every cache that could answer is dropped
+	 * first, and the meta read is forced.
+	 *
+	 * Still no $wpdb: wp_cache_delete() and WooCommerce's own order cache are
+	 * the supported ways to say "forget what you know about this order", and
+	 * the class stays storage-agnostic, which is what makes it work on HPOS and
+	 * on legacy post meta alike.
+	 *
+	 * @param int $order_id Order id.
+	 */
+	private static function fresh_copy( int $order_id ): ?WC_Order {
+		if ( function_exists( 'wc_get_container' ) && class_exists( '\Automattic\WooCommerce\Caches\OrderCache' ) ) {
+			try {
+				$cache = wc_get_container()->get( \Automattic\WooCommerce\Caches\OrderCache::class );
+
+				if ( is_object( $cache ) && method_exists( $cache, 'remove' ) ) {
+					$cache->remove( $order_id );
+				}
+			} catch ( Throwable $unavailable ) {
+				// An installation without that service is not a reason to skip
+				// the verification: the forced meta read below is what the
+				// comparison actually depends on.
+				unset( $unavailable );
+			}
+		}
+
+		wp_cache_delete( $order_id, 'orders' );
+		wp_cache_delete( $order_id, 'order-items' );
+		wp_cache_delete( $order_id, 'posts' );
+		wp_cache_delete( $order_id, 'post_meta' );
+
+		$fresh = wc_get_order( $order_id );
+
+		if ( ! $fresh instanceof WC_Order ) {
+			return null;
+		}
+
+		// Forced: without the argument this returns whatever the meta cache
+		// already holds, which may be the values that failed to save.
+		$fresh->read_meta_data( true );
+
+		return $fresh;
+	}
+
+	/**
+	 * One value per attempt, so two attempts can never be confused.
+	 *
+	 * A timestamp alone is not enough: two attempts inside the same second
+	 * would produce the same record, and the verification would then accept a
+	 * PREVIOUS attempt's intent as proof that this one was stored.
+	 */
+	private static function mint_mutation_id(): string {
+		if ( function_exists( 'wp_generate_uuid4' ) ) {
+			return (string) wp_generate_uuid4();
+		}
+
+		return sprintf( '%d-%s', time(), bin2hex( random_bytes( 8 ) ) );
+	}
+
+	/**
+	 * The stored form of the amendment's expected values.
+	 *
+	 * Strings, and key-sorted. Both are about making "byte-for-byte" mean
+	 * something: a value that goes in as an integer and comes back as a string
+	 * would fail a strict comparison for a reason that has nothing to do with
+	 * persistence, and an unsorted array serialises differently from one save
+	 * to the next.
+	 *
+	 * @param array<string, mixed> $expected Raw field values.
+	 * @return array<string, string>
+	 */
+	private static function canonical_expected( array $expected ): array {
+		$clean = array();
+
+		foreach ( $expected as $key => $value ) {
+			if ( is_scalar( $value ) ) {
+				$clean[ (string) $key ] = (string) $value;
+			}
+		}
+
+		ksort( $clean );
+
+		return $clean;
+	}
+
+	/**
+	 * Close a mutation intent and move the order, in ONE save.
+	 *
+	 * The state, the last operation, the cleared pending record, any extra meta
+	 * the outcome carries and the history entry all go down together. There is
+	 * no instant at which an order is out of its protected state while the
+	 * pending record still describes a write in flight.
+	 *
+	 * @param WC_Order             $order     Order.
+	 * @param string               $state     State to move to.
+	 * @param string               $operation Operation that produced the outcome, '' to keep.
+	 * @param string               $message   Operator-facing sentence.
+	 * @param array<string, mixed> $meta      Extra meta keys to write in the same save.
+	 */
+	public static function settle_mutation( WC_Order $order, string $state, string $operation, string $message, array $meta = array() ): void {
+		$order->update_meta_data( self::META_STATE, $state );
+		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
+
+		if ( '' !== $operation ) {
+			$order->update_meta_data( self::META_LAST_OPERATION, $operation );
+		}
+
+		foreach ( $meta as $key => $value ) {
+			$order->update_meta_data( (string) $key, $value );
+		}
+
+		self::add_history_entry( $order, $state, $message );
+		self::persist( $order );
 	}
 
 	/**
@@ -216,78 +632,6 @@ final class Kuka_Island_Shipping_Order_Store {
 		return Kuka_Island_Shipping_Reference::build( (int) $order->get_id() );
 	}
 
-	/**
-	 * Pin this order to one carrier, together with the reference it will use.
-	 *
-	 * CALLED IMMEDIATELY BEFORE THE FIRST EXTERNAL WRITE, WITH THE MUTATION
-	 * LOCK HELD AND THE GATE ALREADY RE-CHECKED. Two separate mistakes shaped
-	 * this method.
-	 *
-	 * The provider used to be written by save_order_created(), which only runs
-	 * after a createOrder the carrier CONFIRMED. A createOrder that timed out
-	 * therefore left the order in reconcile_required with no record of who had
-	 * been asked, and the reconciliation then read whichever carrier happened to
-	 * be the default. So the pin has to happen BEFORE the request goes out.
-	 *
-	 * But it must not happen before the request is known to be VALID. Pinning at
-	 * the top of the creation sequence meant an order whose city could not be
-	 * mapped -- a purely local failure, with no carrier contacted at all -- came
-	 * out of the attempt permanently owned by a courier that had never heard of
-	 * it, and could not then be handed to another one. So the pin sits exactly
-	 * between the last local check and the first byte on the wire: see
-	 * guarded_write()'s $before_write argument, which is where it is invoked.
-	 *
-	 * ONE SAVE. Provider, reference and reference history are written together,
-	 * so there is no instant in which the reference exists without an owner.
-	 *
-	 * NEVER OVERWRITES. A provider that is already stored is returned as it is,
-	 * whatever the caller passed. Re-pointing a live order at another courier is
-	 * not something this code may do; the caller has already been refused with
-	 * shipment_provider_mismatch before reaching here.
-	 *
-	 * @param WC_Order $order        Order.
-	 * @param string   $provider_key Carrier key to pin.
-	 * @param string   $reference    Reference prepare_reference() handed back.
-	 * @return array{reference: string, provider: string, pinned: bool}
-	 */
-	public static function begin_carrier_session( WC_Order $order, string $provider_key, string $reference = '' ): array {
-		$stored   = self::provider( $order );
-		$existing = (string) $order->get_meta( self::META_REFERENCE, true );
-		$has_ref  = Kuka_Island_Shipping_Reference::is_valid( $existing );
-		$pinning  = '' === $stored && '' !== trim( $provider_key );
-
-		if ( $has_ref ) {
-			$reference = $existing;
-		} elseif ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			$reference = Kuka_Island_Shipping_Reference::build( (int) $order->get_id() );
-		}
-
-		if ( ! $pinning && $has_ref ) {
-			return array(
-				'reference' => $reference,
-				'provider'  => $stored,
-				'pinned'    => false,
-			);
-		}
-
-		if ( ! $has_ref ) {
-			$order->update_meta_data( self::META_REFERENCE, $reference );
-			self::append_reference_history( $order, $reference );
-		}
-
-		if ( $pinning ) {
-			$order->update_meta_data( self::META_PROVIDER, trim( $provider_key ) );
-		}
-
-		$order->save_meta_data();
-
-		return array(
-			'reference' => $reference,
-			'provider'  => $pinning ? trim( $provider_key ) : $stored,
-			'pinned'    => $pinning,
-		);
-	}
-
 	/** How many carrier status queries this order has actually spent. */
 	public static function query_attempts( WC_Order $order ): int {
 		return (int) $order->get_meta( self::META_QUERY_ATTEMPTS, true );
@@ -313,7 +657,7 @@ final class Kuka_Island_Shipping_Order_Store {
 
 		$order->update_meta_data( self::META_QUERY_ATTEMPTS, $attempts );
 		$order->update_meta_data( self::META_LAST_QUERIED_AT, time() );
-		$order->save_meta_data();
+		self::persist( $order );
 
 		return $attempts;
 	}
@@ -365,7 +709,7 @@ final class Kuka_Island_Shipping_Order_Store {
 
 		$order->update_meta_data( self::META_REFERENCE, $reference );
 		self::append_reference_history( $order, $reference );
-		$order->save_meta_data();
+		self::persist( $order );
 
 		return $reference;
 	}
@@ -397,7 +741,7 @@ final class Kuka_Island_Shipping_Order_Store {
 
 		$order->update_meta_data( self::META_REFERENCE, $reference );
 		self::append_reference_history( $order, $reference );
-		$order->save_meta_data();
+		self::persist( $order );
 
 		return $reference;
 	}
@@ -432,7 +776,7 @@ final class Kuka_Island_Shipping_Order_Store {
 			$state,
 			'' !== $message ? $message : sprintf( 'Durum değişti: %s -> %s', $previous, $state )
 		);
-		$order->save_meta_data();
+		self::persist( $order );
 	}
 
 	/**
@@ -443,11 +787,11 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * @param string   $order_invoice_id Carrier's own order receipt id, '' when absent.
 	 */
 	public static function save_order_created( WC_Order $order, string $provider_key, string $order_invoice_id ): void {
-		// Ownership is pinned by begin_carrier_session() BEFORE the request goes
-		// out, so this is normally a no-op. It writes only when the field is
-		// empty, and it never re-points an order that already has an owner:
-		// this method is also reached from a reconciliation, and a
-		// reconciliation must not be able to change whose parcel this is.
+		// Ownership is pinned by begin_mutation() BEFORE the request goes out,
+		// so this is normally a no-op. It writes only when the field is empty,
+		// and it never re-points an order that already has an owner: this
+		// method is also reached from a reconciliation, and a reconciliation
+		// must not be able to change whose parcel this is.
 		if ( '' === self::provider( $order ) && '' !== trim( $provider_key ) ) {
 			$order->update_meta_data( self::META_PROVIDER, trim( $provider_key ) );
 		}
@@ -455,6 +799,11 @@ final class Kuka_Island_Shipping_Order_Store {
 		$order->update_meta_data( self::META_STATE, self::STATE_ORDER_CREATED );
 		$order->update_meta_data( self::META_LAST_OPERATION, 'create_order' );
 		$order->update_meta_data( self::META_LAST_ERROR, '' );
+
+		// The intent this confirms is closed HERE, in the same save as the
+		// state it moves to. Two saves would leave a window in which the order
+		// says 'order_created' and the meta still describes a create in flight.
+		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
 
 		if ( '' !== $order_invoice_id ) {
 			$order->update_meta_data( self::META_ORDER_INVOICE_ID, $order_invoice_id );
@@ -465,7 +814,7 @@ final class Kuka_Island_Shipping_Order_Store {
 		}
 
 		self::add_history_entry( $order, self::STATE_ORDER_CREATED, __( 'Taşıyıcıda sipariş oluşturuldu.', 'kuka-island-shipping-automation' ) );
-		$order->save_meta_data();
+		self::persist( $order );
 	}
 
 	/**
@@ -479,6 +828,9 @@ final class Kuka_Island_Shipping_Order_Store {
 		$order->update_meta_data( self::META_STATE, self::STATE_SHIPMENT_CREATED );
 		$order->update_meta_data( self::META_LAST_OPERATION, 'create_barcode' );
 		$order->update_meta_data( self::META_LAST_ERROR, '' );
+
+		// Same save as the state, for the same reason as save_order_created().
+		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
 
 		if ( '' !== $shipment_id ) {
 			$order->update_meta_data( self::META_SHIPMENT_ID, $shipment_id );
@@ -494,7 +846,7 @@ final class Kuka_Island_Shipping_Order_Store {
 		$order->update_meta_data( self::META_BARCODES, $clean );
 
 		self::add_history_entry( $order, self::STATE_SHIPMENT_CREATED, __( 'Taşıyıcıda gönderi ve barkodlar oluşturuldu.', 'kuka-island-shipping-automation' ) );
-		$order->save_meta_data();
+		self::persist( $order );
 	}
 
 	/**
@@ -506,109 +858,6 @@ final class Kuka_Island_Shipping_Order_Store {
 		$pending = $order->get_meta( self::META_PENDING_MUTATION, true );
 
 		return is_array( $pending ) ? $pending : array();
-	}
-
-	/**
-	 * Record that a CANCELLATION has been issued and is not yet established.
-	 *
-	 * Written the instant the carrier has been contacted -- on a success answer
-	 * as well as on an uncertain one -- because a success answer is an
-	 * acknowledgement and nothing more. From here the only legal next step is a
-	 * read of the object that was addressed; no second cancellation may be sent
-	 * by a button, by a stale handle or by a concurrent request.
-	 *
-	 * @param WC_Order $order          Order.
-	 * @param string   $operation      'cancel_order' or 'cancel_shipment'.
-	 * @param string   $target         'order' or 'shipment': what to read back.
-	 * @param string   $previous_state State the order was in before the write.
-	 * @param string   $outcome        'success' or 'uncertain'.
-	 */
-	public static function save_cancel_pending( WC_Order $order, string $operation, string $target, string $previous_state, string $outcome ): void {
-		$order->update_meta_data( self::META_STATE, self::STATE_CANCEL_RECONCILE_REQUIRED );
-		$order->update_meta_data( self::META_LAST_OPERATION, $operation );
-		$order->update_meta_data(
-			self::META_PENDING_MUTATION,
-			array(
-				'kind'           => 'cancel',
-				'operation'      => $operation,
-				'target'         => $target,
-				'previous_state' => $previous_state,
-				'outcome'        => $outcome,
-				'at'             => time(),
-			)
-		);
-
-		self::add_history_entry(
-			$order,
-			self::STATE_CANCEL_RECONCILE_REQUIRED,
-			sprintf(
-				/* translators: 1: operation name, 2: carrier answer type. */
-				__( 'İptal isteği taşıyıcıya gönderildi (%1$s / %2$s). Sonucu doğrulanana kadar yeni iptal gönderilmez; yalnız salt-okunur sorgu yapılır.', 'kuka-island-shipping-automation' ),
-				$operation,
-				$outcome
-			)
-		);
-
-		$order->save_meta_data();
-	}
-
-	/**
-	 * Record that an AMENDMENT has been issued and is not yet established.
-	 *
-	 * $expected carries the exact semantic field values that were sent. The
-	 * object existing afterwards proves nothing -- it existed before the
-	 * amendment too -- so the only proof is a read-back of those fields that
-	 * matches these values.
-	 *
-	 * @param WC_Order             $order          Order.
-	 * @param string               $operation      'update_order' or 'update_shipment'.
-	 * @param string               $target         'order' or 'shipment'.
-	 * @param string               $previous_state State before the write.
-	 * @param array<string, mixed> $expected       Field values that were sent.
-	 * @param string               $outcome        'uncertain'.
-	 */
-	public static function save_update_pending( WC_Order $order, string $operation, string $target, string $previous_state, array $expected, string $outcome ): void {
-		$order->update_meta_data( self::META_STATE, self::STATE_UPDATE_RECONCILE_REQUIRED );
-		$order->update_meta_data( self::META_LAST_OPERATION, $operation );
-		$order->update_meta_data(
-			self::META_PENDING_MUTATION,
-			array(
-				'kind'           => 'update',
-				'operation'      => $operation,
-				'target'         => $target,
-				'previous_state' => $previous_state,
-				'expected'       => $expected,
-				'outcome'        => $outcome,
-				'at'             => time(),
-			)
-		);
-
-		self::add_history_entry(
-			$order,
-			self::STATE_UPDATE_RECONCILE_REQUIRED,
-			sprintf(
-				/* translators: 1: operation name, 2: carrier answer type. */
-				__( 'Güncelleme isteği taşıyıcıya gönderildi (%1$s / %2$s). Uygulandığı alan bazında doğrulanana kadar yeni güncelleme gönderilmez.', 'kuka-island-shipping-automation' ),
-				$operation,
-				$outcome
-			)
-		);
-
-		$order->save_meta_data();
-	}
-
-	/**
-	 * Forget the pending write, because a read established what it did.
-	 *
-	 * @param WC_Order $order Order.
-	 */
-	public static function clear_pending_mutation( WC_Order $order ): void {
-		if ( array() === self::pending_mutation( $order ) ) {
-			return;
-		}
-
-		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
-		$order->save_meta_data();
 	}
 
 	/**
@@ -654,7 +903,7 @@ final class Kuka_Island_Shipping_Order_Store {
 			)
 		);
 
-		$order->save_meta_data();
+		self::persist( $order );
 
 		return $lifecycle;
 	}
@@ -680,7 +929,7 @@ final class Kuka_Island_Shipping_Order_Store {
 		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
 
 		self::add_history_entry( $order, self::get_state( $order ), $message );
-		$order->save_meta_data();
+		self::persist( $order );
 	}
 
 	/**
@@ -694,6 +943,11 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * @param string   $safe_error_code Allow-listed code.
 	 */
 	public static function save_uncertain( WC_Order $order, string $operation, string $safe_error_code ): void {
+		// Re-asserted rather than set: begin_mutation() moved the order here
+		// BEFORE the request left, which is the whole point -- a process that
+		// died mid-flight never reached this method and the state is correct
+		// anyway. Writing it again costs nothing and keeps the method honest if
+		// it is ever reached from somewhere else.
 		$order->update_meta_data( self::META_STATE, self::STATE_RECONCILE_REQUIRED );
 		$order->update_meta_data( self::META_LAST_OPERATION, $operation );
 		$order->update_meta_data( self::META_LAST_ERROR, $safe_error_code );
@@ -709,7 +963,7 @@ final class Kuka_Island_Shipping_Order_Store {
 			)
 		);
 
-		$order->save_meta_data();
+		self::persist( $order );
 	}
 
 	/**
@@ -734,7 +988,7 @@ final class Kuka_Island_Shipping_Order_Store {
 		}
 
 		self::add_history_entry( $order, self::get_state( $order ), $message );
-		$order->save_meta_data();
+		self::persist( $order );
 	}
 
 	/**

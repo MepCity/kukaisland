@@ -36,6 +36,41 @@ $report   = static function ( string $name, bool $passed, string $detail = '' ) 
 	}
 };
 
+/**
+ * Say out loud that a measurement CANNOT be taken, and why.
+ *
+ * WHY THIS EXISTS. Three of the measurements below are only observable while
+ * the plugin is INACTIVE: "not one class is loaded" and "not one hook is
+ * registered" are statements about a WordPress that never loaded the module,
+ * and no amount of care makes them observable from inside a WordPress that
+ * did. When an operator activates the plugin -- which
+ * docs/DHL_AKTIVASYON_REHBERI.md tells them to do -- those three stopped being
+ * false and started being unanswerable.
+ *
+ * Reporting them as FAIL was worse than useless: this script exits non-zero on
+ * a failure and verify.sh runs with `set -e`, so three unanswerable questions
+ * took the ENTIRE shipping verification offline -- the behavioural suite, the
+ * lifecycle suite and the cache custodian never ran at all.
+ *
+ * So they are SKIPPED, with the reason named, and the guarantee is not lost:
+ * scripts/verify-shipping-activation-lifecycle.sh performs a REAL deactivation
+ * and then measures exactly this in a FRESH WordPress process
+ * (SHIPPING_LIFECYCLE_DEACTIVATION: classes_declared:none,
+ * hooks_registered:none), and that suite is part of make verify. The
+ * behavioural suite measures the related property -- loading the files
+ * attaches nothing, only register() does -- as a DELTA, which is answerable
+ * either way.
+ *
+ * Nothing else is skipped. The manual route, the order lifecycle, the absence
+ * of scheduled work and the drawer-protection files are all still measured,
+ * and still have to pass.
+ */
+$skipped = array();
+$skip    = static function ( string $name, string $reason, string $detail = '' ) use ( &$skipped ): void {
+	WP_CLI::line( sprintf( '%s=SKIPPED|reason:%s%s', $name, $reason, '' !== $detail ? '|' . $detail : '' ) );
+	$skipped[] = $name;
+};
+
 /* ========================================================================== */
 /* 1. Plugin state                                                             */
 /* ========================================================================== */
@@ -56,13 +91,37 @@ $header_ok = str_contains( $header, 'Plugin Name: Kuka Island Shipping Automatio
 	&& str_contains( $header, 'Text Domain: kuka-island-shipping-automation' )
 	&& str_contains( $header, 'Requires Plugins: woocommerce, kuka-island-core' );
 
+$state_detail = sprintf(
+	'measured:wordpress_runtime|plugin_file_present:%s|plugin_active:%s|core_active:%s|woocommerce_active:%s|header_declares_dependencies:%s',
+	$present ? 'yes' : 'NO',
+	$active ? 'yes' : 'no',
+	$core_active ? 'yes' : 'NO',
+	$wc_active ? 'yes' : 'NO',
+	$header_ok ? 'yes' : 'NO'
+);
+
+if ( $active ) {
+	// The delivered state has been left deliberately, so this one question is
+	// unanswerable. Everything that does not depend on inactivity is still
+	// measured, below and in both branches.
+	$skip( 'SHIPPING_PASSIVE_PLUGIN_STATE', 'plugin_active', $state_detail );
+} else {
+	$report( 'SHIPPING_PASSIVE_PLUGIN_STATE', $present && $core_active && $wc_active && $header_ok, $state_detail );
+}
+
+/*
+ * The delivery artefact itself, and it is the same question in both states:
+ * the plugin file is where it belongs, its header declares its dependencies,
+ * and those dependencies are active. Reported unconditionally so the output
+ * shape does not depend on whether an operator has activated the plugin -- a
+ * measurement that only exists in one state cannot be pinned by verify.sh.
+ */
 $report(
-	'SHIPPING_PASSIVE_PLUGIN_STATE',
-	$present && ! $active && $core_active && $wc_active && $header_ok,
+	'SHIPPING_PASSIVE_DELIVERY_ARTEFACT',
+	$present && $core_active && $wc_active && $header_ok,
 	sprintf(
-		'measured:wordpress_runtime|plugin_file_present:%s|plugin_active:%s|core_active:%s|woocommerce_active:%s|header_declares_dependencies:%s',
+		'measured:wordpress_runtime|plugin_file_present:%s|core_active:%s|woocommerce_active:%s|header_declares_dependencies:%s',
 		$present ? 'yes' : 'NO',
-		$active ? 'YES' : 'no',
 		$core_active ? 'yes' : 'NO',
 		$wc_active ? 'yes' : 'NO',
 		$header_ok ? 'yes' : 'NO'
@@ -95,11 +154,17 @@ foreach ( $module_classes as $class_name ) {
 	}
 }
 
-$report(
-	'SHIPPING_PASSIVE_CLASSES_ABSENT',
-	array() === $declared,
-	sprintf( 'checked:%d|declared:%s|http_client_loadable:no', count( $module_classes ), array() === $declared ? 'none' : implode( ',', $declared ) )
+$classes_detail = sprintf(
+	'checked:%d|declared:%s|http_client_loadable:no',
+	count( $module_classes ),
+	array() === $declared ? 'none' : implode( ',', $declared )
 );
+
+if ( $active ) {
+	$skip( 'SHIPPING_PASSIVE_CLASSES_ABSENT', 'plugin_active', $classes_detail . '|measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION' );
+} else {
+	$report( 'SHIPPING_PASSIVE_CLASSES_ABSENT', array() === $declared, $classes_detail );
+}
 
 /* ========================================================================== */
 /* 3. No hook of the module is registered                                      */
@@ -150,15 +215,80 @@ foreach ( array( 'add_meta_boxes', 'plugins_loaded', 'woocommerce_order_status_c
 	}
 }
 
-$report(
-	'SHIPPING_PASSIVE_HOOKS_ABSENT',
-	array() === $hooked && 0 === $shared_callbacks,
-	sprintf(
-		'own_hooks_registered:%s|module_callbacks_on_shared_hooks:%d',
-		array() === $hooked ? 'none' : implode( ',', $hooked ),
-		$shared_callbacks
-	)
+$hooks_detail = sprintf(
+	'own_hooks_registered:%s|module_callbacks_on_shared_hooks:%d',
+	array() === $hooked ? 'none' : implode( ',', $hooked ),
+	$shared_callbacks
 );
+
+if ( $active ) {
+	$skip( 'SHIPPING_PASSIVE_HOOKS_ABSENT', 'plugin_active', $hooks_detail . '|measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION' );
+} else {
+	$report( 'SHIPPING_PASSIVE_HOOKS_ABSENT', array() === $hooked && 0 === $shared_callbacks, $hooks_detail );
+}
+
+/*
+ * AND THE DANGEROUS HALF, ASKED IN BOTH STATES. An active module may attach
+ * its admin panel and its poller worker -- those are its own hooks and they
+ * are supposed to be there. What it may NEVER attach itself to is an event
+ * WooCommerce raises on its own when an order moves, because that is the only
+ * route by which a shipment could be booked with no operator.
+ */
+{
+	/*
+	 * THE HOOKS THAT FIRE BY THEMSELVES. add_meta_boxes and plugins_loaded are
+	 * deliberately NOT in this list: an active module is supposed to draw its
+	 * panel and to boot. What must never happen is a module callback on an
+	 * event WooCommerce raises on its own when an order moves, because that is
+	 * the only route by which a shipment could be booked with no operator.
+	 */
+	$automatic_hooks = array(
+		'woocommerce_order_status_changed',
+		'woocommerce_order_status_processing',
+		'woocommerce_order_status_completed',
+		'woocommerce_payment_complete',
+		'woocommerce_thankyou',
+		'woocommerce_checkout_order_processed',
+		'woocommerce_new_order',
+		'woocommerce_fulfillment_after_create',
+		'woocommerce_fulfillment_after_update',
+	);
+
+	$automatic_owners = array();
+
+	foreach ( $automatic_hooks as $automatic_hook ) {
+		if ( ! isset( $wp_filter[ $automatic_hook ] ) ) {
+			continue;
+		}
+
+		foreach ( $wp_filter[ $automatic_hook ]->callbacks as $callbacks ) {
+			foreach ( $callbacks as $callback ) {
+				$function = $callback['function'] ?? null;
+				$owner    = '';
+
+				if ( is_array( $function ) && isset( $function[0] ) ) {
+					$owner = is_object( $function[0] ) ? get_class( $function[0] ) : (string) $function[0];
+				} elseif ( is_string( $function ) ) {
+					$owner = $function;
+				}
+
+				if ( str_starts_with( $owner, 'Kuka_Island_Shipping' ) ) {
+					$automatic_owners[] = $automatic_hook . ':' . $owner;
+				}
+			}
+		}
+	}
+
+	$report(
+		'SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES',
+		array() === $automatic_owners,
+		sprintf(
+			'measured:wordpress_runtime|automatic_hooks_checked:%d|module_callbacks:%s|admin_panel_hook_allowed:add_meta_boxes',
+			count( $automatic_hooks ),
+			array() === $automatic_owners ? 'none' : implode( '+', $automatic_owners )
+		)
+	);
+}
 
 /* ========================================================================== */
 /* 4. No scheduled action exists, by hook or by group                          */
@@ -480,4 +610,9 @@ if ( array() !== $failures ) {
 	WP_CLI::error( 'SHIPPING_PASSIVE=FAIL|' . implode( ',', $failures ) );
 }
 
-WP_CLI::line( 'SHIPPING_PASSIVE=PASS' );
+WP_CLI::line(
+	sprintf(
+		'SHIPPING_PASSIVE=PASS|skipped:%s',
+		array() === $skipped ? 'none' : implode( ',', $skipped )
+	)
+);

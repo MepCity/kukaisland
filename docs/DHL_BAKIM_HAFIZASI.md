@@ -40,6 +40,14 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | Provider, yerel adres doğrulaması başarısız olsa bile sabitleniyordu | Pin `guarded_write()` içine, geçerli istekten sonra ve yazmadan hemen önce taşındı (K-26) |
 | 2026-09-03 | Test önbelleği sahipliği çıkarma ile belirliyordu; cleanup wildcard silme kullanıyordu | Koşuya ait namespace + birebir ad bildirimi; wildcard silme kaldırıldı (K-27) |
 | 2026-09-03 | Deaktivasyon bekleyen Action Scheduler işlerini gerçekte iptal etmiyordu | Boş args hash'i yerine hook+grup ile numaralayıp id bazında iptal (K-28) |
+| 2026-09-03 | Kalıcı mutation intent yoktu; süreç istek uçarken ölürse durum `none` kalıyor ve ikinci yazma açılıyordu | Altı operasyonun tamamında intent gönderimden önce yazılıp veritabanından geri okunuyor (K-29) |
+| 2026-09-03 | `guarded_write()`'ın `before_write`'ı `void`'di; kaydedilemeyen bir sabitleme kaydedilenden ayırt edilemiyordu | Callback doğrulama sonucu döndürüyor; `ok` değilse `$write()` hiç çağrılmıyor (K-30) |
+| 2026-09-03 | "Kesin ret hiçbir şeyi değiştirmemiştir" varsayımı satıcı sözleşmesinde yazılı değildi | Allowlist boş; intent'i okumadan kapatan tek şey ağa çıkmamış `local_refusal` (K-31) |
+| 2026-09-03 | Sonuç geçişleri iki save'di: durum ve intent temizliği ayrı yazılıyordu | `settle_mutation()` + tek yazma noktası `persist()` + sayaç ölçümü (K-32) |
+| 2026-09-03 | `KUKA_DHL_ADAPTER` tanınmayan değerde açık kalıyordu; `flase` yazan operatör kargonun durduğunu sanıyordu | Tam eşleşme dışındaki her değer `configuration_invalid` → kapalı, ekranda yazılı (K-33) |
+| 2026-09-03 | `fields_match()` iki tarafı da `trim()` ediyordu; "birebir" iddiası yanlıştı | Tek kanonik biçim gönderim öncesi uygulanıyor, karşılaştırmada sıfır tolerans (K-34) |
+| 2026-09-03 | "Planlı durum sorgusu doğrulanmamış iptali izleyen tek şeydir" yorumu doğru değildi | Yorum düzeltildi; belge ve sipariş ekranı bunun **manuel** mutabakat olduğunu yazıyor (K-35) |
+| 2026-09-03 | Eklenti etkinleştirilince pasif sözleşme suite'i sıfırdan farklı dönüyor ve `set -e` bütün kargo doğrulamasını kesiyordu | Cevaplanamaz üç ölçüm gerekçeli `SKIPPED`; yerlerine her iki durumda sorulabilen iki ölçüm (K-36) |
 
 ---
 
@@ -1152,6 +1160,260 @@ geçmez.
 
 ---
 
+## K-29 — Kalıcı mutation intent yoktu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Bir `createOrder` gönderildi, süreç cevap gelmeden öldü (fatal,
+  OOM, deploy, kopan veritabanı bağlantısı). Sipariş `none` durumunda,
+  `_kuka_shipping_provider` dolu. Operatör düğmeye bastı ve **ikinci bir
+  createOrder** gitti. Tek paket, iki kayıt, ikincisi mağazanın göremediği.
+- **Kesin kök neden:** Sahiplik ilk yazmadan önce sabitleniyordu ve bu
+  "niyet kalıcı" diye okunmuştu. Değildi: provider anahtarı bir yazmanın
+  **başladığını** söylemez, yalnız kime ait olduğunu söyler. `states_blocking_create()`
+  durum üzerinden karar verir, durum ise cevap geldikten **sonra** yazılıyordu.
+  Cevap hiç gelmezse yazan kod yolu hiç çalışmaz.
+- **Uygulanan düzeltme:** `Order_Store::begin_mutation()`. Altı operasyonun
+  tamamı için, **dış HTTP çağrısından önce**, tek save ile: operasyona özel
+  korumalı durum (`reconcile_required` / `update_reconciliation_required` /
+  `cancel_reconciliation_required`) + `mutation_id` (UUID4), `kind`,
+  `operation`, `target`, `previous_state`, `provider`, `reference`,
+  güncellemelerde kanonik `expected` alan değerleri, `created_at`. Ardından
+  sipariş **veritabanından taze** okunuyor (her önbellek düşürülüyor,
+  `read_meta_data( true )` zorlanıyor) ve kritik alanların tamamı `!==` ile
+  karşılaştırılıyor.
+- **Kanıt:** `SHIPPING_MUTATION_INTENT_DURABLE` — altı operasyon, niyet **ayrı
+  bir MySQL oturumundan** (yalnız commit edilmiş satırları görebilen bir
+  bağlantı) okunuyor. `SHIPPING_MUTATION_CRASH_BOUNDARY` — yazmanın içinde
+  `Throwable` ile kontrol akışı kesiliyor, sonra **yeni sipariş nesnesi + yeni
+  `Manager` + yeni adaptör** ile tekrar deneniyor: ikinci yazma sayısı **0**,
+  açık kalan tek yol operasyona özel salt-okunur mutabakat.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`begin_mutation`, `verify_mutation_intent`, `fresh_copy`),
+  `class-shipment-manager.php` (`intent_writer`, `guarded_write`)
+- **Tekrar yaşanırsa ilk bak:** Ölçümde `state_at_first_write` değeri. `none`
+  ise intent yazılmıyor demektir ve bütün koruma yoktur. Sonra
+  `guarded_write()`'ın dördüncü argümanının hâlâ zorunlu olup olmadığı.
+
+---
+
+## K-30 — `before_write` `void` olduğu için doğrulanmıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Yok — ve sorun tam olarak buydu. `save_meta_data()` sessizce
+  başarısız olsa (kopan bağlantı, sorguyu yutan bir filtre) istek yine
+  gidiyordu ve bellekteki nesne her iki durumda da aynı görünüyordu.
+- **Kesin kök neden:** `guarded_write()`'ın dördüncü argümanı `?callable` ve
+  `void` dönüşlüydü; çağrıldı, sonucuna bakılmadı. "Yazmak" ile "kalıcı
+  kılmak" aynı şey değildir.
+- **Uygulanan düzeltme:** Argüman **zorunlu** oldu ve
+  `array{ok, code, message, detail, intent}` döndürüyor. `true !== $prepared['ok']`
+  ise `$write()` **hiç çağrılmıyor**; tanımadığı bir şekil de (null, string)
+  reddediliyor, çünkü hiçbir şey kanıtlamamış olur. Doğrulama başarısızsa
+  sipariş korumalı durumda **bırakılıyor** — geri alma denemek, az önce
+  başarısız olan mekanizmaya yeniden güvenmek olurdu ve üretebileceği hata
+  tehlikeli olanıdır: yazma düğmesi açık bir durum.
+- **Kanıt:** `SHIPPING_MUTATION_INTENT_UNPERSISTED_BLOCKS_WRITE` — `query`
+  filtresiyle **yalnız** `_kuka_shipping_pending_mutation` yazan INSERT/UPDATE
+  cümleleri `SELECT 1`'e çevriliyor; sonuç `mutation_intent_unverified`,
+  taşıyıcı çağrısı **0**, sipariş korumalı durumda, ve kalan artık
+  `reconcile_cancellation()` ile okunarak çözülüyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`guarded_write`)
+- **Tekrar yaşanırsa ilk bak:** Callback'in dönüş tipi. `void` ise koruma yok.
+
+---
+
+## K-31 — "Kesin ret hiçbir şeyi değiştirmemiştir" varsayımı
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Taşıyıcı `cancelshipment`'a 400 döndü; sipariş
+  `shipment_created`'a geri alındı ve iptal düğmesi yeniden açıldı. Aynısı
+  `createOrder` ve `updateshipment` için de geçerliydi.
+- **Kesin kök neden:** Kod, `permanent` bir cevabı "istek işlenmedi" diye
+  okuyordu. Satıcının resmî OpenAPI belgeleri bunu desteklemiyor: altı yazma
+  operasyonunun **tamamı** yalnız `200`, `400 Bad Request`,
+  `401 Unauthorized`, `500 Server Error` tanımlar ve **hiçbiri yan etkiden söz
+  etmez**. 400'ün kayıt bırakıp bırakmadığı yazılı değildir. Dolayısıyla "yan
+  etkisi olmadığı belgelenmiş hata" listesi **boştur**.
+- **Uygulanan düzeltme:** `Result::local_refusal()` + `reached_carrier()`.
+  Yalnız `call()` çağrılmadan, soket açılmadan verilen retler intent'i
+  kapatabiliyor; bu, durum koduna bakılarak tahmin edilmiyor, **kod yolundan**
+  kanıtlanıyor. DHL istemcisindeki ve adaptöründeki 20 ön-ağ reddi bu factory'ye
+  çevrildi. Ağdan gelen her cevap — `success` dâhil — intent'i açık bırakıyor.
+- **Kanıt:** `SHIPPING_CANCEL_REFUSAL_POLICY` — cevaplanan 400: intent
+  korunuyor, durum `cancel_reconciliation_required`, ikinci basış
+  `cancel_in_progress`, yazma 1. Ağa çıkmamış ret: yazma **0**, intent
+  temizleniyor, `shipment_created`'a dönülüyor, düğme açık.
+- **İlgili dosya:** `SHIP/includes/shipping/class-carrier-result.php`,
+  `dhl/class-dhl-client.php`, `dhl/class-dhl-provider.php`,
+  `class-shipment-manager.php` (`record_failure`, `close_unsent_intent`)
+- **Tekrar yaşanırsa ilk bak:** `to_safe_line()` çıktısındaki
+  `reached_carrier:` alanı. `yes` ise intent kapatılamaz.
+
+---
+
+## K-32 — Sonuç geçişleri iki save'di
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Durumu `cancelled` olan bir siparişin metasında hâlâ uçuşta bir
+  iptali tarif eden `_kuka_shipping_pending_mutation` kaydı — ya da tersi.
+- **Kesin kök neden:** `set_state()` bir save, `clear_pending_mutation()`
+  ikinci bir save yapıyordu. Aradaki pencerede süreç ölürse ikisi
+  çelişiyordu, ve tersi yön tehlikeli olanıdır: intent temizlenmiş ama durum
+  korumalı kalmamışsa yazma düğmesi açılır.
+- **Uygulanan düzeltme:** `Order_Store::settle_mutation()` durumu, intent
+  temizliğini, son operasyonu, ek metayı ve geçmiş kaydını **aynı**
+  `save_meta_data()` içinde yazıyor. `save_order_created()` ve
+  `save_shipment_created()` de intent'i kendi save'lerinde kapatıyor. Sınıftaki
+  **tek** yazma noktası `persist()` ve sayıyor.
+- **Kanıt:** `SHIPPING_MUTATION_OUTCOME_ATOMIC` — iptal onaylandı **1**,
+  güncelleme onaylandı **1**, güncelleme uyuşmadı **1**, intent açılıp önceki
+  duruma dönüş **2** (biri açmak, biri kapatmak), oluşturma + barkod **4**. Her
+  geçişten sonra durum ve intent ayrı bağlantıdan okunup tutarlılık ölçülüyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`persist`, `save_count`, `settle_mutation`)
+- **Tekrar yaşanırsa ilk bak:** `save_meta_data()` çağrısı sayısı. Sınıfta
+  `persist()` dışında bir tane bile varsa sayaç yalan söyler.
+
+---
+
+## K-33 — `KUKA_DHL_ADAPTER` yazım hatasında açık kalıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Operatör `KUKA_DHL_ADAPTER=flase` yazdı, kargonun durduğunu
+  sandı, gönderi hâlâ oluşturulabiliyordu ve hiçbir ekranda değerin
+  anlaşılmadığı yazılı değildi. Aynısı `of`, `' 0'`, `''`, `ON` için de geçerli.
+- **Kesin kök neden:** Kural "yalnız dört açık olumsuz kapatır, gerisi açık
+  kalır"dı. Gerekçe "yazım hatası kargoyu sessizce durdurmasın"dı; hatanın
+  diğer yönü daha kötüsüdür ve gerçekleşiyordu.
+- **Uygulanan düzeltme:** `DHL_Config::adapter_state()` →
+  `array{enabled, reason}`. Tanımsız → `unset_default_on` (açık, tarihsel
+  varsayılan korunuyor). Tam eşleşen `1/true/yes/on` → `explicitly_on`. Tam
+  eşleşen `0/false/no/off` → `explicitly_off`. **Her diğer değer** →
+  `configuration_invalid`, kapalı. Sessiz normalizasyon yok: kırpma yok, harf
+  katlama yok. Tek istisna gerçek PHP boolean'ı. Geçersiz değerde kompozisyon
+  kökü adaptörü **hiç kurmuyor**, ve cümlesini
+  `kuka_island_shipping_configuration_notices` filtresine koyuyor — sipariş
+  ekranı hiçbir kuryeyi adıyla anmadan onu basıyor.
+- **Kanıt:** `SHIPPING_ADAPTER_KEY_FAIL_CLOSED` — 19 değer, hatalı 0, geçersiz
+  değerde kayıtlı adaptör **0** ve HTTP **0**, kapı `carrier_not_registered`,
+  durum satırı ayarın adını ve "tanınmadı" cümlesini içeriyor.
+- **İlgili dosya:** `SHIP/includes/shipping/dhl/class-dhl-config.php`,
+  `SHIP/includes/class-shipping-automation.php` (`adapter_notice`),
+  `SHIP/includes/shipping/class-shipment-admin.php` (`module_status`)
+- **Tekrar yaşanırsa ilk bak:** `classify_adapter_value()` içinde `trim()` ya
+  da `strtolower()` var mı. Varsa sessiz normalizasyon geri gelmiş demektir.
+
+---
+
+## K-34 — `fields_match()` "birebir" değildi
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Güncelleme "alan bazında birebir doğrulandı" raporlandı, oysa
+  taşıyıcı `recipient_full_name`'i baştaki bir boşlukla tutuyordu.
+- **Kesin kök neden:** Karşılaştırma iki tarafı da `trim()` ediyordu. Farkı
+  karşılaştırmanın içinde soğurmak, doğrulamanın tersidir.
+- **Uygulanan düzeltme:** Daha gevşek değil, **tanımlı** bir karşılaştırma.
+  `Manager::canonical_amendable_value()` tek kanonik biçimi tanımlıyor (baş/son
+  boşluk atılır, içteki boşluk dizileri tek boşluğa iner, Unicode duyarlı);
+  `canonicalize_request()` bunu `build_request()`'in **en sonunda**,
+  `kuka_island_shipping_request` filtresinden **sonra** uyguluyor — yani
+  taşıyıcıdan istenen baytlar karşılaştırmanın talep edeceği baytlarla aynı.
+  `fields_match()` içinde artık hiç `trim()` yok, karşılaştırma `!==`, skaler
+  olmayan cevap da eşleşmezlik.
+- **Kanıt:** `SHIPPING_AMENDABLE_CANONICAL_EXACT` — kanonik biçim 4 vaka,
+  karşılaştırma 6 vaka, gönderilen değerlerin tamamının kanonik olduğu
+  ölçülüyor, ve baştaki tek boşlukla geri okunan alan `update_mismatch` →
+  `manual_review` üretiyor. Suite ayrıca `fields_match()` gövdesinde `trim(`
+  bulunmadığını da sayıyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`canonical_amendable_value`, `canonicalize_request`, `amendable_fields`,
+  `fields_match`)
+- **Tekrar yaşanırsa ilk bak:** `fields_match()` gövdesinde `trim(`. Bir tane
+  bile varsa "birebir" yine yanlıştır.
+
+---
+
+## K-35 — "Planlı sorgu onu izleyen tek şeydir" yorumu doğru değildi
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Doğrulanmamış bir iptalde planlanmış durum sorgusu bir kez
+  koşuyor, `status_reads:0` ile bitiyor ve ardına yeni iş planlamıyor. Kaynaktaki
+  yorum ise onun paketi "izleyen tek şey" olduğunu söylüyordu.
+- **Kesin kök neden:** Poller'ın işçisi önce durumu okur ve
+  `STATE_SHIPMENT_CREATED` değilse `state_not_pollable` dönerek biter —
+  taşıyıcıya tek bir okuma bile yapmadan. `cancel_reconciliation_required` o
+  listede yoktur. Yorum, kodun yapmadığı bir şeyi anlatıyordu.
+- **Uygulanan düzeltme:** İki seçenekten (operasyona özel sınırlı iptal
+  mutabakat poll'u eklemek, ya da bunun **manuel** olduğunu açıkça yazmak)
+  ikincisi seçildi ve her yere yazıldı: yorum düzeltildi, sözleşme §7.1
+  düzeltildi, ve sipariş ekranındaki metin *"Otomatik durum sorgusu bu durumu
+  ÇÖZMEZ ve yeni sorgu planlamaz; doğrulamayı Mutabakat düğmesiyle siz
+  başlatmalısınız"* diyor. Planlanmış iş yine iptal edilmiyor — zamanlayıcıya
+  ikinci bir yazma hiçbir şey kazandırmaz — fakat sonucu artık gizlenmiyor.
+- **Kanıt:** `SHIPPING_PENDING_CANCEL_IS_MANUAL_ONLY` — gerçek Action Scheduler
+  runner'ı işi bir kez koşuyor, `worker_outcome:state_not_pollable`,
+  `status_reads:0`, `follow_up_booked:no`, operatörün okuması durumu
+  ilerletiyor, ve yanlış yorum kaynakta artık yok.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`cancel_still_unproven`),
+  `SHIP/includes/shipping/class-shipment-admin.php` (`operator_hint`)
+- **Tekrar yaşanırsa ilk bak:** Bir yorum davranış iddia ediyorsa, o iddianın
+  bir ölçümü var mı. Yoksa yorum silinmeli ya da ölçüm yazılmalı.
+
+---
+
+## K-36 — Etkinleştirme bütün kargo doğrulamasını devre dışı bırakıyordu
+
+- **Tarih:** 2026-09-03
+- **Belirti:** Eklenti etkinleştirildikten sonra `make verify` kargo bloğuna
+  **hiç** ulaşmıyor: davranış suite'i, lifecycle suite'i ve önbellek
+  custodian'ı çalışmıyor. Çıktının son satırı
+  `Error: SHIPPING_PASSIVE=FAIL|SHIPPING_PASSIVE_PLUGIN_STATE,SHIPPING_PASSIVE_CLASSES_ABSENT,SHIPPING_PASSIVE_HOOKS_ABSENT`.
+- **Kesin kök neden:** Üç ölçüm yalnız eklenti **pasifken** gözlemlenebilir
+  şeyler soruyor ("tek bir sınıf yüklü değil", "tek bir hook kayıtlı değil").
+  Eklenti etkinken bunlar yanlış değil, **cevapsız**dır. Betik başarısızlıkta
+  `WP_CLI::error()` ile sıfırdan farklı dönüyor, `verify.sh` ise `set -e` ile
+  çalışıyor: cevapsız üç soru, kendilerinden sonra gelen her şeyi öldürüyordu.
+  Ayrıca aynı sınıftan iki ölçüm daha vardı: `SHIPPING_LIFECYCLE_START`
+  başlangıç durumunun pasif teslim durumu olmasını **dayatıyordu**, ve davranış
+  suite'inde canlı poller harness poller'ıyla çakışıyordu (aynı action'ı iki
+  worker işlediği için zincir sayıları birer fazla çıkıyordu).
+- **Uygulanan düzeltme:** Dört parça, hiçbiri gevşetme değil.
+  1. Üç ölçüm gerekçesi yazılı olarak `SKIPPED|reason:plugin_active` raporlanır
+     ve nerede ölçüldüklerini söyler
+     (`measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION`). Pasif teslim
+     durumunda üçü yine **PASS zorunludur**; `verify.sh` iki biçimi kabul eder,
+     üçüncüyü (FAIL ya da başka gerekçeli skip) etmez.
+  2. Yerlerine **her iki durumda** sorulabilen iki ölçüm eklendi:
+     `SHIPPING_PASSIVE_DELIVERY_ARTEFACT` (dosya yerinde, başlık bağımlılıkları
+     bildiriyor, bağımlılıklar etkin) ve `SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES`
+     — modülün, sipariş hareket ettiğinde kendiliğinden tetiklenen **9** kancanın
+     hiçbirinde callback'i olmadığı. `add_meta_boxes` bilerek hariç: etkin
+     modülün panelini çizmesi beklenir, tehlikeli olan sipariş durumu ve
+     fulfillment olaylarıdır.
+  3. `SHIPPING_LIFECYCLE_START` başlangıç durumunu **kaydeder, dayatmaz**
+     (`starting_state:recorded_not_asserted`); dayattığı tek şey Core ve
+     WooCommerce'in etkin olması. Suite ayrıca `active_plugins` option'ını
+     birebir geri yazar — `wp plugin activate` diziye **sona** eklediği için tur
+     sonunda eklenti yükleme sırası değişiyordu.
+  4. Davranış suite'inde `kuka_ship_attach_sole_poller()` ölçüm süresince canlı
+     poller'ı hook'tan ayırır (hook'lar sürece özeldir, siteye etkisi yoktur), ve
+     "yüklemek kayıt yapmaz" ölçümü mutlak sayı yerine **delta** ölçer.
+- **Kanıt:** Etkin eklentiyle iki ardışık tur: `SHIPPING_PASSIVE=PASS|skipped:3`,
+  `SHIPPING_VERIFY=PASS`, `SHIPPING_LIFECYCLE=PASS`,
+  `SHIPPING_PASSIVE_ORDER_LIFECYCLE=PASS|shipping_meta_keys:none|actions_booked:0`
+  ve `SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES=PASS|module_callbacks:none`.
+- **İlgili dosya:** `scripts/verify-shipping-passive-contract.php`,
+  `scripts/verify-shipping-activation-lifecycle.sh`,
+  `scripts/verify-shipping-automation.php`, `scripts/verify.sh`
+- **Tekrar yaşanırsa ilk bak:** Bir ölçümün **cevaplanamaz** mı yoksa
+  **başarısız** mı olduğu. İkisi aynı şey değildir ve cevapsız olanı FAIL
+  raporlamak, kendisinden sonraki bütün ölçümleri de öldürür. Cevapsız ölçüm
+  gerekçesiyle atlanır ve garanti nerede ölçülüyorsa oraya işaret eder.
+
+---
+
 ## Bakım sırası
 
 Bir kargo belirtisi geldiğinde izlenecek sıra:
@@ -1166,8 +1428,11 @@ Bir kargo belirtisi geldiğinde izlenecek sıra:
    durum. `cancel_reconciliation_required` / `update_reconciliation_required`
    ise doğru davranış **hiçbir şey göndermemektir**; yalnız salt-okunur
    mutabakat çalıştırılır (K-24, K-25).
-4. **Belirsizlik mi, kesin ret mi?** `permanent` ret eski durumu korur ve
-   tekrar denenebilir; `uncertain` ve `success` kanıt durumuna gider.
+4. **Ret ağa çıktı mı, çıkmadı mı?** Soru "kesin ret mi" değildir (K-31).
+   `to_safe_line()` çıktısındaki `reached_carrier:no` — yani
+   `Result::local_refusal()` — tek başına intent'i kapatır ve siparişi önceki
+   durumuna döndürür. `reached_carrier:yes` olan her cevap, `success` ve 400
+   dâhil, korumalı durumda kalır ve yalnız salt-okunur kanıtla çözülür.
 5. **Ölçümler.** Önce `docker compose run --rm wp-cli wp eval-file
    /project-scripts/verify-shipping-automation.php`; sonra `make verify`.
    Sandbox'a bağlanmadan bunların hepsi mock transport üzerinden çalışır.
@@ -1290,21 +1555,58 @@ bağlantısına bağlıdır ve bağlantı Aşama 3'te kimlik kapısında durdu.
 
 | Kanıt | Türü |
 | --- | --- |
-| K-24…K-28 davranış ölçümleri | **mock transport / sahte adaptör**, ağ yok |
-| `SHIPPING_*` 599 kontrolü, iki ardışık `make verify` | **offline**, mock transport |
+| K-24…K-35 davranış ölçümleri | **mock transport / sahte adaptör**, ağ yok |
+| `SHIPPING_*` 93 davranış ölçümü + `verify.sh`'te sabitlenen 114 satır, iki ardışık tur | **offline**, mock transport |
+| Kalıcı intent ve çökme sınırı (K-29) | **gerçek ikinci MySQL oturumu** + yazmanın içinde `Throwable` |
 | `DHL_OPENAPI_CONTRACT` | **offline**, satıcının dosyalarının SHA-256'sı |
 | `DHL_RUNNER_OFFLINE` | **offline**, süreç başlatılmadığı kanıtlanarak |
 | Kimlik `present:2/4` | **gerçek dosya**, yalnız varlık; içerik okunmadı |
 | Sandbox bağlantısı | **yapılmadı** — dış çağrı 0 |
 | Sandbox gönderisi | **yapılmadı** |
 
+### `make verify` bu ortamda nerede duruyor
+
+`scripts/verify.sh` `set -eu` ile çalışır ve kargo bloğundan **önce**
+`verify-invoice-integration.php` çağrılır. O suite `kuka-island-edm` eklentisi
+pasifken "EDM plugin is deactivated" ile 21 ölçümü FAIL eder ve komut sıfırdan
+farklı dönerek betiği **orada keser** — kargo bloğuna hiç ulaşılmaz. EDM
+eklentisi varsayılan olarak pasif teslim edildiği için bu, kargo tarafının
+değil ortamın durumudur ve bu turda EDM'ye dokunulmadı (görev kapsamı dışı).
+
+Kargo bloğunu ölçmek için o tek atamanın sonuna `|| true` eklenmiş bir kopya
+kullanıldı: `INVOICE_*` ölçümleri gizlenmedi, yalnız betiğin devam etmesi
+sağlandı. Tam yeşil bir `make verify` turu, `docs/EDM_AKTIVASYON_REHBERI.md`
+etkinleştirme adımından sonra alınabilir.
+
+`EDM_LIFECYCLE_START` de bu ortamda FAIL raporlar (`gate_option:yes`): EDM
+deaktivasyonu çalışma kapısı option'ını yazmış durumda, ölçüm ise teslim
+durumunu (`gate_option:absent`) bekliyor. Yine EDM tarafı, yine bu turun
+kapsamı dışı; lifecycle betiği bulduğu durumu aynen geri yükledi.
+
 ### Modülün şu andaki teslim durumu
 
-- WordPress eklentisi: **pasif** (`kuka-island-shipping-automation,inactive`).
-  Bu turda etkinleştirilmedi; etkinleştirme Aşama 4'ün konusudur ve
-  DHL_AKTIVASYON_REHBERI.md'ye tabidir.
-- Çalışma kapısı: option yok (aktivasyon onu açar).
+- WordPress eklentisi: **etkin** (`kuka-island-shipping-automation,active`).
+  Beşinci turda kullanıcının açık kararıyla etkinleştirildi. Etkinlik tek başına
+  hiçbir şey göndermez: kimlikler eksik olduğu için her çalışma zamanı yazması
+  `credentials_missing` ile ağdan önce reddedilir.
+- Etkinleştirmenin ölçülen sonucu (K-36): üç pasif ölçüm **cevaplanamaz** hâle
+  gelir ve `SKIPPED|reason:plugin_active` raporlar. Bunları FAIL bırakmak
+  `set -e` yüzünden **bütün kargo doğrulamasını** devre dışı bırakıyordu; artık
+  yerlerine her iki durumda sorulabilen iki ölçüm var
+  (`SHIPPING_PASSIVE_DELIVERY_ARTEFACT`,
+  `SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES`) ve garantinin kendisi
+  `SHIPPING_LIFECYCLE_DEACTIVATION=PASS|classes_declared:none|hooks_registered:none`
+  ile gerçek bir deaktivasyondan sonra taze süreçte ölçülüyor. Teslim
+  durumuna dönüş tek komuttur:
+  `wp plugin deactivate kuka-island-shipping-automation`; o durumda üç ölçüm
+  yine PASS zorunludur.
+- Davranış suite'i etkin eklentiyle **yeşil** çalışır: canlı poller ile harness
+  poller'ının çakışması `kuka_ship_attach_sole_poller()` ile kaldırıldı (iki
+  worker aynı action'ı işlediği için sayılar birer fazla çıkıyordu), ve
+  "yüklemek kayıt yapmaz" ölçümü delta biçimine çevrildi.
+- Çalışma kapısı: **açık** (aktivasyon açtı).
 - Otomatik durum sorgusu: **kapalı** (`KUKA_SHIPPING_AUTOMATION` tanımsız).
-- Adaptör: **açık** (`KUKA_DHL_ADAPTER` tanımsız → varsayılan açık).
+- Adaptör: **açık** (`KUKA_DHL_ADAPTER` tanımsız → `unset_default_on`);
+  tanınmayan bir değer verilirse `configuration_invalid` ile **kapanır** (K-33).
 - Aktiflik tek başına kargo oluşturmaz; gönderi yalnız operatörün açık
   basışıyla oluşur.

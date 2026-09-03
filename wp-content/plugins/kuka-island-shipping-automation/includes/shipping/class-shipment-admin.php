@@ -118,8 +118,8 @@ final class Kuka_Island_Shipping_Admin {
 		return match ( $state ) {
 			Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED       => __( 'Taşıyıcıda sipariş kaydı var, gönderi/barkod aşaması tamamlanmamış. Sipariş yeniden oluşturulmaz; yalnız barkod aşaması sürdürülür.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Belirsiz taşıyıcı yanıtı var. Yeniden gönderim yapılmaz; önce mutabakat sorgusu çalıştırın.', 'kuka-island-shipping-automation' ),
-			Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED => __( 'İptal isteği taşıyıcıya gönderildi, sonucu doğrulanıyor. Yeni iptal gönderilmez; yalnız salt-okunur mutabakat sorgusu çalıştırılabilir.', 'kuka-island-shipping-automation' ),
-			Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED => __( 'Güncelleme isteği taşıyıcıya gönderildi, sonucu alan bazında doğrulanıyor. Yeni güncelleme gönderilmez; yalnız salt-okunur mutabakat sorgusu çalıştırılabilir.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED => __( 'İptal isteği taşıyıcıya gönderildi, sonucu doğrulanmadı. Otomatik durum sorgusu bu durumu ÇÖZMEZ ve yeni sorgu planlamaz; doğrulamayı "Mutabakat" düğmesiyle siz başlatmalısınız. Yeni iptal gönderilmez.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED => __( 'Güncelleme isteği taşıyıcıya gönderildi, uygulandığı alan bazında doğrulanmadı. Otomatik durum sorgusu bu durumu ÇÖZMEZ; doğrulamayı "Mutabakat" düğmesiyle siz başlatmalısınız. Yeni güncelleme gönderilmez, iptal hâlâ yapılabilir.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Mutabakat taşıyıcıda kayıt olmadığını gösterdi. Yeniden oluşturma açık bir işlemdir.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Kargo durumu manuel inceleme bekliyor.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Gönderi teslim edildi.', 'kuka-island-shipping-automation' ),
@@ -291,6 +291,25 @@ final class Kuka_Island_Shipping_Admin {
 			'runtime'    => Kuka_Island_Shipping_Runtime_Gate::is_disabled() ? 'closed' : 'open',
 			'automation' => Kuka_Island_Shipping_Status_Poller::automation_enabled() ? 'on' : 'off',
 			'adapters'   => array() === $keys ? 'none' : implode( '+', $keys ),
+			/*
+			 * WHY an adapter is absent, when one is. 'none' on its own is
+			 * ambiguous -- it looks the same whether a switch was turned off
+			 * deliberately or a value was mistyped and the adapter failed
+			 * closed -- and the second case is the one an operator has to be
+			 * told about, because they believe they configured something.
+			 *
+			 * Collected through a filter, exactly as the adapters themselves
+			 * are. This class must not name a courier or read a courier's
+			 * configuration: an adapter that fails closed says so itself, in
+			 * its own words, and this screen only prints what it is handed.
+			 *
+			 * @param array<int, string> $notices Operator-facing sentences.
+			 */
+			'notices'    => array_values(
+				array_filter(
+					array_map( 'strval', (array) apply_filters( 'kuka_island_shipping_configuration_notices', array() ) )
+				)
+			),
 		);
 	}
 
@@ -300,7 +319,7 @@ final class Kuka_Island_Shipping_Admin {
 	 * @param array{module: string, runtime: string, automation: string, adapters: string} $status Status.
 	 */
 	public static function module_status_line( array $status ): string {
-		return sprintf(
+		$line = sprintf(
 			/* translators: 1: module state, 2: runtime gate state, 3: automation state, 4: registered adapter keys. */
 			__( 'Modül: %1$s · Çalışma kapısı: %2$s · Otomatik durum sorgusu: %3$s · Kayıtlı taşıyıcı: %4$s', 'kuka-island-shipping-automation' ),
 			'active' === $status['module'] ? __( 'etkin', 'kuka-island-shipping-automation' ) : __( 'yüklü (eklenti etkin değil)', 'kuka-island-shipping-automation' ),
@@ -308,6 +327,16 @@ final class Kuka_Island_Shipping_Admin {
 			'on' === $status['automation'] ? __( 'açık', 'kuka-island-shipping-automation' ) : __( 'kapalı', 'kuka-island-shipping-automation' ),
 			'none' === $status['adapters'] ? __( 'yok', 'kuka-island-shipping-automation' ) : $status['adapters']
 		);
+
+		foreach ( (array) ( $status['notices'] ?? array() ) as $notice ) {
+			$notice = trim( (string) $notice );
+
+			if ( '' !== $notice ) {
+				$line .= ' · ' . $notice;
+			}
+		}
+
+		return $line;
 	}
 
 	/**

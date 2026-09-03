@@ -156,6 +156,36 @@ kapısı tam olarak bu senaryo için vardır. `Runtime_Gate::is_disabled()` her
 çağrıda option tablosundan doğrudan okur, bu yüzden ikinci okuma birincinin
 tekrarı değildir.
 
+**Yazma boğazının ikinci koşulu: kalıcı niyet.** `guarded_write()`'ın dördüncü
+argümanı **zorunludur** ve `void` değildir: `Order_Store::begin_mutation()`
+sonucunu döndürür. Bu argüman eskiden yalnız provider'ı sabitleyen bir `void`
+callback'ti; sonucunu hiçbir şey kontrol etmediği için **kaydedilemeyen bir
+sabitleme ile kaydedilen bir sabitleme ayırt edilemiyordu** ve istek yine
+gidiyordu. Artık:
+
+1. `begin_mutation()` siparişi **o operasyonun korumalı durumuna** taşır ve
+   yapılacak işin tam tarifini (`mutation_id`, `kind`, `operation`, `target`,
+   `previous_state`, `provider`, `reference`, güncellemeler için `expected`,
+   `created_at`) **tek save** ile yazar.
+2. Aynı metot siparişi **veritabanından taze olarak yeniden okur** — her önbellek
+   düşürülür, meta okuması zorlanır — ve kritik alanların tamamını `!==` ile
+   birebir karşılaştırır.
+3. Doğrulama `ok` dönmezse `$write()` **hiç çağrılmaz**. Taşıyıcı çağrısı 0
+   kalır, kod `mutation_intent_unverified` olur.
+
+Doğrulama başarısız olduğunda sipariş korumalı durumda **bırakılır**; geri
+alınmaz. Yazmalarına güvenilemeyen bir süreçte geri alma denemek, aynı
+mekanizmaya yeniden güvenmek olur ve üretebileceği hata tehlikeli olanıdır:
+yazma düğmesi açık bir durum. Kalan artığı `reconcile_cancellation()` okuyarak
+çözer; intent kaydının kaybolduğu durum orada özel olarak ele alınır.
+
+Ölçüm: `SHIPPING_MUTATION_INTENT_DURABLE` (altı operasyon, niyet **ayrı bir
+MySQL oturumundan** okunuyor), `SHIPPING_MUTATION_CRASH_BOUNDARY` (altı
+operasyon, yazmanın içinde `Throwable` ile kontrol akışı kesiliyor; yeni sipariş
+nesnesi + yeni `Manager` + yeni adaptörle tekrar deneme **0** yazma yapıyor) ve
+`SHIPPING_MUTATION_INTENT_UNPERSISTED_BLOCKS_WRITE` (intent satırının yazımı
+sabote ediliyor; taşıyıcı çağrısı 0).
+
 **Okuma boğazı — `Manager::guarded_read()`.** Üç okumanın tamamı buradan geçer
 ve kapı yine okumadan **hemen önce** sorulur.
 
@@ -387,27 +417,85 @@ gövdesi okunamayan 2xx, 409, 429, 5xx, 3xx ve beklenmeyen durum kodları.
 
 Yokluk **kanıtlanır**; timeout yokluk kanıtı değildir.
 
-### 7.0 Yazma kanıtı: gönderilmiş bir yazma geri alınamaz
+### 7.0 Yazma kanıtı: kapı istek gitmeden **önce** kapanır
 
 Bir yazma çağrısı taşıyıcıya **ulaştıktan** sonra — cevabı `success` da olsa —
 aynı belge için ikinci bir yazma yapılamaz. `success`, ağ geçidinin isteği
 aldığını söyler; işlemin uygulandığını söylemez.
 
-Bunun için iki ayrı kalıcı durum vardır:
+**Kapı cevap beklenerek kapatılamaz.** Önceki tur kapıyı cevap geldikten sonra
+kapatıyordu; bu, cevabın geldiği varsayımına dayanır. Süreç istek uçarken
+ölürse (fatal, OOM, deploy, kopan veritabanı bağlantısı) hiçbir kod yolu geri
+dönmez ve siparişi koruyabilecek tek şey **o an diskte olan**dır. Bu yüzden
+`begin_mutation()` durumu **istek gitmeden önce** taşır ve niyeti diske
+yazıp geri okur (§2.2).
 
-| Durum | Ne zaman yazılır | Nasıl çıkılır |
+Altı operasyonun ilk yazması sırasında siparişin durumu:
+
+| Operasyon | İlk yazma sırasındaki durum | Kapalı kapıyı açan tek kanıt |
 | --- | --- | --- |
-| `cancel_reconciliation_required` | `cancelorder`/`cancelshipment` taşıyıcıya ulaştı (`success` **veya** `uncertain`) | Yalnız yazmanın hedefi olan nesnenin salt-okunur sorgusu `not_found` derse → `cancelled` |
-| `update_reconciliation_required` | `updateorder`/`updateshipment` `uncertain` döndü | Yalnız alan bazında geri okuma gönderilen değerlerle **birebir** eşleşirse → önceki durum; eşleşmezse → `manual_review` |
+| `create_order` | `reconcile_required` | `getshipment` + `getorder`; **ikisi de** `not_found` → `absent_confirmed` |
+| `create_barcode` | `reconcile_required` | aynı |
+| `update_order` | `update_reconciliation_required` | alan bazında geri okuma **birebir** eşleşirse → önceki durum; eşleşmezse → `manual_review` |
+| `update_shipment` | `update_reconciliation_required` | aynı |
+| `cancel_order` | `cancel_reconciliation_required` | `getorder` → `not_found` → `cancelled` |
+| `cancel_shipment` | `cancel_reconciliation_required` | `getshipment` → `not_found` → `cancelled` |
 
-Her ikisi de `states_blocking_create()` içindedir ve her ikisinden çıkış
-**yalnız okumayla**dır.
+Üç korumalı durumun tamamı `states_blocking_create()` içindedir ve hepsinden
+çıkış **yalnız okumayla**dır.
 
-**Tek istisna: kesin ret.** Taşıyıcı `permanent` cevap verdiyse — 400, 401,
-403, 404 — istek reddedilmiştir ve hiçbir şeyi değiştirmemiştir. Yalnız bu
-durumda sipariş eski durumunda kalır ve düğme yeniden kullanılabilir.
-`uncertain` üreten her durum (timeout, 409, 429, 5xx, okunamayan 2xx) kanıt
-durumuna gider.
+**"Kesin ret hiçbir şeyi değiştirmemiştir" varsayımı kaldırıldı.** Önceki tur
+`permanent` bir cevabı — 400, 401, 403, 404 — "istek reddedildi, hiçbir şey
+olmadı" diye okuyordu ve siparişi eski durumuna döndürüyordu. Satıcının resmî
+OpenAPI belgeleri bunu **desteklemiyor**: altı yazma operasyonunun tamamı tam
+olarak dört cevap tanımlar —
+
+```
+200  <Order|Shipment> created/updated/canceled
+400  Bad Request
+401  Unauthorized
+500  Server Error
+```
+
+— ve **hiçbiri** yan etkiden söz etmez. 400'ün kayıt bırakıp bırakmadığı yazılı
+değildir. Dolayısıyla "yan etkisi olmadığı belgelenmiş hata" allowlist'i
+**boştur**, ve intent'i okumadan kapatan tek şey şudur:
+
+**Adaptörün ağa çıkmadan verdiği ret.** `Result::local_refusal()` yalnız
+`call()` çağrılmadan önce, soket açılmadan verilen retler için kullanılır:
+eksik payload, kapıda ödeme, geçersiz referans, izin listesinde olmayan uç.
+Bunlarda taşıyıcının değişmediği **kod yolundan kanıtlanır**, durum koduna
+bakılarak tahmin edilmez. `Result::reached_carrier()` bu ayrımı taşır ve
+`to_safe_line()` çıktısında `reached_carrier:yes|no` olarak görünür.
+
+| Cevap | intent | Sipariş durumu |
+| --- | --- | --- |
+| `local_refusal` (ağa çıkılmadı) | kapatılır | `previous_state`'e döner, düğme açık |
+| `success` | **açık kalır** | korumalı durumda kalır, salt-okunur kanıt beklenir |
+| `permanent` (taşıyıcı cevapladı: 400/401/403/404) | **açık kalır** | korumalı durumda kalır |
+| `uncertain` (timeout, 409, 429, 5xx, okunamayan 2xx) | **açık kalır** | korumalı durumda kalır |
+
+**Yalnız alındı olan bir `success` uygulanmış sayılmaz.** Bu özellikle
+güncellemede önemlidir: `updateshipment` 200 dönse bile hangi alanları aldığı
+yazılı değildir, bu yüzden durum `update_reconciliation_required`'da kalır ve
+yalnız alan bazında geri okuma onu çözer. DHL adaptörü bu geri okumayı
+yapamadığı için (`readback_unsupported`) her DHL güncellemesi doğrulanmamış
+kalır — ve bu, gizlenecek bir kusur değil, sözleşmenin dürüst sonucudur.
+
+**Doğrulanmamış bir güncelleme paketi ulaşılmaz yapmaz.** İkinci **güncelleme**
+reddedilir (doğru), fakat **iptal** `update_reconciliation_required` durumundan
+da yapılabilir: hangi nesnenin adreslendiği güncellemenin kendi intent
+kaydındaki `previous_state`'ten okunur. Aksi hâlde operatör paketi ne
+düzeltebilir ne durdurabilir hâlde kalırdı.
+
+**Sonuç geçişleri tek save'dir.** `Order_Store::settle_mutation()` durumu,
+`META_PENDING_MUTATION`'ın temizlenmesini, son operasyonu ve geçmiş kaydını
+**aynı** `save_meta_data()` içinde yazar; `save_order_created()` ve
+`save_shipment_created()` de intent'i kendi save'lerinde kapatır. Sınıftaki tek
+yazma noktası `Order_Store::persist()`'tir ve sayar: `save_count()`. Ölçüm
+`SHIPPING_MUTATION_OUTCOME_ATOMIC` — iptal onaylandı 1, güncelleme onaylandı 1,
+güncelleme uyuşmadı 1, intent açılıp önceki duruma dönüş 2 (biri açmak, biri
+kapatmak), oluşturma + barkod 4.
 
 ### 7.1 İptal: serileştirilmiş, idempotent, doğrulanmış
 
@@ -428,8 +516,15 @@ Diğer her durumda dış çağrı **0**'dır:
 | Durum | Kod |
 | --- | --- |
 | `cancelled` | `already_cancelled` |
+| `cancel_reconciliation_required` | `cancel_in_progress` |
 | `none`, `blocked`, `absent_confirmed`, `reconcile_required`, `delivered`, `manual_review`, tanımsız | `not_cancellable` |
 | `shipment_created` fakat `shipment_id` boş | `not_cancellable` |
+| `update_reconciliation_required` **ve** intent kaydı okunamıyor | `not_cancellable` |
+
+`update_reconciliation_required` durumu tek başına iptali engellemez: intent
+kaydındaki `previous_state` hangi nesnenin adreslendiğini söylüyorsa iptal o
+nesneye gönderilir (§7.0). Yalnız o kayıt da okunamıyorsa reddedilir, çünkü o
+noktada adres bir tahmin olurdu.
 
 Son satır önemlidir: gönderi vardır ama numarası bilinmiyorsa adreslenecek kayıt
 yoktur, ve **onun yerine siparişi iptal etmek** yanlış nesneye istek göndermek
@@ -452,8 +547,24 @@ yalnız okur:
 
 Son üç satırda **hiçbir şey** değişmez: yeni iptal gönderilmez, `order_created`
 ya da `shipment_created`a **geri dönülmez**, ve sorgu zinciri iptal edilmez.
-Doğrulanmamış bir iptal, hâlâ hareket ediyor olabilecek bir pakettir; planlı
-durum sorgusu onu izleyen tek şeydir.
+
+**Doğrulanmamış iptali çözen şey bir kişidir, otomatik sorgu değildir.** Kodda
+bir yorum, planlı durum sorgusunun "onu izleyen tek şey" olduğunu söylüyordu.
+Söylediği doğru değildi: poller'ın işçisi önce durumu okur,
+`cancel_reconciliation_required` görür ve **tek bir taşıyıcı okuması yapmadan**
+`state_not_pollable` dönerek biter; ardına yeni bir iş de planlamaz. Yani
+planlanmış iş bırakılsa da bırakılmasa da zincir orada durur.
+
+Planlanmış iş yine iptal **edilmez** — zamanlayıcıya ikinci bir yazma yapmak
+hiçbir şey kazandırmaz — fakat sonucu açıkça yazılıdır: bu durumu **operatör**
+çözer, sipariş ekranındaki "Mutabakat" düğmesiyle, ve o düğme
+`reconcile_cancellation()`'ı yeniden çalıştırır. Bu modülde hiçbir zamanlayıcı
+iptali yeniden denemez. Sipariş ekranındaki metin de bunu aynen söyler:
+*"Otomatik durum sorgusu bu durumu ÇÖZMEZ ve yeni sorgu planlamaz."*
+
+Ölçüm: `SHIPPING_PENDING_CANCEL_IS_MANUAL_ONLY` — işçi bir kez koşuyor,
+`status_reads:0`, yeni iş planlanmıyor, operatörün okuması durumu ilerletiyor,
+ve yanlış yorum kaynakta artık yok.
 
 `cancel_reconciliation_required` durumundaki bir siparişte iptal düğmesi
 `cancel_in_progress` ile reddedilir — ikinci basış, bayat sipariş nesnesi ve
@@ -476,10 +587,12 @@ Bu, "gecikmiş güncelleme" senaryosunu kapatır: iptal başarıyla tamamlandık
 sonra, iptalden **önce** alınmış bir sipariş nesnesiyle çağrılan güncelleme,
 kilit içindeki taze okuma `cancelled` gördüğü için gönderilmez.
 
-**Belirsiz güncelleme, nesnenin varlığıyla başarılı sayılamaz.** Nesne
-güncellemeden **önce** de oradaydı. `uncertain` bir güncelleme
-`update_reconciliation_required` durumuna gider ve gönderilen **alan
-değerlerini** yanına yazar. Tek kanıt, alan bazında geri okumadır:
+**Hiçbir güncelleme, nesnenin varlığıyla başarılı sayılamaz — `success` dâhil.**
+Nesne güncellemeden **önce** de oradaydı, ve satıcının 200'ü hangi alanların
+alındığını söylemez. Bu yüzden `update_reconciliation_required` durumu
+`uncertain`'e özel değildir: `begin_mutation()` onu **istek gitmeden önce**
+yazar ve gönderilen **alan değerlerini** yanına koyar. Tek kanıt, alan bazında
+geri okumadır:
 
 `Carrier_Interface::read_amendable_fields()` taşıyıcının o an tuttuğu değerleri
 semantik alan adlarıyla döndürür (`recipient_full_name`, `recipient_address`,
@@ -487,6 +600,31 @@ semantik alan adlarıyla döndürür (`recipient_full_name`, `recipient_address`
 `content`, `description`, `desi`, `kg`). Karşılaştırma **tam**dır: her beklenen
 alan cevapta bulunmalı ve eşit olmalıdır. Cevapta **bulunmayan** bir alan
 eşleşmezliktir — "bizi yalanlamadı" kanıt değildir.
+
+**"Birebir" gerçekten birebirdir: tek kanonik biçim, sıfır tolerans.**
+`fields_match()` eskiden iki tarafı da `trim()` ediyordu, ve o tek çağrı
+"birebir" kelimesini yanlış yapıyordu: gönderilen `Ada Lovelace` ile geri okunan
+` Ada Lovelace` **eşleşiyordu**, yani alanı sessizce yeniden biçimlendirmiş bir
+taşıyıcı "aynen tutuyor" diye raporlanıyordu. Farkı karşılaştırmanın içinde
+soğurmak, doğrulamanın tersidir.
+
+Çözüm daha gevşek bir karşılaştırma değil, **tanımlı** bir karşılaştırmadır:
+
+1. `Manager::canonical_amendable_value()` tek kanonik biçimi tanımlar — baştaki
+   ve sondaki boşluk atılır, içteki boşluk dizileri (yapıştırılmış adreslerin
+   taşıdığı sekme ve satır sonları dâhil) tek boşluğa indirilir, Unicode
+   duyarlı.
+2. `Manager::canonicalize_request()` bunu `build_request()`'in **en sonunda**,
+   `kuka_island_shipping_request` filtresinden **sonra** uygular. Yani
+   taşıyıcıdan istenen baytlar, karşılaştırmanın daha sonra talep edeceği
+   baytlarla aynıdır; mağazanın kendi filtresi araya boşluk geri koyamaz.
+3. `fields_match()` içinde **hiçbir** `trim()` yoktur; karşılaştırma `!==` ile
+   yapılır ve skaler olmayan bir cevap da eşleşmezliktir.
+
+Ölçüm `SHIPPING_AMENDABLE_CANONICAL_EXACT`: kanonik biçim dört vaka,
+karşılaştırma altı vaka, gönderilen değerlerin tamamının kanonik olduğu
+ölçülüyor, ve baştaki tek boşlukla geri okunan bir alan `update_mismatch` →
+`manual_review` üretiyor.
 
 | Geri okuma | Sonuç |
 | --- | --- |
@@ -512,8 +650,14 @@ diğer açık ölçümlerle aynı eşik.
 `SHIPPING_CANCEL_EVIDENCE_SURVIVES_UNCERTAIN`,
 `SHIPPING_CANCEL_EVIDENCE_CLEARED_ON_PROOF`,
 `SHIPPING_CANCEL_EVIDENCE_ORDER_BRANCH`,
-`SHIPPING_CANCEL_DEFINITIVE_REFUSAL_KEEPS_STATE`,
+`SHIPPING_CANCEL_REFUSAL_POLICY`,
 `SHIPPING_PENDING_CANCEL_KEEPS_THE_POLL_BOOKING`,
+`SHIPPING_PENDING_CANCEL_IS_MANUAL_ONLY`,
+`SHIPPING_MUTATION_INTENT_DURABLE`,
+`SHIPPING_MUTATION_CRASH_BOUNDARY`,
+`SHIPPING_MUTATION_INTENT_UNPERSISTED_BLOCKS_WRITE`,
+`SHIPPING_MUTATION_OUTCOME_ATOMIC`,
+`SHIPPING_AMENDABLE_CANONICAL_EXACT`,
 `SHIPPING_UPDATE_SERIALISED_AND_FRESH`,
 `SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE`,
 `SHIPPING_UPDATE_EVIDENCE_EXISTENCE_IS_NOT_PROOF`,
@@ -697,7 +841,7 @@ tarafından mutabakatlandığı, mağazaya nasıl ulaştığı ve bu arada WooCo
 | --- | --- |
 | `scripts/verify-dhl-openapi-contract.sh` | SHA-256 + 13 operasyon + durum sözlüğü + base path |
 | `scripts/verify-shipping-passive-contract.php` | pasif teslim + manuel yol + çekmece koruması |
-| `scripts/verify-shipping-automation.php` | 30 davranış ölçümü, mock transport |
+| `scripts/verify-shipping-automation.php` | 93 davranış ölçümü, mock transport |
 | `scripts/verify-shipping-activation-lifecycle.sh` | gerçek `wp plugin activate/deactivate` |
 | `scripts/verify-dhl-runner-offline.sh` | runner'ın çevrimdışı izin listesi modu hiçbir süreç başlatmıyor |
 | `scripts/verify-shipping-cache-custodian.sh` | normal/çıkış/fatal: koşu mağazanın CBS önbelleğine hiç dokunmuyor |
@@ -709,7 +853,18 @@ tarafından mutabakatlandığı, mağazaya nasıl ulaştığı ve bu arada WooCo
 satır sabitler: OpenAPI sözleşmesi, pasif teslim sözleşmesi, davranış ölçümleri
 (mock transport), gerçek etkinleştirme/devre dışı bırakma turu ve paket içeriği.
 Bu beşinin hiçbiri ağa çıkmaz, hiçbir kimlik bilgisi okumaz ve taşıyıcıda
-hiçbir kayıt oluşturmaz.
+hiçbir kayıt oluşturmaz. Kargo bloğunda `expect_shipping_match` ile sabitlenen
+satır sayısı **114**'tür.
+
+**`make verify` kargo bloğuna ulaşmak için EDM eklentisinin etkin olmasını
+gerektirir.** `scripts/verify.sh` `set -eu` ile çalışır ve kargo bloğundan önce
+`verify-invoice-integration.php` çağrılır; o suite `kuka-island-edm` pasifken
+"EDM plugin is deactivated" ile 21 ölçümü FAIL eder ve komut sıfırdan farklı
+dönerek betiği **orada** keser. Eklenti varsayılan olarak pasif teslim edildiği
+için, tam yeşil bir `make verify` turu `docs/EDM_AKTIVASYON_REHBERI.md`'deki
+etkinleştirme adımından **sonra** alınabilir. Yalnız kargo bloğunu ölçmek
+gerektiğinde tek satırlık düzenleme yeterlidir: o atamanın sonuna `|| true`
+eklemek, `INVOICE_*` ölçümlerini gizlemez, yalnız betiğin devam etmesini sağlar.
 
 Son iki satır **`make verify` kapsamında değildir** ve olamaz:
 
@@ -746,7 +901,38 @@ Dört bağımsız anahtar vardır ve yönetim panelinde hepsi birlikte yazılıd
 | WordPress eklentisi | Hiçbir dosya yüklenmez: sınıf, admin hook'u, poller, Action Scheduler işi ve API istemcisi yok; ağ çağrısı 0 | `wp plugin activate/deactivate` |
 | Çalışma kapısı | Yüklü ama hiçbir taşıyıcı çağrısı yapılmaz; uçuştaki worker bile durur | `kuka_island_shipping_runtime_disabled` option'ı; deaktivasyon kapatır, aktivasyon açar |
 | Otomatik durum sorgusu | Hiçbir sorgu planlanmaz; uçuştaki zincir bir sonraki adımda durur | `KUKA_SHIPPING_AUTOMATION`, **varsayılan kapalı** |
-| Adaptör | Registry o adaptörü hiç öğrenmez; nesne kurulmaz, istemci kurulmaz, her işlem `carrier_not_registered` ile ağdan önce reddedilir | `KUKA_DHL_ADAPTER`, varsayılan açık |
+| Adaptör | Registry o adaptörü hiç öğrenmez; nesne kurulmaz, istemci kurulmaz, her işlem `carrier_not_registered` ile ağdan önce reddedilir | `KUKA_DHL_ADAPTER`, tanımsızsa açık |
+
+**`KUKA_DHL_ADAPTER` tanınmayan her değerde KAPANIR.** Eski kural "yalnız dört
+açık olumsuz kapatır, gerisi açık kalır"dı ve gerekçesi "yazım hatası kargoyu
+sessizce durdurmasın"dı. Hatanın diğer yönü daha kötüsüdür ve gerçekleşiyordu:
+`flase`, `of`, `' 0'` ve `''` adaptörü **açık** bırakıyordu. Olumsuz yazmak
+isteyip yanlış yazan operatör kargonun durduğunu sanıyordu, oysa gönderi hâlâ
+oluşturulabiliyordu — ve hiçbir yerde değerin anlaşılmadığı yazılı değildi.
+
+| Değer | Sonuç | `reason` |
+| --- | --- | --- |
+| tanımsız | açık | `unset_default_on` |
+| `1`, `true`, `yes`, `on` (tam eşleşme) | açık | `explicitly_on` |
+| `0`, `false`, `no`, `off` (tam eşleşme) | kapalı | `explicitly_off` |
+| PHP `true` / `false` sabiti | değere göre | `explicitly_on` / `explicitly_off` |
+| `''`, `flase`, `of`, `' 1'`, `'1 '`, `ON`, `True`, `evet`, `2`, dizi/nesne | **kapalı** | `configuration_invalid` |
+
+**Sessiz normalizasyon yoktur.** Kırpma yok, büyük-küçük harf katlama yok, tür
+zorlaması yok. `' 1'` ayarın kendisi değil, kimsenin kontrol etmediği bir
+değerdir; onu sessizce `1` okumak yapılandırma dosyasının yanlış kalmaya devam
+etmesinin yoludur. Tek istisna gerçek bir PHP boolean'ıdır: o bir yazım değil,
+bir değerdir ve yanlış yazılamaz.
+
+`configuration_invalid` sipariş ekranında **görünür**: adaptör kendi cümlesini
+`kuka_island_shipping_configuration_notices` filtresine koyar (registry'nin
+kendisi de aynı desenle çalışır) ve `module_status_line()` onu basar. Taşıyıcıyı
+adıyla anan katman kompozisyon köküdür; sipariş ekranı hiçbir kuryeyi adıyla
+anmaz, yalnız kendisine verileni yazar.
+
+Ölçüm `SHIPPING_ADAPTER_KEY_FAIL_CLOSED`: 19 değer, hatalı 0, geçersiz değerde
+kayıtlı adaptör 0 ve HTTP 0, kapı `carrier_not_registered`, ve durum satırı
+ayarın adını + "tanınmadı" cümlesini içeriyor.
 
 **Deaktivasyon** çalışma kapısını **önce** kapatır, sonra `kuka-island-shipping`
 grubundaki bekleyen `kuka_island_shipping_query_status` işlerini action id
@@ -761,9 +947,9 @@ sahipliğine ya da eski sipariş metasına dokunmaz**.
 yalnız operatörün açık basışıyla oluşur; hiçbir sipariş durumu kancası bu yola
 bağlı değildir.
 
-Ölçüm: `SHIPPING_ADAPTER_SWITCH`, `SHIPPING_MODULE_STATUS_VISIBLE`,
-`SHIPPING_DEACTIVATION_PRESERVES_OWNERSHIP`, ve gerçek `wp plugin
-activate/deactivate` turu için `SHIPPING_LIFECYCLE_*`.
+Ölçüm: `SHIPPING_ADAPTER_SWITCH`, `SHIPPING_ADAPTER_KEY_FAIL_CLOSED`,
+`SHIPPING_MODULE_STATUS_VISIBLE`, `SHIPPING_DEACTIVATION_PRESERVES_OWNERSHIP`,
+ve gerçek `wp plugin activate/deactivate` turu için `SHIPPING_LIFECYCLE_*`.
 
 ## 18. Dokunulmayacaklar
 

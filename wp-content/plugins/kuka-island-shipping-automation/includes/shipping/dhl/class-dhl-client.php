@@ -187,7 +187,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	public function cancel_order( string $reference ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'cancel_order', 'bad_request' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'cancel_order', 'bad_request' );
 		}
 
 		return $this->call(
@@ -276,7 +276,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	public function cancel_shipment( string $reference, string $shipment_id ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) || '' === trim( $shipment_id ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'cancel_shipment', 'bad_request' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'cancel_shipment', 'bad_request' );
 		}
 
 		return $this->call(
@@ -303,7 +303,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	public function get_order( string $reference ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'get_order', 'bad_request' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'get_order', 'bad_request' );
 		}
 
 		return $this->call(
@@ -336,7 +336,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	public function get_shipment( string $reference ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'get_shipment', 'bad_request' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'get_shipment', 'bad_request' );
 		}
 
 		return $this->call(
@@ -373,7 +373,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	public function get_shipment_status( string $reference ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'get_shipment_status', 'bad_request' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'get_shipment_status', 'bad_request' );
 		}
 
 		return $this->call(
@@ -414,7 +414,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	public function track_shipment( string $reference ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( $reference ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'track_shipment', 'bad_request' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'track_shipment', 'bad_request' );
 		}
 
 		return $this->call(
@@ -487,7 +487,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 			return array(
 				'ok'        => false,
 				'districts' => array(),
-				'result'    => Kuka_Island_Shipping_Result::permanent( 'get_districts', 'bad_request' ),
+				'result'    => Kuka_Island_Shipping_Result::local_refusal( 'get_districts', 'bad_request' ),
 			);
 		}
 
@@ -559,19 +559,19 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 */
 	private function preflight( bool $is_write ): ?Kuka_Island_Shipping_Result {
 		if ( Kuka_Island_Shipping_Runtime_Gate::is_disabled() ) {
-			return Kuka_Island_Shipping_Result::permanent( 'preflight', Kuka_Island_Shipping_Runtime_Gate::CODE );
+			return Kuka_Island_Shipping_Result::local_refusal( 'preflight', Kuka_Island_Shipping_Runtime_Gate::CODE );
 		}
 
 		if ( $this->config->is_live_blocked() ) {
-			return Kuka_Island_Shipping_Result::permanent( 'preflight', 'live_environment_blocked' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'preflight', 'live_environment_blocked' );
 		}
 
 		if ( array() !== $this->config->get_readiness_gaps() ) {
-			return Kuka_Island_Shipping_Result::permanent( 'preflight', 'credentials_missing' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'preflight', 'credentials_missing' );
 		}
 
 		if ( $is_write && ! $this->config->is_ready() ) {
-			return Kuka_Island_Shipping_Result::permanent( 'preflight', 'credentials_missing' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'preflight', 'credentials_missing' );
 		}
 
 		return null;
@@ -604,11 +604,18 @@ final class Kuka_Island_Shipping_DHL_Client {
 		$gate = $this->preflight( $is_write );
 
 		if ( null !== $gate ) {
-			return new Kuka_Island_Shipping_Result( $gate->get_outcome(), $operation, array(), $gate->get_safe_error_code(), 0 );
+			/*
+			 * Re-labelled with THIS operation's name, and still a LOCAL
+			 * refusal. preflight() decides before a socket exists, so the
+			 * request provably never left -- and rebuilding the object with
+			 * `new` used to drop that fact, which made a closed runtime gate
+			 * look like an answer the carrier had given.
+			 */
+			return Kuka_Island_Shipping_Result::local_refusal( $operation, $gate->get_safe_error_code() );
 		}
 
 		if ( ! $this->config->is_allowed_url( $url ) ) {
-			return Kuka_Island_Shipping_Result::permanent( $operation, 'endpoint_not_allowed' );
+			return Kuka_Island_Shipping_Result::local_refusal( $operation, 'endpoint_not_allowed' );
 		}
 
 		$needs_token = ! self::is_cbs_operation( $operation );
@@ -642,7 +649,7 @@ final class Kuka_Island_Shipping_DHL_Client {
 			$encoded = wp_json_encode( $payload );
 
 			if ( ! is_string( $encoded ) ) {
-				return Kuka_Island_Shipping_Result::permanent( $operation, 'bad_request' );
+				return Kuka_Island_Shipping_Result::local_refusal( $operation, 'bad_request' );
 			}
 
 			$body                    = $encoded;

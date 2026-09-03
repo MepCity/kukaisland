@@ -560,11 +560,11 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 
 ---
 
-## 15.1 Kargo otomasyonu — dört turda öğrenilenler
+## 15.1 Kargo otomasyonu — beş turda öğrenilenler
 
-EDM gibi, kargo da **ayrı ve varsayılan pasif** bir eklenti. Dört bağımsız
-düzeltme turu geçti ve her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu
-sıralamanın kendisi ders: her tur bir önceki turun "tamam" dediği yeri ölçtü.
+EDM gibi, kargo da **ayrı** bir eklenti. **Beş** bağımsız düzeltme turu geçti ve
+her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu sıralamanın kendisi
+ders: her tur bir önceki turun "tamam" dediği yeri ölçtü.
 
 **Tur 1 — akış boşlukları.** İptal doğrulaması yanlış nesneyi sorguluyordu
 (`cancelorder` sonrası `getshipment`), `order_created` durumundan çıkış yolu
@@ -587,12 +587,34 @@ varlığıyla başarılı sayılıyordu; provider geçerli bir istek olmadan
 sabitleniyordu; test önbelleği sahipliği tahminle belirliyordu; ve deaktivasyon
 bekleyen işleri gerçekte iptal etmiyordu. Bkz. K-24…K-28.
 
-### Dört tekrarlayan ders
+**Tur 5 — kalıcı niyet.** Dördüncü tur kapıyı **cevap geldikten sonra**
+kapatıyordu, ve bu cevabın geldiği varsayımına dayanır. Süreç istek uçarken
+ölürse (fatal, OOM, deploy, kopan bağlantı) hiçbir kod yolu geri dönmez: sipariş
+`none` durumunda kalıyor, `states_blocking_create()` onu geçiriyor ve ikinci bir
+`createOrder` gidiyordu — tek paket, iki kayıt. Ayrıca `guarded_write()`'ın
+sabitleme callback'i `void` olduğu için kaydedilemeyen bir sabitleme
+kaydedilenden ayırt edilemiyordu; "kesin ret hiçbir şeyi değiştirmemiştir"
+varsayımı satıcının OpenAPI sözleşmesinde **yazılı değildi**; sonuç geçişleri
+iki save'di; `KUKA_DHL_ADAPTER` yazım hatasında **açık** kalıyordu;
+`fields_match()` iki tarafı da `trim()` ettiği için "birebir" iddiası yanlıştı;
+ve bir kod yorumu, planlı durum sorgusunun doğrulanmamış iptali "izleyen tek
+şey" olduğunu söylüyordu — oysa o iş tek bir okuma bile yapmadan bitiyordu.
+Turun sonunda eklenti kullanıcının kararıyla **etkinleştirildi** ve bu bir
+altıncı kusuru açığa çıkardı: yalnız pasif eklentide gözlemlenebilen üç ölçüm
+FAIL raporlayıp, `set -e` yüzünden **bütün kargo doğrulamasını** kesiyordu.
+Bkz. K-29…K-36.
+
+### Altı tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"
    demesi, iptalin uygulandığını söylemez. Bir yazma taşıyıcıya ulaştıysa
-   ikincisi gönderilemez; çıkış yalnız okumayladır. Tek istisna `permanent`
-   ret: reddedilmiş bir istek hiçbir şeyi değiştirmemiştir.
+   ikincisi gönderilemez; çıkış yalnız okumayladır. Beşinci tur buradaki "tek
+   istisna"yı da kaldırdı: `permanent` bir ret de reddedilmiş isteğin hiçbir şey
+   değiştirmediğini **kanıtlamaz**, çünkü satıcının sözleşmesi altı yazma
+   operasyonu için yalnız `200/400/401/500` tanımlar ve hiçbirinde yan etkiden
+   söz etmez. Okumadan kapatılabilen tek ret, adaptörün **ağa çıkmadan**
+   verdiği rettir (`Result::local_refusal()`, `reached_carrier() === false`) —
+   ve bu durum koduyla değil kod yoluyla kanıtlanır.
 2. **Nesnenin varlığı, işlemin uygulandığını kanıtlamaz.** Bir CREATE için
    kaydı bulmak kanıttır; bir CANCEL için tam tersidir; bir UPDATE için ise
    hiçbir şey söylemez — nesne güncellemeden önce de oradaydı. Bu yüzden üç
@@ -603,13 +625,29 @@ bekleyen işleri gerçekte iptal etmiyordu. Bkz. K-24…K-28.
 4. **Test, mağazanın verisine dokunmamalı; sahiplik bildirilir, çıkarılmaz.**
    "Anlık görüntümde yoktu, demek ki benim" bir sahiplik kanıtı değildir.
    Doğru çözüm koşuya ait bir anahtar alanı ve birebir ad bildirimidir.
+5. **Cevaplanamaz bir ölçüm, başarısız bir ölçüm değildir.** Eklenti etkinken
+   "tek bir sınıfı yüklü değil" sorusu yanlış değil, cevapsızdır — ve onu FAIL
+   raporlamak, `set -e` altında kendisinden sonraki bütün ölçümleri de öldürür.
+   Cevapsız ölçüm gerekçesiyle atlanır, garantinin nerede ölçüldüğünü söyler, ve
+   yerine her iki durumda sorulabilen bir soru konur. Suite'i "her durumu kabul
+   et" diye gevşetmek ise garantiyi tamamen kaybetmektir (K-36).
+6. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
+   `uncertain` bir `Result` bile koda geri dönmüş demektir: kayıt tutabilecek
+   bir kod yolu çalıştı. Çökme öyle değildir. Bu yüzden korumanın tamamı
+   **istek gitmeden önce diske yazılmış** olana dayanır, ve ölçüm de bunu
+   yansıtmak zorundadır: yazmanın içinde `Throwable` ile kontrol akışını kes,
+   sonra **yeni nesne + yeni Manager + yeni adaptörle** tekrar dene ve ikinci
+   yazmayı say. Aynı mantık yorumlar için de geçerli: davranış iddia eden bir
+   yorumun ölçümü yoksa, yorum silinmeli ya da ölçüm yazılmalı.
 
 ### Modül şu anda ne durumda
 
-- Eklenti **pasif**. Etkinleştirme `docs/DHL_AKTIVASYON_REHBERI.md`
-  Aşama 4'ün konusudur ve ayrı bir karardır.
+- Eklenti **etkin** (kullanıcının beşinci turdaki açık kararı). Etkinlik tek
+  başına hiçbir şey göndermez: kimlikler eksik olduğu için her çalışma zamanı
+  yazması `credentials_missing` ile ağdan önce reddedilir.
 - Otomatik durum sorgusu **kapalı** (`KUKA_SHIPPING_AUTOMATION` tanımsız).
-- Adaptör açık; kendi anahtarı var (`KUKA_DHL_ADAPTER`).
+- Adaptör açık; kendi anahtarı var (`KUKA_DHL_ADAPTER`) ve tanınmayan her
+  değerde **kapanır** (K-33).
 - Aktiflik tek başına kargo oluşturmaz: gönderi yalnız operatörün açık
   basışıyla oluşur, hiçbir sipariş durumu kancası bu yola bağlı değildir.
 - Dört anahtar (eklenti / çalışma kapısı / otomatik sorgu / adaptör) sipariş
@@ -630,9 +668,9 @@ yazılı ve **açık kullanıcı onayı bekliyor**.
 ### Bakım sırasında izlenecek sıra
 
 `docs/DHL_BAKIM_HAFIZASI.md` → "Bakım sırası". Kısaca: hangi anahtar kapalı →
-sipariş hangi taşıyıcıya ait → bekleyen bir yazma kanıtı var mı → belirsizlik
-mi kesin ret mi → önce davranış ölçümleri, sonra `make verify`, gerçek sandbox
-en son ve yalnız operatör kontrolünde.
+sipariş hangi taşıyıcıya ait → bekleyen bir yazma kanıtı var mı → ret ağa çıktı
+mı çıkmadı mı → önce davranış ölçümleri, sonra `make verify`, gerçek sandbox en
+son ve yalnız operatör kontrolünde.
 
 Bu bölümde hiçbir kimlik bilgisi, token, parola veya müşteri numarası yoktur ve
 yazılmayacaktır.

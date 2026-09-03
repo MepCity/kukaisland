@@ -186,6 +186,64 @@ Etkinleştirme:
 - mevcut siparişleri kuyruğa almaz
 - otomasyonu açmaz
 
+**Bu adım üç ölçümü cevaplanamaz hâle getirir, ve suite bunu açıkça söyler.**
+"Modülün tek bir sınıfı yüklü değil" ve "tek bir hook'u kayıtlı değil"
+ifadeleri, modülü hiç yüklememiş bir WordPress hakkındaki ifadelerdir; modülü
+yüklemiş bir WordPress'in içinden ne kadar dikkatli bakılırsa bakılsın
+gözlemlenemezler. Eklenti etkinleştirildiğinde bunlar yanlış olmaktan çıkıp
+**cevapsız** hâle gelir.
+
+Bunları FAIL raporlamak işe yaramaz değil, **zararlıydı**: pasif sözleşme
+betiği başarısızlıkta sıfırdan farklı dönüyor ve `verify.sh` `set -e` ile
+çalışıyor, yani üç cevapsız soru **bütün kargo doğrulamasını** devre dışı
+bırakıyordu — davranış suite'i, lifecycle suite'i ve önbellek custodian'ı hiç
+çalışmıyordu. Ölçülerek görüldü.
+
+Bu yüzden üçü, gerekçesi yazılı olarak **SKIPPED** raporlanır:
+
+```
+SHIPPING_PASSIVE_PLUGIN_STATE=SKIPPED|reason:plugin_active|...
+SHIPPING_PASSIVE_CLASSES_ABSENT=SKIPPED|reason:plugin_active|...|measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION
+SHIPPING_PASSIVE_HOOKS_ABSENT=SKIPPED|reason:plugin_active|...|measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION
+```
+
+**Hiçbir garanti kaybolmaz**, ve üçünün yerine iki ölçüm **her iki durumda**
+sorulur hâle geldi:
+
+| Ölçüm | Ne kanıtlar |
+| --- | --- |
+| `SHIPPING_PASSIVE_DELIVERY_ARTEFACT` | Eklenti dosyası yerinde, başlığı bağımlılıklarını bildiriyor, bağımlılıklar etkin |
+| `SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES` | Modülün, sipariş hareket ettiğinde **kendiliğinden** tetiklenen 9 kancanın hiçbirinde callback'i yok (`add_meta_boxes` bilerek hariç: etkin modül panelini çizer) |
+| `SHIPPING_LIFECYCLE_DEACTIVATION` | Gerçek bir deaktivasyondan sonra **taze bir WordPress sürecinde**: `classes_declared:none`, `hooks_registered:none` |
+| `SHIPPING_LOAD_REGISTERS_NOTHING` | Dosyaları yüklemek hook kaydetmez, yalnız `register()` kaydeder — mutlak sayı değil **delta** (`delta:0|register_adds:7`) |
+| `SHIPPING_PASSIVE_ORDER_LIFECYCLE` | Eklenti **etkinken bile** bir sipariş processing→completed geçtiğinde kargo metası yazılmıyor ve iş planlanmıyor |
+
+`SHIPPING_LIFECYCLE_START` de artık başlangıç durumunu **dayatmıyor, kaydediyor**
+(`starting_state:recorded_not_asserted`); dayattığı tek şey Core ve
+WooCommerce'in etkin olması, çünkü aşağıdaki aktivasyon/deaktivasyon turu ancak
+o zaman bu modülü ölçer. Bulduğu durumu aynen geri yükler ve `active_plugins`
+option'ını **birebir** geri yazar (`wp plugin activate` diziye sona eklediği
+için tur sonunda eklenti sırası değişiyordu; eklenti yükleme sırası bir
+doğrulama koşusunun sessizce değiştirebileceği bir şey değildir).
+
+Suite'ler bilerek gevşetilmedi: pasif teslim durumunda üçü yine **PASS**
+zorunludur, ve `verify.sh` her iki biçimi de kabul eder ama üçüncü bir biçimi
+(FAIL, ya da başka gerekçeli bir skip) kabul etmez.
+
+Tam yeşil bir `make verify` turu gerektiğinde teslim durumuna dönmek tek
+komuttur ve hiçbir sipariş verisine dokunmaz:
+
+```bash
+docker compose run --rm wp-cli wp plugin deactivate kuka-island-shipping-automation
+```
+
+Adaptörün kendi anahtarı ayrıdır ve **tanınmayan her değerde kapanır**:
+`KUKA_DHL_ADAPTER` yalnız tam eşleşen `1`/`true`/`yes`/`on` ile açılır,
+`0`/`false`/`no`/`off` ile kapanır, tanımsızsa açık kalır. Başka her değer —
+`flase`, `of`, `' 1'` (baştaki boşlukla), `ON`, `''` — `configuration_invalid`
+sayılır, adaptör kapatılır ve sipariş ekranındaki durum satırı bunu yazar. Ayarı
+elle düzeltmeden hiçbir gönderi oluşturulamaz.
+
 `wp-config.php` içine dört kimlik sabitini ekleyin. Değerleri buraya yazarken
 dosyanın repo dışında olduğundan ve sunucuda okunamayacağından emin olun:
 

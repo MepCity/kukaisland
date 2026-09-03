@@ -54,7 +54,7 @@
  * OWNERSHIP COMES FIRST. resolve_carrier() answers "whose parcel is this" from
  * the ORDER, never from the shop's current default, for every operation
  * including the reads. The order's carrier is pinned before the first external
- * write and is never overwritten; see Order_Store::begin_carrier_session().
+ * write and is never overwritten; see Order_Store::begin_mutation().
  *
  * FOUR DOORS, ONE LOCK. create_shipment() begins at createOrder;
  * resume_barcode() begins at createbarcode and can never reach createOrder;
@@ -444,7 +444,7 @@ final class Kuka_Island_Shipping_Manager {
 	 * @param callable|null                          $before_write Runs only if the gate is open.
 	 * @return array{result: ?Kuka_Island_Shipping_Result, refusal: array<string, string>}
 	 */
-	private function guarded_write( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, callable $write, ?callable $before_write = null ): array {
+	private function guarded_write( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, callable $write, callable $persist_intent ): array {
 		$closed = $this->gate_closed_now( $carrier );
 
 		if ( array() !== $closed ) {
@@ -457,14 +457,62 @@ final class Kuka_Island_Shipping_Manager {
 			);
 		}
 
-		if ( null !== $before_write ) {
-			$before_write();
+		/*
+		 * THE INTENT IS WRITTEN AND READ BACK HERE, AND ITS VERDICT DECIDES
+		 * WHETHER ANYTHING IS SENT AT ALL.
+		 *
+		 * This argument used to be a void callback that pinned the provider and
+		 * then returned nothing. Nothing checked whether the pin had landed, so
+		 * a save that failed -- a lost connection, a filter that swallowed the
+		 * query -- was indistinguishable from one that worked, and the request
+		 * went out anyway. The order was then left with no record that anything
+		 * had been attempted, and the next press sent the same create again.
+		 *
+		 * So the callback returns a verdict, and a verdict that is not an
+		 * explicit ok refuses the operation. Not "logs and continues": returns,
+		 * with $write() never invoked and the carrier call count still zero.
+		 * A shape this method does not recognise is refused too -- a callback
+		 * that returns null or a string has not proved anything.
+		 */
+		$prepared = $persist_intent();
+
+		if ( ! is_array( $prepared ) || true !== ( $prepared['ok'] ?? null ) ) {
+			$refusal = array(
+				'code'    => is_array( $prepared ) && '' !== (string) ( $prepared['code'] ?? '' )
+					? (string) $prepared['code']
+					: 'mutation_intent_unverified',
+				'message' => is_array( $prepared ) && '' !== (string) ( $prepared['message'] ?? '' )
+					? (string) $prepared['message']
+					: __( 'Kargo işlemi başlatılmadı: yapılacak işlemin kalıcı kaydı doğrulanamadı. Taşıyıcıya hiçbir istek gönderilmedi.', 'kuka-island-shipping-automation' ),
+			);
+
+			$this->note( $order, $refusal['message'] );
+
+			return array(
+				'result'  => null,
+				'refusal' => $refusal,
+			);
 		}
 
 		return array(
 			'result'  => $write(),
 			'refusal' => array(),
 		);
+	}
+
+	/**
+	 * The callback guarded_write() demands: persist the intent, then prove it.
+	 *
+	 * Every one of the six external mutations builds one of these, so the shape
+	 * of "what is about to be attempted" is written by one method and cannot
+	 * drift between operations.
+	 *
+	 * @param WC_Order             $order Order.
+	 * @param array<string, mixed> $spec  kind, operation, target, provider, reference, expected.
+	 * @return callable(): array{ok: bool, code: string, message: string, detail: string, intent: array<string, mixed>}
+	 */
+	private static function intent_writer( WC_Order $order, array $spec ): callable {
+		return static fn (): array => Kuka_Island_Shipping_Order_Store::begin_mutation( $order, $spec );
 	}
 
 	/**
@@ -580,9 +628,10 @@ final class Kuka_Island_Shipping_Manager {
 		 * The reference is only PREPARED here -- nothing is written. An order
 		 * whose address cannot be mapped is a purely local failure with no
 		 * carrier contacted, and it must come out of the attempt unowned so a
-		 * different courier can be tried. The pin is handed to guarded_write()
-		 * below and happens between the gate check and the first byte on the
-		 * wire.
+		 * different courier can be tried. The durable intent -- which pins the
+		 * owner and moves the order into reconcile_required -- is handed to
+		 * guarded_write() below and lands between the gate check and the first
+		 * byte on the wire.
 		 */
 		$reference = Kuka_Island_Shipping_Order_Store::prepare_reference( $order );
 		$request   = $this->build_request( $order, $carrier, $reference );
@@ -613,9 +662,16 @@ final class Kuka_Island_Shipping_Manager {
 				$order,
 				$carrier,
 				static fn (): Kuka_Island_Shipping_Result => $carrier->create_order( $shipment ),
-				static function () use ( $order, $carrier, $reference ): void {
-					Kuka_Island_Shipping_Order_Store::begin_carrier_session( $order, $carrier->get_key(), $reference );
-				}
+				self::intent_writer(
+					$order,
+					array(
+						'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_CREATE,
+						'operation' => 'create_order',
+						'target'    => 'order',
+						'provider'  => $carrier->get_key(),
+						'reference' => $reference,
+					)
+				)
 			);
 
 			if ( array() !== $guarded['refusal'] ) {
@@ -663,9 +719,16 @@ final class Kuka_Island_Shipping_Manager {
 			$order,
 			$carrier,
 			static fn (): Kuka_Island_Shipping_Result => $carrier->create_barcode( $shipment ),
-			static function () use ( $order, $carrier, $reference ): void {
-				Kuka_Island_Shipping_Order_Store::begin_carrier_session( $order, $carrier->get_key(), $reference );
-			}
+			self::intent_writer(
+				$order,
+				array(
+					'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_CREATE,
+					'operation' => 'create_barcode',
+					'target'    => 'shipment',
+					'provider'  => $carrier->get_key(),
+					'reference' => $reference,
+				)
+			)
 		);
 
 		if ( array() !== $guarded['refusal'] ) {
@@ -959,9 +1022,10 @@ final class Kuka_Island_Shipping_Manager {
 
 		// Absence counts only when BOTH reads answered, and both said not found.
 		if ( 'not_found' === $shipment->get_safe_error_code() && 'not_found' === $carrier_order->get_safe_error_code() ) {
-			Kuka_Island_Shipping_Order_Store::set_state(
+			Kuka_Island_Shipping_Order_Store::settle_mutation(
 				$order,
 				Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED,
+				'reconcile',
 				__( 'Mutabakat: taşıyıcıda bu referansla sipariş veya gönderi bulunamadı.', 'kuka-island-shipping-automation' )
 			);
 
@@ -1031,12 +1095,35 @@ final class Kuka_Island_Shipping_Manager {
 	public function reconcile_cancellation( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference ): array {
 		$pending = Kuka_Island_Shipping_Order_Store::pending_mutation( $order );
 		$target  = (string) ( $pending['target'] ?? '' );
+		$issued  = Kuka_Island_Shipping_Order_Store::MUTATION_CANCEL === (string) ( $pending['kind'] ?? '' )
+			|| Kuka_Island_Shipping_Order_Store::STATE_CANCEL_RECONCILE_REQUIRED === Kuka_Island_Shipping_Order_Store::get_state( $order );
 
-		if ( 'cancel' !== (string) ( $pending['kind'] ?? '' ) || ! in_array( $target, array( 'order', 'shipment' ), true ) ) {
+		if ( ! $issued ) {
 			return array(
 				'verdict' => 'no_pending_cancellation',
 				'message' => __( 'Bu siparişte doğrulanacak bir iptal isteği kayıtlı değil.', 'kuka-island-shipping-automation' ),
 			);
+		}
+
+		if ( ! in_array( $target, array( 'order', 'shipment' ), true ) ) {
+			/*
+			 * THE STATE SAYS A CANCELLATION WENT OUT AND THE INTENT RECORD DOES
+			 * NOT SAY WHICH OBJECT IT ADDRESSED. Only one thing can produce
+			 * that: begin_mutation() moved the state and its own record did not
+			 * survive the same save -- a partial meta write, which the readback
+			 * check refuses the operation for but deliberately does not roll
+			 * back, because the protected state is the restrictive side and
+			 * un-protecting an order with a database this untrustworthy would
+			 * be the worse mistake.
+			 *
+			 * The order must still be resolvable. The target is derived the way
+			 * cancel() derives it, and this path stays read-only: it can only
+			 * ever move the order to 'cancelled' on a not_found, which is the
+			 * one transition that needs no intent record to be safe.
+			 */
+			$target = '' !== (string) Kuka_Island_Shipping_Order_Store::get_shipment_data( $order )['shipment_id']
+				? 'shipment'
+				: 'order';
 		}
 
 		$guarded = $this->guarded_read(
@@ -1058,12 +1145,15 @@ final class Kuka_Island_Shipping_Manager {
 		$confirm = $guarded['result'];
 
 		if ( 'not_found' === $confirm->get_safe_error_code() ) {
-			Kuka_Island_Shipping_Order_Store::set_state(
+			// ONE save: the state and the closed intent go down together, so a
+			// crash cannot leave an order that says 'cancelled' while its meta
+			// still describes a cancellation in flight.
+			Kuka_Island_Shipping_Order_Store::settle_mutation(
 				$order,
 				Kuka_Island_Shipping_Order_Store::STATE_CANCELLED,
+				'cancel_confirm',
 				__( 'Taşıyıcı kaydı iptal edildi ve iptal salt-okunur sorguyla doğrulandı.', 'kuka-island-shipping-automation' )
 			);
-			Kuka_Island_Shipping_Order_Store::clear_pending_mutation( $order );
 
 			// Only NOW, with the cancellation proved, is it safe to stop
 			// following the parcel.
@@ -1098,9 +1188,21 @@ final class Kuka_Island_Shipping_Manager {
 	/**
 	 * The cancellation is still unproven: record why, change nothing.
 	 *
-	 * The poll chain is deliberately NOT unscheduled here. An unconfirmed
-	 * cancellation is a parcel that may still be moving, and the booked query is
-	 * the only thing still watching it.
+	 * NOTHING IS WATCHING THIS ORDER, AND SAYING OTHERWISE WAS THE DEFECT. This
+	 * comment used to claim that the already-booked status query was "the only
+	 * thing still watching it". It is not watching anything: the poller's worker
+	 * reads the state first, finds cancel_reconciliation_required, returns
+	 * 'state_not_pollable' without issuing a single carrier read, and books no
+	 * follow-up. The chain therefore ends here whether the action is left
+	 * booked or not.
+	 *
+	 * The booked action is still left alone -- cancelling it would be a second
+	 * write to the scheduler for no gain, and the action costs one no-op run --
+	 * but the consequence is stated plainly rather than dressed up: AN
+	 * UNCONFIRMED CANCELLATION IS RESOLVED BY A PERSON. The order screen says
+	 * so, the order note says so, and the operator's lever is the read-only
+	 * reconciliation button, which runs reconcile_cancellation() again. Nothing
+	 * in this module will retry it on a timer.
 	 *
 	 * @return array{verdict: string, message: string}
 	 */
@@ -1140,7 +1242,22 @@ final class Kuka_Island_Shipping_Manager {
 		$pending  = Kuka_Island_Shipping_Order_Store::pending_mutation( $order );
 		$expected = (array) ( $pending['expected'] ?? array() );
 
-		if ( 'update' !== (string) ( $pending['kind'] ?? '' ) || array() === $expected ) {
+		if ( Kuka_Island_Shipping_Order_Store::MUTATION_UPDATE !== (string) ( $pending['kind'] ?? '' ) || array() === $expected ) {
+			if ( Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED === Kuka_Island_Shipping_Order_Store::get_state( $order ) ) {
+				/*
+				 * The state says an amendment went out and the values it
+				 * carried are not on record. Unlike a cancellation, this cannot
+				 * be settled by reading: the proof IS the comparison against
+				 * those values, and there is nothing to compare against. No
+				 * guess is made and no state is written -- the order waits for
+				 * a person, who can still cancel the parcel.
+				 */
+				return array(
+					'verdict' => 'update_record_lost',
+					'message' => __( 'Gönderilen güncelleme değerleri kayıtlı değil, bu yüzden güncellemenin uygulandığı doğrulanamaz. Tahmin yapılmadı; yeni güncelleme gönderilmez, iptal hâlâ yapılabilir.', 'kuka-island-shipping-automation' ),
+				);
+			}
+
 			return array(
 				'verdict' => 'no_pending_update',
 				'message' => __( 'Bu siparişte doğrulanacak bir güncelleme isteği kayıtlı değil.', 'kuka-island-shipping-automation' ),
@@ -1181,12 +1298,12 @@ final class Kuka_Island_Shipping_Manager {
 		$comparison = self::fields_match( $expected, $readback->get_data() );
 
 		if ( ! $comparison['match'] ) {
-			Kuka_Island_Shipping_Order_Store::set_state(
+			Kuka_Island_Shipping_Order_Store::settle_mutation(
 				$order,
 				Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+				'update_confirm',
 				__( 'Güncelleme doğrulaması alan bazında eşleşmedi. Manuel inceleme gerekiyor; yeni güncelleme gönderilmedi.', 'kuka-island-shipping-automation' )
 			);
-			Kuka_Island_Shipping_Order_Store::clear_pending_mutation( $order );
 
 			$message = __( 'Güncelleme doğrulaması eşleşmedi; manuel inceleme gerekiyor.', 'kuka-island-shipping-automation' );
 			$this->note( $order, $message . ' fields:' . implode( ',', $comparison['mismatched'] ) );
@@ -1199,12 +1316,12 @@ final class Kuka_Island_Shipping_Manager {
 
 		$previous = (string) ( $pending['previous_state'] ?? Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED );
 
-		Kuka_Island_Shipping_Order_Store::set_state(
+		Kuka_Island_Shipping_Order_Store::settle_mutation(
 			$order,
 			$previous,
+			'update_confirm',
 			__( 'Güncelleme alan bazında geri okundu ve gönderilen değerlerle birebir eşleşti.', 'kuka-island-shipping-automation' )
 		);
-		Kuka_Island_Shipping_Order_Store::clear_pending_mutation( $order );
 
 		$message = __( 'Güncelleme uygulandı ve alan bazında doğrulandı.', 'kuka-island-shipping-automation' );
 		$this->note( $order, $message . ' fields:' . (string) count( $expected ) );
@@ -1246,13 +1363,13 @@ final class Kuka_Island_Shipping_Manager {
 		$first     = (array) ( $pieces[0] ?? array() );
 
 		return array(
-			'recipient_full_name'     => trim( (string) ( $recipient['full_name'] ?? '' ) ),
-			'recipient_address'       => trim( (string) ( $recipient['address'] ?? '' ) ),
+			'recipient_full_name'     => self::canonical_amendable_value( $recipient['full_name'] ?? '' ),
+			'recipient_address'       => self::canonical_amendable_value( $recipient['address'] ?? '' ),
 			'recipient_city_code'     => (string) (int) ( $recipient['city_code'] ?? 0 ),
 			'recipient_district_code' => (string) (int) ( $recipient['district_code'] ?? 0 ),
-			'recipient_mobile_phone'  => trim( (string) ( $recipient['mobile_phone'] ?? '' ) ),
-			'content'                 => trim( (string) ( $shipment['content'] ?? '' ) ),
-			'description'             => trim( (string) ( $shipment['description'] ?? '' ) ),
+			'recipient_mobile_phone'  => self::canonical_amendable_value( $recipient['mobile_phone'] ?? '' ),
+			'content'                 => self::canonical_amendable_value( $shipment['content'] ?? '' ),
+			'description'             => self::canonical_amendable_value( $shipment['description'] ?? '' ),
 			'desi'                    => (string) (int) ( $first['desi'] ?? 0 ),
 			'kg'                      => (string) (int) ( $first['kg'] ?? 0 ),
 		);
@@ -1265,7 +1382,19 @@ final class Kuka_Island_Shipping_Manager {
 	 * has to be equal to it. A field the carrier did not answer for is a
 	 * MISMATCH, not a pass: "it did not contradict us" is not evidence.
 	 *
-	 * @param array<string, mixed> $expected What was sent.
+	 * NO TRIMMING. Both sides used to be trimmed here, and that single call
+	 * made the word "exact" untrue: a read-back of ' Ada Lovelace' matched a
+	 * sent 'Ada Lovelace', so a carrier that had reformatted the field was
+	 * reported as holding it verbatim. The canonical form is now established
+	 * BEFORE the request leaves -- canonical_amendable_value(), applied by
+	 * build_request() -- which means the carrier was asked to store exactly
+	 * these bytes and there is nothing left for this method to forgive.
+	 *
+	 * A non-scalar answer is a mismatch as well: a nested structure where a
+	 * string was expected cannot be compared, and casting one to a string
+	 * produces a value the carrier never sent.
+	 *
+	 * @param array<string, mixed> $expected What was sent, already canonical.
 	 * @param array<string, mixed> $actual   What the carrier says it holds.
 	 * @return array{match: bool, mismatched: array<int, string>}
 	 */
@@ -1278,7 +1407,12 @@ final class Kuka_Island_Shipping_Manager {
 				continue;
 			}
 
-			if ( trim( (string) $actual[ $field ] ) !== trim( (string) $value ) ) {
+			if ( ! is_scalar( $actual[ $field ] ) ) {
+				$mismatched[] = (string) $field . ':untyped';
+				continue;
+			}
+
+			if ( (string) $actual[ $field ] !== (string) $value ) {
 				$mismatched[] = (string) $field . ':differs';
 			}
 		}
@@ -1542,22 +1676,41 @@ final class Kuka_Island_Shipping_Manager {
 				return $this->simple( false, (string) $request['code'], (string) $request['message'] );
 			}
 
-			$shipment = $request['shipment'];
+			$shipment  = $request['shipment'];
+			$target    = $amends_shipment ? 'shipment' : 'order';
+			$operation = $amends_shipment ? 'update_shipment' : 'update_order';
 
 			if ( $amends_shipment ) {
 				$shipment['shipment_id'] = $data['shipment_id'];
-				$guarded                 = $this->guarded_write(
-					$order,
-					$carrier,
-					static fn (): Kuka_Island_Shipping_Result => $carrier->update_shipment( $shipment )
-				);
-			} else {
-				$guarded = $this->guarded_write(
-					$order,
-					$carrier,
-					static fn (): Kuka_Island_Shipping_Result => $carrier->update_order( $shipment )
-				);
 			}
+
+			/*
+			 * The exact values this request carries, in the one canonical form
+			 * the comparison will later demand. They go into the intent BEFORE
+			 * the request leaves, because they are the only thing that can ever
+			 * prove what the amendment did -- and a process that dies mid-flight
+			 * takes the in-memory copy with it.
+			 */
+			$expected = self::amendable_fields( $shipment );
+
+			$guarded = $this->guarded_write(
+				$order,
+				$carrier,
+				$amends_shipment
+					? static fn (): Kuka_Island_Shipping_Result => $carrier->update_shipment( $shipment )
+					: static fn (): Kuka_Island_Shipping_Result => $carrier->update_order( $shipment ),
+				self::intent_writer(
+					$order,
+					array(
+						'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_UPDATE,
+						'operation' => $operation,
+						'target'    => $target,
+						'provider'  => $carrier->get_key(),
+						'reference' => $reference,
+						'expected'  => $expected,
+					)
+				)
+			);
 
 			if ( array() !== $guarded['refusal'] ) {
 				return $this->simple( false, $guarded['refusal']['code'], $guarded['refusal']['message'] );
@@ -1565,46 +1718,45 @@ final class Kuka_Island_Shipping_Manager {
 
 			$result = $guarded['result'];
 
-			if ( $result->is_uncertain() ) {
-				/*
-				 * The amendment may or may not have been applied, and the
-				 * generic reconciliation cannot tell: it would find the object
-				 * -- which was there before the amendment as well -- and read
-				 * that as success. So the order goes into a state of its own,
-				 * carrying the exact values that were sent, and only a
-				 * field-level read-back that matches them can leave it.
-				 */
-				Kuka_Island_Shipping_Order_Store::save_update_pending(
-					$order,
-					$result->get_operation(),
-					$amends_shipment ? 'shipment' : 'order',
-					(string) $data['state'],
-					self::amendable_fields( $shipment ),
-					'uncertain'
-				);
-				$this->note( $order, __( 'Güncelleme belirsiz sonuçlandı; tekrar denenmedi. Alan bazında doğrulama gerekiyor.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
-
-				// Try to prove it straight away, read-only. This is the same
-				// method a later reconciliation runs.
-				$verdict = $this->reconcile_update( $order, $carrier, $reference );
-
-				return $this->simple(
-					false,
-					(string) $verdict['verdict'],
-					$verdict['message'],
-					$result->to_safe_line() . '|verdict:' . $verdict['verdict']
-				);
+			/*
+			 * THE ONE ANSWER THAT CLOSES THE INTENT WITHOUT A READ. The adapter
+			 * refused before opening a socket, so it is provable from the code
+			 * path -- not inferred from a status code -- that the carrier holds
+			 * nothing new. The order goes back to where it was and the update
+			 * button stays live.
+			 */
+			if ( ! $result->reached_carrier() ) {
+				return $this->close_unsent_intent( $order, $result );
 			}
 
-			if ( ! $result->is_success() ) {
-				Kuka_Island_Shipping_Order_Store::save_failure( $order, $result->get_operation(), $result->get_safe_error_code(), __( 'Güncelleme reddedildi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+			/*
+			 * EVERY OTHER ANSWER, THE SUCCESS INCLUDED, LEAVES THE DOOR SHUT.
+			 *
+			 * A success here is an ACKNOWLEDGEMENT: the vendor's OpenAPI
+			 * documents the 200 as "Order updated" and says nothing about which
+			 * fields it took, and treating it as proof is how a shop believes an
+			 * address was corrected when it was not. A 400 is no better in the
+			 * other direction: the same contract documents it as "Bad Request"
+			 * and never says whether the record was left untouched, so it cannot
+			 * license a second attempt either.
+			 *
+			 * The only thing that settles this is a read-back of the fields, and
+			 * that is what runs next -- read-only, and the same method a later
+			 * reconciliation runs.
+			 */
+			$this->note(
+				$order,
+				__( 'Güncelleme isteği taşıyıcıya gönderildi. Uygulandığı alan bazında doğrulanana kadar yeni güncelleme gönderilmez.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line()
+			);
 
-				return $this->simple( false, $result->get_safe_error_code(), __( 'Güncelleme reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			$verdict = $this->reconcile_update( $order, $carrier, $reference );
+			$detail  = 'issued:' . $result->get_outcome() . '|target:' . $target . '|verdict:' . $verdict['verdict'];
+
+			if ( 'update_confirmed' === $verdict['verdict'] ) {
+				return $this->simple( true, '', $verdict['message'], $detail );
 			}
 
-			$this->note( $order, __( 'Taşıyıcı kaydı güncellendi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
-
-			return $this->simple( true, '', __( 'Taşıyıcı kaydı güncellendi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+			return $this->simple( false, (string) $verdict['verdict'], $verdict['message'], $detail );
 		} finally {
 			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
 		}
@@ -1711,13 +1863,39 @@ final class Kuka_Island_Shipping_Manager {
 				);
 			}
 
+			/*
+			 * AN UNPROVEN AMENDMENT DOES NOT PUT THE PARCEL OUT OF REACH.
+			 *
+			 * This module cannot prove that an amendment was applied when the
+			 * carrier's query API does not return the amended fields, so such an
+			 * order stays in update_reconciliation_required indefinitely. That
+			 * is the honest state, and refusing a SECOND amendment from it is
+			 * right. Refusing a CANCELLATION from it would not be: an amendment
+			 * whose effect is unknown does not make cancelling unsafe -- the
+			 * object either exists, and the cancellation addresses it, or it
+			 * does not, and the carrier says so -- and refusing would leave the
+			 * operator with a parcel they can neither correct nor stop.
+			 *
+			 * WHICH object to address comes from the amendment's own intent
+			 * record, which says which state the order was in before it. Not
+			 * from a guess, and not from the shipment id alone.
+			 */
+			$effective_state = (string) $data['state'];
+
+			if ( Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED === $effective_state ) {
+				$pending         = Kuka_Island_Shipping_Order_Store::pending_mutation( $order );
+				$effective_state = (string) ( $pending['previous_state'] ?? '' );
+			}
+
 			// WHICH object is cancelled decides WHICH read confirms it.
-			if ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $data['state'] && '' !== $data['shipment_id'] ) {
+			if ( Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === $effective_state && '' !== $data['shipment_id'] ) {
 				$shipment_id    = (string) $data['shipment_id'];
 				$confirm_target = 'shipment';
+				$operation      = 'cancel_shipment';
 				$write          = static fn (): Kuka_Island_Shipping_Result => $carrier->cancel_shipment( $reference, $shipment_id );
-			} elseif ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state'] ) {
+			} elseif ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $effective_state ) {
 				$confirm_target = 'order';
+				$operation      = 'cancel_order';
 				$write          = static fn (): Kuka_Island_Shipping_Result => $carrier->cancel_order( $reference );
 			} else {
 				return $this->simple(
@@ -1727,7 +1905,21 @@ final class Kuka_Island_Shipping_Manager {
 				);
 			}
 
-			$guarded = $this->guarded_write( $order, $carrier, $write );
+			$guarded = $this->guarded_write(
+				$order,
+				$carrier,
+				$write,
+				self::intent_writer(
+					$order,
+					array(
+						'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_CANCEL,
+						'operation' => $operation,
+						'target'    => $confirm_target,
+						'provider'  => $carrier->get_key(),
+						'reference' => $reference,
+					)
+				)
+			);
 
 			if ( array() !== $guarded['refusal'] ) {
 				return $this->simple( false, $guarded['refusal']['code'], $guarded['refusal']['message'] );
@@ -1736,35 +1928,34 @@ final class Kuka_Island_Shipping_Manager {
 			$result = $guarded['result'];
 
 			/*
-			 * A DEFINITIVE REFUSAL is the one answer that leaves the old state
-			 * alone. The carrier answered, and the answer is that nothing
-			 * happened: a rejected request cannot have cancelled anything, so
-			 * the order keeps the state it had and the cancel button stays live.
-			 * Every other answer -- including a success -- means the carrier has
-			 * been contacted and the effect is now this module's problem.
+			 * THE ONE ANSWER THAT RE-OPENS THE CANCEL BUTTON. The adapter
+			 * refused before opening a socket, which is provable from the code
+			 * path: no cancellation request exists, so the order returns to the
+			 * state it was in and can be cancelled again.
+			 *
+			 * THIS USED TO BE EVERY 'PERMANENT' ANSWER, and that was the defect.
+			 * A 400 from the gateway was read as "nothing happened", but the
+			 * vendor's OpenAPI documents that status as nothing more than "Bad
+			 * Request" -- it does not say the record was left alone, and a 409,
+			 * a 500, a timeout or an unreadable body say even less. So only a
+			 * refusal that never left the building qualifies now; everything
+			 * else keeps the door shut and is settled by reading.
 			 */
-			if ( ! $result->is_success() && ! $result->is_uncertain() ) {
-				Kuka_Island_Shipping_Order_Store::save_failure( $order, $result->get_operation(), $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line() );
+			if ( ! $result->reached_carrier() ) {
+				$closed = $this->close_unsent_intent( $order, $result );
 
-				return $this->simple( false, $result->get_safe_error_code(), __( 'İptal reddedildi.', 'kuka-island-shipping-automation' ), $result->to_safe_line() );
+				return $this->simple( false, (string) $closed['code'], (string) $closed['message'], (string) $closed['detail'] );
 			}
 
 			/*
-			 * THE DOOR CLOSES HERE, BEFORE ANYTHING IS READ. A success answer is
-			 * an acknowledgement, not evidence; an uncertain one is not even
-			 * that. Either way a cancellation is now in flight at the carrier
-			 * and no second one may follow it -- not from a second button press,
-			 * not from a stale order object, not from a concurrent request. The
-			 * state is recorded before the confirming read so that a crash
-			 * between the two cannot re-open the door.
+			 * THE DOOR IS ALREADY SHUT, AND IT WAS SHUT BEFORE THE REQUEST LEFT.
+			 * begin_mutation() moved the order into
+			 * cancel_reconciliation_required and wrote down what was about to be
+			 * attempted, so a process that died in flight leaves exactly this
+			 * state behind. No second cancellation may follow -- not from a
+			 * second button press, not from a stale order object, not from a
+			 * concurrent request, and not from a retry after a crash.
 			 */
-			Kuka_Island_Shipping_Order_Store::save_cancel_pending(
-				$order,
-				$result->get_operation(),
-				$confirm_target,
-				(string) $data['state'],
-				$result->is_success() ? 'success' : 'uncertain'
-			);
 			$this->note(
 				$order,
 				__( 'İptal isteği taşıyıcıya gönderildi. Sonucu doğrulanana kadar yeni iptal gönderilmez.', 'kuka-island-shipping-automation' ) . ' ' . $result->to_safe_line()
@@ -1895,12 +2086,85 @@ final class Kuka_Island_Shipping_Manager {
 		 */
 		$shipment = (array) apply_filters( 'kuka_island_shipping_request', $shipment, $order );
 
+		/*
+		 * CANONICALISED AFTER THE FILTER, NOT BEFORE. What leaves this method
+		 * is what the carrier is asked to store, and it is also what a later
+		 * read-back will be compared against byte-for-byte -- so the two have
+		 * to be the same bytes. Doing it before the filter would let a shop's
+		 * own callback put a trailing space back in, and the comparison would
+		 * then fail for a reason that has nothing to do with the carrier.
+		 */
+		$shipment = self::canonicalize_request( $shipment );
+
 		return array(
 			'ok'       => true,
 			'code'     => '',
 			'message'  => '',
 			'shipment' => $shipment,
 		);
+	}
+
+	/**
+	 * Put every amendable value into its one canonical form.
+	 *
+	 * @param array<string, mixed> $shipment Shipment request.
+	 * @return array<string, mixed>
+	 */
+	public static function canonicalize_request( array $shipment ): array {
+		foreach ( array( 'content', 'description' ) as $field ) {
+			$shipment[ $field ] = self::canonical_amendable_value( $shipment[ $field ] ?? '' );
+		}
+
+		$recipient = (array) ( $shipment['recipient'] ?? array() );
+
+		foreach ( array( 'full_name', 'address', 'mobile_phone' ) as $field ) {
+			$recipient[ $field ] = self::canonical_amendable_value( $recipient[ $field ] ?? '' );
+		}
+
+		$shipment['recipient'] = $recipient;
+
+		$pieces = (array) ( $shipment['pieces'] ?? array() );
+
+		foreach ( $pieces as $index => $piece ) {
+			$piece            = (array) $piece;
+			$piece['content'] = self::canonical_amendable_value( $piece['content'] ?? '' );
+			$pieces[ $index ] = $piece;
+		}
+
+		$shipment['pieces'] = $pieces;
+
+		return $shipment;
+	}
+
+	/**
+	 * THE canonical form of an amendable value. One definition, both sides.
+	 *
+	 * "EXACT" HAS TO MEAN SOMETHING. fields_match() used to trim both sides
+	 * before comparing, which made the word false: a carrier that had stored
+	 * ' Ada Lovelace' when 'Ada Lovelace' was sent passed the check, and the
+	 * shop was told the amendment had been applied exactly. Silently absorbing
+	 * a difference is the opposite of verifying one.
+	 *
+	 * The fix is not a looser comparison, it is a DEFINED one. There is exactly
+	 * one canonical form; it is applied to the value before the request leaves
+	 * (see canonicalize_request(), which runs last in build_request()); and the
+	 * read-back is then compared against it with no tolerance whatsoever. The
+	 * carrier is asked to store precisely the bytes the comparison will demand.
+	 *
+	 * The form: surrounding whitespace removed, internal runs of whitespace --
+	 * including the tabs and newlines a pasted address carries -- collapsed to
+	 * one space. Unicode-aware, because Turkish addresses are not ASCII.
+	 *
+	 * @param mixed $value Raw value.
+	 */
+	public static function canonical_amendable_value( $value ): string {
+		if ( ! is_scalar( $value ) ) {
+			return '';
+		}
+
+		$collapsed = preg_replace( '/\s+/u', ' ', (string) $value );
+
+		return trim( null !== $collapsed ? $collapsed : (string) $value );
 	}
 
 	/**
@@ -2085,7 +2349,7 @@ final class Kuka_Island_Shipping_Manager {
 			Kuka_Island_Shipping_Order_Store::STATE_BLOCKED            => __( 'Bu sipariş için taşıyıcıya hiç çağrı yapılmadı; iptal edilecek bir kayıt yok.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => __( 'Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; iptal edilecek bir şey yok.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => __( 'Bu siparişte belirsiz bir taşıyıcı yanıtı var. İptal tekrarlanmadı; önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' ),
-			Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED => __( 'Bu siparişte doğrulanmayı bekleyen bir güncelleme var. İptal gönderilmedi; önce güncellemenin sonucu belirlenmeli.', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Order_Store::STATE_UPDATE_RECONCILE_REQUIRED => __( 'Bu siparişte doğrulanmayı bekleyen bir güncelleme var ve güncellemenin hangi kayda gönderildiği okunamadı; iptal edilecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_DELIVERED          => __( 'Bu sipariş teslim edilmiş. Teslim edilmiş bir gönderi iptal edilmez; iade süreci ayrıdır.', 'kuka-island-shipping-automation' ),
 			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW      => __( 'Bu siparişin kargo durumu manuel inceleme bekliyor. İptal otomatik yapılmaz.', 'kuka-island-shipping-automation' ),
 			default                                                    => __( 'Bu siparişin durumu iptal için tanınmıyor; hiçbir çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
@@ -2136,7 +2400,28 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	private function record_failure( WC_Order $order, Kuka_Island_Shipping_Result $result ): array {
-		$message = __( 'Taşıyıcı isteği reddedildi.', 'kuka-island-shipping-automation' );
+		if ( ! $result->reached_carrier() ) {
+			return $this->close_unsent_intent( $order, $result );
+		}
+
+		/*
+		 * THE CARRIER ANSWERED, AND THE ANSWER IS NOT EVIDENCE OF ABSENCE.
+		 *
+		 * This branch used to leave the order in whatever state it was in, on
+		 * the assumption that a 'permanent' answer means nothing was created.
+		 * The vendor's own contract does not support that assumption: all six
+		 * write operations document exactly four responses -- 200, 400 "Bad
+		 * Request", 401 "Unauthorized", 500 "Server Error" -- and not one of
+		 * them says whether a record was left behind. There is therefore no
+		 * error this integration may treat as "no side effect", and the
+		 * allow-list for closing an intent on an answer alone is EMPTY.
+		 *
+		 * So the order stays in the protected state begin_mutation() put it in,
+		 * and the only way out is the read-only reconciliation -- which, for a
+		 * create, can prove absence and hand the order back with
+		 * absent_confirmed so a fresh attempt is legitimate again.
+		 */
+		$message = __( 'Taşıyıcı isteği reddedildi. Reddin kayıt oluşturmadığı sözleşmede yazılı olmadığı için yeniden gönderim açılmadı; salt-okunur mutabakat gerekiyor.', 'kuka-island-shipping-automation' );
 
 		Kuka_Island_Shipping_Order_Store::save_failure(
 			$order,
@@ -2152,6 +2437,50 @@ final class Kuka_Island_Shipping_Manager {
 			'code'    => $result->get_safe_error_code(),
 			'message' => $message,
 			'detail'  => $result->to_safe_line(),
+		);
+	}
+
+	/**
+	 * Close an intent because the request provably never left the building.
+	 *
+	 * THE ONLY WAY AN INTENT IS CLOSED WITHOUT READING. The adapter refused
+	 * before opening a socket -- an incomplete payload, a cash-on-delivery
+	 * flag, an endpoint that is not on the allow-list -- so the carrier cannot
+	 * hold anything new, and that is provable from the code path rather than
+	 * inferred from a status code. Result::local_refusal() is the only factory
+	 * that produces such an answer.
+	 *
+	 * The order returns to the state its intent recorded, and the pending
+	 * record is cleared in the SAME save, so there is no instant in which the
+	 * two disagree.
+	 *
+	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
+	 */
+	private function close_unsent_intent( WC_Order $order, Kuka_Island_Shipping_Result $result ): array {
+		$pending  = Kuka_Island_Shipping_Order_Store::pending_mutation( $order );
+		$previous = (string) ( $pending['previous_state'] ?? '' );
+
+		if ( '' === $previous ) {
+			$previous = Kuka_Island_Shipping_Order_Store::get_state( $order );
+		}
+
+		$message = __( 'Taşıyıcıya hiçbir istek gönderilmedi: adaptör isteği ağa çıkmadan reddetti. Kayıt önceki durumuna döndürüldü.', 'kuka-island-shipping-automation' );
+
+		Kuka_Island_Shipping_Order_Store::settle_mutation(
+			$order,
+			$previous,
+			$result->get_operation(),
+			$message . ' ' . $result->to_safe_line(),
+			array( Kuka_Island_Shipping_Order_Store::META_LAST_ERROR => $result->get_safe_error_code() )
+		);
+		$this->note( $order, $message . ' ' . $result->to_safe_line() );
+
+		return array(
+			'ok'      => false,
+			'state'   => $previous,
+			'code'    => $result->get_safe_error_code(),
+			'message' => $message,
+			'detail'  => $result->to_safe_line() . '|restored:' . $previous,
 		);
 	}
 

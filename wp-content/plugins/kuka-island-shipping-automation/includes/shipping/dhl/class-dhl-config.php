@@ -71,42 +71,137 @@ final class Kuka_Island_Shipping_DHL_Config {
 	/** Configuration name that switches this adapter off entirely. */
 	public const ADAPTER_SETTING = 'KUKA_DHL_ADAPTER';
 
+	/** The setting was never given: the module's one adapter stays on. */
+	public const ADAPTER_STATE_UNSET = 'unset_default_on';
+
+	/** An exact affirmative literal. */
+	public const ADAPTER_STATE_ON = 'explicitly_on';
+
+	/** An exact negative literal. */
+	public const ADAPTER_STATE_OFF = 'explicitly_off';
+
+	/** Something else entirely. Fail closed, and SAY SO. */
+	public const ADAPTER_STATE_INVALID = 'configuration_invalid';
+
 	/**
-	 * Is this adapter switched on?
+	 * Exactly which values mean yes, and which mean no. Nothing else counts.
 	 *
-	 * ON unless the configuration explicitly says otherwise, because the module
-	 * ships with one adapter and defaulting it off would leave a fresh install
-	 * with no carrier at all -- a state whose only symptom is
-	 * carrier_not_registered on a screen nobody has a reason to look at.
+	 * Lower case, unpadded, and matched with in_array( ..., true ). ' 1', 'ON'
+	 * and 'True' are NOT on this list, and that is deliberate: see
+	 * adapter_state().
 	 *
-	 * OFF means the registry never learns about this adapter: it is not
-	 * constructed, no client is built, and every operation refuses with
-	 * carrier_not_registered before the network. That is the point of the
-	 * switch -- a shop that has moved to another courier can stop this one
-	 * without deactivating the whole module, and an order pinned to it then
-	 * refuses rather than being quietly re-routed.
-	 *
-	 * Only the four explicit negatives switch it off. Anything else, including
-	 * a typo, leaves it on: a mistyped value must not silently disable shipping.
+	 * @return array{on: array<int, string>, off: array<int, string>}
 	 */
-	public static function is_adapter_enabled(): bool {
+	public static function adapter_literals(): array {
+		return array(
+			'on'  => array( '1', 'true', 'yes', 'on' ),
+			'off' => array( '0', 'false', 'no', 'off' ),
+		);
+	}
+
+	/**
+	 * Is this adapter switched on, and on what grounds?
+	 *
+	 * FAIL CLOSED ON ANYTHING THAT IS NOT THE SETTING. The old rule was "off
+	 * only for the four explicit negatives, anything else stays on", and the
+	 * reasoning was that a typo must not silently disable shipping. It has the
+	 * failure the other way round, and it is the worse one: 'flase', 'of', ' 0'
+	 * and '' all left the adapter ON. An operator who had typed a negative and
+	 * mistyped it believed shipping was stopped while parcels were still
+	 * bookable -- and nothing anywhere said the value had not been understood.
+	 *
+	 * So the rule is now: an exact affirmative enables, an exact negative
+	 * disables, an ABSENT setting keeps the historical default (on, because the
+	 * module ships with one adapter and defaulting it off would leave a fresh
+	 * install with no carrier and no symptom but carrier_not_registered), and
+	 * ANY OTHER VALUE is configuration_invalid -- disabled, and named as
+	 * invalid so the order screen can print the reason instead of an operator
+	 * guessing.
+	 *
+	 * NO SILENT NORMALISATION. Not trimmed, not case-folded, not coerced. ' 1'
+	 * is not the setting, it is a value nobody checked, and quietly reading it
+	 * as '1' is how a configuration file goes on being wrong. The one exception
+	 * is a genuine PHP boolean, which is not a spelling of anything and cannot
+	 * be mistyped.
+	 *
+	 * OFF -- for either reason -- means the registry never learns about this
+	 * adapter: Shipping_Automation::register_default_carrier() returns before
+	 * constructing it, so there is no provider, no client, no token store and
+	 * no transport, and every operation refuses with carrier_not_registered
+	 * before the network. An order pinned to it refuses rather than being
+	 * quietly re-routed to whatever else is registered.
+	 *
+	 * @return array{enabled: bool, reason: string}
+	 */
+	public static function adapter_state(): array {
 		if ( defined( self::ADAPTER_SETTING ) ) {
-			$value = constant( self::ADAPTER_SETTING );
-
-			if ( is_bool( $value ) ) {
-				return $value;
-			}
-
-			return ! in_array( strtolower( trim( (string) $value ) ), array( '0', 'false', 'no', 'off' ), true );
+			return self::classify_adapter_value( constant( self::ADAPTER_SETTING ) );
 		}
 
 		$from_env = getenv( self::ADAPTER_SETTING );
 
 		if ( false === $from_env ) {
-			return true;
+			return array(
+				'enabled' => true,
+				'reason'  => self::ADAPTER_STATE_UNSET,
+			);
 		}
 
-		return ! in_array( strtolower( trim( (string) $from_env ) ), array( '0', 'false', 'no', 'off' ), true );
+		return self::classify_adapter_value( $from_env );
+	}
+
+	/**
+	 * @param mixed $value Raw configured value.
+	 * @return array{enabled: bool, reason: string}
+	 */
+	private static function classify_adapter_value( $value ): array {
+		if ( is_bool( $value ) ) {
+			return array(
+				'enabled' => $value,
+				'reason'  => $value ? self::ADAPTER_STATE_ON : self::ADAPTER_STATE_OFF,
+			);
+		}
+
+		if ( ! is_string( $value ) && ! is_int( $value ) ) {
+			// An array, an object, a float, null. None of them is a spelling of
+			// yes or no.
+			return array(
+				'enabled' => false,
+				'reason'  => self::ADAPTER_STATE_INVALID,
+			);
+		}
+
+		$literals = self::adapter_literals();
+		$text     = (string) $value;
+
+		if ( in_array( $text, $literals['on'], true ) ) {
+			return array(
+				'enabled' => true,
+				'reason'  => self::ADAPTER_STATE_ON,
+			);
+		}
+
+		if ( in_array( $text, $literals['off'], true ) ) {
+			return array(
+				'enabled' => false,
+				'reason'  => self::ADAPTER_STATE_OFF,
+			);
+		}
+
+		return array(
+			'enabled' => false,
+			'reason'  => self::ADAPTER_STATE_INVALID,
+		);
+	}
+
+	/**
+	 * The switch as a boolean, for callers that only need the decision.
+	 *
+	 * Thin on purpose: adapter_state() is the single place the decision is
+	 * made, so a caller cannot accidentally implement a second, looser rule.
+	 */
+	public static function is_adapter_enabled(): bool {
+		return (bool) self::adapter_state()['enabled'];
 	}
 
 	/**

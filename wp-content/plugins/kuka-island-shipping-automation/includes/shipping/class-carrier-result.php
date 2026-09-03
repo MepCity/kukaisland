@@ -25,6 +25,11 @@
  * parcel twice, so the two are separate types and the manager treats them as
  * separate branches.
  *
+ * A FIFTH FACT, ORTHOGONAL TO THE OUTCOME: reached_carrier(). A 'permanent'
+ * answer can mean two completely different things -- the gateway processed the
+ * request and said no, or this adapter refused before opening a socket -- and
+ * only the second proves nothing was written. See local_refusal().
+ *
  * @package Kuka_Island_Shipping_Automation
  */
 
@@ -41,6 +46,20 @@ final class Kuka_Island_Shipping_Result {
 	private string $operation;
 	private string $safe_error_code;
 	private int $http_status;
+
+	/**
+	 * Did the request actually leave the adapter?
+	 *
+	 * The one thing an HTTP status can never tell you. A 400 from the gateway
+	 * means the carrier PROCESSED the request and rejected it, and the vendor's
+	 * OpenAPI documents that status as nothing more than "Bad Request" -- it
+	 * says nothing about whether anything was written first. A refusal the
+	 * adapter produced itself, before opening a socket, is a different fact
+	 * entirely: it is provable from the code path that nothing was sent.
+	 *
+	 * Only the second kind may close a mutation intent without a read.
+	 */
+	private bool $reached_carrier = true;
 
 	/**
 	 * Normalised, allow-listed values read out of the carrier's answer.
@@ -103,6 +122,25 @@ final class Kuka_Island_Shipping_Result {
 		return new self( self::OUTCOME_PERMANENT, $operation, array(), $safe_error_code, $http_status );
 	}
 
+	/**
+	 * A refusal the adapter made WITHOUT contacting the carrier.
+	 *
+	 * An incomplete payload, a cash-on-delivery flag, a malformed reference, a
+	 * closed runtime gate, an endpoint that is not on the allow-list: all of
+	 * them are decided before a socket is opened, so the carrier cannot have
+	 * been changed by them. That is the ONLY provable "nothing happened", and
+	 * it is provable from the code path rather than guessed from a status code.
+	 *
+	 * Everything that came back FROM the network -- including a 400 -- is an
+	 * ordinary permanent() and does not close a mutation intent.
+	 */
+	public static function local_refusal( string $operation, string $safe_error_code ): self {
+		$result                  = new self( self::OUTCOME_PERMANENT, $operation, array(), $safe_error_code, 0 );
+		$result->reached_carrier = false;
+
+		return $result;
+	}
+
 	public static function transient( string $operation, string $safe_error_code, int $http_status = 0 ): self {
 		return new self( self::OUTCOME_TRANSIENT, $operation, array(), $safe_error_code, $http_status );
 	}
@@ -129,6 +167,18 @@ final class Kuka_Island_Shipping_Result {
 
 	public function get_safe_error_code(): string {
 		return $this->safe_error_code;
+	}
+
+	/**
+	 * Was the carrier contacted at all?
+	 *
+	 * false ONLY for local_refusal(). Everything else -- every success, every
+	 * uncertain, every answer the transport produced, and a transport error
+	 * whose cause cannot be established -- reports true, because "we cannot
+	 * prove we did not reach them" is the safe reading.
+	 */
+	public function reached_carrier(): bool {
+		return $this->reached_carrier;
 	}
 
 	public function get_http_status(): int {
@@ -158,11 +208,12 @@ final class Kuka_Island_Shipping_Result {
 	 */
 	public function to_safe_line(): string {
 		return sprintf(
-			'operation:%s|outcome:%s|code:%s|http:%d',
+			'operation:%s|outcome:%s|code:%s|http:%d|reached_carrier:%s',
 			$this->operation,
 			$this->outcome,
 			'' !== $this->safe_error_code ? $this->safe_error_code : 'none',
-			$this->http_status
+			$this->http_status,
+			$this->reached_carrier ? 'yes' : 'no'
 		);
 	}
 }

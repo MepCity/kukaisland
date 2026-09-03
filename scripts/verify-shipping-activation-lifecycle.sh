@@ -65,6 +65,15 @@ restore() {
     *)      wpx plugin deactivate "$SLUG" >/dev/null 2>&1 || true ;;
   esac
 
+  # AND THE OPTION IS WRITTEN BACK VERBATIM. `wp plugin activate` APPENDS to
+  # active_plugins, so an activate/deactivate/activate round trip leaves the
+  # same set of plugins in a different ORDER -- and plugin load order is not
+  # something a verification run may quietly change. Restoring the option is
+  # the only way to hand back exactly what was found.
+  if [ -n "$start_active_plugins" ]; then
+    printf '%s' "$start_active_plugins" | wpx option set active_plugins --format=json >/dev/null 2>&1 || true
+  fi
+
   if [ "$start_gate_present" = 'yes' ]; then
     wpx option update "$GATE_OPTION" "$start_gate_value" >/dev/null 2>&1 || true
   else
@@ -80,8 +89,21 @@ trap restore EXIT HUP INT TERM
 core_status=$(wpx plugin list --field=status --name=kuka-island-core | tr -d '\r\n' || true)
 wc_status=$(wpx plugin list --field=status --name=woocommerce | tr -d '\r\n' || true)
 
-if [ "$core_status" = 'active' ] && [ "$wc_status" = 'active' ] && [ "$start_status" = 'inactive' ] && [ "$start_gate_present" = 'no' ]; then
-  note "SHIPPING_LIFECYCLE_START=PASS|measured:wp_cli|plugin:$start_status|core:$core_status|woocommerce:$wc_status|gate_option:absent|shipping_meta_rows:$start_shipping_meta|poll_actions:$start_actions"
+# WHAT THIS ASSERTS, AND WHAT IT ONLY RECORDS.
+#
+# It used to demand that the plugin start INACTIVE with no gate option -- the
+# delivered state. That made a legitimate operator decision look like a test
+# failure: once the plugin is activated (which the activation guide instructs),
+# this line failed for ever while every transition below still passed.
+#
+# The starting activation state is now RECORDED, not asserted. What is asserted
+# is what this suite actually needs in order to mean anything: Core and
+# WooCommerce are active, so the activation and deactivation measured below are
+# measuring this module rather than a missing dependency. The starting state is
+# then restored exactly, whatever it was -- see restore() above and
+# SHIPPING_LIFECYCLE_RESTORED below.
+if [ "$core_status" = 'active' ] && [ "$wc_status" = 'active' ]; then
+  note "SHIPPING_LIFECYCLE_START=PASS|measured:wp_cli|plugin:$start_status|core:$core_status|woocommerce:$wc_status|gate_option:$start_gate_present|shipping_meta_rows:$start_shipping_meta|poll_actions:$start_actions|starting_state:recorded_not_asserted"
 else
   fail "SHIPPING_LIFECYCLE_START=FAIL|plugin:$start_status|core:$core_status|woocommerce:$wc_status|gate_option:$start_gate_present|shipping_meta_rows:$start_shipping_meta"
 fi

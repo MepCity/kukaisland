@@ -95,14 +95,14 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
 
 		if ( array() !== $gaps ) {
-			return Kuka_Island_Shipping_Result::permanent( 'create_order', 'payload_incomplete' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_order', 'payload_incomplete' );
 		}
 
 		if ( ! empty( $shipment['cod']['enabled'] ) ) {
 			// Refused here as well as upstream. Two independent refusals, because
 			// this one survives a future caller that builds a shipment request
 			// without going through the manager.
-			return Kuka_Island_Shipping_Result::permanent( 'create_order', 'cod_not_supported' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_order', 'cod_not_supported' );
 		}
 
 		return $this->client->create_order( Kuka_Island_Shipping_DHL_Order_Mapper::create_order_payload( $shipment ) );
@@ -115,11 +115,11 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
 
 		if ( array() !== $gaps ) {
-			return Kuka_Island_Shipping_Result::permanent( 'create_barcode', 'payload_incomplete' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_barcode', 'payload_incomplete' );
 		}
 
 		if ( ! empty( $shipment['cod']['enabled'] ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'create_barcode', 'cod_not_supported' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_barcode', 'cod_not_supported' );
 		}
 
 		return $this->client->create_barcode( Kuka_Island_Shipping_DHL_Order_Mapper::create_barcode_payload( $shipment ) );
@@ -130,7 +130,7 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 	 */
 	public function update_order( array $shipment ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( (string) ( $shipment['reference'] ?? '' ) ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'update_order', 'payload_incomplete' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'update_order', 'payload_incomplete' );
 		}
 
 		return $this->client->update_order( Kuka_Island_Shipping_DHL_Order_Mapper::update_order_payload( $shipment ) );
@@ -146,7 +146,7 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 	public function update_shipment( array $shipment ): Kuka_Island_Shipping_Result {
 		if ( ! Kuka_Island_Shipping_Reference::is_valid( (string) ( $shipment['reference'] ?? '' ) )
 			|| '' === trim( (string) ( $shipment['shipment_id'] ?? '' ) ) ) {
-			return Kuka_Island_Shipping_Result::permanent( 'update_shipment', 'payload_incomplete' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'update_shipment', 'payload_incomplete' );
 		}
 
 		return $this->client->update_shipment( Kuka_Island_Shipping_DHL_Order_Mapper::update_shipment_payload( $shipment ) );
@@ -182,7 +182,7 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 	 * other open measurement in docs/DHL_BAKIM_HAFIZASI.md has to clear.
 	 */
 	public function read_amendable_fields( string $reference ): Kuka_Island_Shipping_Result {
-		return Kuka_Island_Shipping_Result::permanent( 'read_amendable_fields', 'readback_unsupported' );
+		return Kuka_Island_Shipping_Result::local_refusal( 'read_amendable_fields', 'readback_unsupported' );
 	}
 
 	public function read_shipment_status( string $reference ): Kuka_Island_Shipping_Result {
