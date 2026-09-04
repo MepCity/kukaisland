@@ -66,6 +66,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | Kargo e-postası WooCommerce'in 600 pikselik varsayılan görünümünde, ham `dhl` taşıyıcı adıyla ve misafirde Hesabım bağlantısıyla gidiyordu; ürün fotoğrafı Gmail'de `localhost` adresi yüzünden görünmüyordu | Ortak tasarım katmanı, 780 pikselik mobil uyumlu iskelet ve tek görsel kapısı; sözleşme `docs/EPOSTA_TASARIMI.md` (K-49) |
 | 2026-09-04 | İki eşzamanlı süreç aynı ilk `fulfilled` geçişine girip müşteriye iki e-posta gönderiyordu; ikinci yazma birincinin metasını ezdiği için durum makinesi tek gönderim gibi görünüyordu | Bildirim kararı sipariş bazlı sıfır beklemeli advisory lock altına alındı ve kayıtlar kilit içinde veritabanından taze okunuyor (K-50) |
 | 2026-09-04 | Bildirim borcu iki yerden düşüyordu: `pending` durumu `first_transition` kapısına takılıp hiç yeniden denenmiyordu, ve kayıt kaydedildikten sonra niyetten önce ölen süreç borcu kalıcı olarak kaybediyordu | Yeni `due` durumu kayıt kaydedilmeden önce yazılıyor; `due` ve `pending` borçlu sayılıyor; teslim anı borçla birlikte bir kez yazılıyor (K-51) |
+| 2026-09-04 | Claim'in üç sınırı fail-open'dı: kilit alınamasa, sipariş okunamasa ya da meta yazması diske düşmese bile kayıt `fulfilled` yapılıp e-posta gönderiliyordu | `claim()` artık ok/outcome/handover döndürüyor, yazma bayt bayt geri okunuyor ve başarısızlıkta fulfillment yazması hiç başlamıyor (K-52) |
 
 ---
 
@@ -2079,6 +2080,74 @@ geçmez.
   `pending` ise bir koşul eksikti (`_kuka_shipping_notify_code`), koşul
   düzeldiğinde gönderilir. Boş ve kayıt `fulfilled` ise bu modül o geçişi hiç
   görmemiştir — kendiliğinden sahiplenmez.
+
+---
+
+## K-52 — Claim'in her sınırı fail-open'dı
+
+- **Tarih:** 2026-09-04
+- **Belirti:** K-51'in `claim()` akışı doğru borcu yazıyordu, ama yazamadığı
+  durumları **sessizce geçiyordu**. `claim()` yalnız bir dizgi döndürüyordu;
+  başarısızlığı anlatacak bir kanalı yoktu, dolayısıyla `sync_status()` her
+  koşulda kaydı `fulfilled` yapıp tarihi yazıyor ve e-postayı gönderiyordu.
+- **Ölçülen kırmızı, üç sınır:**
+
+  ```text
+  CLAIM_LOCK_IS_FAIL_CLOSED=FAIL|lock_held_by_other_session:yes|outcome:none
+  |notification_meta_writes:5|fulfilled:yes|date:present|mails:1
+  CLAIM_READBACK_IS_VERIFIED=FAIL|outcome:none|notification_meta_writes:0
+  |fulfilled:yes|date:present|mails:1|retry_outcome:not_due
+  CLAIM_UNREADABLE_ORDER_IS_FAIL_CLOSED=FAIL|outcome:none
+  |notification_meta_writes:0|fulfilled:yes|date:present|mails:0
+  ```
+
+  İkinci satır en kötüsü: meta hiç yazılmadığı hâlde müşteriye e-posta gitti ve
+  sonraki poll `not_due` dedi — yani borç kayboldu, üstelik ileti gitmişti.
+- **Nasıl ölçüldü, üretim yolundan:**
+  - **Kilit çekişmesi:** ölçüm süreci `kuka_ship_notify_claim_<order_id>`
+    kilidini kendi MySQL oturumunda tutar; işçi ayrı bir süreçtir, dolayısıyla
+    ayrı bir oturumdur ve `GET_LOCK` oturum başına çalışır.
+  - **Yazmanın düşürülmesi:** WordPress'in kendi `query` filtresi ile
+    `_kuka_shipping_notify` içeren INSERT/UPDATE ifadeleri `SELECT 1`'e
+    çevrilir. `save_meta_data()` başarılı sanır, satır diske hiç düşmez.
+  - **Okunamayan sipariş:** `woocommerce_order_class` filtresi var olmayan bir
+    sınıf adı döndürür; `WC_Order_Factory` `false` döner ve `wc_get_order()`
+    başarısız olur. Filtre işçi kendi siparişini yükledikten SONRA takılır,
+    böylece başarısız olan tek şey claim'in kilit içindeki taze okumasıdır.
+
+  Üretim kodunda hiçbir test kancası yok; üçü de WordPress'in kendi
+  yüzeylerinden geliyor.
+- **Uygulanan düzeltme:** `claim()` artık
+  `array{ok: bool, outcome: string, handover: string}` döndürüyor. Her sınır
+  reddediyor, tahmin etmiyor:
+  - kilit alınamadı → `claim_lock_contended`
+  - sipariş taze okunamadı → `claim_order_unreadable`
+  - referans yok → `claim_reference_missing`
+  - yazma geri okumada doğrulanamadı → `notification_claim_unverified`
+  - mevcut borç başka bir referansa ait → `claim_other_record`
+  - mevcut borcun sahibi ya da anı boş → `notification_claim_unverified`
+
+  Geri okuma **bayt bayt**: durum `due` mü, sahip beklenen taşıyıcı referansı
+  mı, teslim anı yazılan değerin aynısı mı. `save_meta_data()` hata vermemesi
+  satırın düştüğünün kanıtı değildir.
+- **`sync_status()` tarafı:** claim `ok:false` ise `set_status('fulfilled')`,
+  `set_date_fulfilled()` ve `save()` aşamalarına **hiç geçilmez**; dönen
+  `reason` claim'in kendi outcome'ıdır. Taşıyıcının durumu ellenmediği için
+  sonraki poll yeniden dener ve ölçüm bunu kanıtlıyor:
+  `retry_outcome:sent|retry_mails:1|retry_fulfilled:yes`, ve tarih ilk BAŞARILI
+  claim anından geliyor (`date_from_first_successful_claim:yes`).
+- **Neden kaydı da durdurmak doğru:** `fulfilled` diyen ama arkasında borç
+  olmayan bir kayıt, K-51'de müşterinin bildirimini kalıcı olarak kaybeden
+  durumun ta kendisidir. Onu bilerek üretmemek, taşıyıcı durumunu bir poll
+  gecikmesi kadar geride bırakmaktan daha güvenlidir.
+- **İlgili dosya:**
+  `SHIP/includes/shipping/class-shipment-notification.php` (`claim`,
+  `claim_result`), `SHIP/includes/shipping/class-fulfillment-writer.php`
+  (`sync_status`), `scripts/verify-shipping-notification-race.php`
+- **Tekrar yaşanırsa ilk bak:** `sync_status()` dönüşündeki `reason`.
+  `claim_lock_contended` ise başka bir süreç aynı siparişte karar veriyordu ve
+  bir sonraki poll ilerler; `notification_claim_unverified` ise yazma diske
+  düşmüyor demektir ve sorun veritabanı tarafındadır.
 
 ---
 

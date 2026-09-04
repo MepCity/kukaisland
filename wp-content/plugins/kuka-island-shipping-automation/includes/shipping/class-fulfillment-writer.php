@@ -274,7 +274,28 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				 * concurrent processes agree on, so the date below is written
 				 * once even when two of them write it.
 				 */
-				$handover = Kuka_Island_Shipping_Notification::claim( $order, $reference );
+				$claim = Kuka_Island_Shipping_Notification::claim( $order, $reference );
+
+				if ( ! $claim['ok'] ) {
+					/*
+					 * FAIL-CLOSED. The debt could not be recorded and
+					 * verified, so nothing about the record moves: no status,
+					 * no handover date, no save and no e-mail. A record that
+					 * says `fulfilled` with no debt behind it is the state
+					 * that loses the customer's notification for good, and it
+					 * is never created deliberately. The carrier's own status
+					 * is untouched, so the next poll tries again.
+					 */
+					return array(
+						'ok'             => false,
+						'action'         => 'none',
+						'reason'         => (string) $claim['outcome'],
+						'date_fulfilled' => 'untouched',
+						'notification'   => (string) $claim['outcome'],
+					);
+				}
+
+				$handover = (string) $claim['handover'];
 
 				$fulfillment->set_status( 'fulfilled' );
 				$changed = true;

@@ -225,46 +225,120 @@ final class Kuka_Island_Shipping_Notification {
 	 * that already carries any notification state is left alone, so a repeated
 	 * poll, a retry and a second shipment cannot reopen a settled decision.
 	 *
-	 * Returns the agreed handover instant, as a string carrying its own UTC
-	 * offset. Both concurrent processes get the same value: the first one to
-	 * hold the leaf lock writes it and the other reads it.
+	 * EVERY BOUNDARY HERE IS FAIL-CLOSED. The lock, the fresh read and the
+	 * readback each refuse rather than guess, and the caller is told which one
+	 * refused. A `false` result means nothing was written and nothing may
+	 * move: no fulfilment status, no handover date, no e-mail.
+	 *
+	 * On success the result carries the agreed handover instant, as a string
+	 * with its own UTC offset. Both concurrent processes get the same value:
+	 * the first one to hold the leaf lock writes it and the other reads it.
 	 *
 	 * @param WC_Order $order     Order.
 	 * @param string   $reference This module's carrier reference for the record.
-	 * @return string Handover instant, 'Y-m-d H:i:sP'.
+	 * @return array{ok: bool, outcome: string, handover: string}
 	 */
-	public static function claim( WC_Order $order, string $reference ): string {
+	public static function claim( WC_Order $order, string $reference ): array {
 		$order_id = (int) $order->get_id();
-		$now      = ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' );
-		$locked   = self::acquire_claim_lock( $order_id );
+
+		/*
+		 * FAIL-CLOSED, FIRST LINE. Without the lock this method cannot know
+		 * whether another process is writing the same debt, so it writes
+		 * nothing and says so. The caller must not fulfil the record either:
+		 * a record that says `fulfilled` with no debt behind it is exactly the
+		 * state that loses the customer's notification for good (K-51).
+		 */
+		if ( ! self::acquire_claim_lock( $order_id ) ) {
+			return self::claim_result( false, 'claim_lock_contended', '' );
+		}
 
 		try {
 			$fresh = self::reload_order( $order_id );
 
 			if ( ! $fresh instanceof WC_Order ) {
-				return $now;
+				// The database could not answer. Nothing is written, nothing moves.
+				return self::claim_result( false, 'claim_order_unreadable', '' );
 			}
 
-			$agreed = (string) $fresh->get_meta( self::META_HANDOVER_AT, true );
-
-			if ( '' !== self::state( $fresh ) ) {
-				// Somebody already decided. Never reopen it; reuse their instant.
-				return '' === $agreed ? $now : $agreed;
+			if ( '' === $reference ) {
+				return self::claim_result( false, 'claim_reference_missing', '' );
 			}
+
+			$state = self::state( $fresh );
+
+			if ( '' !== $state ) {
+				/*
+				 * A debt already exists. It is reused ONLY when it provably
+				 * belongs to THIS record: same carrier reference, and an
+				 * instant actually recorded. An empty owner or a different one
+				 * is never adopted silently -- that is how one shipment's debt
+				 * would be spent on another's dispatch.
+				 */
+				$owner    = (string) $fresh->get_meta( self::META_DUE_REFERENCE, true );
+				$handover = (string) $fresh->get_meta( self::META_HANDOVER_AT, true );
+
+				if ( '' === $owner || '' === $handover ) {
+					return self::claim_result( false, 'notification_claim_unverified', '' );
+				}
+
+				if ( $owner !== $reference ) {
+					return self::claim_result( false, 'claim_other_record', '' );
+				}
+
+				return self::claim_result( true, 'already_claimed', $handover );
+			}
+
+			$now = ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' );
 
 			$fresh->update_meta_data( self::META_STATE, self::STATE_DUE );
 			$fresh->update_meta_data( self::META_CODE, '' );
 			$fresh->update_meta_data( self::META_DUE_REFERENCE, $reference );
-			$fresh->update_meta_data( self::META_HANDOVER_AT, '' === $agreed ? $now : $agreed );
+			$fresh->update_meta_data( self::META_HANDOVER_AT, $now );
 			$fresh->update_meta_data( self::META_AT, time() );
 			$fresh->save_meta_data();
 
-			return '' === $agreed ? $now : $agreed;
-		} finally {
-			if ( $locked ) {
-				self::release_claim_lock( $order_id );
+			/*
+			 * READBACK, BYTE FOR BYTE, FROM THE DATABASE.
+			 *
+			 * `save_meta_data()` returning without an error is not evidence
+			 * that the row landed: a filter, a full disk, a dropped statement
+			 * or a replication lag all produce a silent success. Measured with
+			 * the write dropped at the `query` filter: the record was still
+			 * fulfilled, the date still written and the e-mail still sent,
+			 * while nothing at all was persisted -- and the next poll then
+			 * answered `not_due`. So the debt is read back and compared
+			 * exactly; anything else is a refusal.
+			 */
+			$verify = self::reload_order( $order_id );
+
+			if ( ! $verify instanceof WC_Order ) {
+				return self::claim_result( false, 'notification_claim_unverified', '' );
 			}
+
+			if ( self::STATE_DUE !== self::state( $verify )
+				|| $reference !== (string) $verify->get_meta( self::META_DUE_REFERENCE, true )
+				|| $now !== (string) $verify->get_meta( self::META_HANDOVER_AT, true ) ) {
+				return self::claim_result( false, 'notification_claim_unverified', '' );
+			}
+
+			return self::claim_result( true, 'claimed', $now );
+		} finally {
+			self::release_claim_lock( $order_id );
 		}
+	}
+
+	/**
+	 * @param bool   $ok       Whether the debt is recorded and verified.
+	 * @param string $outcome  Fixed, measurable reason.
+	 * @param string $handover Agreed handover instant, '' when there is none.
+	 * @return array{ok: bool, outcome: string, handover: string}
+	 */
+	private static function claim_result( bool $ok, string $outcome, string $handover ): array {
+		return array(
+			'ok'       => $ok,
+			'outcome'  => $outcome,
+			'handover' => $handover,
+		);
 	}
 
 	/**

@@ -124,7 +124,7 @@ function kuka_race_own_fulfillment( WC_Order $order ) {
 
 /* ------------------------------------------------------------------ worker */
 
-if ( 'worker' === $mode || 'crash-worker' === $mode ) {
+if ( in_array( $mode, array( 'worker', 'crash-worker', 'sabotage-worker', 'unreadable-worker' ), true ) ) {
 	$order_id  = (int) ( $argv[2] ?? 0 );
 	$reference = (string) ( $argv[3] ?? '' );
 	$start     = (float) ( $argv[4] ?? 0 );
@@ -237,6 +237,53 @@ if ( 'worker' === $mode || 'crash-worker' === $mode ) {
 		);
 	}
 
+	/*
+	 * KONTROLLÜ SABOTAJ: claim'in meta yazması sessizce düşürülür.
+	 *
+	 * WordPress'in kendi `query` filtresi kullanılır — üretim kodunda hiçbir
+	 * şey değişmez. Yazma çalıştırılmadan `SELECT 1`'e çevrilir, dolayısıyla
+	 * `save_meta_data()` başarılı sanır ama satır diske hiç düşmez. Claim'in
+	 * kilit içinde yaptığı geri okuma bunu yakalamak zorundadır.
+	 */
+	if ( 'sabotage-worker' === $mode ) {
+		add_filter(
+			'query',
+			static function ( $query ) {
+				$query = (string) $query;
+				$head  = strtoupper( substr( ltrim( $query ), 0, 6 ) );
+
+				if ( ! str_contains( $query, '_kuka_shipping_notify' ) ) {
+					return $query;
+				}
+
+				if ( 'INSERT' === $head || 'UPDATE' === $head || 'REPLAC' === $head ) {
+					return 'SELECT 1';
+				}
+
+				return $query;
+			},
+			PHP_INT_MAX
+		);
+	}
+
+	/*
+	 * KONTROLLÜ SABOTAJ: sipariş taze okunamaz.
+	 *
+	 * `WC_Order_Factory` sınıf adını `woocommerce_order_class` filtresinden
+	 * geçirir ve sınıf yoksa `false` döner, yani `wc_get_order()` başarısız
+	 * olur. Filtre işçi kendi siparişini YÜKLEDİKTEN sonra takılır, böylece
+	 * başarısız olan tek şey claim'in kilit içindeki taze okumasıdır.
+	 */
+	if ( 'unreadable-worker' === $mode ) {
+		add_filter(
+			'woocommerce_order_class',
+			static function (): string {
+				return 'Kuka_Race_Order_Class_That_Does_Not_Exist';
+			},
+			PHP_INT_MAX
+		);
+	}
+
 	// Bariyer: iki süreç aynı mikro saniyede devam eder.
 	while ( microtime( true ) < $start ) {
 		usleep( 200 );
@@ -253,11 +300,12 @@ if ( 'worker' === $mode || 'crash-worker' === $mode ) {
 	$clock_after = microtime( true );
 
 	printf(
-		'slot:%s|started_unfulfilled:%s|state_before:%s|action:%s|notification:%s|date:%s|mails:%d|events:%d|http:%d|clock_before:%.6F|clock_after:%.6F' . PHP_EOL,
+		'slot:%s|started_unfulfilled:%s|state_before:%s|action:%s|reason:%s|notification:%s|date:%s|mails:%d|events:%d|http:%d|clock_before:%.6F|clock_after:%.6F' . PHP_EOL,
 		$slot,
 		$was_unfulfil ? 'yes' : 'no',
 		'' === $state_before ? 'absent' : $state_before,
 		(string) $synced['action'],
+		'' === (string) $synced['reason'] ? 'none' : (string) $synced['reason'],
 		(string) $synced['notification'],
 		(string) $synced['date_fulfilled'],
 		$mails,
@@ -850,6 +898,194 @@ printf(
 	$seed_matches ? 'no' : 'yes',
 	(int) ( $seed_run['seed']['mails'] ?? -1 ) + (int) ( $seed_repeat['repeat']['mails'] ?? -1 ),
 	$seed_matches ? 'no' : 'yes'
+);
+
+/* --- 6..8. senaryo: claim sınırları fail-closed mı --------------------- */
+
+/**
+ * Bir siparişin bildirim metası ve kaydının hâli, tek okumada.
+ *
+ * @param int $order_id Sipariş.
+ * @return array<string, string>
+ */
+function kuka_race_claim_facts( int $order_id ): array {
+	kuka_race_forget_order( $order_id );
+	$order = wc_get_order( $order_id );
+
+	if ( ! $order instanceof WC_Order ) {
+		return array( 'meta_writes' => 'unreadable', 'fulfilled' => 'unreadable', 'date' => 'unreadable' );
+	}
+
+	$keys = array(
+		Kuka_Island_Shipping_Notification::META_STATE,
+		Kuka_Island_Shipping_Notification::META_CODE,
+		Kuka_Island_Shipping_Notification::META_ATTEMPTS,
+		Kuka_Island_Shipping_Notification::META_AT,
+		Kuka_Island_Shipping_Notification::META_DUE_REFERENCE,
+		Kuka_Island_Shipping_Notification::META_HANDOVER_AT,
+	);
+
+	$writes = 0;
+
+	foreach ( $keys as $key ) {
+		$writes += '' === (string) $order->get_meta( $key, true ) ? 0 : 1;
+	}
+
+	$record    = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $order, KUKA_RACE_REFERENCE );
+	$fulfilled = 'missing';
+	$date      = 'missing';
+
+	if ( is_object( $record ) && method_exists( $record, 'get_is_fulfilled' ) ) {
+		$fulfilled = $record->get_is_fulfilled() ? 'yes' : 'no';
+		$date      = '' === (string) ( $record->get_date_fulfilled() ?? '' ) ? 'absent' : 'present';
+	}
+
+	return array(
+		'meta_writes' => (string) $writes,
+		'fulfilled'   => $fulfilled,
+		'date'        => $date,
+	);
+}
+
+/**
+ * Fixture: sipariş + bu modülün kendi `unfulfilled` kaydı.
+ *
+ * @param string $run_id    Sahiplik damgası.
+ * @param array  $order_ids Kimlikler (referans).
+ * @param array  $records   Kayıtlar (referans).
+ * @param string $name      Faturalama adı.
+ * @param int    $product   Ürün kimliği.
+ */
+function kuka_race_claim_fixture( string $run_id, array &$order_ids, array &$records, string $name, int $product ): WC_Order {
+	$order = wc_create_order();
+	$order->set_billing_email( KUKA_RACE_RECIPIENT );
+	$order->set_billing_first_name( $name );
+	$order->update_meta_data( KUKA_IYZ_RUN_META, $run_id );
+	$order->update_meta_data( KUKA_IYZ_FIXTURE_META, KUKA_IYZ_FIXTURE_MARKER );
+	$order->update_meta_data( '_kuka_shipping_reference', KUKA_RACE_REFERENCE );
+
+	if ( $product > 0 ) {
+		$order->add_product( wc_get_product( $product ), 1 );
+	}
+
+	$order->save();
+	$order_ids[] = (int) $order->get_id();
+
+	$record = kuka_race_own_fulfillment( $order );
+
+	if ( null !== $record ) {
+		$records[] = $record;
+	}
+
+	return $order;
+}
+
+/* A. Claim kilidi başka bir MySQL oturumu tarafından tutuluyor. */
+
+$lock_order = kuka_race_claim_fixture( $run_id, $order_ids, $records, 'Kilit', $product_id );
+$lock_name  = 'kuka_ship_notify_claim_' . (int) $lock_order->get_id();
+
+/*
+ * Kilidi BU süreç tutar. Ayrı bir işletim sistemi süreci olduğu için ayrı bir
+ * MySQL oturumudur ve `GET_LOCK` oturum başınadır: işçi onu alamayacak.
+ */
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$lock_held = (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', $lock_name ) );
+
+$contended = kuka_race_workers( kuka_race_spawn( (int) $lock_order->get_id(), array( 'contended' => microtime( true ) + 0.2 ) )['lines'] );
+$contended_facts = kuka_race_claim_facts( (int) $lock_order->get_id() );
+
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+
+$lock_retry       = kuka_race_workers( kuka_race_spawn( (int) $lock_order->get_id(), array( 'retry' => microtime( true ) + 0.2 ) )['lines'] );
+$lock_retry_facts = kuka_race_claim_facts( (int) $lock_order->get_id() );
+
+kuka_race_forget_order( (int) $lock_order->get_id() );
+$lock_final    = wc_get_order( (int) $lock_order->get_id() );
+$lock_agreed   = (string) $lock_final->get_meta( Kuka_Island_Shipping_Notification::META_HANDOVER_AT, true );
+$lock_record   = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $lock_final, KUKA_RACE_REFERENCE );
+$lock_stored   = is_object( $lock_record ) && method_exists( $lock_record, 'get_date_fulfilled' )
+	? (string) ( $lock_record->get_date_fulfilled() ?? '' )
+	: '';
+$lock_date_ok  = '' !== $lock_agreed
+	&& '' !== $lock_stored
+	&& gmdate( 'Y-m-d H:i:s', (int) strtotime( $lock_agreed ) ) === gmdate( 'Y-m-d H:i:s', (int) strtotime( $lock_stored . ' UTC' ) );
+
+printf(
+	'SHIPPING_NOTIFICATION_CLAIM_LOCK_IS_FAIL_CLOSED=%s|lock_held_by_other_session:%s|outcome:%s|notification_meta_writes:%s|fulfilled:%s|date:%s|mails:%d|retry_outcome:%s|retry_mails:%d|retry_fulfilled:%s|date_from_first_successful_claim:%s' . PHP_EOL,
+	'1' === $lock_held
+		&& 'claim_lock_contended' === (string) ( $contended['contended']['reason'] ?? '' )
+		&& '0' === (string) $contended_facts['meta_writes']
+		&& 'no' === (string) $contended_facts['fulfilled']
+		&& 'absent' === (string) $contended_facts['date']
+		&& 0 === (int) ( $contended['contended']['mails'] ?? -1 )
+		&& 'sent' === (string) ( $lock_retry['retry']['notification'] ?? '' )
+		&& 1 === (int) ( $lock_retry['retry']['mails'] ?? -1 )
+		&& 'yes' === (string) $lock_retry_facts['fulfilled']
+		&& $lock_date_ok
+			? 'PASS' : 'FAIL',
+	'1' === $lock_held ? 'yes' : 'NO',
+	(string) ( $contended['contended']['reason'] ?? 'missing' ),
+	(string) $contended_facts['meta_writes'],
+	(string) $contended_facts['fulfilled'],
+	(string) $contended_facts['date'],
+	(int) ( $contended['contended']['mails'] ?? -1 ),
+	(string) ( $lock_retry['retry']['notification'] ?? 'missing' ),
+	(int) ( $lock_retry['retry']['mails'] ?? -1 ),
+	(string) $lock_retry_facts['fulfilled'],
+	$lock_date_ok ? 'yes' : 'NO'
+);
+
+/* B. Claim'in meta yazması sabote edilmiş: geri okuma doğrulaması FAIL. */
+
+$sabotage_order = kuka_race_claim_fixture( $run_id, $order_ids, $records, 'Sabotaj', $product_id );
+$sabotaged      = kuka_race_workers( kuka_race_spawn( (int) $sabotage_order->get_id(), array( 'sabotage' => microtime( true ) + 0.2 ), 'sabotage-worker' )['lines'] );
+$sabotage_facts = kuka_race_claim_facts( (int) $sabotage_order->get_id() );
+
+$sabotage_retry       = kuka_race_workers( kuka_race_spawn( (int) $sabotage_order->get_id(), array( 'retry' => microtime( true ) + 0.2 ) )['lines'] );
+$sabotage_retry_facts = kuka_race_claim_facts( (int) $sabotage_order->get_id() );
+
+printf(
+	'SHIPPING_NOTIFICATION_CLAIM_READBACK_IS_VERIFIED=%s|outcome:%s|notification_meta_writes:%s|fulfilled:%s|date:%s|mails:%d|retry_outcome:%s|retry_mails:%d|retry_fulfilled:%s' . PHP_EOL,
+	'notification_claim_unverified' === (string) ( $sabotaged['sabotage']['reason'] ?? '' )
+		&& '0' === (string) $sabotage_facts['meta_writes']
+		&& 'no' === (string) $sabotage_facts['fulfilled']
+		&& 'absent' === (string) $sabotage_facts['date']
+		&& 0 === (int) ( $sabotaged['sabotage']['mails'] ?? -1 )
+		&& 'sent' === (string) ( $sabotage_retry['retry']['notification'] ?? '' )
+		&& 1 === (int) ( $sabotage_retry['retry']['mails'] ?? -1 )
+		&& 'yes' === (string) $sabotage_retry_facts['fulfilled']
+			? 'PASS' : 'FAIL',
+	(string) ( $sabotaged['sabotage']['reason'] ?? 'missing' ),
+	(string) $sabotage_facts['meta_writes'],
+	(string) $sabotage_facts['fulfilled'],
+	(string) $sabotage_facts['date'],
+	(int) ( $sabotaged['sabotage']['mails'] ?? -1 ),
+	(string) ( $sabotage_retry['retry']['notification'] ?? 'missing' ),
+	(int) ( $sabotage_retry['retry']['mails'] ?? -1 ),
+	(string) $sabotage_retry_facts['fulfilled']
+);
+
+/* C. Sipariş kilit içinde taze okunamıyor. */
+
+$unread_order = kuka_race_claim_fixture( $run_id, $order_ids, $records, 'Okunamaz', $product_id );
+$unread_run   = kuka_race_workers( kuka_race_spawn( (int) $unread_order->get_id(), array( 'unreadable' => microtime( true ) + 0.2 ), 'unreadable-worker' )['lines'] );
+$unread_facts = kuka_race_claim_facts( (int) $unread_order->get_id() );
+
+printf(
+	'SHIPPING_NOTIFICATION_CLAIM_UNREADABLE_ORDER_IS_FAIL_CLOSED=%s|outcome:%s|notification_meta_writes:%s|fulfilled:%s|date:%s|mails:%d' . PHP_EOL,
+	'claim_order_unreadable' === (string) ( $unread_run['unreadable']['reason'] ?? '' )
+		&& '0' === (string) $unread_facts['meta_writes']
+		&& 'no' === (string) $unread_facts['fulfilled']
+		&& 'absent' === (string) $unread_facts['date']
+		&& 0 === (int) ( $unread_run['unreadable']['mails'] ?? -1 )
+			? 'PASS' : 'FAIL',
+	(string) ( $unread_run['unreadable']['reason'] ?? 'missing' ),
+	(string) $unread_facts['meta_writes'],
+	(string) $unread_facts['fulfilled'],
+	(string) $unread_facts['date'],
+	(int) ( $unread_run['unreadable']['mails'] ?? -1 )
 );
 
 /* --- 5. senaryo: borcu olmayan kaydı kendiliğinden sahiplenme --------- */

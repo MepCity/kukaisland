@@ -693,6 +693,19 @@ kendiliğinden sahiplenilmiyor. Teslim anı da borçla birlikte bir kez
 yazıldığı için iki sürecin tarih ezmesi artık aynı dizgiyi yazıyor ve mali
 gönderi tarihi kaymıyor. Bkz. K-51.
 
+**Tur 12 — reddetmeyi öğrenmek.** Borç akışı doğruydu ama yazamadığı
+durumları sessizce geçiyordu: `claim()` yalnız bir dizgi döndürdüğü için
+başarısızlığı anlatacak bir kanalı yoktu. Kilit başka bir MySQL oturumunda
+tutulurken, sipariş taze okunamazken ve meta yazması diske hiç düşmezken
+kayıt yine `fulfilled` yapılıyor, tarih yazılıyor ve e-posta gidiyordu —
+üstelik yazma düşmediği senaryoda ileti gittiği hâlde sonraki poll
+`not_due` diyordu. Artık her sınır reddediyor: `claim()` ok/outcome/handover
+döndürüyor, yazdığını bayt bayt geri okuyor, ve başarısızlıkta
+`set_status('fulfilled')` ile `set_date_fulfilled()` aşamalarına hiç
+geçilmiyor. Üç sabotaj da WordPress'in kendi yüzeylerinden geliyor —
+`GET_LOCK`, `query` filtresi ve `woocommerce_order_class` — üretim kodunda
+tek bir test kancası yok. Bkz. K-52.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"
