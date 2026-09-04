@@ -72,6 +72,14 @@ restore() {
   else
     wpx option delete "$GATE_OPTION" >/dev/null 2>&1 || true
   fi
+
+  # Activation appends the plugin and deactivation may reindex the option.
+  # Restore the exact original load order after the lifecycle hooks have run;
+  # equal membership alone is not enough because plugin load order is
+  # observable behaviour.
+  if [ -n "$start_active_plugins" ]; then
+    wpx option update active_plugins "$start_active_plugins" --format=json >/dev/null 2>&1 || true
+  fi
 }
 trap restore EXIT HUP INT TERM
 

@@ -798,11 +798,15 @@ hızla gitmesi içindir.
   Linux bind mount bu sayısal sahipliği koruduğu için container geçici state
   dizinine ulaşamıyor ve claim'i oluşturamıyordu. Seed hatasının bastırılması da
   asıl izin hatasını belirsiz bir fixture hatasına dönüştürüyordu.
-- **Uygulanan düzeltme:** Yalnız rastgele geçici yol geçilebilir, state yaprağı
-  container UID'si tarafından yazılabilir yapıldı. Claim yine container içinde
-  `0600` oluşturulur. Host claim'i doğrudan okumaz; aynı UID ile çalışan ayrı bir
-  helper container state dizinini salt-okunur mount ederek JSON'u test sürecine
-  aktarır. Gerçek kullanıcı state'i ve credential dosyası bu yola girmez.
+- **Uygulanan düzeltme:** Sandbox wrapper container'ı çağıran host UID/GID ile
+  çalıştırır; böylece host'a ait `0700` state dizini ve `0600` credential/claim
+  dosyaları izin gevşetmeden native Linux'ta da kullanılabilir. Test fixture'ı
+  aynı kullanıcıyla oluşturulur. Host claim'i doğrudan okumaz; aynı UID/GID ile
+  çalışan ayrı bir helper container state dizinini salt-okunur mount ederek
+  JSON'u test sürecine aktarır. Gerçek kullanıcı state'i ve credential dosyası
+  bu fixture yoluna girmez. EDM sandbox sürücüsü ayrıca kendisiyle ilgisiz
+  iyzico eklentisini yüklemez; farklı host UID'sinin o eklentinin log dizinine
+  yazamaması EDM testini bozamamalıdır.
 - **Kanıt:** `SANDBOX_RESET_HOST_WRITE_GATE`,
   `SANDBOX_RESET_REAL_WRAPPER_DRIVER`; GitHub Actions `Quality` işi.
 - **İlgili dosya:** `scripts/verify-reset-offline.sh`

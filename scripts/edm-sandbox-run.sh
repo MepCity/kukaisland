@@ -37,6 +37,7 @@ cd "$project_dir"
 cred_dir="${XDG_CONFIG_HOME:-$HOME/.config}/kuka-island"
 cred_file="$cred_dir/edm-test.env"
 state_dir="$cred_dir/edm-sandbox-state"
+container_user="$(id -u):$(id -g)"
 
 # The reconciliation reset touches the state file and nothing else. It gets no
 # credential mount at all, so the offline claim in the PHP driver is enforced
@@ -93,8 +94,9 @@ if [ "$reset_mode" = "yes" ]; then
   # The host gate above has already refused an open write gate.
   echo "EDM_SANDBOX_RUN=RECONCILIATION_RESET|credentials_mounted:no|write_env_forwarded:no|state_only:yes"
   exec docker compose run --rm -T \
+    --user "$container_user" \
     -v "$state_dir":/run/edm/state \
-    wp-cli wp eval-file /project-scripts/edm-sandbox-invoice.php "$@"
+    wp-cli wp --skip-plugins=iyzico-woocommerce eval-file /project-scripts/edm-sandbox-invoice.php "$@"
 fi
 
 if [ ! -f "$cred_file" ]; then
@@ -115,9 +117,10 @@ if [ "$readback_mode" = "yes" ]; then
   # no write path is reachable inside the container even if the code changed.
   echo "EDM_SANDBOX_RUN=READBACK_ONLY|write_env_forwarded:no|nothing_will_be_created"
   exec docker compose run --rm -T \
+    --user "$container_user" \
     -v "$cred_file":/run/edm/edm-test.env:ro \
     -v "$state_dir":/run/edm/state:ro \
-    wp-cli wp eval-file /project-scripts/edm-sandbox-invoice.php "$@"
+    wp-cli wp --skip-plugins=iyzico-woocommerce eval-file /project-scripts/edm-sandbox-invoice.php "$@"
 fi
 
 if [ "$allow" = "true" ]; then
@@ -127,7 +130,8 @@ else
 fi
 
 exec docker compose run --rm -T \
+  --user "$container_user" \
   -e KUKA_EDM_ALLOW_SANDBOX_WRITE \
   -v "$cred_file":/run/edm/edm-test.env:ro \
   -v "$state_dir":/run/edm/state \
-  wp-cli wp eval-file /project-scripts/edm-sandbox-invoice.php "$@"
+  wp-cli wp --skip-plugins=iyzico-woocommerce eval-file /project-scripts/edm-sandbox-invoice.php "$@"

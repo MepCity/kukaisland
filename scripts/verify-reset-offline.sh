@@ -56,20 +56,16 @@ cred_file="$xdg/kuka-island/edm-test.env"
 claim_file="$state_dir/sandbox-e2e.json"
 mkdir -p "$state_dir"
 
-# Linux bind mounts keep numeric ownership. The host-side mktemp directory is
-# mode 700 and belongs to the CI runner, while docker-compose deliberately runs
-# wp-cli as 33:33. Docker Desktop masks that distinction on macOS; a native
-# Linux runner does not, so the fixture could never be created there.
-#
-# Make only the randomly named path traversable and its state leaf writable.
-# The claim itself is still created by uid 33 with mode 600. The host never
-# relaxes or reads that file directly: read_fixture_claim() mounts the leaf
-# read-only and reads it as the same uid that owns it.
-chmod 0711 "$tmp_root" "$xdg" "$xdg/kuka-island"
-chmod 0733 "$state_dir"
+# Linux bind mounts keep numeric ownership. The host-side state directory and
+# mode-600 claim therefore have to be used by the invoking host UID, just as the
+# real wrapper does. Docker Desktop masks this distinction on macOS; a native
+# Linux runner does not. Keep the whole temporary tree private to that owner.
+chmod 0700 "$tmp_root" "$xdg" "$xdg/kuka-island" "$state_dir"
+container_user="$(id -u):$(id -g)"
 
 read_fixture_claim() {
   "$real_docker" compose run --rm -T \
+    --user "$container_user" \
     -v "$state_dir":/run/edm/state:ro \
     wp-cli php -r '
 $path = "/run/edm/state/sandbox-e2e.json";
@@ -88,8 +84,9 @@ echo file_get_contents( $path );
 set +e
 seed_output=$(
   "$real_docker" compose run --rm -T \
+    --user "$container_user" \
     -v "$state_dir":/run/edm/state \
-    wp-cli wp eval '
+    wp-cli wp --skip-plugins=iyzico-woocommerce eval '
 require_once "/project-scripts/lib-edm-sandbox.php";
 $claim = new Kuka_Sandbox_Claim( "/run/edm/state/sandbox-e2e.json" );
 $claim->acquire();
