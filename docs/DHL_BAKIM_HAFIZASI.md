@@ -63,6 +63,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | `WC_Email` nesnesi yeniden kullanıldığı ve bu iki e-postada `$this->object` `setup_locale()`'dan SONRA atandığı için, aynı istekteki ikinci bildirim dilini ÖNCEKİ siparişten alıyordu | Bildirim eylemi önceliği 9'da sipariş kenara yazılıyor ve dil anahtarında `$email->object`'ten önce geliyor (K-46) |
 | 2026-09-04 | `FS_CHMOD_FILE` sabitinin varlığı bir eklentinin yükleme sırasına ve `get_filesystem_method()` cevabına bağlıydı | Core sabiti WordPress'in kendi formülüyle, yalnız tanımsızsa tanımlıyor; vendor dosyasına dokunulmadı (K-47) |
 | 2026-09-04 | Gerçek SMTP açılınca e-posta kabul ölçümleri kırıldı: üçü panelden değişen marka adresini sabit yazıyordu, ikisi `mail()` yerine SMTP'ye kayıp her koşuda dışarı gerçek mesaj bırakıyordu | Ölçümler adres yerine tek kaynağa bağlandı; `disabled-mail` taşıyıcısı `isMail()`'e geri çekilip `DISABLED_MAIL_TRANSPORT` ile ölçülüyor (K-48) |
+| 2026-09-04 | Kargo e-postası WooCommerce'in 600 pikselik varsayılan görünümünde, ham `dhl` taşıyıcı adıyla ve misafirde Hesabım bağlantısıyla gidiyordu; ürün fotoğrafı Gmail'de `localhost` adresi yüzünden görünmüyordu | Ortak tasarım katmanı, 780 pikselik mobil uyumlu iskelet ve tek görsel kapısı; sözleşme `docs/EPOSTA_TASARIMI.md` (K-49) |
 
 ---
 
@@ -1890,6 +1891,39 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `DISABLED_MAIL_TRANSPORT`. `smtp` yazıyorsa
   kabul testi dış sunucuya mesaj bırakıyor demektir; ölçümü zayıflatmak değil,
   taşıyıcıyı geri çekmek doğru cevaptır.
+
+---
+
+## K-49 — Kargo e-postası WooCommerce'in varsayılan görünümünde çıkıyordu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Bildirim gidiyor ama görünüm mağazanın değil WooCommerce'in:
+  600 piksel genişlik, mor bağlantılar, ham `dhl` yazan taşıyıcı satırı,
+  "Fulfillment summary" başlığı, misafir siparişinde "Hesabım > Siparişler"
+  bağlantısı ve takip adresi boşken bile bir bağlantı.
+- **Gmail'de ürün fotoğrafının görünmemesinin kesin nedeni:** Şablon
+  `show_image=true` kullanır ve test ürününün görseli **vardır**. Adres
+  `http://localhost:8080/wp-content/uploads/...` olduğu için Gmail ona
+  erişemez. Bu "şablonda resim yok" değildir; adres sorunudur.
+- **Uygulanan düzeltme:** Ortak tasarım katmanı
+  `Kuka_Island_Core_Email_Design` ve üç küçük şablon kopyası. Tam sözleşme,
+  gerekçeleri ve ölçüm listesi: `docs/EPOSTA_TASARIMI.md`.
+- **Kargo e-postasına özgü olanlar:** taşıyıcı adı WooCommerce'in taşıyıcı
+  kaydından çözülür (`dhl` → `DHL`), bulunamazsa Türkiye taşıyıcıları
+  tablosundan, sonra `kuka_island_email_carrier_label` filtresinden — Core
+  kargo eklentisine bağımlı olmadan. Takip kartı kargo firması, takip numarası
+  ve **varsa** tahmini teslim tarihini taşır; adres yoksa düğme basılmaz.
+  Ürün satırı 104 piksel görsel, ad, varyasyon, adet ve fiyat gösterir;
+  varyasyon görseli yoksa ana ürünün görseline dönülür.
+- **Manuel ve otomatik yol aynı şablonu kullanır:** ikisi de WooCommerce'in
+  `woocommerce_fulfillment_created_notification` eylemi, aynı e-posta sınıfı ve
+  aynı `email-fulfillment-details.php` kopyasıdır (bkz. K-44).
+- **İlgili dosya:** `docs/EPOSTA_TASARIMI.md`,
+  `wp-content/plugins/kuka-island-core/includes/class-email-design.php`,
+  `wp-content/themes/kuka-island-child/woocommerce/emails/`
+- **Tekrar yaşanırsa ilk bak:** `EMAIL_DESIGN_IMAGES` satırındaki
+  `localhost_gate`. `not_https` ise kapı çalışıyor ve müşteriye kırık resim
+  gitmiyor demektir; üretimde `public_https_img:1` beklenir.
 
 ---
 

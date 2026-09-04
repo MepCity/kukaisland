@@ -8740,7 +8740,7 @@ $lang_en_mail = $lang_send( wc_get_order( $lang_en->get_id() ) );
 // The machine translation this round replaced, searched for by its own words.
 $lang_machine = 0;
 
-foreach ( array( 'yerine getirildi', 'yerine getiriliyor', 'Öğeniz yolda' ) as $lang_phrase ) {
+foreach ( array( 'yerine getirildi', 'yerine getiriliyor', 'Öğeniz yolda', 'Woo!', 'öğe' ) as $lang_phrase ) {
 	$lang_machine += substr_count( $lang_tr_mail['subject'] . $lang_tr_mail['body'], $lang_phrase );
 }
 
@@ -8750,8 +8750,8 @@ $report(
 		&& $lang_en_mail['ok']
 		// Turkish: a courier sentence, subject, heading and body.
 		&& str_contains( $lang_tr_mail['subject'], 'siparişiniz kargoya verildi' )
-		&& str_contains( $lang_tr_mail['body'], 'Siparişiniz yola çıktı' )
-		&& str_contains( $lang_tr_mail['body'], 'kargoya verildi. Aşağıdaki bilgilerle' )
+		&& str_contains( $lang_tr_mail['body'], 'Siparişiniz kargoya verildi' )
+		&& str_contains( $lang_tr_mail['body'], 'siparişiniz hazırlanarak kargo firmasına teslim edildi.' )
 		&& 0 === $lang_machine
 		// The tracking number and its link reach the customer when present.
 		&& str_contains( $lang_tr_mail['body'], 'LANG-TRACK-1' )
@@ -8760,8 +8760,9 @@ $report(
 		&& ! str_contains( $lang_en_mail['subject'], 'kargoya verildi' )
 		&& ! str_contains( $lang_en_mail['body'], 'yerine get' )
 		&& str_contains( $lang_en_mail['subject'], 'has shipped!' )
-		&& str_contains( $lang_en_mail['body'], 'Your order is on its way' )
-		&& str_contains( $lang_en_mail['body'], 'track your shipment' )
+		&& str_contains( $lang_en_mail['body'], 'Your order has shipped' )
+		&& str_contains( $lang_en_mail['body'], 'your order has been prepared and handed over to the carrier.' )
+		&& str_contains( $lang_en_mail['body'], 'Track your parcel' )
 		// And both ids are inside the order-locale contract, which is the
 		// switch itself: the body was rendered in the order's own locale.
 		&& has_filter( 'woocommerce_email_subject_customer_fulfillment_created' )
@@ -8771,14 +8772,14 @@ $report(
 	sprintf(
 		'measured:real_send_through_intercepted_transport|tr_subject:%s|tr_heading_in_body:%s|tr_intro_natural:%s|machine_phrases:%d|tracking_number:%s|tracking_link:%s|en_subject:%s|en_heading_in_body:%s|en_intro:%s|en_turkish_leftover:%s|locale_at_body_render:%s',
 		$lang_tr_mail['subject'],
-		str_contains( $lang_tr_mail['body'], 'Siparişiniz yola çıktı' ) ? 'yes' : 'NO',
-		str_contains( $lang_tr_mail['body'], 'kargoya verildi. Aşağıdaki bilgilerle' ) ? 'yes' : 'NO',
+		str_contains( $lang_tr_mail['body'], 'Siparişiniz kargoya verildi' ) ? 'yes' : 'NO',
+		str_contains( $lang_tr_mail['body'], 'siparişiniz hazırlanarak kargo firmasına teslim edildi.' ) ? 'yes' : 'NO',
 		$lang_machine,
 		str_contains( $lang_tr_mail['body'], 'LANG-TRACK-1' ) ? 'shown' : 'MISSING',
 		str_contains( $lang_tr_mail['body'], 'example.invalid/track/LANG-TRACK-1' ) ? 'shown' : 'MISSING',
 		$lang_en_mail['subject'],
-		str_contains( $lang_en_mail['body'], 'Your order is on its way' ) ? 'yes' : 'NO',
-		str_contains( $lang_en_mail['body'], 'track your shipment' ) ? 'yes' : 'NO',
+		str_contains( $lang_en_mail['body'], 'Your order has shipped' ) ? 'yes' : 'NO',
+		str_contains( $lang_en_mail['body'], 'your order has been prepared and handed over to the carrier.' ) ? 'yes' : 'NO',
 		str_contains( $lang_en_mail['body'], 'yerine get' ) ? 'PRESENT' : 'no',
 		sprintf(
 			'%s/%s',

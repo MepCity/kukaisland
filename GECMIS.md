@@ -653,6 +653,19 @@ her koşuda operatörün üretim sunucusuna gerçek bir mesaj bırakıyordu.
 Ölçümler adres yerine tek kaynağa bağlandı ve taşıyıcı o tek gönderim için
 geri çekilip ölçüldü. Bkz. K-48.
 
+**Tur 9 — müşterinin gördüğü şey.** Bildirim gidiyordu, görünümü mağazanın
+değildi: WooCommerce'in 600 pikselik varsayılan iskeleti, mor bağlantılar,
+ham `dhl` yazan taşıyıcı satırı, misafir siparişinde bile "Hesabım >
+Siparişler" bağlantısı ve takip adresi boşken bile bir bağlantı. Ürün
+fotoğrafının Gmail'de görünmemesinin nedeni şablonda resim olmaması değildi:
+adres `http://localhost:8080/...` olduğu için Gmail ona erişemiyordu. Artık
+bütün müşteri e-postaları tek iskelet, tek stil katmanı ve tek görsel kapısı
+kullanıyor: 780 piksel masaüstü, mobilde yüzde yüz genişlik ve yatay taşma
+sıfır, halka açık HTTPS olmayan hiçbir adres gönderilmiyor, logo yoksa
+tipografik wordmark yazılıyor. Vendor şablonlarının tamamı kopyalanmadı;
+yalnız filtresi olmayan üç dosya kopyalandı, kaynak sürümleri kaydedildi ve
+yukarı akış farkı ölçümle kilitlendi. Bkz. K-49 ve docs/EPOSTA_TASARIMI.md.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"

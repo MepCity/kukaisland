@@ -353,6 +353,16 @@ final class Kuka_Island_Core_Language {
 		self::$fulfillment_order = null;
 	}
 
+	/**
+	 * O an işlenen gönderim bildiriminin siparişi, yoksa null.
+	 *
+	 * Şablonlar ve e-posta tasarımı katmanı bu siparişi `$email->object`
+	 * yerine tercih eder; bkz. K-46.
+	 */
+	public static function current_fulfillment_order(): ?WC_Order {
+		return self::$fulfillment_order;
+	}
+
 	public function switch_email_locale( bool $allow, WC_Email $email ): bool {
 		/*
 		 * Kenara yazılan sipariş ÖNCE gelir, `$email->object` sonra.

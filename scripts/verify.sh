@@ -257,7 +257,8 @@ printf '%s\n' "$shipping_isolation"
 email_throwables=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php throwables)
 email_disabled_mail=$(docker compose run --rm -T wp-cli php -d disable_functions=mail /project-scripts/verify-email-delivery.php disabled-mail)
 email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-delivery.php smtp)
-printf '%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp"
+email_design=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-design.php measure)
+printf '%s\n%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp" "$email_design"
 
 response_headers=$(curl -fsS -D - -o /dev/null "$WP_URL/" | tr -d '\r')
 security_txt=$(curl -fsSL --max-redirs 3 "$WP_URL/.well-known/security.txt")
@@ -488,6 +489,26 @@ expect_shipping_match() {
     failures=$((failures + 1))
   fi
 }
+expect_email_design_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$email_design" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+expect_email_design_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n' "$email_design" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
 expect_sandbox_match() {
   label=$1
   pattern=$2
@@ -644,7 +665,7 @@ expect_line "Coming Soon remains enabled" "STORE_VISIBILITY=coming-soon"
 expect_line "Coming Soon covers the whole site" "COMING_SOON_SCOPE=whole-site"
 expect_line "search engines remain blocked" "SEARCH_ENGINE_VISIBILITY=noindex"
 expect_line "private acceptance preview" "PRIVATE_PREVIEW=ready"
-expect_line "measured Site Appearance inventory" "SITE_APPEARANCE_INVENTORY=13_groups|115_rows|156_controls"
+expect_line "measured Site Appearance inventory" "SITE_APPEARANCE_INVENTORY=13_groups|116_rows|157_controls"
 expect_line "classic checkout" "CHECKOUT_CLASSIC=yes"
 expect_line "stock quantity appears only when low" "STOCK_DISPLAY_FORMAT=low_amount"
 expect_line "no legal draft warnings left" "LEGAL_DRAFT_WARNINGS=0"
@@ -1472,7 +1493,20 @@ expect_email_line "configured PHPMailer uses SMTP" "SMTP_TRANSPORT=smtp"
 expect_email_line "sender address and name are fixed" "SMTP_IDENTITY=fixed"
 expect_email_line "WordPress and WooCommerce sender addresses match" "MAIL_FROM_IDENTITIES=wp=woo:brand"
 expect_email_line "reply-to remains separate" "SMTP_REPLY_TO=separate"
+expect_email_design_line "all four customer e-mails render through their own trigger" "EMAIL_DESIGN_RENDERS=tr_processing:ok|en_processing:ok|tr_fulfillment:ok|en_fulfillment:ok"
+expect_email_design_line "the shared layout is 780px wide, responsive, and no longer pinned to 600" "EMAIL_DESIGN_LAYOUT=content_width:780|max_width_declarations:5|mobile_query:present|fixed_600_attributes:0|shared_header:4/4|shared_footer:4/4"
+expect_email_design_match "the shipping copy is natural in both languages and carries no machine translation" "^EMAIL_DESIGN_COPY=tr_subject:Kuka Island siparişiniz kargoya verildi!\\|tr_eyebrow:1\\|tr_intro_name:yes\\|en_subject:Your Kuka Island order [0-9]+ has shipped!\\|en_eyebrow:1\\|en_intro_name:yes\\|forbidden_words:0$"
+expect_email_design_line "product images are only sent when the address is publicly reachable" "EMAIL_DESIGN_IMAGES=localhost_img:0|localhost_gate:not_https|public_https_img:1|public_https_gate:0|alt_from_product:yes|gate:public:ok,localhost:not_https,https_lan:private_host,loopback:private_host,test_tld:private_host,vector:vector,empty:empty"
+expect_email_design_line "the logo falls back to a typographic wordmark instead of a broken image" "EMAIL_DESIGN_LOGO=configured_logo_id:0|no_logo_wordmark:1|public_logo_img:2|public_logo_wordmark:0|local_logo_img:0|local_logo_wordmark:1"
+expect_email_design_line "guests get a signed tracking link, never a My Account link" "EMAIL_DESIGN_ACCESS=membership:off|guest_my_account:0|guest_tokenized:1|customer_my_account_membership_off:0|customer_my_account_membership_on:2|tracking_button:1|no_url_button:0|empty_href:0"
+expect_email_design_line "the banner renders only when the panel field holds a public image" "EMAIL_DESIGN_BANNER=unconfigured:0|configured:1|items_still_shown:1"
+expect_email_design_line "no SMTP credential is introduced by the e-mail templates" "EMAIL_DESIGN_SECRETS=password_in_customer_html:0|username_in_module_templates:0|username_is:public_brand_address"
+expect_email_design_line "the admin e-mail still works on the shared skeleton and carries no customer label" "EMAIL_DESIGN_ADMIN=rendered:yes|order_number:yes|customer_eyebrow:0|shared_skeleton:yes"
+expect_email_design_line "the plain-text version stays plain and keeps the tracking number" "EMAIL_DESIGN_PLAIN_TEXT=html_tags:0|tracking_number:present|bytes:nonempty"
+expect_email_design_line "the three copied WooCommerce templates still match their pinned upstream version" "EMAIL_DESIGN_TEMPLATE_DRIFT=email-header.php:pinned|email-footer.php:pinned|email-fulfillment-details.php:pinned"
+expect_email_design_line "the e-mail design fixtures tear themselves down" "EMAIL_PREVIEW_CLEANUP=succeeded"
 expect_email_line "WooCommerce resend actions remain native" "ORDER_RESEND_ACTIONS=customer+admin"
+expect_value "the theme copies only the WooCommerce templates it must" "$override_count" "8"
 expect_value "theme POT" "$theme_pot" "yes"
 expect_value "plugin POT" "$plugin_pot" "yes"
 expect_value "raw theme colors" "$raw_colors" "0"

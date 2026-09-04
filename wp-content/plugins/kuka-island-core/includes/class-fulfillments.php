@@ -68,35 +68,70 @@ final class Kuka_Island_Core_Fulfillments {
 
 		static $map = null;
 
+		/*
+		 * Her girdi bir çift: [ Türkçe, İngilizce ]. İngilizce sütun da yazılı,
+		 * çünkü WooCommerce'in özgün metni müşteriye gösterilemez: "Woo!" ve
+		 * "items ... being fulfilled" bir kargo bildiriminin dili değildir ve
+		 * sözleşme bu ifadelerin hiçbir müşteri metninde görünmemesidir.
+		 * `%1$s` varsa müşterinin adıyla doldurulur.
+		 */
 		$map ??= array(
 			'Woo! Some items you purchased are being fulfilled. You can use the below information to track your shipment:'
-				=> 'Siparişinizdeki ürünler kargoya verildi. Aşağıdaki bilgilerle gönderinizi takip edebilirsiniz:',
+				=> array(
+					'Merhaba%1$s, siparişiniz hazırlanarak kargo firmasına teslim edildi.',
+					'Hello%1$s, your order has been prepared and handed over to the carrier.',
+				),
 			'Some details of your shipment have recently been updated. This may include tracking information, item contents, or delivery status.'
-				=> 'Kargonuzla ilgili bazı bilgiler güncellendi. Takip numarası, gönderi içeriği veya teslim durumu değişmiş olabilir.',
+				=> array(
+					'Merhaba%1$s, kargonuzla ilgili bilgiler güncellendi. Takip numarası, gönderi içeriği veya teslim durumu değişmiş olabilir.',
+					'Hello%1$s, your shipping details have been updated. The tracking number, parcel contents or delivery status may have changed.',
+				),
 			'Here’s the latest info we have:'
-				=> 'Elimizdeki en güncel bilgiler şöyle:',
+				=> array( 'Elimizdeki en güncel bilgiler şöyle:', 'Here is the latest information we have:' ),
 			'Note from the store:'
-				=> 'Mağaza notu:',
+				=> array( 'Mağaza notu:', 'A note from us:' ),
 			'Please note that couriers may need some time to provide the latest shipping information.'
-				=> 'Kargo firmasının takip bilgilerini güncellemesi biraz zaman alabilir.',
+				=> array(
+					'Kargo firmasının takip bilgilerini güncellemesi biraz zaman alabilir.',
+					'The carrier may need a little time to publish the latest tracking information.',
+				),
 		);
 
 		if ( ! isset( $map[ $text ] ) ) {
 			return $translation;
 		}
 
-		if ( str_starts_with( get_locale(), 'tr' ) ) {
-			return $map[ $text ];
+		/*
+		 * Türkçe olmayan yolda `$translation` KULLANILMAZ:
+		 * `switch_to_locale( 'en_US' )` çağrıldıktan sonra `woocommerce`
+		 * alanının tr_TR girdileri bellekte kalabiliyor ve çeviri katmanı yine
+		 * Türkçe verebiliyor. Doğru İngilizceyi garanti etmenin tek yolu onu
+		 * burada yazılı tutmaktır.
+		 */
+		$copy = str_starts_with( get_locale(), 'tr' ) ? $map[ $text ][0] : $map[ $text ][1];
+
+		return str_contains( $copy, '%1$s' ) ? sprintf( $copy, self::greeting_name() ) : $copy;
+	}
+
+	/**
+	 * Selamlamaya eklenecek ad, başında boşlukla; ad yoksa boş dizgi.
+	 *
+	 * Çeviri katmanında e-posta nesnesi yoktur; sipariş, bildirim eylemi
+	 * başlarken dil katmanının kenara yazdığı nesneden okunur (bkz. K-46).
+	 * Ad boşsa "Merhaba, ..." yine doğru bir cümledir.
+	 */
+	private static function greeting_name(): string {
+		$order = class_exists( 'Kuka_Island_Core_Language' )
+			? Kuka_Island_Core_Language::current_fulfillment_order()
+			: null;
+
+		if ( ! $order instanceof WC_Order ) {
+			return '';
 		}
 
-		/*
-		 * Türkçe değilse özgün İNGİLİZCE metin döndürülür, `$translation`
-		 * değil: `switch_to_locale( 'en_US' )` çağrıldıktan sonra `woocommerce`
-		 * alanının tr_TR girdileri bellekte kalabiliyor ve çeviri katmanı yine
-		 * Türkçe verebiliyor. İngilizce bir siparişin müşterisine bayat Türkçe
-		 * göndermemenin tek kesin yolu kaynağa dönmektir.
-		 */
-		return $text;
+		$name = trim( (string) $order->get_billing_first_name() );
+
+		return '' === $name ? '' : ' ' . $name;
 	}
 
 	/**
@@ -151,14 +186,14 @@ final class Kuka_Island_Core_Fulfillments {
 		if ( self::is_english_order( $object ) ) {
 			return 'customer_fulfillment_updated' === $email->id
 				? 'Your shipping details were updated'
-				: 'Your order is on its way';
+				: 'Your order has shipped';
 		}
 
 		if ( 'customer_fulfillment_updated' === $email->id ) {
 			return __( 'Kargo bilginiz güncellendi', 'kuka-island-core' );
 		}
 
-		return __( 'Siparişiniz yola çıktı', 'kuka-island-core' );
+		return __( 'Siparişiniz kargoya verildi', 'kuka-island-core' );
 	}
 
 	/**

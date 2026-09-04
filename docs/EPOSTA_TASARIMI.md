@@ -1,0 +1,150 @@
+# Müşteri e-postası tasarım sözleşmesi
+
+Bütün müşteri işlem e-postaları tek bir iskelet, tek bir stil katmanı ve tek
+bir görsel kapısı kullanır. Bu dosya o sözleşmeyi ve nedenlerini yazar.
+
+## Nerede yaşıyor
+
+| Katman | Dosya |
+|---|---|
+| Stil, logo, banner, taşıyıcı adı, görsel kapısı | `wp-content/plugins/kuka-island-core/includes/class-email-design.php` |
+| Belge iskeleti (üst yarı) | `wp-content/themes/kuka-island-child/woocommerce/emails/email-header.php` |
+| Belge iskeleti (alt yarı) | `.../emails/email-footer.php` |
+| Kargo bilgisi bloğu | `.../emails/email-fulfillment-details.php` |
+| Konu, başlık, giriş metni | `.../kuka-island-core/includes/class-fulfillments.php` |
+| Sipariş diline göre anahtar | `.../kuka-island-core/includes/class-language.php` |
+| Ölçüm | `scripts/verify-email-design.php` |
+
+E-posta CSS'i storefront CSS'ine **bağlanmaz**. Bir e-posta istemcisinde flex,
+grid, harici stil sayfası, CSS değişkeni ve `position` yoktur; stil
+`woocommerce_email_styles` kancasından verilir ve Emogrifier onu elemanlara
+gömer. `@media` bloğu belgede kalır, mobil istemcide çalışır.
+
+## Neden üç vendor şablonu kopyalandı
+
+Kopyalama son çare olarak yapıldı ve üçü de küçük dosyalardır. Gerekçeler
+filtrelenemeyen HTML'dir:
+
+1. **`email-header.php` (kaynak sürüm 10.7.0)** — WooCommerce içeriği
+   `<td width="600">` ile sabit 600 piksele kilitler. Bu bir HTML niteliğidir;
+   filtresi yoktur ve CSS ile güvenilir biçimde geri alınamaz. 104 pikselik
+   ürün görseli, ad, varyasyon, adet ve fiyatın yan yana durabilmesi için
+   sözleşme **760-800 piksel** aralığıdır; uygulanan değer 780'dir. Kopya ayrıca
+   dış zemini ekran genişliğine yayar, mobilde 18 piksel güvenli kenar bırakır
+   ve Outlook için hayalet tablo ekler.
+2. **`email-footer.php` (10.4.0)** — başlıkta açılan etiketleri kapatır. İkisi
+   bir belgenin iki yarısıdır; biri değişince öteki de değişmek zorundadır.
+3. **`email-fulfillment-details.php` (10.7.0)** — WooCommerce'in bloğu
+   müşteriye "Fulfillment summary" başlığı, **ham taşıyıcı anahtarı** (`dhl`),
+   takip adresi boşken bile `<a href="">`, misafir siparişinde bile
+   "Hesabım > Siparişler" bağlantısı ve 48 pikselik görsel basar. Hiçbirinin
+   kancası yoktur.
+
+Geri kalan her şey kancayla çözülür: `woocommerce_email_styles`,
+`woocommerce_email_header`, `woocommerce_email_footer`,
+`woocommerce_order_item_thumbnail`, `woocommerce_order_item_name`,
+`woocommerce_date_format`, `option_woocommerce_email_header_image`.
+
+**Sürüm farkı testi:** `EMAIL_DESIGN_TEMPLATE_DRIFT` üç kopyanın yukarı akış
+`@version` değerini karşılaştırır. WooCommerce şablonu güncellerse ölçüm FAIL
+verir ve kopya elden geçirilir. `WOOCOMMERCE_OVERRIDES=8` sayısı da sabitlidir:
+dördüncü bir e-posta şablonu sessizce kopyalanamaz.
+
+## Görsel kapısı — tek kural
+
+`Email_Design::image_gate()` bir adresi yalnız şu koşullarda geçirir: şema
+**https**, sunucu internetten çözülebilir, uzantı **SVG değil**. Red gerekçesi
+ölçülebilir bir koddur: `not_https`, `private_host`, `vector`, `empty`.
+
+Bu kapı olmadan yerel ortamda ürün fotoğrafının adresi
+`http://localhost:8080/wp-content/uploads/...` olur. Şablon `show_image=true`
+kullanır ve **görsel gerçekten vardır**; Gmail'de görünmemesinin nedeni
+şablonda resim olmaması değil, Gmail'in `localhost` adresine erişememesidir.
+Kapı reddettiğinde kırık resim çerçevesi basılmaz: temiz tipografik satıra
+dönülür ve HTML'e adres taşımayan bir yorum düşülür
+(`<!-- kuka-image-gate:not_https -->`).
+
+Aynı kapı üç yerde çalışır: ürün satırı, WooCommerce'in kendi sipariş satırı
+görseli (`customer_processing_order` ve kardeşleri) ve logo.
+
+## Logo ve wordmark
+
+Logo panelden gelir: **Site Görünümü > Marka > Logo**, yalnız attachment ID
+saklanır. Adres kapıdan geçerse `<img>`, geçmezse **tipografik wordmark**
+(mağaza adının büyük harfli hâli) yazılır. Hayalî ya da yeni bir logo
+üretilmez, SVG ve yerel adres dış e-postaya konulmaz.
+
+## Banner
+
+**Site Görünümü > Marka > E-posta kapak/banner görseli** isteğe bağlıdır. Alan
+boşsa banner **hiç render edilmez**. Doluysa işlem bilgilerinin **altında**,
+altbilgiden önce tek yatay şerit çıkar; yalnız marka atmosferi ve mağaza
+bağlantısı taşır. Pazarlama izni olmayan müşteriye ürün öneri listesi
+basılmaz. Sağda solda yüzen dekoratif görsel yoktur; Outlook ve mobilde bozulur.
+
+## Dil
+
+Konu, başlık, etiket ve giriş metni siparişin diline göre seçilir
+(`_kuka_order_locale`). İngilizce metin **yazılıdır**, çeviri katmanından
+beklenmez: `switch_to_locale( 'en_US' )` sonrasında `woocommerce` alanının
+tr_TR girdileri bellekte kalabiliyor (bkz. K-45, K-46).
+
+Müşteri metninde **hiçbir zaman** görünmeyecek ifadeler: `Woo!`, `öğe`,
+`yerine getirildi`, `fulfillment`. Ölçüm bunları beş ayrı render üzerinde sayar
+ve toplam 0 olmak zorundadır.
+
+Şablonlardaki iki dilli metinler `__()` ile **sarılmaz**, ikisi de yazılıdır
+ve sipariş diline göre seçilir. Bu yüzden "Paketinizdeki ürünler" ya da
+"Kargonu takip et" hiçbir `.pot` dosyasında görünmez; bu bir eksik değil,
+K-45/K-46'nın sonucudur. Core sınıflarındaki konu ve başlık metinleri ise
+`__()` ile sarılıdır ve `kuka-island-core.pot` içindedir.
+
+Tarih biçimi: site seçeneği `F j, Y` olduğu için Türkçe bir e-postada
+"Eylül 4, 2026" çıkıyordu. `woocommerce_date_format` filtresi biçimi **yalnız
+bir e-posta render edilirken** `j F Y` yapar; operatörün site ayarı
+değiştirilmez, sipariş ekranı ve mağaza etkilenmez.
+
+## Erişim bağlantısı
+
+- Misafir sipariş: **süreli, imzalı** sipariş takip bağlantısı
+  (`Membership::tracking_link()`, `kuka_track=`). E-posta adresi ya da sipariş
+  numarası adrese yazılmaz.
+- Hesaba bağlı sipariş **ve üyelik açık**: "Siparişlerimi görüntüle".
+- Üyelik kapalı: hesaba bağlı siparişte de Hesabım bağlantısı **yoktur** —
+  müşteriyi var olmayan bir sayfaya göndermek olurdu. Hesap açmaya yönlendiren
+  metin bulunmaz.
+
+Takip adresi yoksa ya da `http(s)` değilse **düğme basılmaz**; boş `href`
+üretilmez.
+
+## Ölçümler
+
+`make verify` içinde, `scripts/verify-email-design.php measure`:
+
+| Satır | Ne kanıtlar |
+|---|---|
+| `EMAIL_DESIGN_RENDERS` | TR/EN × processing/kargo, dördü de kendi tetikleyicisinden |
+| `EMAIL_DESIGN_LAYOUT` | 780 px, mobil sorgu var, `width="600"` niteliği 0, ortak başlık/altbilgi 4/4 |
+| `EMAIL_DESIGN_COPY` | konu, etiket, adla selamlama, yasak ifade 0 |
+| `EMAIL_DESIGN_IMAGES` | yerelde `<img>` 0, halka açık HTTPS'te 1, alt metin ürün adından, kapının yedi gerekçesi |
+| `EMAIL_DESIGN_LOGO` | logo yoksa wordmark, varsa ve halka açıksa `<img>`, varsa ama yerelse yine wordmark |
+| `EMAIL_DESIGN_ACCESS` | misafirde Hesabım 0, imzalı bağlantı 1, üyelik açıkken Hesabım var, adres yokken düğme 0, boş `href` 0 |
+| `EMAIL_DESIGN_BANNER` | alan boşken 0, doluyken 1, ürünler yine görünür |
+| `EMAIL_DESIGN_SECRETS` | parola müşteri HTML'inde 0; kullanıcı adı bu kurulumda mağazanın **yayınlanmış** adresiyle aynı ve modül şablonlarında 0 |
+| `EMAIL_DESIGN_ADMIN` | yönetici iletisi çalışıyor, müşteri etiketi taşımıyor |
+| `EMAIL_DESIGN_PLAIN_TEXT` | düz metinde HTML etiketi 0, takip numarası var |
+| `EMAIL_DESIGN_TEMPLATE_DRIFT` | üç kopya yukarı akış sürümüne sabit |
+
+Tarayıcı ölçümü (`scripts/verify-email-design.php <mod>` çıktısı bir dosyaya
+render edilip açılır): masaüstü `#wrapper` genişliği **780 px**, yatay taşma
+**0**; 390 piksel genişlikte `#wrapper` **390 px**, yatay taşma **0**, viewport
+dışına çıkan eleman **0**.
+
+## Bu alanda yapılmaması gerekenler
+
+- Vendor e-posta şablonlarının tamamını child theme'e kopyalamak.
+- WooCommerce ya da başka bir vendor dosyasını doğrudan değiştirmek.
+- E-posta stilini `assets/css` altındaki storefront dosyalarına bağlamak.
+- Görsel kapısını gevşetmek. Kapı gevşerse müşteriye kırık resim gider.
+- Yönetici e-postalarına müşteri etiketi ya da müşteri bağlantısı eklemek.
+- SMTP kullanıcı adı veya parolasını panelde ya da veritabanında saklamak.

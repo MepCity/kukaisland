@@ -87,6 +87,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		return array(
 			'brand' => array(
 				'logo_id' => 0, 'mobile_logo_id' => 0, 'emblem_id' => 0, 'favicon_id' => 0, 'social_share_image_id' => 0,
+				'email_banner_id' => 0,
 				'email' => 'info@kukaisland.com', 'phone' => '+90 530 948 19 96', 'whatsapp_phone' => '0530 948 19 96',
 				'social_links' => 'Instagram|https://www.instagram.com/kukaisland',
 			),
@@ -208,7 +209,7 @@ final class Kuka_Island_Core_Site_Appearance {
 	 */
 	public static function get(): array {
 		if ( null !== self::$content_cache ) {
-			return self::$content_cache;
+			return self::filtered( self::$content_cache );
 		}
 		$saved = get_option( self::OPTION_NAME, array() );
 		$legacy_main = "Yeni Gelenler|/magaza/?orderby=date\nTüm Ürünler|/magaza/\nHakkımızda|/hakkimizda/";
@@ -223,7 +224,28 @@ final class Kuka_Island_Core_Site_Appearance {
 			$content['story']['scenes'] = $saved['story']['scenes'];
 		}
 		self::$content_cache = class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::with_translation_defaults( $content ) : $content;
-		return self::$content_cache;
+		return self::filtered( self::$content_cache );
+	}
+
+	/**
+	 * Panel içeriğinin okunan hâli.
+	 *
+	 * Açık bir uzatma noktası: içerik süreç içinde önbelleklendiği için bir
+	 * ölçüm ya da eklenti tek bir alanı, operatörün option satırına YAZMADAN
+	 * değiştirebilir. Üretimde bu filtreye bağlı hiçbir şey yoktur.
+	 *
+	 * @param array<string, mixed> $content Okunan içerik.
+	 * @return array<string, mixed>
+	 */
+	private static function filtered( array $content ): array {
+		/**
+		 * Site Görünümü panelinin okunan içeriği.
+		 *
+		 * @param array<string, mixed> $content Panel içeriği.
+		 */
+		$filtered = apply_filters( 'kuka_island_site_content', $content );
+
+		return is_array( $filtered ) ? $filtered : $content;
 	}
 
 	/** Clear the request-local cache after this class changes the option. */
@@ -338,6 +360,7 @@ final class Kuka_Island_Core_Site_Appearance {
 					'emblem_id'             => array( __( 'Amblem (logoyla gösterilmez; boşsa palmiye SVG kullanılır)', 'kuka-island-core' ), 'media_image' ),
 					'favicon_id'            => array( __( 'Favicon', 'kuka-island-core' ), 'media_image' ),
 					'social_share_image_id' => array( __( 'Sosyal paylaşım görseli', 'kuka-island-core' ), 'media_image' ),
+					'email_banner_id'       => array( __( 'E-posta kapak/banner görseli (isteğe bağlı; boşsa e-postada banner çıkmaz)', 'kuka-island-core' ), 'media_image' ),
 					'email'                 => array( __( 'E-posta', 'kuka-island-core' ), 'email' ),
 					'phone'                 => array( __( 'Telefon', 'kuka-island-core' ), 'text' ),
 					'whatsapp_phone'        => array( __( 'WhatsApp numarası (wa.me bağlantısı otomatik üretilir)', 'kuka-island-core' ), 'text' ),

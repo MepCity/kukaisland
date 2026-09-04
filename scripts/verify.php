@@ -399,10 +399,13 @@ $admin_experience_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-is
 $language_source = (string) file_get_contents( WP_PLUGIN_DIR . '/kuka-island-core/includes/class-language.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $newsletter_csv = new ReflectionMethod( Kuka_Island_Core_Newsletter::class, 'csv_cell' );
 $appearance_url = new ReflectionMethod( Kuka_Island_Core_Site_Appearance::class, 'sanitize_url' );
-$tracking_url = new ReflectionMethod( Kuka_Island_Core_Membership::class, 'tracking_url' );
+/*
+ * Takip bağlantısı artık public static: e-posta şablonu da aynı imzalı
+ * bağlantıyı kullanıyor, dolayısıyla yansımaya gerek kalmadı.
+ */
 $tracking_order = new WC_Order();
 $tracking_order->set_billing_email( 'private@example.test' );
-$tracking_link = (string) $tracking_url->invoke( new Kuka_Island_Core_Membership(), $tracking_order );
+$tracking_link = Kuka_Island_Core_Membership::tracking_link( $tracking_order );
 $filter_get = $_GET;
 $_GET['ki_cut'] = array( 'nested' => array( 'x' ), 'valid-cut' );
 $safe_filter_values = kuka_island_filter_values( 'ki_cut' );

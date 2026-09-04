@@ -110,7 +110,7 @@ final class Kuka_Island_Core_Membership {
 		}
 		printf(
 			'<p class="kuka-order-tracking"><a href="%1$s">%2$s</a></p>',
-			esc_url( $this->tracking_url( $order ) ),
+			esc_url( self::tracking_link( $order ) ),
 			esc_html__( 'Siparişinizi sipariş numarası ve e-posta adresinizle takip edin', 'kuka-island-core' )
 		);
 	}
@@ -128,12 +128,19 @@ final class Kuka_Island_Core_Membership {
 		}
 		printf(
 			'<p><a href="%1$s">%2$s</a></p>',
-			esc_url( $this->tracking_url( $order ) ),
+			esc_url( self::tracking_link( $order ) ),
 			esc_html__( 'Siparişinizi sipariş numaranız ve e-posta adresinizle takip edin', 'kuka-island-core' )
 		);
 	}
 
-	private function tracking_url( WC_Order $order ): string {
+	/**
+	 * Sipariş takip sayfasının süreli, imzalı bağlantısı.
+	 *
+	 * Misafir siparişlerinde "Hesabım > Siparişler" bağlantısının yerine bu
+	 * kullanılır: e-posta adresi ya da sipariş numarası adrese YAZILMAZ, tek
+	 * taşınan şey süreli bir imzadır.
+	 */
+	public static function tracking_link( WC_Order $order ): string {
 		return add_query_arg(
 			array(
 				'kuka_track' => self::tracking_token( $order, time() + self::TRACKING_LINK_SECONDS ),
@@ -152,7 +159,7 @@ final class Kuka_Island_Core_Membership {
 		if ( $legacy_id && $legacy_email ) {
 			$order = wc_get_order( $legacy_id );
 			if ( $order instanceof WC_Order && hash_equals( strtolower( $order->get_billing_email() ), strtolower( $legacy_email ) ) ) {
-				wp_safe_redirect( $this->tracking_url( $order ), 302 );
+				wp_safe_redirect( self::tracking_link( $order ), 302 );
 				exit;
 			}
 		}
