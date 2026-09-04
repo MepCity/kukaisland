@@ -151,6 +151,7 @@ final class Kuka_Island_Shipping_Automation {
 			'class-shipment-order-store.php',
 			'class-carrier-registry.php',
 			'class-fulfillment-writer.php',
+			'class-shipment-notification.php',
 			'class-shipment-status-poller.php',
 			'class-shipment-manager.php',
 			'class-shipment-admin.php',

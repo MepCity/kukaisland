@@ -28,8 +28,18 @@ if ( 'smtp' === $mode ) {
 	echo 'SMTP_TRANSPORT=' . ( 'smtp' === $mailer->Mailer ? 'smtp' : $mailer->Mailer ) . PHP_EOL;
 	$wp_from = apply_filters( 'wp_mail_from', 'wordpress@example.test' );
 	$woo_from = apply_filters( 'woocommerce_email_from_address', 'store@example.test' );
-	echo 'SMTP_IDENTITY=' . ( 'info@kukaisland.com' === $wp_from && 'Kuka Island' === apply_filters( 'wp_mail_from_name', 'WordPress' ) ? 'fixed' : 'invalid' ) . PHP_EOL;
-	echo 'MAIL_FROM_IDENTITIES=' . ( $wp_from === $woo_from ? 'wp=woo:' . $wp_from : 'diverged' ) . PHP_EOL;
+	/*
+	 * Gönderici adresi panelden yönetilen marka e-postasından türer. Ölçüm
+	 * sabit bir adrese değil bu tek kaynağa bağlanır: operatör adresi
+	 * değiştirdiğinde sözleşme yine geçerlidir, kırılan tek şey adresin
+	 * WordPress ile WooCommerce arasında ayrışması olur.
+	 */
+	$brand_email = class_exists( 'Kuka_Island_Core_Site_Appearance' )
+		? sanitize_email( (string) ( Kuka_Island_Core_Site_Appearance::get()['brand']['email'] ?? '' ) )
+		: '';
+	$brand_email = is_email( $brand_email ) ? $brand_email : 'info@kukaisland.com';
+	echo 'SMTP_IDENTITY=' . ( $brand_email === $wp_from && 'Kuka Island' === apply_filters( 'wp_mail_from_name', 'WordPress' ) ? 'fixed' : 'invalid' ) . PHP_EOL;
+	echo 'MAIL_FROM_IDENTITIES=' . ( $wp_from !== $woo_from ? 'diverged' : ( $wp_from === $brand_email ? 'wp=woo:brand' : 'wp=woo:foreign' ) ) . PHP_EOL;
 	$reply_to_addresses = $mailer->getReplyToAddresses();
 	echo 'SMTP_REPLY_TO=' . ( in_array( 'destek@kukaisland.com', array_column( $reply_to_addresses, 0 ), true ) ? 'separate' : 'missing' ) . PHP_EOL;
 	exit;
@@ -101,6 +111,23 @@ register_shutdown_function(
 );
 
 if ( 'disabled-mail' === $mode ) {
+	/*
+	 * Bu ölçüm PHP mail() kapalıyken güvenli başarısızlığı sınar. Ortamda
+	 * gerçek SMTP yapılandırıldığında wp_mail() artık mail() üzerinden
+	 * geçmez: ölçüm anlamını yitirir ve her make verify koşusu dış posta
+	 * sunucusuna gerçek bir mesaj bırakır. Taşıyıcı bu tek gönderim için
+	 * mail()'e geri çekilir ve fiilen kullanılan taşıyıcı raporlanır.
+	 */
+	$disabled_mail_transport = 'unknown';
+	add_action(
+		'phpmailer_init',
+		static function ( PHPMailer\PHPMailer\PHPMailer $phpmailer ) use ( &$disabled_mail_transport ): void {
+			$phpmailer->isMail();
+			$disabled_mail_transport = (string) $phpmailer->Mailer;
+		},
+		PHP_INT_MAX
+	);
+
 	$delivery->capture_order_context( '', 'new_order', $order );
 	$sent = wp_mail( 'acceptance@example.test', 'Disabled mail acceptance', 'No message is sent.' );
 	$order = wc_get_order( $order->get_id() );
@@ -108,6 +135,7 @@ if ( 'disabled-mail' === $mode ) {
 	$note_text = implode( ' ', wp_list_pluck( $notes, 'content' ) );
 	$warning_text = wp_json_encode( $delivery->add_operator_warnings( array() ), JSON_UNESCAPED_UNICODE );
 	echo 'PHP_MAIL_FUNCTION=' . ( function_exists( 'mail' ) ? 'enabled' : 'disabled' ) . PHP_EOL;
+	echo 'DISABLED_MAIL_TRANSPORT=' . $disabled_mail_transport . PHP_EOL;
 	echo 'DISABLED_MAIL_SAFE=' . ( false === $sent ? 'yes' : 'no' ) . PHP_EOL;
 	echo 'DISABLED_MAIL_ORDER_NOTE=' . ( str_contains( $note_text, 'Sipariş e-postası gönderilemedi:' ) ? 'yes' : 'no' ) . PHP_EOL;
 	echo 'DISABLED_MAIL_START_WARNING=' . ( str_contains( $warning_text, 'PHP mail() kapalı' ) ? 'yes' : 'no' ) . PHP_EOL;

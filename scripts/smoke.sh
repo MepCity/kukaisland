@@ -4,9 +4,8 @@ set -eu
 project_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$project_dir"
 ./scripts/ensure-env.sh
-set -a
-. "$project_dir/.env"
-set +a
+. "$project_dir/scripts/lib-env.sh"
+kuka_load_env_file "$project_dir/.env"
 
 temporary_dir=$(mktemp -d)
 trap 'rm -r "$temporary_dir"' EXIT HUP INT TERM

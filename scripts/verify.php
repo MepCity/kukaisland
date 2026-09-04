@@ -120,7 +120,14 @@ WP_CLI::line( 'SITE_APPEARANCE_GROUPS=' . implode( ',', array_keys( $site_conten
 WP_CLI::line( sprintf( 'SITE_APPEARANCE_INVENTORY=%d_groups|%d_rows|%d_controls', count( $appearance_groups ), $appearance_rows, $appearance_controls ) );
 WP_CLI::line( 'HOME_HERO_TITLES=' . (string) ( $site_content['hero']['title'] ?? '' ) . '|' . (string) ( $site_content['hero']['title_en'] ?? '' ) );
 WP_CLI::line( 'HOME_EDITORIAL_TITLES=' . (string) ( $site_content['home']['editorial_title'] ?? '' ) . '|' . (string) ( $site_content['home']['editorial_title_en'] ?? '' ) );
-WP_CLI::line( 'SITE_EMAIL=' . (string) ( $site_content['brand']['email'] ?? '' ) );
+/*
+ * Marka e-postası Site Görünümü panelinden yönetilen bir kullanıcı verisidir.
+ * Buraya sabit bir adres yazmak, operatör adresi değiştirdiğinde make verify'ı
+ * kırar ve düzeltme yolu olarak kullanıcı verisini geri yazmayı gösterir.
+ * Sözleşme adresin kendisi değil, geçerli ve kuka alan adında olmasıdır.
+ */
+$brand_email = sanitize_email( (string) ( $site_content['brand']['email'] ?? '' ) );
+WP_CLI::line( 'SITE_EMAIL=' . ( is_email( $brand_email ) && str_ends_with( $brand_email, '@kukaisland.com' ) ? 'configured' : 'unconfigured' ) );
 WP_CLI::line( 'LANGUAGE_TRANSLATABLE_FIELDS=' . ( class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_field_count() : 0 ) );
 WP_CLI::line( 'PRODUCT_EN_FIELD_SCHEMA=9' );
 WP_CLI::line( 'PAGE_EN_FIELD_SCHEMA=2' );

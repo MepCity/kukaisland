@@ -4,9 +4,8 @@ set -eu
 project_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$project_dir"
 ./scripts/ensure-env.sh
-set -a
-. "$project_dir/.env"
-set +a
+. "$project_dir/scripts/lib-env.sh"
+kuka_load_env_file "$project_dir/.env"
 
 snapshot=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify.php)
 printf '%s\n' "$snapshot"
@@ -191,6 +190,58 @@ for dhl_write_args in '--order=1' '--order=1 --confirm=evet' '--confirm=TEK-SAND
 done
 printf 'DHL_RUNNER_ALLOWLIST=mode:offline_allowlist_check|leaks:%s|allowlisted_decision:%s|credentials_read:no|docker_started:no|php_started:no|network_calls:0|write_tool_refusals:%s/4\n' \
   "$dhl_runner_leaks" "$dhl_runner_allowlist_ok" "$dhl_write_refusals"
+
+# The env loader, measured on a throwaway compose-format file.
+#
+# `.env` is a compose env file and `make verify` used to source it with `.`,
+# which dies on the first value containing a space -- exit 127 before a single
+# check ran. The loader parses instead of sourcing, so this proves a spaced
+# value, a quoted value and a value carrying shell metacharacters all arrive
+# VERBATIM and that none of them is executed.
+env_probe_dir=$(mktemp -d)
+{
+  printf '# a comment line\n'
+  printf '\n'
+  printf 'KUKA_PROBE_PLAIN=simple\n'
+  printf 'KUKA_PROBE_SPACED=Kuka Island\n'
+  printf 'KUKA_PROBE_QUOTED="quoted value"\n'
+  # No absolute path inside the value: its LENGTH is part of the contract.
+  printf 'KUKA_PROBE_META=a$(touch executed)b;c\n'
+  printf 'not a variable line\n'
+} > "$env_probe_dir/env"
+
+(
+  cd "$env_probe_dir" || exit 1
+  . "$project_dir/scripts/lib-env.sh"
+  kuka_load_env_file "$env_probe_dir/env"
+  printf 'ENV_LOADER_CONTRACT=plain:%s|spaced:%s|quoted:%s|meta_len:%s|executed:%s\n' \
+    "$KUKA_PROBE_PLAIN" \
+    "$KUKA_PROBE_SPACED" \
+    "$KUKA_PROBE_QUOTED" \
+    "${#KUKA_PROBE_META}" \
+    "$( [ -e "$env_probe_dir/executed" ] && echo YES || echo no )"
+) > "$env_probe_dir/out"
+
+env_loader_contract=$(cat "$env_probe_dir/out")
+printf '%s\n' "$env_loader_contract"
+rm -rf "$env_probe_dir"
+
+# The SMTP credential's HOST-side facts. The verification container mounts only
+# ./scripts, so docker-compose.yml, .gitignore and the runbook can only be read
+# from here -- and where a working mail credential is NOT stored matters as much
+# as where it is.
+smtp_compose_services=$(grep -c "define( 'KUKA_SMTP_PASSWORD', getenv" docker-compose.yml || true)
+smtp_env_ignored='no'
+grep -qxF '.env' .gitignore && smtp_env_ignored='yes'
+smtp_env_tracked='yes'
+git ls-files --error-unmatch .env >/dev/null 2>&1 || smtp_env_tracked='no'
+smtp_runbook='no'
+if grep -q 'KUKA_SMTP_PASSWORD' docs/DEPLOY_RUNBOOK.md && grep -q 'wp-config.php' docs/DEPLOY_RUNBOOK.md; then
+  smtp_runbook='yes'
+fi
+smtp_secret_transport=$(printf 'SMTP_SECRET_TRANSPORT=compose_services_wired:%s|runbook_documents_location:%s|env_gitignored:%s|env_tracked_in_git:%s' \
+  "$smtp_compose_services" "$smtp_runbook" "$smtp_env_ignored" "$smtp_env_tracked")
+printf '%s\n' "$smtp_secret_transport"
 
 shipping_post_keyset=$(invoice_keyset_line)
 printf 'SHIPPING_DB_KEYSET_POST=%s\n' "${shipping_post_keyset#INVOICE_DB_KEYSET=}"
@@ -862,7 +913,7 @@ expect_shipping_match "the poll chains leave no action, no log and no group row"
 # The carrier abstraction, measured on an adapter that has never heard of DHL.
 expect_shipping_match "a second carrier needs only an adapter and the filter" "^SHIPPING_SECOND_CARRIER_ADAPTER_ONLY=PASS\\|carrier:kuka-test-kargo\\|create_order:1\\|create_barcode:1\\|status_reads:1\\|cancel_shipment:1\\|cancel_order:0\\|fulfillment_provider:kuka-test-kargo\\|fulfillment_tracking:FAKE-BC-1\\|state:cancelled\\|needs_no_dhl_class:yes\\|dhl_types_in_adapter:0$"
 expect_shipping_match "the default carrier comes from configuration and fails closed" "^SHIPPING_DEFAULT_CARRIER_FAIL_CLOSED=PASS\\|setting:KUKA_SHIPPING_DEFAULT_CARRIER\\|two_registered_none_configured:refused\\|one_registered:kuka-test-kargo\\|filter_selects:kuka-test-kargo\\|unknown_key_returned_verbatim:kargo-yok\\|unknown_key_code:carrier_not_registered\\|carrier_calls_on_unknown:0$"
-expect_shipping_match "the carrier-agnostic core names no adapter class or constant" "^SHIPPING_CORE_NAMES_NO_ADAPTER=PASS\\|files:8\\|dhl_class_or_constant_references:0\\|comments_stripped:yes\\|scan_control_positive:yes$"
+expect_shipping_match "the carrier-agnostic core names no adapter class or constant" "^SHIPPING_CORE_NAMES_NO_ADAPTER=PASS\\|files:9\\|dhl_class_or_constant_references:0\\|comments_stripped:yes\\|scan_control_positive:yes$"
 
 expect_shipping_match "the behavioural suite makes no real carrier request" "^SHIPPING_NO_REAL_CARRIER_REQUEST=PASS\\|guard:pre_http_request\\|carrier_host:mngkargo.com.tr\\|real_requests_attempted:0\\|transport:mock_only$"
 # Every carrier write crosses one boundary, and crosses it twice.
@@ -880,7 +931,7 @@ expect_shipping_match "an amendment is serialised and built from a fresh reading
 expect_shipping_match "every state but the two amendable ones sends nothing" "^SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE=PASS\\|states_checked:10\\|wrong:none\\|carrier_writes:0$"
 
 # The translation catalogue is generated from the source, and matches it.
-expect_shipping_match "the translation catalogue matches the source exactly" "^SHIPPING_POT_CATALOG=PASS\\|pot:readable\\|source_literals:[0-9]+\\|catalog_msgids:[0-9]+\\|missing_from_catalog:0\\|stale_in_catalog:0\\|required_new_strings:52/52\\|retired_hardcoded_carrier_string:removed$"
+expect_shipping_match "the translation catalogue matches the source exactly" "^SHIPPING_POT_CATALOG=PASS\\|pot:readable\\|source_literals:[0-9]+\\|catalog_msgids:[0-9]+\\|missing_from_catalog:0\\|stale_in_catalog:0\\|required_new_strings:54/54\\|retired_hardcoded_carrier_string:removed$"
 
 # An order belongs to ITS carrier, whatever the shop's default becomes.
 expect_shipping_match "query, reconcile, amend and cancel stay with the order's own carrier" "^SHIPPING_PROVIDER_AFFINITY=PASS\\|stored_provider:dhl\\|default_now:kuka-other-kargo\\|resolved:dhl\\(order\\)\\|dhl.status_reads:1\\|dhl.reconcile_reads:1\\|dhl.updates:1\\|dhl.cancels:1\\|dhl.cancel_confirm_reads:1\\|other.reads:0\\|other.writes:0\\|other.contacts:0$"
@@ -920,6 +971,12 @@ expect_shipping_match "this module writes the handover date on the first fulfilm
 expect_shipping_match "reconciliation takes the same mutation lock with zero wait" "^SHIPPING_RECONCILE_TAKES_THE_MUTATION_LOCK=PASS\\|measured:second_mysql_session\\|separate:yes\\|contended_verdict:lock_contended\\|reads_while_held:0\\|writes_while_held:0\\|decisions_byte_identical:yes\\|after_release_verdict:absent_confirmed\\|state:absent_confirmed\\|intent:cleared\\|reconcile_reads:2\\|concurrent_second_press:lock_contended\\|reads_added_by_it:0\\|third_press:already_settled$"
 expect_shipping_match "a refusal that never reached the carrier ends the poll chain" "^SHIPPING_LOCAL_REFUSAL_ENDS_THE_POLL_CHAIN=PASS\\|measured:action_scheduler_runner\\|local_refusal:carrier_reads:0\\|attempts:0\\|follow_up_booked:no\\|runner_turns:1\\|worker_outcome:stop:local_refusal:credentials_missing\\|last_error:credentials_missing\\|notes_added_by_4_turns:1\\|history_entries:1\\|actions_removed:1\\|\\|transient_control:reads:1\\|attempts:1\\|follow_up_booked:yes\\|actions_removed:2$"
 expect_shipping_match "a shipment adopted by reconciliation has a start time" "^SHIPPING_ADOPTED_SHIPMENT_HAS_A_START_TIME=PASS\\|measured:real_reconciliation_and_action_scheduler\\|created_at_before:0\\|verdict:shipment_present\\|state:shipment_created\\|created_at_after:[0-9]{10}\\|skew_seconds:(0|[1-9][0-9]?|1[01][0-9]|120)\\|first_poll_decision:reschedule/still_moving\\|runner_turns:1\\|follow_up_booked:yes\\|existing_value_kept:1700000000\\|actions_removed:2$"
+expect_shipping_match "the customer is told once, on the first dispatch, and never again" "^SHIPPING_NOTIFIES_CUSTOMER_ONCE_ON_DISPATCH=PASS\\|measured:real_poll_and_intercepted_transport\\|before_code_2:state:absent/mails:0\\|first_transition_mails:1\\|state:sent\\|attempts:1\\|repeat_poll_mails:1\\|codes_3_4_5_mails:1\\|order_status:pending\\|notification_events:1\\|subjects:\\[Kuka Island siparişiniz kargoya verildi!\\]\\|subject_is_natural_tr:yes$"
+expect_shipping_match "a refused send retries, an unknown one never does, and neither leaks" "^SHIPPING_NOTIFICATION_OUTCOME_IS_SAFE=PASS\\|measured:intercepted_transport\\|refused:mails:1\\|state:failed\\|code:wp_mail_failed\\|attempts:1\\|secret_leaks:0\\|raw_transport_text:0\\|configured_secrets_redacted:yes\\|retry_mails:2\\|retry_state:sent\\|\\|unknown:mails:1\\|state:reconciliation_required\\|code:send_outcome_unknown\\|automatic_second_send:0\\|state_after:reconciliation_required$"
+expect_shipping_match "the manual notify route is untouched and this module claims none of it" "^SHIPPING_MANUAL_FULFILLMENT_ROUTE_UNTOUCHED=PASS\\|measured:real_fulfillments_datastore_and_intercepted_transport\\|api:available\\|notify_false_mails:0\\|notify_true_mails:1\\|module_state:absent\\|module_claims_record:no\\|module_sync:own_fulfillment_absent/not_due\\|module_sync_mails:0$"
+expect_shipping_match "the dispatch e-mail is natural in the order own language" "^SHIPPING_NOTIFICATION_TEXT_FOLLOWS_ORDER_LANGUAGE=PASS\\|measured:real_send_through_intercepted_transport\\|tr_subject:Kuka Island siparişiniz kargoya verildi!\\|tr_heading_in_body:yes\\|tr_intro_natural:yes\\|machine_phrases:0\\|tracking_number:shown\\|tracking_link:shown\\|en_subject:Your Kuka Island order [0-9]+ has shipped!\\|en_heading_in_body:yes\\|en_intro:yes\\|en_turkish_leftover:no\\|locale_at_body_render:tr_TR/en_US$"
+expect_shipping_match "FS_CHMOD_FILE is guaranteed project-side, with no vendor edit" "^SHIPPING_FS_CHMOD_FILE_GUARDED_IN_PROJECT=PASS\\|measured:core_guard_and_real_vendor_logger\\|guard:already_defined\\|constant:644\\|wordpress_formula:644\\|identical:yes\\|filesystem_method:direct\\|vendor_logger:available\\|htaccess_written:yes\\|error:none\\|probe_dir_removed:yes$"
+expect_shipping_match "the SMTP credential is not in the admin surface or the database" "^SHIPPING_SMTP_SECRET_STAYS_OUT_OF_THE_DATABASE=PASS\\|measured:source_and_options_table\\|password_input_fields:0\\|registered_settings:0\\|smtp_option_rows:0\\|constants_from_wp_config:6/6\\|transport_configured:yes\\|host_files:measured_by_SMTP_SECRET_TRANSPORT$"
 expect_shipping_match "every external write has a durable, re-read intent behind it" "^SHIPPING_MUTATION_INTENT_DURABLE=PASS\\|observed_over:separate_mysql_session\\(yes\\)\\|operations:6\\|wrong:none\\|states_at_first_write:create_order:reconcile_required,create_barcode:reconcile_required,update_order:update_reconciliation_required,update_shipment:update_reconciliation_required,cancel_order:cancel_reconciliation_required,cancel_shipment:cancel_reconciliation_required$"
 expect_shipping_match "a process that dies mid-request opens no second write" "^SHIPPING_MUTATION_CRASH_BOUNDARY=PASS\\|operations:6\\|retry_context:new_order_object\\+new_manager\\+new_adapter\\|second_writes:0\\|wrong:none\\|operation_state_verdict:create_order:reconcile_required/absent_confirmed/w0,create_barcode:reconcile_required/absent_confirmed/w0,update_order:update_reconciliation_required/readback_unsupported/w0,update_shipment:update_reconciliation_required/readback_unsupported/w0,cancel_order:cancel_reconciliation_required/cancelled/w0,cancel_shipment:cancel_reconciliation_required/cancelled/w0$"
 expect_shipping_match "an intent that did not persist stops the write" "^SHIPPING_MUTATION_INTENT_UNPERSISTED_BLOCKS_WRITE=PASS\\|sabotaged_statements:1\\|code:mutation_intent_unverified\\|carrier_writes:0\\|state_after:cancel_reconciliation_required\\|intent_after:absent\\|recovery_verdict:cancelled\\|state_at_end:cancelled$"
@@ -949,6 +1006,7 @@ expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIF
 # Activation and deactivation, driven for real through WP-CLI.
 expect_shipping_match "the shipping lifecycle test records its starting state and has its dependencies" "^SHIPPING_LIFECYCLE_START=PASS\\|measured:wp_cli\\|plugin:(in)?active\\|core:active\\|woocommerce:active\\|gate_option:(yes|no|absent)\\|.*\\|starting_state:recorded_not_asserted$"
 expect_shipping_match "activation registers every hook and opens no carrier route" "^SHIPPING_LIFECYCLE_ACTIVATION=PASS\\|active:yes\\|composition_root:loaded\\|booted:yes\\|missing_deps:none\\|classes_absent:none\\|hooks_unregistered:none\\|order_status_routes:none\\|runtime_gate_open:yes\\|automation:off\\|poll_actions:0$"
+expect_shipping_match "WooCommerce's own notify-customer route still sends while the plugin is inactive" "^SHIPPING_MANUAL_ROUTE_WITH_PLUGIN_INACTIVE=PASS\\|measured:fresh_wp_process_with_plugin_inactive\\|plugin_active:no\\|module_loaded:no\\|api:available\\|notify_false_mails:0\\|notify_true_mails:1\\|subject:present$"
 expect_shipping_match "deactivation unloads everything, closes the gate and keeps the audit trail" "^SHIPPING_LIFECYCLE_DEACTIVATION=PASS\\|classes_declared:none\\|hooks_registered:none\\|pending_poll_actions:0\\|shipping_meta_preserved:[0-9]+\\|runtime_gate_closed:yes\\|core_works:yes$"
 expect_shipping_match "the shipping lifecycle test restores the state it found" "^SHIPPING_LIFECYCLE_RESTORED=PASS\\|plugin:(in)?active\\|gate_option:(yes|no)\\|active_plugins_identical:yes\\|"
 expect_shipping_match "the shipping lifecycle suite passes as a whole" "^SHIPPING_LIFECYCLE=PASS$"
@@ -961,6 +1019,8 @@ expect_shipping_match "the enforced DHL runner still refuses the same names" "^D
 expect_shipping_match "the offline runner suite passes as a whole" "^DHL_RUNNER_OFFLINE_SUITE=PASS$"
 expect_value "the DHL write tool refuses every unconfirmed invocation" "$dhl_write_refusals" "4"
 expect_value "the shipping suites leave the order tables exactly as they found them" "$shipping_isolation" "SHIPPING_DB_ISOLATION=keyset_match:yes"
+expect_value "the env loader parses a compose file instead of executing it" "$env_loader_contract" "ENV_LOADER_CONTRACT=plain:simple|spaced:Kuka Island|quoted:quoted value|meta_len:21|executed:no"
+expect_value "the SMTP credential is transported by environment, never stored in the repo" "$smtp_secret_transport" "SMTP_SECRET_TRANSPORT=compose_services_wired:3|runbook_documents_location:yes|env_gitignored:yes|env_tracked_in_git:no"
 
 
 # B: the isolated active module, loaded from the new plugin path.
@@ -1398,18 +1458,19 @@ expect_value "GitHub Actions use immutable commits" "$mutable_actions" "0"
 expect_value "both GitHub Actions are SHA-pinned" "$pinned_actions" "2"
 expect_value "GitHub workflow declares least privilege" "$workflow_permissions" "1"
 expect_value "local privileged usernames are not fixed in tracked sources" "$fixed_local_usernames" "0"
-expect_line "site e-mail seed" "SITE_EMAIL=info@kukaisland.com"
+expect_line "site e-mail is configured on the brand domain" "SITE_EMAIL=configured"
 expect_email_line "Exception cannot abort checkout mail" "THROWABLE_EXCEPTION_CAUGHT=yes"
 expect_email_line "Error cannot abort checkout mail" "THROWABLE_ERROR_CAUGHT=yes"
 expect_email_line "failed order mail creates two notes" "THROWABLE_ORDER_NOTES=2/2"
 expect_email_line "PHP mail is actually disabled in acceptance process" "PHP_MAIL_FUNCTION=disabled"
+expect_email_line "the disabled-mail acceptance never reaches a real SMTP server" "DISABLED_MAIL_TRANSPORT=mail"
 expect_email_line "disabled PHP mail fails safely" "DISABLED_MAIL_SAFE=yes"
 expect_email_line "disabled PHP mail creates an order note" "DISABLED_MAIL_ORDER_NOTE=yes"
 expect_email_line "disabled PHP mail appears on Start" "DISABLED_MAIL_START_WARNING=yes"
 expect_email_line "failed order mail appears on Start" "FAILED_EMAIL_START_WARNING=yes"
 expect_email_line "configured PHPMailer uses SMTP" "SMTP_TRANSPORT=smtp"
 expect_email_line "sender address and name are fixed" "SMTP_IDENTITY=fixed"
-expect_email_line "WordPress and WooCommerce sender addresses match" "MAIL_FROM_IDENTITIES=wp=woo:info@kukaisland.com"
+expect_email_line "WordPress and WooCommerce sender addresses match" "MAIL_FROM_IDENTITIES=wp=woo:brand"
 expect_email_line "reply-to remains separate" "SMTP_REPLY_TO=separate"
 expect_email_line "WooCommerce resend actions remain native" "ORDER_RESEND_ACTIONS=customer+admin"
 expect_value "theme POT" "$theme_pot" "yes"

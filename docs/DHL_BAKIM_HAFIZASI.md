@@ -53,10 +53,16 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-03 | EDM pasifken gerçek `make verify` exit 2; 21 mock ölçümü `edm_runtime_disabled` ile düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-39) |
 | 2026-09-04 | Sandbox uygulamasında ürün aboneliği yoktu; uygulama anahtarı tek başına API erişimi vermiyordu | Identity 1.0.1, CBS Info, Standard Command, Barcode Command ve Standard Query Default Plan abonelikleri portalda tamamlandı; test müşteri numarası/parolası destekten istendi |
 | 2026-09-04 | Identity OpenAPI içindeki örnek `customerNumber/password` değerlerinin ortak sandbox hesabı olabileceği kontrol edildi | Geçici kimlik dosyasıyla yapılan salt-okunur Identity çağrısı `401 unauthorized` verdi; örnekler kimlik değildir, gerçek dosya değişmedi ve geçici dosya temizlendi |
+| 2026-09-04 | Gerçek üretim müşteri numarası + online şube şifresinin sandbox Identity'de geçebileceği hipotezi, operatör onayıyla TEK salt-okunur denemeyle ölçüldü | `401 unauthorized` (`reached_carrier:yes`, yazma 0, tekrar yok). Sandbox üretim kimliğini tanımıyor; test çifti yalnız MNG/DHL entegrasyon kanalından tanımlanır. Denenen değerler dosyadan geri çıkarıldı; şifre sohbet kanalına yazıldığı için online şube şifresi rotasyonu önerildi |
 | 2026-09-04 | Fulfillment teslim tarihini modül değil WooCommerce'in data store'u yazıyordu; sözleşme hiçbir yerde yazılı değildi | Tarih artık modülün kendi kodunda, açık `+00:00` offset'iyle ve yalnız ilk geçişte yazılıyor (K-40) |
 | 2026-09-04 | `reconcile_order()` kilit almayan tek dış giriş noktasıydı; uçuştaki bir yazmanın intent'ini kapatabiliyordu | Aynı mutasyon kilidi sıfır beklemeyle alınıyor, sipariş kilit içinde yeniden okunuyor; alt yardımcılar kilitsiz kalıyor (K-41) |
 | 2026-09-04 | Taşıyıcıya hiç ulaşmayan yerel ret, poll zincirini ~14 gün boyunca yeniden planlıyor ve her turda not/geçmiş ekliyordu | `query_status()` artık `contacted` bilgisini döndürüyor; ulaşılmayan ret zinciri bitiriyor ve aynı gerçek bir kez kaydediliyor (K-42) |
 | 2026-09-04 | Mutabakatla benimsenen gönderide `created_at` 0 kalıyor, ilk poll turu `MAX_ELAPSED` ile vazgeçiyordu | `save_shipment_created()` boşsa aynı atomik persist içinde `time()` yazıyor; mevcut değere dokunmuyor (K-43) |
+| 2026-09-04 | Modülün kendi fulfillment kaydı `fulfilled` olurken müşteriye hiçbir e-posta gitmiyordu: bildirim olayı 0, mail denemesi 0 | Bildirim ilk geçişte modülün kendisi tarafından tetikleniyor; kalıcı ve çökme güvenli durum tek iletiyi garanti ediyor (K-44) |
+| 2026-09-04 | Gönderim e-postasının Türkçesi makine çevirisiydi ("bir öğe yerine getirildi!", "Öğeniz yolda!") | Konu, başlık ve gövde Core'da doğal Türkçeye çevrildi; İngilizce sipariş doğal İngilizce metin alıyor (K-45) |
+| 2026-09-04 | `WC_Email` nesnesi yeniden kullanıldığı ve bu iki e-postada `$this->object` `setup_locale()`'dan SONRA atandığı için, aynı istekteki ikinci bildirim dilini ÖNCEKİ siparişten alıyordu | Bildirim eylemi önceliği 9'da sipariş kenara yazılıyor ve dil anahtarında `$email->object`'ten önce geliyor (K-46) |
+| 2026-09-04 | `FS_CHMOD_FILE` sabitinin varlığı bir eklentinin yükleme sırasına ve `get_filesystem_method()` cevabına bağlıydı | Core sabiti WordPress'in kendi formülüyle, yalnız tanımsızsa tanımlıyor; vendor dosyasına dokunulmadı (K-47) |
+| 2026-09-04 | Gerçek SMTP açılınca e-posta kabul ölçümleri kırıldı: üçü panelden değişen marka adresini sabit yazıyordu, ikisi `mail()` yerine SMTP'ye kayıp her koşuda dışarı gerçek mesaj bırakıyordu | Ölçümler adres yerine tek kaynağa bağlandı; `disabled-mail` taşıyıcısı `isMail()`'e geri çekilip `DISABLED_MAIL_TRANSPORT` ile ölçülüyor (K-48) |
 
 ---
 
@@ -1695,6 +1701,195 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `save_shipment_created()` içinde
   `META_CREATED_AT` yazımı. Yoksa mutabakatla benimsenen her gönderi ilk turda
   vazgeçilir.
+
+---
+
+## K-44 — Otomatik kargo bildirimi hiç gönderilmiyordu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Taşıyıcı durumu 2'ye geçiyor, WooCommerce fulfillment kaydı
+  `fulfilled` oluyor, müşteriye **hiçbir e-posta gitmiyor**. Davranış
+  ölçümünde bildirim olayı **0**, mail denemesi **0**.
+- **Kesin kök neden:** `woocommerce_fulfillment_created_notification` eylemini
+  WooCommerce **tek bir yerden** tetikler: kendi REST controller'ından, çekmecedeki
+  "müşteriye bildir" işareti işaretliyken. Ne veri deposu ne `Fulfillment`
+  nesnesi bu eylemi üretir. Modül kaydı doğrudan kaydettiği için eylem hiç
+  oluşmuyordu.
+- **Uygulanan düzeltme:** `Kuka_Island_Shipping_Notification::on_fulfilled()`.
+  Eylem modülün kendisi tarafından, **yalnız kendi kaydının** ilk
+  `unfulfilled → fulfilled` geçişinde tetikleniyor. Manuel yol değişmedi:
+  operatörün işareti yine WooCommerce'in controller'ından geçer, ve elle
+  oluşturulmuş bir kayıt taşıyıcı referansı taşımadığı için
+  `Fulfillment_Writer::find_own()` onu hiç döndürmez.
+- **Neden bir durum makinesi var:** taşıyıcı durumu tekrar tekrar sorulur ve
+  "transfer aşamasındayken e-posta gönder" iki kez çalışırsa müşteri iki ileti
+  alır. Tetik durum değil **geçiş**tir, ve geçiş taşıyıcıya değil **taşımaya**
+  dokunmadan önce kalıcı yazılır:
+  `pending → sending → sent | failed | reconciliation_required`.
+  `sending` bulmak, önceki sürecin SMTP konuşması açıkken öldüğü anlamına
+  gelir; müşteride ileti olabilir, bu yüzden o durum **otomatik olarak
+  tekrarlanmaz** ve `reconciliation_required`'a geçer.
+- **Kanıt:** `SHIPPING_NOTIFIES_CUSTOMER_ONCE_ON_DISPATCH` — kod 2 öncesi mail
+  **0**; ilk geçişte **1**; aynı durumun tekrar sorgusunda hâlâ **1**; kod 3, 4
+  ve 5'ten sonra hâlâ **1**; sipariş `completed`'a **geçmiyor**.
+  `SHIPPING_NOTIFICATION_OUTCOME_IS_SAFE` — kesin ret: `failed`, güvenli kod
+  `wp_mail_failed`, sınırlı yeniden deneme başarılı; belirsiz sonuç:
+  `reconciliation_required`, taşıma sonradan mükemmel çalışsa bile **ikinci
+  gönderim 0**. `SHIPPING_MANUAL_FULFILLMENT_ROUTE_UNTOUCHED` — notify=false → 0,
+  notify=true → 1, modül o kayıt hakkında hiçbir şey yazmıyor.
+  `SHIPPING_MANUAL_ROUTE_WITH_PLUGIN_INACTIVE` — aynı ölçüm, eklenti gerçekten
+  **kapalıyken** taze bir süreçte: `plugin_active:no|module_loaded:no`,
+  notify=false → 0, notify=true → 1. Yaşam döngüsü testinin `core_works` alanı
+  yalnız iki Core sınıfının tanımlı olduğunu söyler, operatörün yolunun hâlâ
+  e-posta gönderdiğini söylemez; bu ölçüm onu söyler. Ayrımın kanıtı: aynı
+  betik eklenti **açıkken** koşturulduğunda `plugin_active:YES` ile FAIL verir.
+- **Sır sızıntısı:** taşıma katmanının hata metni bu yolda kimlik taşıyabilecek
+  tek dizgidir ve **hiç saklanmaz**; yalnız izin listesindeki bir kod
+  kaydedilir. Ölçüm, hata mesajına SMTP kullanıcı adı gibi görünen bir sentinel
+  koyup modülün bütün yüzeylerini birebir adla arıyor: `secret_leaks:0`,
+  `raw_transport_text:0`.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-notification.php`,
+  `SHIP/includes/shipping/class-fulfillment-writer.php` (`sync_status`),
+  `scripts/verify-shipping-manual-route-passive.php`
+- **Tekrar yaşanırsa ilk bak:** `_kuka_shipping_notify_state` metası. `sent` ise
+  bildirim gitmiş; boşsa geçiş hiç algılanmamış demektir ve
+  `sync_status()` içindeki `$first_transition` okumasına bakılır.
+
+---
+
+## K-45 — Gönderim e-postasının Türkçesi makine çevirisiydi
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Müşteriye giden konu ve başlık, 4 Eylül 2026'da ölçülen hâliyle:
+  `Kuka Island Siparişteki  bir öğe yerine getirildi!` (çift boşluk dâhil) ve
+  `Öğeniz yolda!`. Gövde: `Woo! Satın aldığınız bazı öğeler yerine
+  getiriliyor.` Bir kargo bildiriminde "öğe yerine getirilmez".
+- **Kesin kök neden:** WooCommerce'in kendi tr_TR çevirisi. Konu ve başlık
+  filtrelenebilir; gövde metni şablonun içinde `esc_html__()` ile basılır ve
+  kancası yoktur.
+- **Uygulanan düzeltme:** Metin **Core'da** düzeltildi, kargo eklentisinde
+  değil: aynı e-posta hem operatörün işaretinden hem eklentinin otomatik
+  bildiriminden aynı sınıfla gönderilir, dolayısıyla tek doğru yer ikisinin de
+  ortak olduğu katmandır — ve eklenti pasifken manuel yol da doğru Türkçeyi
+  alır. Konu/başlık `woocommerce_email_subject_*`/`_heading_*` ile; gövdenin beş
+  dizgisi dar bir `gettext` haritasıyla. Şablon **kopyalanmadı**.
+- **İngilizce siparişler:** metin `__()`'den beklenmiyor, doğrudan yazılı.
+  `switch_to_locale( 'en_US' )` sonrasında `woocommerce` alanının tr_TR
+  girdileri bellekte kalabildiği için `get_default_subject()` yine Türkçe
+  dönebiliyordu; ölçülen hâli tam olarak buydu. Bu yüzden iki e-postanın konu
+  ve başlığı Core'un genel `english_email_subject/heading` listesinden
+  **çıkarıldı** ve iki dil tek yerde, siparişin diline bakılarak veriliyor.
+- **Kanıt:** `SHIPPING_NOTIFICATION_TEXT_FOLLOWS_ORDER_LANGUAGE` — gerçek
+  gönderim üzerinden: TR konu `Kuka Island siparişiniz kargoya verildi!`,
+  başlık `Siparişiniz yola çıktı`, doğal gövde, makine ifadesi **0**, takip
+  numarası ve takip bağlantısı gösteriliyor; EN konu
+  `Your Kuka Island order <n> has shipped!`, gövde `Your order is on its way`,
+  Türkçe artık **yok**.
+- **İlgili dosya:** `wp-content/plugins/kuka-island-core/includes/class-fulfillments.php`,
+  `.../class-language.php`
+- **Tekrar yaşanırsa ilk bak:** `english_email_subject()`'in bu iki id'yi
+  yeniden kapsayıp kapsamadığı. Kapsıyorsa doğru İngilizce metnin üstüne
+  Türkçe makine çevirisi yazar.
+
+---
+
+## K-46 — İkinci bildirim dilini önceki siparişten alıyordu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Aynı istekte iki gönderim bildirimi gönderildiğinde, ikincisi
+  birincinin diliyle yazılıyor. İngilizce bir sipariş, kendisinden önce
+  gönderilen Türkçe siparişin diliyle Türkçe gidiyor.
+- **Kesin kök neden:** `WC_Email` nesnesi yeniden kullanılır. Bu iki e-postanın
+  `trigger()` metodu **önce** `setup_locale()` çağırır, `$this->object`
+  siparişi ondan **sonra** atanır — standart sipariş e-postalarında sıra
+  terstir. Core'un dil anahtarı `$email->object` okuduğu için ilk bildirimde
+  `null`, ikincisinde **bayat** (önceki sipariş) görüyordu. Boş olması hemen
+  fark edilirdi; bayat olması fark edilmedi.
+- **Uygulanan düzeltme:** Bildirim eylemi WooCommerce'in trigger'ından (öncelik
+  10) önce, öncelik 9'da dinlenip sipariş kenara yazılıyor ve 999'da
+  bırakılıyor. Dil anahtarında kenara yazılan değer **`$email->object`'ten önce**
+  gelir; eylem dışında null olduğu için diğer bütün e-postalarda davranış
+  değişmez.
+- **Kanıt:** `SHIPPING_NOTIFICATION_TEXT_FOLLOWS_ORDER_LANGUAGE` ölçümü gövde
+  render anındaki dili kaydeder: `locale_at_body_render:tr_TR/en_US`. Düzeltme
+  öncesi ikisi de `tr_TR` idi.
+- **İlgili dosya:** `wp-content/plugins/kuka-island-core/includes/class-language.php`
+  (`remember_fulfillment_order`, `forget_fulfillment_order`,
+  `switch_email_locale`)
+- **Tekrar yaşanırsa ilk bak:** `switch_email_locale()` içinde `$email->object`
+  önce mi okunuyor. Önce okunuyorsa ikinci bildirim yine bayat dili alır.
+
+---
+
+## K-47 — `FS_CHMOD_FILE` bir yükleme sırası kazasına bağlıydı
+
+- **Tarih:** 2026-09-04
+- **Belirti:** WP-CLI'de `FS_CHMOD_FILE` sabitiyle ilgili kırılganlık.
+- **Ölçülen durum, dürüst hâliyle:** hata bu ortamda **üretilemedi**.
+  `get_filesystem_method()` `direct` döndüğü ve iyzico'nun `AbstractLogger`
+  sınıfı bootstrap sırasında `WP_Filesystem()` çağırdığı için sabit tanımlı ve
+  değeri `0644`.
+- **Kırılganlığın kesin yeri:** WordPress bu sabiti **yalnız**
+  `WP_Filesystem()` içinde tanımlar, o da `wp-admin/includes/file.php` yüklüyse
+  vardır; WP-CLI yönetim tarafını yüklemez. iyzico'nun logger'ı
+  `$wp_filesystem` doluysa kurulum bloğunu **atlar** ve doğrudan
+  `\FS_CHMOD_FILE` kullanır: global dolu ama sabit tanımsızsa PHP "Undefined
+  constant" ile ölür. `get_filesystem_method()` `direct` dönmediğinde de
+  eklentinin yedek yolu erken döner ve sabiti hiç tanımlamaz.
+- **Uygulanan düzeltme:** Vendor dosyasına **dokunulmadı**. Core sabiti
+  `Compatibility::ensure_chmod_file_constant()` ile, WordPress'in
+  `wp-admin/includes/file.php` içindeki **kendi formülüyle**
+  (`fileperms( ABSPATH . 'index.php' ) & 0777 | 0644`) ve **yalnız tanımsızsa**
+  tanımlıyor. Tanımlıysa hiçbir şey yapmaz, dolayısıyla WordPress'in ya da
+  başka bir eklentinin değeri hiçbir koşulda değişmez.
+- **Kanıt:** `SHIPPING_FS_CHMOD_FILE_GUARDED_IN_PROJECT` — Core'un değeri
+  WordPress'in formülüyle **birebir aynı**, ve sabite ihtiyaç duyan gerçek
+  vendor yolu (iyzico logger'ının `.htaccess` yazması) geçici bir dizinde
+  çalıştırılıp `Deny from all` içeriği doğrulanıyor; dizin birebir yolla
+  siliniyor.
+- **İlgili dosya:** `wp-content/plugins/kuka-island-core/includes/class-compatibility.php`
+- **Tekrar yaşanırsa ilk bak:** Ölçümdeki `guard:` alanı. `defined_now` ise
+  sabiti artık Core tanımlıyor demektir ve bu beklenen davranıştır; `already_defined`
+  ise başka bir yol daha önce tanımlamıştır. İkisi de doğrudur — yanlış olan,
+  hiç tanımlanmamış olmasıdır.
+
+---
+
+## K-48 — Gerçek SMTP açılınca e-posta kabul ölçümleri iki yerden kırıldı
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Sekizinci turun ilk `make verify` koşusu beş FAIL verdi:
+  `SITE_EMAIL`, `SMTP_IDENTITY`, `MAIL_FROM_IDENTITIES`, `DISABLED_MAIL_SAFE`,
+  `DISABLED_MAIL_ORDER_NOTE`. Hiçbiri kargo bildirimiyle ilgili değildi.
+- **Birinci kök neden — sabite bağlanmış kullanıcı verisi:** Gönderici adresi
+  `Email_Delivery::sender_email()` üzerinden Site Görünümü panelindeki marka
+  e-postasından türer. Operatör adresi `info@kukaisland.com` yerine
+  `hello@kukaisland.com` yaptığında üç ölçüm birlikte kırıldı, çünkü hem
+  `verify.php` hem `verify-email-delivery.php` **eski adresi sabit** yazıyordu.
+  Bu tür bir FAIL'in "düzeltmesi" kullanıcı verisini geri yazmak gibi görünür;
+  değildir. Ölçümler adrese değil **tek kaynağa** bağlandı: `SITE_EMAIL`
+  artık `configured` (geçerli ve marka alan adında) döndürür,
+  `MAIL_FROM_IDENTITIES` ise `wp=woo:brand`. Ayrışma yine FAIL'dir.
+- **İkinci kök neden — canlı SMTP kabul testini sessizce dışarı taşıdı:**
+  `disabled-mail` ölçümü PHP `mail()` kapalıyken güvenli başarısızlığı sınar.
+  Ortama gerçek SMTP girdiği anda `wp_mail()` artık `mail()` üzerinden geçmez:
+  ölçüm anlamını yitirir **ve her `make verify` koşusu operatörün üretim posta
+  sunucusuna gerçek bir mesaj bırakır**. Taşıyıcı bu tek gönderim için
+  `phpmailer_init` üzerinde `PHP_INT_MAX` önceliğiyle `isMail()`'e geri
+  çekiliyor ve fiilen kullanılan taşıyıcı `DISABLED_MAIL_TRANSPORT=mail`
+  olarak **ölçülüyor**. Sözleşme bir daha sessizce dışarı kaymaz.
+- **İlgili dosya:** `scripts/verify.php`, `scripts/verify-email-delivery.php`,
+  `scripts/verify.sh`
+- **Açık kalan, proje tarafından düzeltilemeyen nokta:** `smtp` ölçümü sentetik
+  kimlikleri `wp-load`'dan önce tanımlar, böylece gerçek kimlik bilgileri
+  ölçüme hiç girmez. Operatörün `docker-compose.yml` dosyasındaki wp-config
+  bloğu aynı sabitleri **korumasız** `define()` ettiği için koşu başına sekiz
+  `Constant ... already defined` uyarısı düşer. Uyarı çıkışı etkilemez; tek
+  satırlık çözüm o blokta `defined( 'X' ) ||` koruması eklemektir ve o dosya
+  operatöre aittir.
+- **Tekrar yaşanırsa ilk bak:** `DISABLED_MAIL_TRANSPORT`. `smtp` yazıyorsa
+  kabul testi dış sunucuya mesaj bırakıyor demektir; ölçümü zayıflatmak değil,
+  taşıyıcıyı geri çekmek doğru cevaptır.
 
 ---
 

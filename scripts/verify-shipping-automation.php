@@ -3562,6 +3562,7 @@ $agnostic_files = array(
 	'class-fulfillment-writer.php',
 	'class-shipment-admin.php',
 	'class-shipment-order-store.php',
+	'class-shipment-notification.php',
 	'class-carrier-registry.php',
 	'class-shipment-status.php',
 	'interface-carrier-provider.php',
@@ -3896,6 +3897,9 @@ $pot_required = array(
 	'Mutabakat bu referansla taşıyıcıda kayıt olmadığını daha önce kanıtladı. Yeni mutabakat sorgusu yapılmadı.',
 	'Otomatik durum sorgusu taşıyıcıya hiç gönderilmedi (%s). Deneme harcanmadı ve yeni sorgu planlanmadı; ayar düzeltildikten sonra sorgu elle başlatılabilir.',
 	'Otomatik kargo durum sorgusu yapılandırma nedeniyle gönderilemedi (%s). Deneme harcanmadı, yeni sorgu planlanmadı. Ayar düzeltildikten sonra sorgu elle başlatılabilir.',
+	// The one customer e-mail this module sends, and its two failure sentences.
+	'Kargo bildirimi e-postası gönderilemedi (%s). Müşteriye ileti ulaşmadı; sınırlı sayıda yeniden denenecek.',
+	'Kargo bildirimi e-postası gönderildi fakat sonucu doğrulanamadı. Mükerrer ileti riski nedeniyle otomatik olarak tekrar gönderilmez; manuel inceleme gerekiyor.',
 );
 
 $pot_required_missing = array();
@@ -8111,7 +8115,845 @@ if ( $rlock_db instanceof wpdb ) {
 }
 
 /* ========================================================================== */
-/* 59. Cleanup and verdict                                                     */
+/* 59. The one customer e-mail, and the state that keeps it one                */
+/* ========================================================================== */
+
+/*
+ * WooCommerce fires woocommerce_fulfillment_created_notification from exactly
+ * one place -- its REST controller, behind the drawer's "notify customer" tick.
+ * A fulfilment this module flipped to `fulfilled` from a carrier status reading
+ * therefore produced NO e-mail: notification event 0, mail attempt 0, on a
+ * record that was fulfilled.
+ *
+ * NOTHING LEAVES THIS MACHINE. The recorder below short-circuits wp_mail() at
+ * 'pre_wp_mail' and then plays the transport's part itself: 'accepted' fires
+ * wp_mail_succeeded, 'refused' fires wp_mail_failed with a WP_Error whose
+ * message deliberately contains an SMTP user name and a server line, and
+ * 'silent' fires nothing at all -- which is what an SMTP conversation that dies
+ * mid-handshake looks like from inside WordPress.
+ */
+
+final class Kuka_Shipping_Mail_Recorder {
+
+	/** accepted | refused | silent */
+	public string $mode = 'accepted';
+
+	/** @var array<int, array<string, mixed>> */
+	public array $sent = array();
+
+	/** The sentinel a refusal carries, so a leak can be searched for by name. */
+	public const SECRET = 'kuka-smtp-user-SENTINEL-9f2a';
+
+	/**
+	 * Attached BEFORE Core's Throwable-safe wrapper, deliberately.
+	 *
+	 * Kuka_Island_Core_Email_Delivery::send_safely() hooks 'pre_wp_mail' at
+	 * -1000 and, so that a disabled mail() cannot kill checkout, calls wp_mail()
+	 * again inside itself behind a recursion guard. One logical message
+	 * therefore reaches that hook twice: once from the wrapper's inner call and
+	 * once from the outer chain. A recorder attached after the wrapper counts
+	 * two mails for one e-mail. Attached at -2000 the wrapper sees a decided
+	 * value, returns it untouched, and exactly one message is recorded.
+	 */
+	public function attach(): void {
+		add_filter( 'pre_wp_mail', array( $this, 'intercept' ), -2000, 2 );
+	}
+
+	public function detach(): void {
+		remove_filter( 'pre_wp_mail', array( $this, 'intercept' ), -2000 );
+	}
+
+	public function reset(): void {
+		$this->sent = array();
+	}
+
+	public function count_to( string $recipient ): int {
+		$total = 0;
+
+		foreach ( $this->sent as $mail ) {
+			foreach ( (array) ( is_array( $mail['to'] ) ? $mail['to'] : explode( ',', (string) $mail['to'] ) ) as $address ) {
+				if ( strtolower( trim( (string) $address ) ) === strtolower( $recipient ) ) {
+					++$total;
+				}
+			}
+		}
+
+		return $total;
+	}
+
+	/** Every recorded subject, so a surprise second message names itself. */
+	public function subjects(): string {
+		$out = array();
+
+		foreach ( $this->sent as $mail ) {
+			$out[] = (string) ( $mail['subject'] ?? '' );
+		}
+
+		return implode( ' ;; ', $out );
+	}
+
+	public function last_subject(): string {
+		$last = end( $this->sent );
+
+		return is_array( $last ) ? (string) ( $last['subject'] ?? '' ) : '';
+	}
+
+	/**
+	 * @param mixed                $short_circuit Current short-circuit value.
+	 * @param array<string, mixed> $atts          wp_mail() arguments.
+	 * @return bool
+	 */
+	public function intercept( $short_circuit, $atts = array() ) {
+		unset( $short_circuit );
+
+		$atts         = is_array( $atts ) ? $atts : array();
+		$this->sent[] = $atts;
+
+		if ( 'accepted' === $this->mode ) {
+			do_action( 'wp_mail_succeeded', $atts );
+
+			return true;
+		}
+
+		if ( 'refused' === $this->mode ) {
+			do_action(
+				'wp_mail_failed',
+				new WP_Error(
+					'wp_mail_failed',
+					'SMTP error: 535 authentication failed for ' . self::SECRET . ' at smtp.example.invalid',
+					$atts
+				)
+			);
+
+			return false;
+		}
+
+		// silent: neither signal. The outcome is unknowable from here.
+		return false;
+	}
+}
+
+$mailer = new Kuka_Shipping_Mail_Recorder();
+$mailer->attach();
+
+/** A shipment whose carrier status this measurement drives by hand. */
+$notify_code = 1;
+
+$notify_scenario = kuka_ship_scenario(
+	static function ( string $method, string $url ) use ( &$notify_code ): array {
+		$common = kuka_ship_common_reads( $url );
+
+		if ( null !== $common ) {
+			return $common;
+		}
+
+		if ( str_contains( $url, '/createOrder' ) ) {
+			return kuka_ship_create_order_ok();
+		}
+
+		if ( str_contains( $url, '/createbarcode' ) ) {
+			return kuka_ship_create_barcode_ok( '778899001', 'BC-NOTIFY' );
+		}
+
+		if ( str_contains( $url, '/getshipmentstatus' ) ) {
+			return array(
+				'status' => 200,
+				'body'   => (string) wp_json_encode( array( 'shipmentId' => '778899001', 'shipmentStatusCode' => $notify_code ) ),
+			);
+		}
+
+		return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+	}
+);
+
+$notify_scenario['manager']->create_shipment( $notify_scenario['order'] );
+$notify_id    = (int) $notify_scenario['order']->get_id();
+$notify_ref   = (string) Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $notify_id ) )['reference'];
+$notify_email = strtolower( (string) wc_get_order( $notify_id )->get_billing_email() );
+
+// (a) Before code 2 nothing is owed and nothing has been sent.
+$mailer->reset();
+$notify_before_state = Kuka_Island_Shipping_Notification::state( wc_get_order( $notify_id ) );
+$notify_before_mails = $mailer->count_to( $notify_email );
+
+// (b) The FIRST unfulfilled -> fulfilled transition. Exactly one e-mail.
+$notify_events = 0;
+$notify_probe  = static function () use ( &$notify_events ): void { ++$notify_events; };
+add_action( 'woocommerce_fulfillment_created_notification', $notify_probe, 1 );
+$notify_code = Kuka_Island_Shipping_Status::CODE_IN_TRANSFER;
+$notify_scenario['manager']->query_status( wc_get_order( $notify_id ) );
+
+kuka_ship_forget_order( $notify_id );
+$notify_first_status = Kuka_Island_Shipping_Notification::status( wc_get_order( $notify_id ) );
+$notify_first_mails  = $mailer->count_to( $notify_email );
+$notify_subject      = $mailer->last_subject();
+
+// (c) The same status, polled again. Still one.
+$notify_scenario['manager']->query_status( wc_get_order( $notify_id ) );
+$notify_repeat_mails = $mailer->count_to( $notify_email );
+
+// (d) Codes 3, 4 and 5 after it. Still one.
+foreach ( array( 3, 4, 5 ) as $notify_later ) {
+	$notify_code = $notify_later;
+	$notify_scenario['manager']->query_status( wc_get_order( $notify_id ) );
+}
+
+kuka_ship_forget_order( $notify_id );
+$notify_later_mails  = $mailer->count_to( $notify_email );
+$notify_later_status = Kuka_Island_Shipping_Notification::status( wc_get_order( $notify_id ) );
+$notify_order_status = wc_get_order( $notify_id )->get_status();
+
+$report(
+	'SHIPPING_NOTIFIES_CUSTOMER_ONCE_ON_DISPATCH',
+	'' === $notify_before_state
+		&& 0 === $notify_before_mails
+		// One e-mail, on the transition, and the state says so.
+		&& 1 === $notify_first_mails
+		&& Kuka_Island_Shipping_Notification::STATE_SENT === (string) $notify_first_status['state']
+		&& 1 === (int) $notify_first_status['attempts']
+		&& '' === (string) $notify_first_status['code']
+		// Repeated poll of the same status: still one.
+		&& 1 === $notify_repeat_mails
+		// Codes 3, 4, 5 after it: still one.
+		&& 1 === $notify_later_mails
+		&& Kuka_Island_Shipping_Notification::STATE_SENT === (string) $notify_later_status['state']
+		&& 1 === (int) $notify_later_status['attempts']
+		// The order is NOT completed by a dispatch notification.
+		&& 'completed' !== $notify_order_status
+		// And the customer reads natural Turkish.
+		&& str_contains( $notify_subject, 'siparişiniz kargoya verildi' )
+		&& ! str_contains( $notify_subject, 'yerine getirildi' ),
+	sprintf(
+		'measured:real_poll_and_intercepted_transport|before_code_2:state:%s/mails:%d|first_transition_mails:%d|state:%s|attempts:%d|repeat_poll_mails:%d|codes_3_4_5_mails:%d|order_status:%s|notification_events:%d|subjects:[%s]|subject_is_natural_tr:%s',
+		'' === $notify_before_state ? 'absent' : $notify_before_state,
+		$notify_before_mails,
+		$notify_first_mails,
+		(string) $notify_later_status['state'],
+		(int) $notify_later_status['attempts'],
+		$notify_repeat_mails,
+		$notify_later_mails,
+		$notify_order_status,
+		$notify_events,
+		$mailer->subjects(),
+		str_contains( $notify_subject, 'siparişiniz kargoya verildi' ) && ! str_contains( $notify_subject, 'yerine getirildi' ) ? 'yes' : 'NO'
+	)
+);
+
+remove_action( 'woocommerce_fulfillment_created_notification', $notify_probe, 1 );
+kuka_ship_purge_actions( $notify_id );
+kuka_ship_destroy_order( wc_get_order( $notify_id ) );
+
+/* --- a definite refusal, and an unknown outcome ------------------------- */
+
+/**
+ * A shipment whose fulfilment is one status reading away from dispatch.
+ *
+ * @return array{order: WC_Order, manager: Kuka_Island_Shipping_Manager, reference: string, email: string, code: callable}
+ */
+function kuka_ship_notify_fixture(): array {
+	$code = 1;
+	$box  = new stdClass();
+	$box->code = 1;
+
+	$scenario = kuka_ship_scenario(
+		static function ( string $method, string $url ) use ( $box ): array {
+			$common = kuka_ship_common_reads( $url );
+
+			if ( null !== $common ) {
+				return $common;
+			}
+
+			if ( str_contains( $url, '/createOrder' ) ) {
+				return kuka_ship_create_order_ok();
+			}
+
+			if ( str_contains( $url, '/createbarcode' ) ) {
+				return kuka_ship_create_barcode_ok( '667788990', 'BC-NOTIFY2' );
+			}
+
+			if ( str_contains( $url, '/getshipmentstatus' ) ) {
+				return array(
+					'status' => 200,
+					'body'   => (string) wp_json_encode( array( 'shipmentId' => '667788990', 'shipmentStatusCode' => $box->code ) ),
+				);
+			}
+
+			return array( 'status' => 404, 'body' => '{"title":"Not Found"}' );
+		}
+	);
+
+	unset( $code );
+	$scenario['manager']->create_shipment( $scenario['order'] );
+	$id = (int) $scenario['order']->get_id();
+
+	return array(
+		'order'     => wc_get_order( $id ),
+		'manager'   => $scenario['manager'],
+		'reference' => (string) Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $id ) )['reference'],
+		'email'     => strtolower( (string) wc_get_order( $id )->get_billing_email() ),
+		'box'       => $box,
+	);
+}
+
+// A transport that definitively refuses. The message carries a sentinel that
+// looks like an SMTP user name, so a leak can be searched for by exact name.
+$refused = kuka_ship_notify_fixture();
+$refused_id = (int) $refused['order']->get_id();
+$mailer->reset();
+$mailer->mode = 'refused';
+$refused['box']->code = Kuka_Island_Shipping_Status::CODE_IN_TRANSFER;
+$refused['manager']->query_status( wc_get_order( $refused_id ) );
+
+kuka_ship_forget_order( $refused_id );
+$refused_status = Kuka_Island_Shipping_Notification::status( wc_get_order( $refused_id ) );
+$refused_data   = Kuka_Island_Shipping_Order_Store::get_shipment_data( wc_get_order( $refused_id ) );
+$refused_mails  = $mailer->count_to( $refused['email'] );
+
+/*
+ * THIS MODULE'S OWN SURFACES, searched for the sentinel by exact name: the
+ * notification state, every shipping meta value, the shipping history, and the
+ * order note this module writes. The transport's message is the one string on
+ * this path that can carry a credential, so the only safe handling is never to
+ * keep it -- an allow-listed code is stored instead.
+ *
+ * Core's own order-e-mail failure recorder is NOT part of this measurement. It
+ * hooks wp_mail_failed for every WooCommerce e-mail, has done so since before
+ * this feature existed, and redacts the CONFIGURED SMTP secrets through
+ * Email_Delivery::safe_error_message(); that is its own contract and it is
+ * measured separately below.
+ */
+$refused_surfaces = (string) wp_json_encode( $refused_status ) . '|' . (string) wp_json_encode( $refused_data );
+
+foreach ( (array) wc_get_order_notes( array( 'order_id' => $refused_id, 'limit' => 100 ) ) as $refused_note ) {
+	if ( str_contains( (string) $refused_note->content, 'Kargo bildirimi' ) ) {
+		$refused_surfaces .= '|' . (string) $refused_note->content;
+	}
+}
+
+$refused_leaks = substr_count( $refused_surfaces, Kuka_Shipping_Mail_Recorder::SECRET );
+
+// The transport's own words must not be anywhere in them either.
+$refused_raw = 0;
+
+foreach ( array( 'SMTP error', '535', 'smtp.example.invalid', 'authentication failed' ) as $refused_fragment ) {
+	$refused_raw += substr_count( $refused_surfaces, $refused_fragment );
+}
+
+// And Core's redaction of the CONFIGURED secrets still holds.
+$refused_core_redacts = true;
+
+foreach ( array( 'KUKA_SMTP_PASSWORD', 'KUKA_SMTP_USERNAME' ) as $refused_constant ) {
+	if ( defined( $refused_constant ) && '' !== (string) constant( $refused_constant ) ) {
+		$refused_all = '';
+
+		foreach ( (array) wc_get_order_notes( array( 'order_id' => $refused_id, 'limit' => 100 ) ) as $refused_any ) {
+			$refused_all .= (string) $refused_any->content;
+		}
+
+		$refused_core_redacts = $refused_core_redacts && ! str_contains( $refused_all, (string) constant( $refused_constant ) );
+	}
+}
+
+// The bounded retry: a refusal may be tried again, and only so often.
+$mailer->mode = 'accepted';
+$refused['manager']->query_status( wc_get_order( $refused_id ) );
+kuka_ship_forget_order( $refused_id );
+$refused_retry_status = Kuka_Island_Shipping_Notification::status( wc_get_order( $refused_id ) );
+$refused_retry_mails  = $mailer->count_to( $refused['email'] );
+
+kuka_ship_purge_actions( $refused_id );
+kuka_ship_destroy_order( wc_get_order( $refused_id ) );
+
+// A transport whose outcome is unknowable: neither signal comes back.
+$silent = kuka_ship_notify_fixture();
+$silent_id = (int) $silent['order']->get_id();
+$mailer->reset();
+$mailer->mode = 'silent';
+$silent['box']->code = Kuka_Island_Shipping_Status::CODE_IN_TRANSFER;
+$silent['manager']->query_status( wc_get_order( $silent_id ) );
+
+kuka_ship_forget_order( $silent_id );
+$silent_status = Kuka_Island_Shipping_Notification::status( wc_get_order( $silent_id ) );
+$silent_mails  = $mailer->count_to( $silent['email'] );
+
+// Now the transport works perfectly. It must STILL not send a second message.
+$mailer->mode = 'accepted';
+$silent['manager']->query_status( wc_get_order( $silent_id ) );
+$silent['box']->code = 5;
+$silent['manager']->query_status( wc_get_order( $silent_id ) );
+
+kuka_ship_forget_order( $silent_id );
+$silent_after_status = Kuka_Island_Shipping_Notification::status( wc_get_order( $silent_id ) );
+$silent_after_mails  = $mailer->count_to( $silent['email'] );
+
+kuka_ship_purge_actions( $silent_id );
+kuka_ship_destroy_order( wc_get_order( $silent_id ) );
+
+$report(
+	'SHIPPING_NOTIFICATION_OUTCOME_IS_SAFE',
+	// A definite refusal: recorded, visible, retryable, and it leaks nothing.
+	1 === $refused_mails
+		&& Kuka_Island_Shipping_Notification::STATE_FAILED === (string) $refused_status['state']
+		&& 'wp_mail_failed' === (string) $refused_status['code']
+		&& 1 === (int) $refused_status['attempts']
+		&& 0 === $refused_leaks
+		&& 0 === $refused_raw
+		&& $refused_core_redacts
+		// The bounded retry then succeeds, and the customer gets one message.
+		&& 2 === $refused_retry_mails
+		&& Kuka_Island_Shipping_Notification::STATE_SENT === (string) $refused_retry_status['state']
+		&& 2 === (int) $refused_retry_status['attempts']
+		// An unknown outcome: recorded as needing a person, never repeated.
+		&& 1 === $silent_mails
+		&& Kuka_Island_Shipping_Notification::STATE_MANUAL_REVIEW === (string) $silent_status['state']
+		&& 'send_outcome_unknown' === (string) $silent_status['code']
+		&& 1 === $silent_after_mails
+		&& Kuka_Island_Shipping_Notification::STATE_MANUAL_REVIEW === (string) $silent_after_status['state']
+		&& 1 === (int) $silent_after_status['attempts'],
+	sprintf(
+		'measured:intercepted_transport|refused:mails:%d|state:%s|code:%s|attempts:%d|secret_leaks:%d|raw_transport_text:%d|configured_secrets_redacted:%s|retry_mails:%d|retry_state:%s'
+			. '||unknown:mails:%d|state:%s|code:%s|automatic_second_send:%d|state_after:%s',
+		$refused_mails,
+		(string) $refused_status['state'],
+		(string) $refused_status['code'],
+		(int) $refused_status['attempts'],
+		$refused_leaks,
+		$refused_raw,
+		$refused_core_redacts ? 'yes' : 'NO',
+		$refused_retry_mails,
+		(string) $refused_retry_status['state'],
+		$silent_mails,
+		(string) $silent_status['state'],
+		(string) $silent_status['code'],
+		$silent_after_mails - $silent_mails,
+		(string) $silent_after_status['state']
+	)
+);
+
+/* --- the manual route, untouched --------------------------------------- */
+
+/*
+ * The operator's tick and this module are the same WooCommerce action, the
+ * same e-mail class and the same template. What separates them is ownership:
+ * a fulfilment created by hand carries no carrier reference, so
+ * Fulfillment_Writer::find_own() never returns it and no automatic
+ * notification is ever produced for it.
+ */
+
+$manual_order = kuka_ship_fixture_order();
+$manual_id    = (int) $manual_order->get_id();
+$manual_email = strtolower( (string) $manual_order->get_billing_email() );
+
+$manual_class = '\Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment';
+$manual_store = '\Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore';
+$manual_ready = class_exists( $manual_class ) && class_exists( $manual_store );
+$manual_own   = null;
+
+if ( $manual_ready ) {
+	$manual_own = new $manual_class();
+	$manual_own->set_entity_type( WC_Order::class );
+	$manual_own->set_entity_id( (string) $manual_id );
+	$manual_own->set_status( 'fulfilled' );
+	$manual_own->update_meta_data( '_tracking_number', 'MANUAL-TRACK-1' );
+	$manual_own->update_meta_data( '_shipment_provider', 'aras-kargo' );
+	$manual_items = array();
+
+	foreach ( $manual_order->get_items() as $manual_item_id => $manual_item ) {
+		$manual_items[] = array( 'item_id' => (int) $manual_item_id, 'qty' => 1 );
+	}
+
+	$manual_own->set_items( $manual_items );
+
+	try {
+		wc_get_container()->get( $manual_store )->create( $manual_own );
+	} catch ( Throwable $manual_error ) {
+		$manual_ready = false;
+	}
+}
+
+$mailer->reset();
+$mailer->mode = 'accepted';
+
+// notify = false: WooCommerce fires nothing, so nothing is sent.
+$manual_quiet = $mailer->count_to( $manual_email );
+
+// notify = true: the operator's path, which is this action and this action only.
+if ( $manual_ready ) {
+	WC()->mailer();
+	do_action( 'woocommerce_fulfillment_created_notification', $manual_id, $manual_own, wc_get_order( $manual_id ) );
+}
+
+$manual_notified = $mailer->count_to( $manual_email );
+
+// And this module claimed nothing about that record.
+kuka_ship_forget_order( $manual_id );
+$manual_module_state = Kuka_Island_Shipping_Notification::state( wc_get_order( $manual_id ) );
+$manual_found_by_us  = Kuka_Island_Shipping_Fulfillment_Writer::find_own( wc_get_order( $manual_id ), 'KI1-MANUAL' );
+
+// The module's own status sync, run against an order whose only fulfilment is
+// somebody else's: no notification, and the record is not touched.
+$mailer->reset();
+$manual_sync = Kuka_Island_Shipping_Fulfillment_Writer::sync_status( wc_get_order( $manual_id ), 'KI1-MANUAL', 2 );
+$manual_after_mails = $mailer->count_to( $manual_email );
+
+if ( $manual_ready ) {
+	try {
+		wc_get_container()->get( $manual_store )->delete( $manual_own );
+	} catch ( Throwable $manual_cleanup ) {
+		unset( $manual_cleanup );
+	}
+}
+
+$report(
+	'SHIPPING_MANUAL_FULFILLMENT_ROUTE_UNTOUCHED',
+	$manual_ready
+		// notify = false is the absence of the action: nothing sent.
+		&& 0 === $manual_quiet
+		// notify = true sends exactly one, through WooCommerce's own class.
+		&& 1 === $manual_notified
+		// This module recorded nothing about somebody else's record.
+		&& '' === $manual_module_state
+		&& null === $manual_found_by_us
+		&& 'own_fulfillment_absent' === (string) $manual_sync['reason']
+		&& 'not_due' === (string) $manual_sync['notification']
+		&& 0 === $manual_after_mails,
+	sprintf(
+		'measured:real_fulfillments_datastore_and_intercepted_transport|api:%s|notify_false_mails:%d|notify_true_mails:%d|module_state:%s|module_claims_record:%s|module_sync:%s/%s|module_sync_mails:%d',
+		$manual_ready ? 'available' : 'UNAVAILABLE',
+		$manual_quiet,
+		$manual_notified,
+		'' === $manual_module_state ? 'absent' : $manual_module_state,
+		null === $manual_found_by_us ? 'no' : 'YES',
+		(string) $manual_sync['reason'],
+		(string) $manual_sync['notification'],
+		$manual_after_mails
+	)
+);
+
+kuka_ship_destroy_order( wc_get_order( $manual_id ) );
+
+/* --- the order's own language decides the wording ----------------------- */
+
+/*
+ * Measured through a REAL send, not by reading get_subject() on an idle e-mail
+ * object. WooCommerce's own English defaults go through __(), so on a Turkish
+ * site they come back translated unless the locale has actually been switched
+ * -- and that switch happens inside the send, via setup_locale() and Core's
+ * woocommerce_allow_switching_email_locale filter. Reading the property without
+ * sending measures the translation table, not the customer's e-mail.
+ */
+
+/**
+ * A fulfilment record the e-mail template can actually render.
+ *
+ * @param WC_Order $order Order to attach it to.
+ * @return object|null
+ */
+function kuka_ship_language_fulfillment( WC_Order $order ) {
+	$class = '\Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment';
+	$store = '\Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore';
+
+	if ( ! class_exists( $class ) || ! class_exists( $store ) ) {
+		return null;
+	}
+
+	$items = array();
+
+	foreach ( $order->get_items() as $item_id => $item ) {
+		$items[] = array( 'item_id' => (int) $item_id, 'qty' => 1 );
+	}
+
+	$record = new $class();
+	$record->set_entity_type( WC_Order::class );
+	$record->set_entity_id( (string) $order->get_id() );
+	$record->set_status( 'fulfilled' );
+	$record->update_meta_data( '_tracking_number', 'LANG-TRACK-1' );
+	$record->update_meta_data( '_tracking_url', 'https://example.invalid/track/LANG-TRACK-1' );
+	$record->update_meta_data( '_shipment_provider', 'dhl' );
+	$record->set_items( $items );
+
+	try {
+		wc_get_container()->get( $store )->create( $record );
+	} catch ( Throwable $failed ) {
+		return null;
+	}
+
+	return $record;
+}
+
+/** Send the notification for one order and hand back what the customer got. */
+$lang_send = static function ( WC_Order $order ) use ( $mailer ): array {
+	$record = kuka_ship_language_fulfillment( $order );
+
+	if ( null === $record ) {
+		return array( 'subject' => '', 'body' => '', 'ok' => false );
+	}
+
+	$mailer->reset();
+	$mailer->mode = 'accepted';
+
+	/*
+	 * WHICH LOCALE THE BODY WAS RENDERED IN, recorded as the intro string
+	 * passes through the translation layer. This is the fact that was broken:
+	 * WC_Email objects are reused and these two e-mails assign $this->object
+	 * AFTER setup_locale(), so a second notification in one request decided its
+	 * language from the PREVIOUS order.
+	 */
+	$GLOBALS['kuka_lang_probe'] = '';
+	$probe = static function ( $translation, $text, $domain ) {
+		if ( 'woocommerce' === $domain && str_starts_with( (string) $text, 'Woo! Some items' ) ) {
+			$GLOBALS['kuka_lang_probe'] = get_locale();
+		}
+
+		return $translation;
+	};
+	add_filter( 'gettext', $probe, 5, 3 );
+
+	WC()->mailer();
+	do_action( 'woocommerce_fulfillment_created_notification', (int) $order->get_id(), $record, $order );
+	remove_filter( 'gettext', $probe, 5 );
+
+	$sent = end( $mailer->sent );
+
+	try {
+		wc_get_container()->get( '\Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore' )->delete( $record );
+	} catch ( Throwable $ignored ) {
+		unset( $ignored );
+	}
+
+	return array(
+		'subject' => is_array( $sent ) ? (string) ( $sent['subject'] ?? '' ) : '',
+		'body'    => is_array( $sent ) ? (string) ( $sent['message'] ?? '' ) : '',
+		'locale'  => (string) $GLOBALS['kuka_lang_probe'],
+		'ok'      => is_array( $sent ),
+	);
+};
+
+$lang_tr = kuka_ship_fixture_order();
+$lang_tr_mail = $lang_send( wc_get_order( $lang_tr->get_id() ) );
+
+$lang_en = kuka_ship_fixture_order();
+$lang_en->update_meta_data( '_kuka_order_locale', 'en_US' );
+$lang_en->save();
+$lang_en_mail = $lang_send( wc_get_order( $lang_en->get_id() ) );
+
+// The machine translation this round replaced, searched for by its own words.
+$lang_machine = 0;
+
+foreach ( array( 'yerine getirildi', 'yerine getiriliyor', 'Öğeniz yolda' ) as $lang_phrase ) {
+	$lang_machine += substr_count( $lang_tr_mail['subject'] . $lang_tr_mail['body'], $lang_phrase );
+}
+
+$report(
+	'SHIPPING_NOTIFICATION_TEXT_FOLLOWS_ORDER_LANGUAGE',
+	$lang_tr_mail['ok']
+		&& $lang_en_mail['ok']
+		// Turkish: a courier sentence, subject, heading and body.
+		&& str_contains( $lang_tr_mail['subject'], 'siparişiniz kargoya verildi' )
+		&& str_contains( $lang_tr_mail['body'], 'Siparişiniz yola çıktı' )
+		&& str_contains( $lang_tr_mail['body'], 'kargoya verildi. Aşağıdaki bilgilerle' )
+		&& 0 === $lang_machine
+		// The tracking number and its link reach the customer when present.
+		&& str_contains( $lang_tr_mail['body'], 'LANG-TRACK-1' )
+		&& str_contains( $lang_tr_mail['body'], 'example.invalid/track/LANG-TRACK-1' )
+		// An English order keeps natural English, from WooCommerce's own text.
+		&& ! str_contains( $lang_en_mail['subject'], 'kargoya verildi' )
+		&& ! str_contains( $lang_en_mail['body'], 'yerine get' )
+		&& str_contains( $lang_en_mail['subject'], 'has shipped!' )
+		&& str_contains( $lang_en_mail['body'], 'Your order is on its way' )
+		&& str_contains( $lang_en_mail['body'], 'track your shipment' )
+		// And both ids are inside the order-locale contract, which is the
+		// switch itself: the body was rendered in the order's own locale.
+		&& has_filter( 'woocommerce_email_subject_customer_fulfillment_created' )
+		&& has_filter( 'woocommerce_email_heading_customer_fulfillment_updated' )
+		&& 'tr_TR' === (string) $lang_tr_mail['locale']
+		&& 'en_US' === (string) $lang_en_mail['locale'],
+	sprintf(
+		'measured:real_send_through_intercepted_transport|tr_subject:%s|tr_heading_in_body:%s|tr_intro_natural:%s|machine_phrases:%d|tracking_number:%s|tracking_link:%s|en_subject:%s|en_heading_in_body:%s|en_intro:%s|en_turkish_leftover:%s|locale_at_body_render:%s',
+		$lang_tr_mail['subject'],
+		str_contains( $lang_tr_mail['body'], 'Siparişiniz yola çıktı' ) ? 'yes' : 'NO',
+		str_contains( $lang_tr_mail['body'], 'kargoya verildi. Aşağıdaki bilgilerle' ) ? 'yes' : 'NO',
+		$lang_machine,
+		str_contains( $lang_tr_mail['body'], 'LANG-TRACK-1' ) ? 'shown' : 'MISSING',
+		str_contains( $lang_tr_mail['body'], 'example.invalid/track/LANG-TRACK-1' ) ? 'shown' : 'MISSING',
+		$lang_en_mail['subject'],
+		str_contains( $lang_en_mail['body'], 'Your order is on its way' ) ? 'yes' : 'NO',
+		str_contains( $lang_en_mail['body'], 'track your shipment' ) ? 'yes' : 'NO',
+		str_contains( $lang_en_mail['body'], 'yerine get' ) ? 'PRESENT' : 'no',
+		sprintf(
+			'%s/%s',
+			(string) $lang_tr_mail['locale'],
+			(string) $lang_en_mail['locale']
+		)
+	)
+);
+
+$mailer->detach();
+kuka_ship_destroy_order( wc_get_order( $lang_tr->get_id() ) );
+kuka_ship_destroy_order( wc_get_order( $lang_en->get_id() ) );
+
+/* ========================================================================== */
+/* 60. FS_CHMOD_FILE is defined without touching a vendor file                 */
+/* ========================================================================== */
+
+/*
+ * iyzico's AbstractLogger reaches for \FS_CHMOD_FILE in createHtaccess(), and
+ * WordPress defines that constant in ONE place: inside WP_Filesystem(), which
+ * lives in wp-admin/includes/file.php. WP-CLI does not load the admin side, so
+ * the constant exists in a CLI run only because the logger's own constructor
+ * happened to call WP_Filesystem() during bootstrap -- and only while
+ * get_filesystem_method() answers 'direct'. When it answers anything else the
+ * logger's fallback returns early and never defines it, and a later
+ * createHtaccess() call dies on an undefined constant.
+ *
+ * MEASURED, NOT ASSUMED: in this container the method IS 'direct' and the
+ * constant IS already defined, so the failure does not reproduce here. What is
+ * fixed is the dependency on that accident. Core defines the constant itself,
+ * with WordPress's own formula, when nothing else has -- and the vendor file is
+ * not touched.
+ */
+
+$chmod_guard   = Kuka_Island_Core_Compatibility::ensure_chmod_file_constant();
+$chmod_default = Kuka_Island_Core_Compatibility::chmod_file_default();
+$chmod_wp      = ( fileperms( ABSPATH . 'index.php' ) & 0777 ) | 0644;
+
+// The end-to-end question: can the vendor's own htaccess writer run here?
+$chmod_dir     = trailingslashit( sys_get_temp_dir() ) . 'kuka-chmod-probe-' . wp_generate_password( 8, false );
+$chmod_logger  = class_exists( '\Iyzico\IyzipayWoocommerce\Common\Helpers\Logger' );
+$chmod_written = false;
+$chmod_error   = '';
+
+if ( $chmod_logger ) {
+	try {
+		new \Iyzico\IyzipayWoocommerce\Common\Helpers\Logger( trailingslashit( $chmod_dir ) );
+		$chmod_written = file_exists( trailingslashit( $chmod_dir ) . '.htaccess' )
+			&& str_contains( (string) file_get_contents( trailingslashit( $chmod_dir ) . '.htaccess' ), 'Deny from all' );
+	} catch ( Throwable $chmod_thrown ) {
+		$chmod_error = get_class( $chmod_thrown );
+	}
+}
+
+// The probe directory is ours and is removed by exact path.
+if ( is_dir( $chmod_dir ) ) {
+	foreach ( (array) glob( trailingslashit( $chmod_dir ) . '{,.}*', GLOB_BRACE ) as $chmod_file ) {
+		if ( is_file( $chmod_file ) ) {
+			unlink( $chmod_file );
+		}
+	}
+
+	rmdir( $chmod_dir );
+}
+
+// And no vendor file was modified to achieve any of it.
+$chmod_vendor_clean = ! str_contains(
+	(string) shell_exec( 'cd ' . escapeshellarg( dirname( WP_PLUGIN_DIR, 3 ) ) . ' && git status --porcelain wp-content/plugins/iyzico-woocommerce 2>/dev/null' ),
+    'iyzico-woocommerce'
+);
+
+$report(
+	'SHIPPING_FS_CHMOD_FILE_GUARDED_IN_PROJECT',
+	in_array( $chmod_guard, array( 'already_defined', 'defined_now' ), true )
+		&& defined( 'FS_CHMOD_FILE' )
+		// Core's value is WordPress's own formula, not a hand-picked mask.
+		&& $chmod_default === $chmod_wp
+		&& FS_CHMOD_FILE === $chmod_wp
+		// The vendor path that needs the constant runs.
+		&& $chmod_logger
+		&& $chmod_written
+		&& '' === $chmod_error
+		&& ! is_dir( $chmod_dir ),
+	sprintf(
+		'measured:core_guard_and_real_vendor_logger|guard:%s|constant:%s|wordpress_formula:%s|identical:%s|filesystem_method:%s|vendor_logger:%s|htaccess_written:%s|error:%s|probe_dir_removed:%s',
+		$chmod_guard,
+		defined( 'FS_CHMOD_FILE' ) ? decoct( FS_CHMOD_FILE ) : 'undefined',
+		decoct( $chmod_wp ),
+		defined( 'FS_CHMOD_FILE' ) && FS_CHMOD_FILE === $chmod_wp ? 'yes' : 'NO',
+		function_exists( 'get_filesystem_method' ) ? get_filesystem_method() : 'unknown',
+		$chmod_logger ? 'available' : 'ABSENT',
+		$chmod_written ? 'yes' : 'NO',
+		'' === $chmod_error ? 'none' : $chmod_error,
+		is_dir( $chmod_dir ) ? 'NO' : 'yes'
+	)
+);
+
+/* ========================================================================== */
+/* 61. The SMTP password lives in wp-config, and nowhere else                  */
+/* ========================================================================== */
+
+/*
+ * A mail transport is the one place in this project where a working credential
+ * has to exist at runtime, so where it is NOT stored matters as much as where
+ * it is. Three things are measured rather than assumed: the admin surface
+ * offers no field that could capture it, the database holds no row that could
+ * carry it, and the transport reads it from wp-config constants only.
+ *
+ * The runbook line is measured too. A secret whose production location is not
+ * written down is a secret somebody will paste into an option.
+ */
+
+$smtp_admin_source = (string) file_get_contents(
+	trailingslashit( WP_PLUGIN_DIR ) . 'kuka-island-core/includes/class-email-delivery.php'
+);
+
+// No input that could take a password, and no setting that could store one.
+$smtp_input_fields = preg_match_all( '/type=["\']password["\']/', $smtp_admin_source );
+$smtp_registered   = preg_match_all( '/register_setting\(|add_settings_field\(/', $smtp_admin_source );
+
+// Nothing in the options table can be carrying it either.
+global $wpdb;
+
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$smtp_option_rows = (int) $wpdb->get_var(
+	"SELECT COUNT(*) FROM {$wpdb->options}
+	 WHERE option_name LIKE '%smtp%'
+	    OR option_name LIKE '%KUKA_SMTP%'
+	    OR option_value LIKE '%KUKA_SMTP_PASSWORD%'"
+);
+
+// The transport's own answer comes from constants, and it never says the value.
+$smtp_required = array( 'KUKA_SMTP_HOST', 'KUKA_SMTP_PORT', 'KUKA_SMTP_USERNAME', 'KUKA_SMTP_PASSWORD', 'KUKA_SMTP_ENCRYPTION', 'KUKA_SMTP_FROM_NAME' );
+$smtp_defined  = 0;
+
+foreach ( $smtp_required as $smtp_constant ) {
+	if ( defined( $smtp_constant ) ) {
+		++$smtp_defined;
+	}
+}
+
+$smtp_configured = class_exists( 'Kuka_Island_Core_Email_Delivery' )
+	&& Kuka_Island_Core_Email_Delivery::smtp_is_configured();
+
+/*
+ * The compose transport, the runbook line and .gitignore are HOST files: this
+ * container mounts only /project-scripts, so they cannot be read from here and
+ * are measured host-side instead -- see SMTP_SECRET_TRANSPORT in verify.sh.
+ * Reading a file that is not mounted would have measured nothing and reported
+ * it as a failure of the thing being checked.
+ */
+
+$report(
+	'SHIPPING_SMTP_SECRET_STAYS_OUT_OF_THE_DATABASE',
+	// The admin surface cannot capture it.
+	0 === $smtp_input_fields
+	&& 0 === $smtp_registered
+	// The database is not carrying it.
+	&& 0 === $smtp_option_rows
+	// The transport has it, from wp-config.
+	&& 6 === $smtp_defined
+	&& $smtp_configured
+	&& $smtp_configured,
+	sprintf(
+		'measured:source_and_options_table|password_input_fields:%d|registered_settings:%d|smtp_option_rows:%d|constants_from_wp_config:%d/6|transport_configured:%s|host_files:measured_by_SMTP_SECRET_TRANSPORT',
+		$smtp_input_fields,
+		$smtp_registered,
+		$smtp_option_rows,
+		$smtp_defined,
+		$smtp_configured ? 'yes' : 'NO'
+	)
+);
+
+/* ========================================================================== */
+/* 62. Cleanup and verdict                                                     */
 /* ========================================================================== */
 
 $leftover = get_posts(

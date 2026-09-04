@@ -189,7 +189,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 	 * @param WC_Order $order     Order.
 	 * @param string   $reference Carrier reference.
 	 * @param mixed    $raw_code  Status value exactly as it arrived.
-	 * @return array{ok: bool, action: string, reason: string, date_fulfilled: string}
+	 * @return array{ok: bool, action: string, reason: string, date_fulfilled: string, notification: string}
 	 */
 	public static function sync_status( WC_Order $order, string $reference, $raw_code ): array {
 		if ( ! self::api_available() ) {
@@ -198,6 +198,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				'action'         => 'none',
 				'reason'         => 'fulfillments_api_unavailable',
 				'date_fulfilled' => 'unknown',
+				'notification'   => 'not_due',
 			);
 		}
 
@@ -209,6 +210,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				'action'         => 'none',
 				'reason'         => 'own_fulfillment_absent',
 				'date_fulfilled' => 'unknown',
+				'notification'   => 'not_due',
 			);
 		}
 
@@ -223,6 +225,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				'action'         => 'left_for_manual_review',
 				'reason'         => '',
 				'date_fulfilled' => 'untouched',
+				'notification'   => 'not_due',
 			);
 		}
 
@@ -234,6 +237,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				'action'         => 'no_change',
 				'reason'         => '',
 				'date_fulfilled' => 'untouched',
+				'notification'   => 'not_due',
 			);
 		}
 
@@ -241,7 +245,17 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 			$changed   = false;
 			$date_note = 'present';
 
-			if ( ! $fulfillment->get_is_fulfilled() ) {
+			/*
+			 * WHETHER THIS CALL IS THE ONE THAT DISPATCHES THE PARCEL.
+			 *
+			 * Read before anything is written, because it is the trigger for
+			 * the single customer e-mail this module sends. A carrier status is
+			 * polled repeatedly and codes 3, 4 and 5 arrive after code 2; the
+			 * e-mail belongs to the TRANSITION, not to the status.
+			 */
+			$first_transition = ! $fulfillment->get_is_fulfilled();
+
+			if ( $first_transition ) {
 				$fulfillment->set_status( 'fulfilled' );
 				$changed = true;
 			}
@@ -290,21 +304,48 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 			}
 
 			if ( ! $changed ) {
+				/*
+				 * The record already said fulfilled, so nothing about the
+				 * fulfilment moves. A definite mail refusal recorded earlier is
+				 * still allowed its bounded retry from here -- that is a message
+				 * the customer never received, not a duplicate -- and every
+				 * other notification state answers 'already_sent',
+				 * 'manual_review' or 'not_due' without touching the transport.
+				 */
+				$notified = Kuka_Island_Shipping_Notification::on_fulfilled( $order, $fulfillment, false );
+
 				return array(
 					'ok'             => true,
 					'action'         => 'no_change',
 					'reason'         => '',
 					'date_fulfilled' => $date_note,
+					'notification'   => (string) $notified['outcome'],
 				);
 			}
 
 			$fulfillment->save();
+
+			/*
+			 * THE CUSTOMER E-MAIL, AFTER THE RECORD IS ON DISK.
+			 *
+			 * WooCommerce fires its fulfilment notification from one place
+			 * only -- the REST controller behind the drawer's "notify customer"
+			 * tick -- so a record this module flipped produced no e-mail at
+			 * all. It is fired here instead, for THIS module's own record only,
+			 * and Notification::on_fulfilled() is what keeps it to one message
+			 * however many times the carrier is polled.
+			 *
+			 * After the save, deliberately: an e-mail about a dispatch that was
+			 * not persisted is worse than a late one.
+			 */
+			$notified = Kuka_Island_Shipping_Notification::on_fulfilled( $order, $fulfillment, $first_transition );
 
 			return array(
 				'ok'             => true,
 				'action'         => Kuka_Island_Shipping_Status::CODE_DELIVERED === $code ? 'delivered' : 'fulfilled',
 				'reason'         => '',
 				'date_fulfilled' => $date_note,
+				'notification'   => (string) $notified['outcome'],
 			);
 		} catch ( Throwable $e ) {
 			return array(
@@ -312,6 +353,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				'action'         => 'update_failed',
 				'reason'         => 'fulfillment_write_failed',
 				'date_fulfilled' => 'unknown',
+				'notification'   => 'not_due',
 			);
 		}
 	}

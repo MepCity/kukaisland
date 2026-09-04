@@ -223,6 +223,29 @@ printf(
     PASS*) note "SHIPPING_LIFECYCLE_DEACTIVATION=$inactive_line" ;;
     *)     fail "SHIPPING_LIFECYCLE_DEACTIVATION=$inactive_line" ;;
   esac
+
+  # ------------------------------------------------------------------------
+  # 2b. Eklenti kapalıyken WooCommerce'in kendi "müşteriye bildir" yolu
+  # ------------------------------------------------------------------------
+  #
+  # `core_works` yalnız iki Core sınıfının tanımlı olduğunu söyler. Operatörün
+  # çekmecesindeki işaretin hâlâ müşteriye e-posta gönderdiği ancak gerçekten
+  # bir bildirim tetiklenip taşıyıcı kesilerek ölçülebilir. Betik dışarı mesaj
+  # bırakmaz ve fixture siparişini notlarıyla birlikte siler.
+  passive_route_line=$(docker compose run --rm -T wp-cli php /project-scripts/verify-shipping-manual-route-passive.php 2>/dev/null | tr -d '\r')
+  passive_route_verdict=$(printf '%s\n' "$passive_route_line" | grep '^SHIPPING_MANUAL_ROUTE_WITH_PLUGIN_INACTIVE=' || true)
+  passive_route_cleanup=$(printf '%s\n' "$passive_route_line" | grep '^MANUAL_ROUTE_CLEANUP_STATE=' || true)
+
+  if [ -z "$passive_route_verdict" ]; then
+    fail 'SHIPPING_MANUAL_ROUTE_WITH_PLUGIN_INACTIVE=FAIL|reason:probe_produced_no_verdict'
+  elif [ "$passive_route_cleanup" != 'MANUAL_ROUTE_CLEANUP_STATE=succeeded' ]; then
+    fail "SHIPPING_MANUAL_ROUTE_WITH_PLUGIN_INACTIVE=FAIL|reason:fixture_cleanup_not_succeeded|$passive_route_cleanup"
+  else
+    case "$passive_route_verdict" in
+      *=PASS*) note "$passive_route_verdict" ;;
+      *)       fail "$passive_route_verdict" ;;
+    esac
+  fi
 fi
 
 # --------------------------------------------------------------------------

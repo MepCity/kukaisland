@@ -482,10 +482,13 @@ EDM'in resmî örnekleri nedeniyle `0001-01-01` oldu.
 ### İlk kabul edilen gerçek gönderim ve dürüst son durum
 
 Düzeltilmiş tek `SendInvoice` EDM tarafından kabul edildi, UUID yanıtla eşleşti
-ve 16 karakterlik numara atandı. Son salt-okunur ölçüm:
-`PACKAGE - PROCESSING`. Bu, belgenin EDM'de bulunduğunu kanıtlar fakat
-`SEND - SUCCEED` değildir. Yani **terminal başarı henüz gözlemlenmedi**;
-numara atanmış olması GİB'e ulaştığının tek başına kanıtı sayılmıyor.
+ve 16 karakterlik numara atandı. Belge yaklaşık 24 saat `PACKAGE - PROCESSING`
+durumunda bekledi; EDM desteğine soruldu, cevap yazılıydı: test ortamı kuyruğu
+ara ara böyle bekletir, canlıda yaşanmaz, tetiklemeyi yazılım birimi yaptı.
+Tetikleme sonrası salt-okunur ölçüm (4 Eylül 12:06): **`SEND - SUCCEED` —
+terminal başarı gözlemlendi**, durum sözlüğü terminali `completed` olarak doğru
+sınıfladı. Kalan tek açık uç: `GetInvoice` saklı XML'i terminal sonrası da boş
+`CONTENT` ile döndürüyor (EDM'e sorulmuş, cevap bekleyen davranış sorusu).
 
 Arka planda çalışan sandbox izleyicisi yoktur. Tekrar kontrol gerekirse
 `./scripts/edm-sandbox-send-run.sh status=confirm` elle çalıştırılır; bu mod
@@ -543,7 +546,7 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 
 - İngilizce ilk geçişin müşteri tarafından, sekiz İngilizce yasal metnin hukuk danışmanı tarafından gözden geçirilmesi/doldurulması
 - Safari / Firefox / iOS / Android turu ve gerçek cihazda Core Web Vitals — hiç yapılmadı
-- EDM sandbox belgesinde terminal `SEND - SUCCEED` henüz gözlemlenmedi; son ölçüm `PACKAGE - PROCESSING`
+- EDM sandbox belgesi 4 Eylül'de terminal `SEND - SUCCEED`'e ulaştı (test kuyruğu destek tetiklemesiyle işledi); açık kalan yalnız `GetInvoice` boş-CONTENT davranışı
 - DHL eCommerce sandbox uygulaması oluşturuldu; Identity, CBS Info, Standard
   Command, Barcode Command ve Standard Query abonelikleri 4 Eylül 2026'da
   portalda tamamlandı. Token için gereken test müşteri numarası/şifresi portal
@@ -563,9 +566,9 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 
 ---
 
-## 15.1 Kargo otomasyonu — yedi turda öğrenilenler
+## 15.1 Kargo otomasyonu — sekiz turda öğrenilenler
 
-EDM gibi, kargo da **ayrı** bir eklenti. **Yedi** bağımsız düzeltme turu geçti
+EDM gibi, kargo da **ayrı** bir eklenti. **Sekiz** bağımsız düzeltme turu geçti
 ve her turda bir öncekinin *eksik* kaldığı yer bulundu. Bu sıralamanın kendisi
 ders: her tur bir önceki turun "tamam" dediği yeri ölçtü.
 
@@ -630,7 +633,27 @@ ve bir geçmiş kaydıyla. Ve mutabakatla benimsenen bir gönderinin `created_at
 alanı 0 kalıyordu, yani geçen süre 1970'ten beri sayılıyor ve ilk poll turu tek
 okuma yapmadan vazgeçiyordu. Bkz. K-40…K-43.
 
-### Dokuz tekrarlayan ders
+**Tur 8 — müşteriye giden ileti.** Kargo kaydı `fulfilled` oluyor, müşteriye
+hiçbir e-posta gitmiyordu: WooCommerce bildirim eylemini **tek bir yerden**,
+çekmecedeki "müşteriye bildir" işaretinin arkasındaki REST controller'dan
+tetikler, ve modül kaydı doğrudan kaydettiği için o eylem hiç oluşmuyordu.
+Bildirim artık modülün kendisi tarafından, yalnız kendi kaydının ilk
+`unfulfilled → fulfilled` geçişinde tetikleniyor; kalıcı ve çökme güvenli bir
+durum (`pending → sending → sent | failed | reconciliation_required`) tekrar
+sorgularda tek iletiyi garanti ediyor, belirsiz bir SMTP sonucu **hiçbir zaman**
+otomatik ikinci ileti üretmiyor. Bu turda ayrıca metnin kendisi düzeltildi:
+WooCommerce'in tr_TR çevirisi müşteriye `bir öğe yerine getirildi!` ve
+`Öğeniz yolda!` yazıyordu. Ve dilin nasıl seçildiği bozuktu — `WC_Email` nesnesi
+yeniden kullanıldığı, bu iki e-postada siparişin `setup_locale()`'dan sonra
+atandığı için aynı istekteki ikinci bildirim dilini **önceki siparişten**
+alıyordu. Bkz. K-44…K-47. Gerçek SMTP'nin ortama girmesi ayrıca iki eski
+e-posta kabul ölçümünü kırdı: üçü panelden değiştirilebilen marka adresini
+sabit yazıyordu, `disabled-mail` ölçümü ise `mail()` yerine SMTP'ye kayıp
+her koşuda operatörün üretim sunucusuna gerçek bir mesaj bırakıyordu.
+Ölçümler adres yerine tek kaynağa bağlandı ve taşıyıcı o tek gönderim için
+geri çekilip ölçüldü. Bkz. K-48.
+
+### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"
    demesi, iptalin uygulandığını söylemez. Bir yazma taşıyıcıya ulaştıysa
@@ -672,7 +695,16 @@ okuma yapmadan vazgeçiyordu. Bkz. K-40…K-43.
    ulaşmayan ret bütçeden düşmemelidir — bu doğrudur — ama o zaman zinciri
    bitiren şey de kalmaz. Bütçeyle sınırlanmayan her tekrar için ayrı ve açık
    bir durma koşulu gerekir (K-42).
-9. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
+9. **Bir kancayı kimin tetiklediğini varsayma.** WooCommerce'in gönderim
+   bildirimi eylemi, adı öyle görünmesine rağmen bir *durum değişikliğinin*
+   değil bir *insan işaretinin* sonucudur: yalnız REST controller tetikler.
+   Bir kancanın hangi kod yolundan doğduğu, adından değil `grep`'ten öğrenilir
+   (K-44).
+10. **Yeniden kullanılan bir nesnede boş alan fark edilir, bayat alan
+   edilmez.** İlk bildirimde `$email->object` boştu ve bu görülebilirdi;
+   ikincisinde ÖNCEKİ siparişi tutuyordu ve ölçüm iki farklı dilde iki gönderim
+   yapana kadar hiçbir şey yanlış görünmedi (K-46).
+11. **Bir dönüş değeri gördüğünü ölçen test, sürecin öldüğünü ölçmez.**
    `uncertain` bir `Result` bile koda geri dönmüş demektir: kayıt tutabilecek
    bir kod yolu çalıştı. Çökme öyle değildir. Bu yüzden korumanın tamamı
    **istek gitmeden önce diske yazılmış** olana dayanır, ve ölçüm de bunu

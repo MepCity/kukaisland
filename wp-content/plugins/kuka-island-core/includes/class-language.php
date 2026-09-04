@@ -14,6 +14,9 @@ function kuka_island_is_english(): bool {
 
 final class Kuka_Island_Core_Language {
 	private static bool $email_locale_switched = false;
+
+	/** Gönderim bildirimi süresince siparişi tutar; bkz. register(). */
+	private static ?WC_Order $fulfillment_order = null;
 	private static ?bool $english_request = null;
 	private static ?string $english_request_key = null;
 	/** @return array<string, array<string, array{key:string,mode:string}>> */
@@ -191,9 +194,49 @@ final class Kuka_Island_Core_Language {
 		add_action( 'woocommerce_checkout_create_order', array( $this, 'save_order_locale' ), 20 );
 		add_filter( 'woocommerce_allow_switching_email_locale', array( $this, 'switch_email_locale' ), 20, 2 );
 		add_filter( 'woocommerce_allow_restoring_email_locale', array( $this, 'restore_email_locale' ), 20, 2 );
+		// Gönderim bildirimleri de sipariş diline tabidir: İngilizce bir sipariş
+		// kargoya verildiğinde müşteri İngilizce metin görür.
+		/*
+		 * Gönderim e-postalarında sipariş, dil anahtarına ULAŞMIYOR.
+		 *
+		 * WC_Email_Customer_Fulfillment_Created::trigger() önce setup_locale()
+		 * çağırır, `$this->object` siparişi ondan SONRA atanır. Standart sipariş
+		 * e-postalarında sıra terstir. Bu yüzden switch_email_locale() filtresi
+		 * bu iki e-postada `$email->object` alanını boş görüyor ve İngilizce bir
+		 * sipariş için dil hiç değişmiyordu: müşteri Türkçe metin alıyordu.
+		 *
+		 * Bildirim eylemi WooCommerce'in kendi trigger'ından (öncelik 10) önce
+		 * dinlenip sipariş kenara yazılır, sonra temizlenir. Hem operatörün
+		 * "müşteriye bildir" işareti hem de kargo eklentisinin otomatik
+		 * bildirimi aynı eylemi kullandığı için ikisi de düzelir.
+		 */
+		foreach ( array( 'woocommerce_fulfillment_created_notification', 'woocommerce_fulfillment_updated_notification' ) as $fulfillment_hook ) {
+			add_action( $fulfillment_hook, array( $this, 'remember_fulfillment_order' ), 9, 3 );
+			add_action( $fulfillment_hook, array( $this, 'forget_fulfillment_order' ), 999 );
+		}
+
 		foreach ( array( 'customer_processing_order', 'customer_completed_order', 'customer_on_hold_order', 'customer_refunded_order', 'customer_invoice', 'customer_note', 'customer_failed_order' ) as $email_id ) {
 			add_filter( 'woocommerce_email_heading_' . $email_id, array( $this, 'english_email_heading' ), 20, 3 );
 			add_filter( 'woocommerce_email_subject_' . $email_id, array( $this, 'english_email_subject' ), 20, 3 );
+			add_filter( 'woocommerce_email_additional_content_' . $email_id, array( $this, 'english_email_additional_content' ), 20, 3 );
+		}
+
+		/*
+		 * Gönderim e-postalarının konu ve başlığı BU listede yer almaz, bilerek.
+		 *
+		 * `english_email_subject()` İngilizce metni `get_default_subject()`
+		 * üzerinden alır, o da `__()` çağrısıdır: `switch_to_locale( 'en_US' )`
+		 * sonrasında `woocommerce` alanının tr_TR girdileri bellekte kalınca
+		 * geriye TÜRKÇE makine çevirisi döner ve Fulfillments sınıfının yazdığı
+		 * doğru İngilizce metnin üstüne yazar. Ölçülen hâli tam olarak buydu.
+		 *
+		 * Bu iki e-postanın iki dili de tek yerde, sipariş diline bakarak
+		 * Kuka_Island_Core_Fulfillments::turkish_subject()/turkish_heading()
+		 * içinde belirlenir. Dil anahtarı (yukarıdaki
+		 * remember_fulfillment_order + switch_email_locale) yine geçerlidir:
+		 * gövdedeki WooCommerce metinleri onunla İngilizceye geçer.
+		 */
+		foreach ( array( 'customer_fulfillment_created', 'customer_fulfillment_updated' ) as $email_id ) {
 			add_filter( 'woocommerce_email_additional_content_' . $email_id, array( $this, 'english_email_additional_content' ), 20, 3 );
 		}
 	}
@@ -290,8 +333,42 @@ final class Kuka_Island_Core_Language {
 		$order->update_meta_data( '_kuka_order_locale', self::is_english_request() ? 'en_US' : 'tr_TR' );
 	}
 
+	/**
+	 * Gönderim bildiriminin siparişi, dil anahtarı için kenara yazılır.
+	 *
+	 * @param int   $order_id    Sipariş kimliği.
+	 * @param mixed $fulfillment WooCommerce gönderim kaydı.
+	 * @param mixed $order       Sipariş nesnesi ya da false.
+	 */
+	public function remember_fulfillment_order( $order_id, $fulfillment = null, $order = null ): void {
+		unset( $fulfillment );
+
+		$resolved = $order instanceof WC_Order ? $order : wc_get_order( (int) $order_id );
+
+		self::$fulfillment_order = $resolved instanceof WC_Order ? $resolved : null;
+	}
+
+	/** Eylem bittiğinde kenara yazılan sipariş bırakılır. */
+	public function forget_fulfillment_order(): void {
+		self::$fulfillment_order = null;
+	}
+
 	public function switch_email_locale( bool $allow, WC_Email $email ): bool {
-		$order = $email->object instanceof WC_Order ? $email->object : null;
+		/*
+		 * Kenara yazılan sipariş ÖNCE gelir, `$email->object` sonra.
+		 *
+		 * WC_Email nesnesi yeniden kullanılır ve gönderim e-postalarında
+		 * `$this->object` setup_locale()'dan SONRA atanır. Aynı istekte ikinci
+		 * bir bildirim gönderildiğinde `$email->object` hâlâ ÖNCEKİ siparişi
+		 * tutar; boş değil, bayat. Ölçülen sonucu şuydu: İngilizce bir sipariş,
+		 * kendisinden önce gönderilen Türkçe siparişin diliyle yazıldı.
+		 *
+		 * Kenara yazılan değer yalnız bildirim eylemi süresince doludur
+		 * (öncelik 9'da yazılır, 999'da bırakılır), bu yüzden diğer bütün
+		 * e-postalarda davranış değişmez.
+		 */
+		$order = self::$fulfillment_order instanceof WC_Order ? self::$fulfillment_order : $email->object;
+		$order = $order instanceof WC_Order ? $order : null;
 		if ( $order && 'en_US' === $order->get_meta( '_kuka_order_locale', true ) ) {
 			switch_to_locale( 'en_US' );
 			if ( function_exists( 'WC' ) ) { WC()->load_plugin_textdomain(); }
