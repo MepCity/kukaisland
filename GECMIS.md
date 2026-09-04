@@ -734,6 +734,19 @@ kod kalıcı yazılıp tek not düşüyor; sayaçlar ayrıldı; gecikme sabitin
 adına değil gerçek Action Scheduler satırına bakılarak ölçülüyor; ve panel
 dört olguyu doğal Türkçe bir müdahale cümlesiyle gösteriyor. Bkz. K-54.
 
+**Tur 15 — temizliğin tek koşulu.** Yerel retry beklerken sipariş verisi
+değişirse worker, operatöre gösterilecek bütün kaydı sessizce siliyordu:
+`run_sync()` hem eksik önkoşulu hem de claim reddi olmayan her sonucu
+başarı sayıp temizliyordu. Böylece `claim_other_record`,
+`own_fulfillment_absent` ya da kaybolmuş bir referans, müşteri hâlâ
+bilgilendirilmemişken ekranda hiçbir iz bırakmıyordu. Artık manager ile
+worker tek bir yerleşim yolunu paylaşıyor: sonuç succeeded/retryable/blocked
+olarak sınıflanıyor ve temizlik yalnız gerçek başarıda yapılıyor; eksik
+önkoşul kendi görünür nedenini alıyor; nedeni olmayan red bile sessiz
+başarıya dönüşemiyor. İkinci açık daha küçüktü ama aynı türdendi: kanıtlanmış
+yeni bir booking eski planlama hatasını temizlemediği için panel aynı anda
+hem "planlanamadı" hem "bekleyen deneme var" diyordu. Bkz. K-55.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"

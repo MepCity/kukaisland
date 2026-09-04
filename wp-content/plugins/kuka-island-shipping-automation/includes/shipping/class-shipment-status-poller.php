@@ -76,6 +76,19 @@ final class Kuka_Island_Shipping_Status_Poller {
 	/** Seconds before the first safe local retry, then the poll ladder. */
 	public const SYNC_FIRST_DELAY = 2 * MINUTE_IN_SECONDS;
 
+	/**
+	 * The order lost its carrier reference, so there is nothing local to
+	 * finish. Recorded rather than cleared: a delivered parcel whose customer
+	 * notification stalled is never allowed to look finished.
+	 */
+	public const SYNC_REFERENCE_MISSING = 'sync_reference_missing';
+
+	/** No carrier status was ever persisted, so the local half cannot run. */
+	public const SYNC_STATUS_MISSING = 'sync_status_code_missing';
+
+	/** A refusal with no reason of its own; never silently a success. */
+	public const SYNC_UNKNOWN_FAILURE = 'sync_unknown_failure';
+
 	/** Hard ceiling on how long one order is followed. */
 	public const MAX_ELAPSED = 14 * DAY_IN_SECONDS;
 
@@ -514,6 +527,133 @@ final class Kuka_Island_Shipping_Status_Poller {
 	}
 
 	/**
+	 * What one `sync_status()` result means for the local bookkeeping.
+	 *
+	 * Three classes, and the difference matters because only ONE of them may
+	 * erase what the operator can see:
+	 *
+	 *   succeeded  the local half is done. Clear everything.
+	 *   retryable  a transient refusal. Count it and book a retry.
+	 *   blocked    a person is needed. Record it, note it once, book nothing.
+	 *
+	 * @param array<string, mixed> $synced A Fulfillment_Writer::sync_status() result.
+	 */
+	public static function classify_sync( array $synced ): string {
+		$reason = (string) ( $synced['reason'] ?? '' );
+
+		if ( '' === $reason && true === ( $synced['ok'] ?? false ) ) {
+			return 'succeeded';
+		}
+
+		$transient = array_merge(
+			Kuka_Island_Shipping_Notification::claim_refusals(),
+			Kuka_Island_Shipping_Notification::notify_refusals()
+		);
+
+		return in_array( $reason, $transient, true ) ? 'retryable' : 'blocked';
+	}
+
+	/**
+	 * Apply one sync result to the order, and book a retry when one is owed.
+	 *
+	 * THE SINGLE PATH. The manager and this worker used to do this twice, with
+	 * different rules, and the worker's copy called clear_sync_refusal() for
+	 * anything that was not a claim refusal -- so a debt that had become
+	 * `claim_other_record`, `own_fulfillment_absent` or a missing reference had
+	 * its reason, its attempt count and its schedule error silently erased
+	 * while the customer was still not notified. Clearing now happens on ONE
+	 * condition: the sync actually succeeded.
+	 *
+	 * @param WC_Order             $order  Order.
+	 * @param array<string, mixed> $synced A Fulfillment_Writer::sync_status() result.
+	 * @param int                  $delay  Seconds before the retry; 0 uses the first rung.
+	 * @return array{class: string, reason: string, schedule: string, retry: string, attempts: int}
+	 */
+	public static function settle_sync( WC_Order $order, array $synced, int $delay = 0 ): array {
+		$class  = self::classify_sync( $synced );
+		$reason = (string) ( $synced['reason'] ?? '' );
+		$reason = '' === $reason ? self::SYNC_UNKNOWN_FAILURE : $reason;
+
+		if ( 'succeeded' === $class ) {
+			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( $order );
+
+			return self::sync_settlement( 'succeeded', '', '', '', 0 );
+		}
+
+		if ( 'blocked' === $class ) {
+			if ( Kuka_Island_Shipping_Order_Store::record_sync_block( $order, $reason ) ) {
+				$order->add_order_note(
+					sprintf(
+						/* translators: %s: allow-listed refusal code. */
+						__( 'Kargo bildirimi yerel olarak tamamlanamadı (%s) ve otomatik olarak yeniden denenmez. Bildirimin elle kontrol edilmesi gerekiyor.', 'kuka-island-shipping-automation' ),
+						$reason
+					)
+				);
+			}
+
+			return self::sync_settlement( 'blocked', $reason, '', '', Kuka_Island_Shipping_Order_Store::sync_attempts( $order ) );
+		}
+
+		$attempts = Kuka_Island_Shipping_Order_Store::record_sync_refusal( $order, $reason );
+
+		if ( $attempts >= self::MAX_SYNC_ATTEMPTS ) {
+			if ( Kuka_Island_Shipping_Order_Store::record_sync_schedule_error( $order, self::SCHEDULE_EXHAUSTED ) ) {
+				$order->add_order_note(
+					sprintf(
+						/* translators: 1: allow-listed refusal code, 2: attempts made, 3: attempt ceiling. */
+						__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s, %2$d/%3$d deneme). Yeni deneme planlanmadı; kargo durumu doğru, bildirim manuel kontrol gerektiriyor.', 'kuka-island-shipping-automation' ),
+						$reason,
+						$attempts,
+						self::MAX_SYNC_ATTEMPTS
+					)
+				);
+			}
+
+			return self::sync_settlement( 'retryable', $reason, self::SCHEDULE_EXHAUSTED, '', $attempts );
+		}
+
+		$schedule = self::schedule_sync( (int) $order->get_id(), $delay );
+		$retry    = '';
+
+		if ( self::schedule_proves_action( $schedule ) ) {
+			$retry = $schedule;
+		} elseif ( self::has_pending_sync( (int) $order->get_id() ) ) {
+			// Unproven, but a pending action is really there. That is a read.
+			$retry = self::SCHEDULE_ALREADY_PENDING;
+		}
+
+		if ( '' !== $retry ) {
+			// A booking exists now, so a stale scheduling error is no longer
+			// true and must not sit next to it on the order screen.
+			Kuka_Island_Shipping_Order_Store::clear_sync_schedule_error( $order );
+		} elseif ( Kuka_Island_Shipping_Order_Store::record_sync_schedule_error( $order, $schedule ) ) {
+			$order->add_order_note(
+				sprintf(
+					/* translators: 1: allow-listed refusal code, 2: scheduler outcome. */
+					__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s) ve yeniden deneme planlanamadı (%2$s). Bildirimin elle kontrol edilmesi gerekiyor.', 'kuka-island-shipping-automation' ),
+					$reason,
+					$schedule
+				)
+			);
+		}
+
+		return self::sync_settlement( 'retryable', $reason, $schedule, $retry, $attempts );
+	}
+
+	/**
+	 * @return array{class: string, reason: string, schedule: string, retry: string, attempts: int}
+	 */
+	private static function sync_settlement( string $class, string $reason, string $schedule, string $retry, int $attempts ): array {
+		return array(
+			'class'    => $class,
+			'reason'   => $reason,
+			'schedule' => $schedule,
+			'retry'    => $retry,
+			'attempts' => $attempts,
+		);
+	}
+
+	/**
 	 * The safe local retry worker. NO carrier call happens here.
 	 *
 	 * The status code is the one the carrier already gave and this module
@@ -538,74 +678,53 @@ final class Kuka_Island_Shipping_Status_Poller {
 		$reference = (string) $data['reference'];
 		$code      = (int) $data['status_code'];
 
-		if ( '' === $reference || 0 === $code ) {
-			// Nothing was ever read from the carrier, so there is nothing local
-			// to finish. This is not retried: it is a different problem.
-			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( $order );
+		/*
+		 * A missing prerequisite is NOT a success. This branch used to call
+		 * clear_sync_refusal() and answer `nothing_to_sync`, which erased the
+		 * reason, the attempt count and the schedule error an operator was
+		 * meant to see -- for an order whose customer had still not been told.
+		 * It is recorded as its own visible reason instead.
+		 */
+		if ( '' === $reference ) {
+			$settled = self::settle_sync( $order, array( 'ok' => false, 'reason' => self::SYNC_REFERENCE_MISSING ) );
 
-			return 'nothing_to_sync';
+			return 'sync_blocked:' . (string) $settled['reason'];
+		}
+
+		if ( 0 === $code ) {
+			$settled = self::settle_sync( $order, array( 'ok' => false, 'reason' => self::SYNC_STATUS_MISSING ) );
+
+			return 'sync_blocked:' . (string) $settled['reason'];
 		}
 
 		$synced = Kuka_Island_Shipping_Fulfillment_Writer::sync_status( $order, $reference, $code );
-		$reason = (string) ( $synced['reason'] ?? '' );
-
-		if ( ! in_array( $reason, Kuka_Island_Shipping_Notification::claim_refusals(), true ) ) {
-			// Either it worked, or it failed for something a retry cannot fix.
-			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( wc_get_order( (int) $order->get_id() ) );
-
-			return 'synced:' . ( '' === $reason ? (string) $synced['action'] : $reason );
-		}
-
-		$fresh    = wc_get_order( (int) $order->get_id() );
-		$attempts = Kuka_Island_Shipping_Order_Store::record_sync_refusal(
-			$fresh instanceof WC_Order ? $fresh : $order,
-			$reason
-		);
-
-		if ( $attempts >= self::MAX_SYNC_ATTEMPTS ) {
-			$exhausted = sprintf(
-				/* translators: 1: allow-listed refusal code, 2: attempts made, 3: attempt ceiling. */
-				__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s, %2$d/%3$d deneme). Yeni deneme planlanmadı; kargo durumu doğru, bildirim manuel kontrol gerektiriyor.', 'kuka-island-shipping-automation' ),
-				$reason,
-				$attempts,
-				self::MAX_SYNC_ATTEMPTS
-			);
-
-			// One note, at the ceiling only. A wall met on every turn is one fact.
-			( $fresh instanceof WC_Order ? $fresh : $order )->add_order_note( $exhausted );
-
-			return 'sync_exhausted:' . $reason;
-		}
-
-		$booked = self::schedule_sync( (int) $order->get_id(), self::delay_for_attempt( $attempts ) );
-
-		if ( self::schedule_proves_action( $booked ) ) {
-			return 'sync_retry:' . $reason . ':' . $booked;
-		}
 
 		/*
-		 * The retry could not be booked. Evaluated exactly like the manager's
-		 * first booking: an unproven outcome is only proof if a pending action
-		 * is actually there.
+		 * The order is re-read because sync_status() may have written meta, and
+		 * the settlement writes more. A read that fails does NOT become a
+		 * false argument to a typed method: the object in hand is used.
 		 */
-		if ( self::has_pending_sync( (int) $order->get_id() ) ) {
-			return 'sync_retry:' . $reason . ':' . self::SCHEDULE_ALREADY_PENDING;
+		$fresh   = wc_get_order( (int) $order->get_id() );
+		$target  = $fresh instanceof WC_Order ? $fresh : $order;
+		$settled = self::settle_sync( $target, $synced, self::delay_for_attempt( Kuka_Island_Shipping_Order_Store::sync_attempts( $target ) ) );
+
+		if ( 'succeeded' === (string) $settled['class'] ) {
+			return 'synced:' . (string) ( $synced['action'] ?? 'none' );
 		}
 
-		$target = $fresh instanceof WC_Order ? $fresh : $order;
-
-		if ( Kuka_Island_Shipping_Order_Store::record_sync_schedule_error( $target, $booked ) ) {
-			$target->add_order_note(
-				sprintf(
-					/* translators: 1: allow-listed refusal code, 2: scheduler outcome. */
-					__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s) ve yeniden deneme planlanamadı (%2$s). Bildirimin elle kontrol edilmesi gerekiyor.', 'kuka-island-shipping-automation' ),
-					$reason,
-					$booked
-				)
-			);
+		if ( 'blocked' === (string) $settled['class'] ) {
+			return 'sync_blocked:' . (string) $settled['reason'];
 		}
 
-		return 'sync_not_scheduled:' . $reason . ':' . $booked;
+		if ( '' !== (string) $settled['retry'] ) {
+			return 'sync_retry:' . (string) $settled['reason'] . ':' . (string) $settled['retry'];
+		}
+
+		if ( self::SCHEDULE_EXHAUSTED === (string) $settled['schedule'] ) {
+			return 'sync_exhausted:' . (string) $settled['reason'];
+		}
+
+		return 'sync_not_scheduled:' . (string) $settled['reason'] . ':' . (string) $settled['schedule'];
 	}
 
 	private static function acquire_lock( int $order_id ): bool {

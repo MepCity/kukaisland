@@ -1155,6 +1155,23 @@ final class Kuka_Island_Shipping_Order_Store {
 		return true;
 	}
 
+	/**
+	 * Forget ONLY the scheduling error, because a booking has now been proven.
+	 *
+	 * The refusal itself and its attempt count survive: the local work is still
+	 * unfinished, and the panel must not show a failed booking next to a
+	 * pending retry -- an operator reading both at once cannot tell which is
+	 * true.
+	 */
+	public static function clear_sync_schedule_error( WC_Order $order ): void {
+		if ( '' === (string) $order->get_meta( self::META_SYNC_SCHEDULE_ERROR, true ) ) {
+			return;
+		}
+
+		$order->delete_meta_data( self::META_SYNC_SCHEDULE_ERROR );
+		self::persist( $order );
+	}
+
 	/** Forget a refusal that has been resolved, counter and schedule error included. */
 	public static function clear_sync_refusal( WC_Order $order ): void {
 		if ( '' === (string) $order->get_meta( self::META_SYNC_LAST_REASON, true )

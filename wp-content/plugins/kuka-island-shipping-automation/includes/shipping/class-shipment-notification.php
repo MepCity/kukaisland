@@ -215,6 +215,25 @@ final class Kuka_Island_Shipping_Notification {
 	}
 
 	/**
+	 * Transient refusals `on_fulfilled()` itself can return.
+	 *
+	 * A second vocabulary on purpose: these come from the NOTIFICATION lock and
+	 * the notification's own fresh reads, not from the claim. They mean the
+	 * same thing for the retry policy -- try again shortly -- and they are the
+	 * reason a record that was already fulfilled must not be reported as
+	 * finished work just because nothing was written this turn.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function notify_refusals(): array {
+		return array(
+			'lock_contended',
+			'order_unreadable',
+			'record_unreadable',
+		);
+	}
+
+	/**
 	 * Claim refusals no retry can fix, which a person must look at.
 	 *
 	 * A retry would repeat them for ever: the reference is missing, or the

@@ -1724,69 +1724,22 @@ final class Kuka_Island_Shipping_Manager {
 		 * retry -- a separate worker that re-reads the code this module has
 		 * already persisted and makes no carrier call at all.
 		 */
-		$synced         = Kuka_Island_Shipping_Fulfillment_Writer::sync_status( $order, $reference, $raw_code );
-		$sync_reason    = (string) ( $synced['reason'] ?? '' );
-		$sync_retry     = '';
-		$sync_schedule  = '';
-		$sync_attempts  = Kuka_Island_Shipping_Order_Store::sync_attempts( $order );
+		$synced = Kuka_Island_Shipping_Fulfillment_Writer::sync_status( $order, $reference, $raw_code );
 
-		if ( in_array( $sync_reason, Kuka_Island_Shipping_Notification::claim_refusals(), true ) ) {
-			/*
-			 * The LOCAL counter, which is not the carrier's. These were one
-			 * variable once, so a claim refusal reset the carrier budget the
-			 * poller spends against MAX_ATTEMPTS: an order on its seventh
-			 * query reported one, and the ceiling moved out of reach.
-			 */
-			$sync_attempts = Kuka_Island_Shipping_Order_Store::record_sync_refusal( $order, $sync_reason );
-
-			if ( $sync_attempts < Kuka_Island_Shipping_Status_Poller::MAX_SYNC_ATTEMPTS ) {
-				$sync_schedule = Kuka_Island_Shipping_Status_Poller::schedule_sync( (int) $order->get_id() );
-
-				/*
-				 * ONLY A PROVEN BOOKING COUNTS. `lock_contended`,
-				 * `schedule_failed` and `scheduler_unavailable` are all
-				 * non-empty strings that mean nothing was created; carrying
-				 * them as evidence reported a retry that did not exist. An
-				 * unproven outcome is still proof if a pending action is
-				 * actually there -- that is a read, not an assumption.
-				 */
-				if ( Kuka_Island_Shipping_Status_Poller::schedule_proves_action( $sync_schedule ) ) {
-					$sync_retry = $sync_schedule;
-				} elseif ( Kuka_Island_Shipping_Status_Poller::has_pending_sync( (int) $order->get_id() ) ) {
-					$sync_retry = Kuka_Island_Shipping_Status_Poller::SCHEDULE_ALREADY_PENDING;
-				} elseif ( Kuka_Island_Shipping_Order_Store::record_sync_schedule_error( $order, $sync_schedule ) ) {
-					$this->note(
-						$order,
-						sprintf(
-							/* translators: 1: allow-listed refusal code, 2: scheduler outcome. */
-							__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s) ve yeniden deneme planlanamadı (%2$s). Bildirimin elle kontrol edilmesi gerekiyor.', 'kuka-island-shipping-automation' ),
-							$sync_reason,
-							$sync_schedule
-						)
-					);
-				}
-			}
-		} elseif ( in_array( $sync_reason, Kuka_Island_Shipping_Notification::claim_blocks(), true ) ) {
-			/*
-			 * A refusal no retry can fix. It is not counted as an attempt and
-			 * nothing is booked, but it is recorded, shown on the order screen
-			 * and noted ONCE -- a delivered parcel with no customer
-			 * notification is not allowed to be silent.
-			 */
-			if ( Kuka_Island_Shipping_Order_Store::record_sync_block( $order, $sync_reason ) ) {
-				$this->note(
-					$order,
-					sprintf(
-						/* translators: %s: allow-listed refusal code. */
-						__( 'Kargo bildirimi yerel olarak tamamlanamadı (%s) ve otomatik olarak yeniden denenmez. Bildirimin elle kontrol edilmesi gerekiyor.', 'kuka-island-shipping-automation' ),
-						$sync_reason
-					)
-				);
-			}
-		} elseif ( '' === $sync_reason ) {
-			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( $order );
-			$sync_attempts = 0;
-		}
+		/*
+		 * ONE SETTLEMENT PATH, shared with the safe local retry worker.
+		 *
+		 * It decides whether this result is a success, a transient refusal or
+		 * a wall a person must look at; it counts the LOCAL attempts, which are
+		 * not the carrier's; it books a retry only when one is owed and reports
+		 * it only when a booking is proven; and it clears the operator-visible
+		 * record on exactly one condition -- the sync really succeeded.
+		 */
+		$settled       = Kuka_Island_Shipping_Status_Poller::settle_sync( $order, $synced );
+		$sync_reason   = 'succeeded' === (string) $settled['class'] ? '' : (string) $settled['reason'];
+		$sync_retry    = (string) $settled['retry'];
+		$sync_schedule = (string) $settled['schedule'];
+		$sync_attempts = (int) $settled['attempts'];
 
 		if ( Kuka_Island_Shipping_Status::LIFECYCLE_MANUAL_REVIEW === $lifecycle ) {
 			$this->note(

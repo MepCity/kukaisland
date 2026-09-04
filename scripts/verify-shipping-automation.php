@@ -9277,6 +9277,283 @@ $report(
 	)
 );
 
+/* --- the local worker may clear only on a real success ---------------- */
+
+/**
+ * Every local sync fact one order carries, read fresh.
+ *
+ * @param int $order_id Order.
+ * @return array<string, string>
+ */
+function kuka_ship_sync_facts( int $order_id ): array {
+	kuka_ship_forget_order( $order_id );
+	$order = wc_get_order( $order_id );
+
+	if ( ! $order instanceof WC_Order ) {
+		return array( 'reason' => 'unreadable', 'attempts' => '-1', 'schedule_error' => 'unreadable' );
+	}
+
+	return array(
+		'reason'         => (string) $order->get_meta( Kuka_Island_Shipping_Order_Store::META_SYNC_LAST_REASON, true ),
+		'attempts'       => (string) Kuka_Island_Shipping_Order_Store::sync_attempts( $order ),
+		'schedule_error' => (string) $order->get_meta( Kuka_Island_Shipping_Order_Store::META_SYNC_SCHEDULE_ERROR, true ),
+	);
+}
+
+/**
+ * Drive one order to a recorded transient refusal with a real booked action.
+ *
+ * The refusal is produced the production way: a second real MySQL session
+ * holds the claim lock while the manager runs.
+ *
+ * @param object $mailer The suite's mail recorder.
+ * @return array<string, mixed>
+ */
+function kuka_ship_sync_pending_fixture( $mailer ): array {
+	$fixture = kuka_ship_notify_fixture();
+	$id      = (int) $fixture['order']->get_id();
+	$fixture['box']->code = Kuka_Island_Shipping_Status::CODE_DELIVERED;
+
+	$mailer->reset();
+	$mailer->mode = 'accepted';
+
+	$second = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	$second->get_var( $second->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_ship_notify_claim_' . $id ) );
+	$fixture['manager']->query_status( wc_get_order( $id ) );
+	$second->get_var( $second->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_ship_notify_claim_' . $id ) );
+	$second->close();
+
+	return $fixture;
+}
+
+/** Delete this module's own fulfilment record, so find_own() answers null. */
+function kuka_ship_delete_own_fulfillment( int $order_id, string $reference ): bool {
+	$store  = '\Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore';
+	$record = Kuka_Island_Shipping_Fulfillment_Writer::find_own( wc_get_order( $order_id ), $reference );
+
+	if ( ! is_object( $record ) || ! class_exists( $store ) ) {
+		return false;
+	}
+
+	try {
+		wc_get_container()->get( $store )->delete( $record );
+	} catch ( Throwable $failed ) {
+		unset( $failed );
+
+		return false;
+	}
+
+	return true;
+}
+
+putenv( 'KUKA_SHIPPING_AUTOMATION=1' );
+
+$keep_cases = array();
+
+/* A. The debt changes owner while the retry is waiting. */
+$keep_a  = kuka_ship_sync_pending_fixture( $mailer );
+$keep_a_id = (int) $keep_a['order']->get_id();
+$keep_a_before = kuka_ship_sync_facts( $keep_a_id );
+
+/*
+ * A debt that exists and belongs to a DIFFERENT shipment. Both halves matter:
+ * with no state at all the claim would simply write a fresh, correct debt.
+ */
+$keep_a_order = wc_get_order( $keep_a_id );
+$keep_a_order->update_meta_data( Kuka_Island_Shipping_Notification::META_STATE, Kuka_Island_Shipping_Notification::STATE_DUE );
+$keep_a_order->update_meta_data( Kuka_Island_Shipping_Notification::META_DUE_REFERENCE, 'KI1SOMEONEELSE9' );
+$keep_a_order->update_meta_data( Kuka_Island_Shipping_Notification::META_HANDOVER_AT, gmdate( 'Y-m-d H:i:sP' ) );
+$keep_a_order->save();
+
+$keep_a_run = kuka_ship_drive_sync_chain( $keep_a_id, 2 );
+$keep_a_after = kuka_ship_sync_facts( $keep_a_id );
+$keep_a_panel = kuka_ship_render_panel( $keep_a['manager'], wc_get_order( $keep_a_id ) );
+$keep_a_record = Kuka_Island_Shipping_Fulfillment_Writer::find_own( wc_get_order( $keep_a_id ), (string) $keep_a['reference'] );
+
+$keep_cases['owner_changed'] = array(
+	'reason'    => (string) $keep_a_after['reason'],
+	'attempts'  => (int) $keep_a_after['attempts'],
+	'notes'     => kuka_ship_sync_note_count( $keep_a_id ),
+	'pending'   => kuka_ship_pending_sync_count( $keep_a_id ),
+	'panel'     => str_contains( $keep_a_panel, 'elle' ) ? 'yes' : 'no',
+	'mails'     => $mailer->count_to( (string) $keep_a['email'] ),
+	'fulfilled' => is_object( $keep_a_record ) && method_exists( $keep_a_record, 'get_is_fulfilled' )
+		? ( $keep_a_record->get_is_fulfilled() ? 'yes' : 'no' )
+		: 'missing',
+	'expected'  => 'claim_other_record',
+	'turns'     => (int) $keep_a_run['turns'],
+	'before'    => (string) $keep_a_before['reason'],
+);
+
+kuka_ship_purge_actions( $keep_a_id );
+kuka_ship_purge_sync_actions( $keep_a_id );
+kuka_ship_destroy_order( wc_get_order( $keep_a_id ) );
+
+/* B. The order's carrier reference disappears while the retry is waiting. */
+$keep_b    = kuka_ship_sync_pending_fixture( $mailer );
+$keep_b_id = (int) $keep_b['order']->get_id();
+
+$keep_b_order = wc_get_order( $keep_b_id );
+$keep_b_order->delete_meta_data( Kuka_Island_Shipping_Order_Store::META_REFERENCE );
+$keep_b_order->save();
+
+kuka_ship_drive_sync_chain( $keep_b_id, 2 );
+$keep_b_after = kuka_ship_sync_facts( $keep_b_id );
+$keep_b_panel = kuka_ship_render_panel( $keep_b['manager'], wc_get_order( $keep_b_id ) );
+
+$keep_cases['reference_gone'] = array(
+	'reason'    => (string) $keep_b_after['reason'],
+	'attempts'  => (int) $keep_b_after['attempts'],
+	'notes'     => kuka_ship_sync_note_count( $keep_b_id ),
+	'pending'   => kuka_ship_pending_sync_count( $keep_b_id ),
+	'panel'     => str_contains( $keep_b_panel, 'elle' ) ? 'yes' : 'no',
+	'mails'     => $mailer->count_to( (string) $keep_b['email'] ),
+	'fulfilled' => 'n/a',
+	'expected'  => 'sync_reference_missing',
+	'turns'     => 1,
+	'before'    => 'claim_lock_contended',
+);
+
+kuka_ship_purge_actions( $keep_b_id );
+kuka_ship_purge_sync_actions( $keep_b_id );
+kuka_ship_destroy_order( wc_get_order( $keep_b_id ) );
+
+/* C. This module's own fulfilment record is gone when the retry runs. */
+$keep_c    = kuka_ship_sync_pending_fixture( $mailer );
+$keep_c_id = (int) $keep_c['order']->get_id();
+kuka_ship_delete_own_fulfillment( $keep_c_id, (string) $keep_c['reference'] );
+
+kuka_ship_drive_sync_chain( $keep_c_id, 2 );
+$keep_c_after = kuka_ship_sync_facts( $keep_c_id );
+$keep_c_panel = kuka_ship_render_panel( $keep_c['manager'], wc_get_order( $keep_c_id ) );
+
+$keep_cases['record_gone'] = array(
+	'reason'    => (string) $keep_c_after['reason'],
+	'attempts'  => (int) $keep_c_after['attempts'],
+	'notes'     => kuka_ship_sync_note_count( $keep_c_id ),
+	'pending'   => kuka_ship_pending_sync_count( $keep_c_id ),
+	'panel'     => str_contains( $keep_c_panel, 'elle' ) ? 'yes' : 'no',
+	'mails'     => $mailer->count_to( (string) $keep_c['email'] ),
+	'fulfilled' => 'missing',
+	'expected'  => 'own_fulfillment_absent',
+	'turns'     => 1,
+	'before'    => 'claim_lock_contended',
+);
+
+kuka_ship_purge_actions( $keep_c_id );
+kuka_ship_purge_sync_actions( $keep_c_id );
+kuka_ship_destroy_order( wc_get_order( $keep_c_id ) );
+
+$keep_ok    = true;
+$keep_lines = array();
+
+foreach ( $keep_cases as $name => $facts ) {
+	$case_ok = (string) $facts['expected'] === (string) $facts['reason']
+		&& 1 === (int) $facts['notes']
+		&& 0 === (int) $facts['pending']
+		&& 'yes' === (string) $facts['panel']
+		&& 0 === (int) $facts['mails']
+		&& (int) $facts['attempts'] >= 1
+		&& 'yes' !== (string) $facts['fulfilled'];
+
+	$keep_ok      = $keep_ok && $case_ok;
+	$keep_lines[] = sprintf(
+		'%s:%s/reason:%s/attempts:%d/notes:%d/pending:%d/panel_manual:%s/mails:%d/fulfilled:%s',
+		$name,
+		$case_ok ? 'ok' : 'FAIL',
+		'' === (string) $facts['reason'] ? 'CLEARED' : (string) $facts['reason'],
+		(int) $facts['attempts'],
+		(int) $facts['notes'],
+		(int) $facts['pending'],
+		(string) $facts['panel'],
+		(int) $facts['mails'],
+		(string) $facts['fulfilled']
+	);
+}
+
+$report(
+	'SHIPPING_SYNC_CLEARS_ONLY_ON_REAL_SUCCESS',
+	$keep_ok,
+	sprintf(
+		'measured:real_action_scheduler_worker|cases:%d|%s',
+		count( $keep_cases ),
+		implode( '|', $keep_lines )
+	)
+);
+
+/* --- a proven booking clears the OLD scheduling error, nothing else --- */
+
+$stale    = kuka_ship_notify_fixture();
+$stale_id = (int) $stale['order']->get_id();
+$stale['box']->code = Kuka_Island_Shipping_Status::CODE_DELIVERED;
+
+$mailer->reset();
+$mailer->mode = 'accepted';
+
+$stale_fail = static function () {
+	return 0;
+};
+
+// First turn: the claim is refused AND the booking fails for real.
+$stale_second = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+$stale_second->get_var( $stale_second->prepare( 'SELECT GET_LOCK(%s, 0)', 'kuka_ship_notify_claim_' . $stale_id ) );
+add_filter( 'pre_as_schedule_single_action', $stale_fail, PHP_INT_MAX );
+$stale['manager']->query_status( wc_get_order( $stale_id ) );
+remove_filter( 'pre_as_schedule_single_action', $stale_fail, PHP_INT_MAX );
+
+$stale_first   = kuka_ship_sync_facts( $stale_id );
+$stale_pending = kuka_ship_pending_sync_count( $stale_id );
+
+// Second turn: still refused, but now the booking really happens.
+$stale['manager']->query_status( wc_get_order( $stale_id ) );
+$stale_second->get_var( $stale_second->prepare( 'SELECT RELEASE_LOCK(%s)', 'kuka_ship_notify_claim_' . $stale_id ) );
+$stale_second->close();
+
+$stale_after         = kuka_ship_sync_facts( $stale_id );
+$stale_after_pending = kuka_ship_pending_sync_count( $stale_id );
+$stale_panel         = kuka_ship_render_panel( $stale['manager'], wc_get_order( $stale_id ) );
+
+// The booked action now runs with nothing in its way.
+kuka_ship_drive_sync_chain( $stale_id, 3 );
+$stale_final = kuka_ship_sync_facts( $stale_id );
+
+$report(
+	'SHIPPING_SYNC_SCHEDULE_ERROR_CLEARS_ON_PROOF',
+	'schedule_failed' === (string) $stale_first['schedule_error']
+		&& 0 === (int) $stale_pending
+		&& '' === (string) $stale_after['schedule_error']
+		&& 1 === (int) $stale_after_pending
+		&& 'claim_lock_contended' === (string) $stale_after['reason']
+		&& (int) $stale_after['attempts'] >= 2
+		// The panel must not claim a failed booking and a pending retry at once.
+		&& ! str_contains( $stale_panel, 'schedule_failed' )
+		&& str_contains( $stale_panel, 'Bekleyen yeniden deneme: var' )
+		// And a real success wipes the whole local record.
+		&& '' === (string) $stale_final['reason']
+		&& '0' === (string) $stale_final['attempts']
+		&& '' === (string) $stale_final['schedule_error']
+		&& 1 === $mailer->count_to( (string) $stale['email'] ),
+	sprintf(
+		'measured:real_action_scheduler_surfaces|first_error:%s|first_pending:%d|after_error:%s|after_pending:%d|after_reason:%s|after_attempts:%d|panel_shows_error:%s|panel_shows_pending:%s|final_reason:%s|final_attempts:%s|final_error:%s|mails:%d',
+		'' === (string) $stale_first['schedule_error'] ? 'none' : (string) $stale_first['schedule_error'],
+		(int) $stale_pending,
+		'' === (string) $stale_after['schedule_error'] ? 'cleared' : (string) $stale_after['schedule_error'],
+		(int) $stale_after_pending,
+		'' === (string) $stale_after['reason'] ? 'CLEARED' : (string) $stale_after['reason'],
+		(int) $stale_after['attempts'],
+		str_contains( $stale_panel, 'schedule_failed' ) ? 'yes' : 'no',
+		str_contains( $stale_panel, 'Bekleyen yeniden deneme: var' ) ? 'yes' : 'no',
+		'' === (string) $stale_final['reason'] ? 'cleared' : (string) $stale_final['reason'],
+		(string) $stale_final['attempts'],
+		'' === (string) $stale_final['schedule_error'] ? 'cleared' : (string) $stale_final['schedule_error'],
+		$mailer->count_to( (string) $stale['email'] )
+	)
+);
+
+kuka_ship_purge_actions( $stale_id );
+kuka_ship_purge_sync_actions( $stale_id );
+kuka_ship_destroy_order( wc_get_order( $stale_id ) );
+
 /* --- carrier and local counters must not overwrite each other --------- */
 
 /*

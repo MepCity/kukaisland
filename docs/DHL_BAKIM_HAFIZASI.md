@@ -69,6 +69,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | Claim'in üç sınırı fail-open'dı: kilit alınamasa, sipariş okunamasa ya da meta yazması diske düşmese bile kayıt `fulfilled` yapılıp e-posta gönderiliyordu | `claim()` artık ok/outcome/handover döndürüyor, yazma bayt bayt geri okunuyor ve başarısızlıkta fulfillment yazması hiç başlamıyor (K-52) |
 | 2026-09-05 | Taşıyıcının ilk ve tek durumu doğrudan terminal olup claim reddedildiğinde kayıt `unfulfilled` kalıyor, e-posta gitmiyor, ama poller `stop:terminal_lifecycle` ile bitip hiçbir şey planlamıyordu | Manager `sync_status()` sonucunu değerlendiriyor; taşıyıcıya hiç dokunmayan sınırlı yerel bir fulfillment/bildirim retry'ı planlanıyor (K-53) |
 | 2026-09-05 | Yerel retry sözleşmesinin dört sınırı yanlıştı: her planlama sonucu kanıt sayılıyor, taşıyıcı ve yerel sayaçlar birbirini eziyor, ilk gecikme 1 saniye oluyor ve operatör panelde hiçbir şey görmüyordu | Yalnız `created`/`already_pending` kanıt; sayaçlar ayrıldı; gecikme gerçek Action Scheduler satırından 120 sn ölçüldü; panel dört olguyu ve elle müdahale cümlesini gösteriyor (K-54) |
+| 2026-09-05 | Yerel sync worker'ı, başarı olmadan da operatöre gösterilecek neden/deneme/planlama kaydını siliyordu; ayrıca kanıtlanmış yeni booking eski planlama hatasını temizlemiyordu | Tek yerleşim yolu `settle_sync()`: temizlik yalnız gerçek başarıda, nonretryable sonuç kalıcı ve tek notla görünür, `clear_sync_schedule_error()` yalnız planlama hatasını siliyor (K-55) |
 
 ---
 
@@ -2342,6 +2343,84 @@ temizlenir; nonretryable bir hata başarı gibi temizlenmez.
   görünüyorsa otomasyon bitmiştir ve kargo bilgisini müşteriye elle iletmek
   gerekir. "Planlama sonucu" satırı doluysa sorun Action Scheduler
   tarafındadır.
+
+---
+
+## K-55 — Yerel sync worker'ı başarı olmadan temizliyordu
+
+- **Tarih:** 2026-09-05
+- **Belirti:** K-53/K-54'ün yerel retry'ı beklerken sipariş verisi değişirse,
+  operatöre gösterilecek bütün kayıt sessizce siliniyordu: neden, deneme sayısı
+  ve planlama hatası. Müşteri hâlâ bilgilendirilmemişken sipariş ekranı
+  gönderilmiş bir kargodan ayırt edilemez hâle geliyordu.
+- **Kesin kök neden, iki yerde:** `run_sync()`
+  - referans ya da durum kodu eksikse `clear_sync_refusal()` çağırıp
+    `nothing_to_sync` diyordu — bir başarı değil, bir önkoşul eksikliği;
+  - neden `claim_refusals()` dışında kaldığında, **başarı olup olmadığına
+    bakmadan** `clear_sync_refusal()` çağırıyordu. `claim_other_record`,
+    `claim_reference_missing`, `own_fulfillment_absent`,
+    `fulfillments_api_unavailable` ve `fulfillment_write_failed` bu dala
+    düşüyordu.
+
+  Ayrıca `clear_sync_refusal( wc_get_order( ... ) )` çağrısı, okuma başarısız
+  olursa tipli parametreye `false` veriyordu: TypeError.
+- **Ölçülen kırmızı** (gerçek Action Scheduler worker'ı, planlanmış action
+  çalışmadan önce veri değiştirildi):
+
+  ```text
+  owner_changed : reason:CLEARED | attempts:0 | notes:0 | panel_manual:no | fulfilled:no
+  reference_gone: reason:CLEARED | attempts:0 | notes:0 | panel_manual:no
+  record_gone   : reason:CLEARED | attempts:0 | notes:0 | panel_manual:no
+  ```
+
+- **Uygulanan düzeltme:** Tek bir yerleşim yolu,
+  `Status_Poller::settle_sync()`, manager ile worker'ın ortak kullandığı.
+  `classify_sync()` sonucu üçe ayırır:
+  - **succeeded** — `ok:true` ve neden yok. **Yalnız burada** temizlik yapılır.
+  - **retryable** — geçici red. Sayılır, sınırlı retry planlanır.
+  - **blocked** — kişi gerekir. `record_sync_block()` ile kalıcı yazılır, tek
+    not düşer, hiçbir şey planlanmaz, deneme sayısı korunur.
+
+  Eksik önkoşullar artık kendi görünür nedenleriyle kaydediliyor:
+  `sync_reference_missing`, `sync_status_code_missing`. Nedeni olmayan bir red
+  `sync_unknown_failure` olur — hiçbir koşulda sessiz başarı yok. Her
+  `wc_get_order()` sonucu tipli çağrıdan önce `instanceof` ile korunuyor.
+- **İkinci açık — bayat planlama hatası:** İlk turda `schedule_failed`
+  yazıldıktan sonra bir sonraki girişte booking gerçekten oluşuyorsa, eski
+  `schedule_failed` metası panelde kalıyordu; operatör aynı anda hem
+  "planlanamadı" hem "bekleyen deneme var" görüyordu. `clear_sync_schedule_error()`
+  eklendi: **yalnız** planlama hatası temizlenir — booking `created`,
+  `already_pending` ya da `has_pending_sync()` ile kanıtlandığında. Sync nedeni
+  ve deneme sayısı gerçek başarıya kadar korunur. Aynı kural manager ve
+  `run_sync()` yollarında aynı fonksiyondan gelir.
+- **Bir yan bulgu:** `sync_status()`'un "değişiklik yok" dalı, bildirimin
+  kendi geçici redlerini (`lock_contended`, `order_unreadable`,
+  `record_unreadable`) `reason` olarak yüzeye çıkarmıyordu. O hâliyle
+  `settle_sync()` onları başarı sayıp temizleyecekti. `Notification::notify_refusals()`
+  ile ayrı bir sözlük olarak tanımlandı ve retryable sınıfına dahil edildi.
+- **Ölçülen yeşil:**
+
+  ```text
+  owner_changed : reason:claim_other_record     | attempts:1 | notes:1 | pending:0 | panel_manual:yes
+  reference_gone: reason:sync_reference_missing | attempts:1 | notes:1 | pending:0 | panel_manual:yes
+  record_gone   : reason:own_fulfillment_absent | attempts:1 | notes:1 | pending:0 | panel_manual:yes
+  bayat hata    : first_error:schedule_failed/pending:0 -> after_error:cleared/pending:1
+                  reason korunmuş, attempts korunmuş, panel iki şeyi birlikte göstermiyor
+                  action çalıştıktan sonra bütün sync metaları temiz, mail 1
+  ```
+
+- **İlgili dosya:**
+  `SHIP/includes/shipping/class-shipment-status-poller.php`
+  (`classify_sync`, `settle_sync`, `run_sync`, `SYNC_REFERENCE_MISSING`),
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`clear_sync_schedule_error`),
+  `SHIP/includes/shipping/class-shipment-notification.php` (`notify_refusals`),
+  `SHIP/includes/shipping/class-shipment-manager.php` (`query_status`)
+- **Tekrar yaşanırsa ilk bak:** panelin "Müşteri bildirimi" satırı hâlâ
+  doluyken "Bekleyen yeniden deneme: yok" yazıyorsa otomasyon durmuştur ve
+  kargo bilgisi müşteriye elle iletilmelidir. Satır tamamen kaybolmuşsa ve
+  müşteriye ileti gitmemişse, temizliğin yeniden başarı dışında bir yerden
+  çağrıldığına bakılır.
 
 ---
 
