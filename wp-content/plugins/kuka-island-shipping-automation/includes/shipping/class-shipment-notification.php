@@ -191,6 +191,29 @@ final class Kuka_Island_Shipping_Notification {
 		);
 	}
 
+	/**
+	 * Claim refusals a safe local retry may fix on its own.
+	 *
+	 * All three are TRANSIENT: another process held the lock, the database
+	 * could not answer, or the write did not land. None of them is a decision,
+	 * so none of them may be the last word -- a terminal carrier status would
+	 * otherwise close the automation chain over a lock that was held for a
+	 * millisecond (K-53).
+	 *
+	 * `claim_reference_missing` and `claim_other_record` are deliberately NOT
+	 * here: they are data problems a retry would repeat for ever, and they
+	 * belong to a person.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function claim_refusals(): array {
+		return array(
+			'claim_lock_contended',
+			'claim_order_unreadable',
+			'notification_claim_unverified',
+		);
+	}
+
 	public static function state( WC_Order $order ): string {
 		return (string) $order->get_meta( self::META_STATE, true );
 	}

@@ -1709,7 +1709,35 @@ final class Kuka_Island_Shipping_Manager {
 		$raw_code  = $result->get( 'status_code', '' );
 		$lifecycle = Kuka_Island_Shipping_Order_Store::save_status( $order, $raw_code, (string) $result->get( 'tracking_url', '' ) );
 
-		Kuka_Island_Shipping_Fulfillment_Writer::sync_status( $order, $reference, $raw_code );
+		/*
+		 * THE FULFILMENT SYNC RESULT IS EVALUATED, NOT DISCARDED.
+		 *
+		 * This call used to be fire-and-forget. When the carrier's first and
+		 * only observed status was already terminal -- delivered -- and the
+		 * notification claim was refused, the record stayed unfulfilled, no
+		 * handover date was written and no e-mail was sent, while this method
+		 * still returned a terminal success. The poller then answered
+		 * `stop:terminal_lifecycle` and booked nothing, so "the next poll tries
+		 * again" was simply not true for that shape: nothing tried again, ever.
+		 *
+		 * A claim refusal is transient by definition, so it gets a SAFE LOCAL
+		 * retry -- a separate worker that re-reads the code this module has
+		 * already persisted and makes no carrier call at all.
+		 */
+		$synced          = Kuka_Island_Shipping_Fulfillment_Writer::sync_status( $order, $reference, $raw_code );
+		$sync_reason     = (string) ( $synced['reason'] ?? '' );
+		$sync_retry      = '';
+		$claim_refusals  = Kuka_Island_Shipping_Notification::claim_refusals();
+
+		if ( in_array( $sync_reason, $claim_refusals, true ) ) {
+			$attempts = Kuka_Island_Shipping_Order_Store::record_sync_refusal( $order, $sync_reason );
+
+			if ( $attempts < Kuka_Island_Shipping_Status_Poller::MAX_SYNC_ATTEMPTS ) {
+				$sync_retry = Kuka_Island_Shipping_Status_Poller::schedule_sync( (int) $order->get_id(), 1 );
+			}
+		} elseif ( '' === $sync_reason ) {
+			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( $order );
+		}
 
 		if ( Kuka_Island_Shipping_Status::LIFECYCLE_MANUAL_REVIEW === $lifecycle ) {
 			$this->note(
@@ -1723,13 +1751,18 @@ final class Kuka_Island_Shipping_Manager {
 		}
 
 		return array(
-			'ok'        => true,
-			'lifecycle' => $lifecycle,
-			'code'      => '',
-			'message'   => Kuka_Island_Shipping_Status::label_for( $raw_code ),
-			'detail'    => $result->to_safe_line(),
-			'attempts'  => $attempts,
-			'contacted' => true,
+			'ok'                => true,
+			'lifecycle'         => $lifecycle,
+			'code'              => '',
+			'message'           => Kuka_Island_Shipping_Status::label_for( $raw_code ),
+			'detail'            => $result->to_safe_line(),
+			'attempts'          => $attempts,
+			'contacted'         => true,
+			// What happened to the local half of the work, for the caller to act on.
+			'fulfillment'       => (string) ( $synced['action'] ?? 'none' ),
+			'fulfillment_ok'    => (bool) ( $synced['ok'] ?? false ),
+			'fulfillment_error' => $sync_reason,
+			'fulfillment_retry' => $sync_retry,
 		);
 	}
 

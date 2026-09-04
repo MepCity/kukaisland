@@ -1564,6 +1564,159 @@ function kuka_ship_drive_status_chain( int $order_id, int $max_turns = 15 ): arr
 	);
 }
 
+/** The safe local fulfilment-retry hook name, whether or not it exists yet. */
+function kuka_ship_sync_hook(): string {
+	return defined( 'Kuka_Island_Shipping_Status_Poller::SYNC_ACTION' )
+		? (string) constant( 'Kuka_Island_Shipping_Status_Poller::SYNC_ACTION' )
+		: 'kuka_island_shipping_sync_fulfillment';
+}
+
+/** Pending poll actions booked for one order. */
+function kuka_ship_pending_action_count( int $order_id ): int {
+	if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
+		return -1;
+	}
+
+	return count(
+		(array) as_get_scheduled_actions(
+			array(
+				'hook'     => Kuka_Island_Shipping_Status_Poller::ACTION,
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => Kuka_Island_Shipping_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 50,
+				'orderby'  => 'none',
+			),
+			'ids'
+		)
+	);
+}
+
+/** Pending safe local fulfilment retries booked for one order. */
+function kuka_ship_pending_sync_count( int $order_id ): int {
+	if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
+		return -1;
+	}
+
+	return count(
+		(array) as_get_scheduled_actions(
+			array(
+				'hook'     => kuka_ship_sync_hook(),
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => Kuka_Island_Shipping_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 50,
+				'orderby'  => 'none',
+			),
+			'ids'
+		)
+	);
+}
+
+/**
+ * Run every pending safe local fulfilment retry through Action Scheduler.
+ *
+ * The same real runner the poll chain uses. No carrier call can happen from
+ * this hook, which is the whole point of it existing.
+ *
+ * @param int $order_id  Order.
+ * @param int $max_turns Refuses to loop for ever.
+ * @return array{turns: int, errors: int}
+ */
+function kuka_ship_drive_sync_chain( int $order_id, int $max_turns = 3 ): array {
+	$turns  = 0;
+	$errors = 0;
+
+	if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
+		return array( 'turns' => $turns, 'errors' => $errors );
+	}
+
+	for ( $turn = 0; $turn < $max_turns; $turn++ ) {
+		$pending = (array) as_get_scheduled_actions(
+			array(
+				'hook'     => kuka_ship_sync_hook(),
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => Kuka_Island_Shipping_Status_Poller::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 1,
+				'orderby'  => 'none',
+			),
+			'ids'
+		);
+
+		if ( array() === $pending ) {
+			break;
+		}
+
+		try {
+			ActionScheduler::runner()->process_action( (int) reset( $pending ), 'Kuka Island verification' );
+		} catch ( Throwable $e ) {
+			++$errors;
+		}
+
+		++$turns;
+	}
+
+	return array( 'turns' => $turns, 'errors' => $errors );
+}
+
+/** Remove every safe local retry row this suite caused. */
+function kuka_ship_purge_sync_actions( int $order_id ): int {
+	if ( ! class_exists( 'ActionScheduler' ) || ! function_exists( 'as_get_scheduled_actions' ) ) {
+		return 0;
+	}
+
+	$store   = ActionScheduler::store();
+	$removed = 0;
+
+	foreach ( (array) as_get_scheduled_actions(
+		array(
+			'hook'     => kuka_ship_sync_hook(),
+			'args'     => array( 'order_id' => $order_id ),
+			'group'    => Kuka_Island_Shipping_Status_Poller::GROUP,
+			'per_page' => 200,
+			'orderby'  => 'none',
+		),
+		'ids'
+	) as $action_id ) {
+		try {
+			$store->delete_action( (int) $action_id );
+			++$removed;
+		} catch ( Throwable $e ) {
+			// Already gone.
+		}
+	}
+
+	return $removed;
+}
+
+/**
+ * Attach a poller as the only worker AND record what it returns.
+ *
+ * Action Scheduler throws the callback's return value away, so the outcome
+ * string is captured by the closure that invokes the real worker. The path is
+ * unchanged: Action Scheduler fires the hook, the hook runs Status_Poller::run.
+ *
+ * @param Kuka_Island_Shipping_Manager $manager Manager the poller drives.
+ * @param stdClass                     $box     Receives ->outcome.
+ */
+function kuka_ship_attach_recording_poller( Kuka_Island_Shipping_Manager $manager, stdClass $box ): Kuka_Island_Shipping_Status_Poller {
+	remove_all_actions( Kuka_Island_Shipping_Status_Poller::ACTION );
+
+	$poller = new Kuka_Island_Shipping_Status_Poller( $manager );
+	$poller->register();
+	remove_all_actions( Kuka_Island_Shipping_Status_Poller::ACTION );
+
+	add_action(
+		Kuka_Island_Shipping_Status_Poller::ACTION,
+		static function ( $order_id ) use ( $poller, $box ): void {
+			$box->outcome = (string) $poller->run( $order_id );
+		}
+	);
+
+	return $poller;
+}
+
 /** Every scheduled action this order ever had, whatever its status. */
 function kuka_ship_action_ids( int $order_id ): array {
 	if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
@@ -8786,6 +8939,252 @@ $report(
 			(string) $lang_tr_mail['locale'],
 			(string) $lang_en_mail['locale']
 		)
+	)
+);
+
+/* --- a terminal FIRST answer must not close the notification chain ------ */
+
+/*
+ * THE TERMINAL-SKIP TRAP.
+ *
+ * `query_status()` records the carrier lifecycle first and then called
+ * `sync_status()` while DISCARDING its result. So when the carrier's first and
+ * only observed status was already terminal -- code 5, delivered -- and the
+ * notification claim was refused, everything below happened at once:
+ *
+ *   fulfillment stayed unfulfilled, no handover date, no e-mail,
+ *   query_status returned ok:true with a terminal lifecycle,
+ *   the poller answered stop:terminal_lifecycle and booked nothing.
+ *
+ * There was no next poll, so "the next poll tries again" was not true for this
+ * shape. The obstacle is installed for real in each case and the REAL Action
+ * Scheduler worker is run.
+ *
+ * @param string $case   claim_lock_contended | notification_claim_unverified | claim_order_unreadable
+ * @param object $mailer The suite's mail recorder.
+ * @return array<string, mixed>
+ */
+function kuka_ship_terminal_claim_case( string $case, $mailer ): array {
+	$fixture = kuka_ship_notify_fixture();
+	$id      = (int) $fixture['order']->get_id();
+	$runner_box = new stdClass();
+	$runner_box->outcome = '';
+	kuka_ship_attach_recording_poller( $fixture['manager'], $runner_box );
+
+	// The carrier's FIRST and ONLY observed status is already terminal.
+	$fixture['box']->code = Kuka_Island_Shipping_Status::CODE_DELIVERED;
+
+	$mailer->reset();
+	$mailer->mode = 'accepted';
+
+	$lock_name  = 'kuka_ship_notify_claim_' . $id;
+	$second     = null;
+	$lock_held  = 'n/a';
+	$reads      = new stdClass();
+	$reads->seen = 0;
+
+	$drop_writes = static function ( $query ) {
+		$query = (string) $query;
+		$head  = strtoupper( substr( ltrim( $query ), 0, 6 ) );
+
+		if ( str_contains( $query, '_kuka_shipping_notify' ) && ( 'INSERT' === $head || 'UPDATE' === $head || 'REPLAC' === $head ) ) {
+			return 'SELECT 1';
+		}
+
+		return $query;
+	};
+
+	/*
+	 * `WC_Order_Factory` consults `woocommerce_order_class` on EVERY read that
+	 * reaches it -- the class-name array is built fresh each call, not cached --
+	 * but a read served from the order cache never gets there. So the order is
+	 * warmed into the cache first and then EVERY factory read of it fails: the
+	 * poller's own load is served from the cache and succeeds, while the
+	 * claim's fresh read, which drops that cache on purpose, cannot.
+	 */
+	$break_read = static function ( $classname, $order_type = '', $read_id = 0 ) use ( $reads, $id ) {
+		unset( $order_type );
+
+		if ( (int) $read_id !== $id ) {
+			return $classname;
+		}
+
+		++$reads->seen;
+
+		return 'Kuka_Ship_Absent_Order_Class';
+	};
+
+	if ( 'claim_lock_contended' === $case ) {
+		/*
+		 * A SECOND, REAL MySQL SESSION. Named locks are per connection, so a
+		 * second wpdb instance is a second session even inside one process --
+		 * and it is the only way this process can be refused its own lock.
+		 */
+		$second    = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+		$lock_held = '1' === (string) $second->get_var( $second->prepare( 'SELECT GET_LOCK(%s, 0)', $lock_name ) ) ? 'yes' : 'NO';
+	} elseif ( 'notification_claim_unverified' === $case ) {
+		// The claim's write is executed as `SELECT 1`: nothing lands on disk.
+		add_filter( 'query', $drop_writes, PHP_INT_MAX );
+	} else {
+		// Warm the cache so the worker's own load does not need the factory.
+		wc_get_order( $id );
+		add_filter( 'woocommerce_order_class', $break_read, PHP_INT_MAX, 3 );
+	}
+
+	// The real scheduled worker, driven by Action Scheduler's own runner.
+	kuka_ship_purge_actions( $id );
+	Kuka_Island_Shipping_Status_Poller::schedule_query( $id, 0 );
+	$chain   = kuka_ship_drive_status_chain( $id, 3 );
+	$runner  = (string) $runner_box->outcome;
+	$blocked = kuka_ship_pending_action_count( $id );
+	$booked  = kuka_ship_pending_sync_count( $id );
+
+	if ( 'claim_lock_contended' === $case ) {
+		$second->get_var( $second->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		$second->close();
+	} elseif ( 'notification_claim_unverified' === $case ) {
+		remove_filter( 'query', $drop_writes, PHP_INT_MAX );
+	} else {
+		remove_filter( 'woocommerce_order_class', $break_read, PHP_INT_MAX );
+	}
+
+	$first = kuka_ship_terminal_facts( $id, $fixture['reference'] );
+	$first['mails']    = $mailer->count_to( $fixture['email'] );
+	$first['lock']     = $lock_held;
+	$first['runner']   = '' === $runner ? 'unrecorded' : $runner;
+	$first['pending']  = $blocked;
+	$first['follow_up'] = $booked;
+	$first['turns']    = count( $chain['processed'] );
+
+	// The obstacle is gone. The safe local retry must now finish the job.
+	$retry_outcome = kuka_ship_drive_sync_chain( $id, 3 );
+	$second_pass   = kuka_ship_terminal_facts( $id, $fixture['reference'] );
+	$second_pass['mails'] = $mailer->count_to( $fixture['email'] );
+
+	// A further run must not produce a second message.
+	kuka_ship_drive_sync_chain( $id, 2 );
+	$third = kuka_ship_terminal_facts( $id, $fixture['reference'] );
+	$third['mails'] = $mailer->count_to( $fixture['email'] );
+
+	$purged = kuka_ship_purge_actions( $id ) + kuka_ship_purge_sync_actions( $id );
+	kuka_ship_destroy_order( wc_get_order( $id ) );
+
+	return array(
+		'case'    => $case,
+		'first'   => $first,
+		'retry'   => $retry_outcome,
+		'second'  => $second_pass,
+		'third'   => $third,
+		'purged'  => $purged,
+	);
+}
+
+/**
+ * The three facts the terminal-skip trap turns on, read fresh.
+ *
+ * @param int    $order_id  Order.
+ * @param string $reference Carrier reference.
+ * @return array<string, string>
+ */
+function kuka_ship_terminal_facts( int $order_id, string $reference ): array {
+	kuka_ship_forget_order( $order_id );
+	$order = wc_get_order( $order_id );
+
+	if ( ! $order instanceof WC_Order ) {
+		return array( 'lifecycle' => 'unreadable', 'claim' => 'unreadable', 'fulfilled' => 'unreadable', 'date' => 'unreadable', 'notify_state' => 'unreadable', 'handover' => '' );
+	}
+
+	$data   = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+	$record = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $order, $reference );
+
+	return array(
+		'lifecycle'    => (string) $data['status_lifecycle'],
+		'claim'        => (string) $order->get_meta( '_kuka_shipping_sync_last_reason', true ),
+		'fulfilled'    => is_object( $record ) && method_exists( $record, 'get_is_fulfilled' )
+			? ( $record->get_is_fulfilled() ? 'yes' : 'no' )
+			: 'missing',
+		'date'         => is_object( $record ) && method_exists( $record, 'get_date_fulfilled' ) && '' !== (string) ( $record->get_date_fulfilled() ?? '' )
+			? (string) $record->get_date_fulfilled()
+			: '',
+		'notify_state' => (string) Kuka_Island_Shipping_Notification::state( $order ),
+		'handover'     => (string) $order->get_meta( Kuka_Island_Shipping_Notification::META_HANDOVER_AT, true ),
+	);
+}
+
+putenv( 'KUKA_SHIPPING_AUTOMATION=1' );
+
+$terminal_cases = array();
+
+foreach ( array( 'claim_lock_contended', 'notification_claim_unverified', 'claim_order_unreadable' ) as $terminal_case ) {
+	$terminal_cases[ $terminal_case ] = kuka_ship_terminal_claim_case( $terminal_case, $mailer );
+}
+
+putenv( 'KUKA_SHIPPING_AUTOMATION' );
+
+$terminal_ok    = true;
+$terminal_lines = array();
+
+foreach ( $terminal_cases as $name => $result ) {
+	$first  = $result['first'];
+	$second = $result['second'];
+	$third  = $result['third'];
+
+	$case_ok = 'delivered' === (string) $first['lifecycle']
+		// The claim was refused, and the refusal is visible with a safe code.
+		&& $name === (string) $first['claim']
+		// Nothing about the dispatch moved, and no message went out.
+		&& 'no' === (string) $first['fulfilled']
+		&& '' === (string) $first['date']
+		&& 0 === (int) $first['mails']
+		// A safe local retry is really booked, and no carrier poll is.
+		&& 1 === (int) $first['follow_up']
+		&& 0 === (int) $first['pending']
+		// Once the obstacle is gone the retry finishes the job, exactly once.
+		&& 'yes' === (string) $second['fulfilled']
+		&& '' !== (string) $second['date']
+		&& 1 === (int) $second['mails']
+		&& Kuka_Island_Shipping_Notification::STATE_SENT === (string) $second['notify_state']
+		// The handover date is the instant of the first successful claim.
+		&& '' !== (string) $second['handover']
+		&& gmdate( 'Y-m-d H:i:s', (int) strtotime( (string) $second['handover'] ) )
+			=== gmdate( 'Y-m-d H:i:s', (int) strtotime( (string) $second['date'] . ' UTC' ) )
+		// The carrier's terminal status survives, and no second message follows.
+		&& 'delivered' === (string) $second['lifecycle']
+		&& 1 === (int) $third['mails']
+		&& 'delivered' === (string) $third['lifecycle'];
+
+	$terminal_ok = $terminal_ok && $case_ok;
+
+	$terminal_lines[] = sprintf(
+		'%s:%s/lifecycle:%s/claim:%s/fulfilled:%s/date:%s/mails:%d/follow_up:%d/runner:%s/retry_fulfilled:%s/retry_mails:%d/total_mails:%d',
+		$name,
+		$case_ok ? 'ok' : 'FAIL',
+		(string) $first['lifecycle'],
+		'' === (string) $first['claim'] ? 'none' : (string) $first['claim'],
+		(string) $first['fulfilled'],
+		'' === (string) $first['date'] ? 'absent' : 'present',
+		(int) $first['mails'],
+		(int) $first['follow_up'],
+		'' === (string) $first['runner'] ? 'unrecorded' : (string) $first['runner'],
+		(string) $second['fulfilled'],
+		(int) $second['mails'],
+		(int) $third['mails']
+	);
+}
+
+$terminal_residue = 0;
+
+foreach ( $terminal_cases as $result ) {
+	$terminal_residue += 0 > (int) $result['purged'] ? 1 : 0;
+}
+
+$report(
+	'SHIPPING_TERMINAL_FIRST_ANSWER_STILL_NOTIFIES',
+	$terminal_ok && 0 === $terminal_residue,
+	sprintf(
+		'measured:real_action_scheduler_worker_and_intercepted_transport|carrier_writes:0|cases:%d|%s',
+		count( $terminal_cases ),
+		implode( '|', $terminal_lines )
 	)
 );
 

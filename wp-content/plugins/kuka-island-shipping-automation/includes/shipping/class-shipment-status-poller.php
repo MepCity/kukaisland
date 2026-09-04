@@ -42,10 +42,39 @@ final class Kuka_Island_Shipping_Status_Poller {
 	public const ACTION = 'kuka_island_shipping_query_status';
 	public const GROUP  = 'kuka-island-shipping';
 
+	/**
+	 * The safe local fulfilment retry, which NEVER touches the carrier.
+	 *
+	 * A separate hook rather than another poll, for two reasons. The carrier
+	 * has already answered -- re-asking it would be a request nobody needs and
+	 * would spend an attempt from a budget that exists to protect the carrier.
+	 * And a terminal answer moves the order's own state to `delivered`, so the
+	 * poll worker's first gate refuses it with `state_not_pollable`: reusing
+	 * that hook would book an action that stops before it does anything.
+	 *
+	 * This worker re-reads the code the carrier ALREADY gave, from the order's
+	 * own meta, and asks the fulfilment writer to finish what the claim refusal
+	 * interrupted.
+	 */
+	public const SYNC_ACTION = 'kuka_island_shipping_sync_fulfillment';
+
 	private const SCHEDULE_LOCK_PREFIX = 'kuka_ship_query_';
 
 	/** Hard ceiling on how many times one order is queried. */
 	public const MAX_ATTEMPTS = 10;
+
+	/**
+	 * How many safe local fulfilment retries one order may have.
+	 *
+	 * Small on purpose: the refusals it recovers from are transient by
+	 * definition, so a handful of turns either fixes them or proves a person
+	 * is needed. Nothing here contacts the carrier, so the ceiling protects
+	 * the scheduler and the order notes, not the carrier.
+	 */
+	public const MAX_SYNC_ATTEMPTS = 5;
+
+	/** Seconds before the first safe local retry, then the poll ladder. */
+	public const SYNC_FIRST_DELAY = 2 * MINUTE_IN_SECONDS;
 
 	/** Hard ceiling on how long one order is followed. */
 	public const MAX_ELAPSED = 14 * DAY_IN_SECONDS;
@@ -66,6 +95,7 @@ final class Kuka_Island_Shipping_Status_Poller {
 
 	public function register(): void {
 		add_action( self::ACTION, array( $this, 'run' ), 10, 1 );
+		add_action( self::SYNC_ACTION, array( $this, 'run_sync' ), 10, 1 );
 	}
 
 	/**
@@ -352,6 +382,25 @@ final class Kuka_Island_Shipping_Status_Poller {
 			time() - (int) $data['created_at']
 		);
 
+		/*
+		 * A TERMINAL CARRIER STATUS IS NOT THE END OF THE WORK.
+		 *
+		 * The carrier chain is genuinely finished -- there is nothing left to
+		 * ask -- but the local half may have been interrupted by a claim
+		 * refusal, in which case a safe local retry is already booked and the
+		 * outcome must say so. Reporting a bare `stop:terminal_lifecycle` here
+		 * is what made the gap invisible.
+		 */
+		$local_retry = (string) ( $queried['fulfillment_retry'] ?? '' );
+		$local_error = (string) ( $queried['fulfillment_error'] ?? '' );
+		$local_note  = '';
+
+		if ( '' !== $local_error ) {
+			$local_note = '' !== $local_retry
+				? ':fulfillment_retry:' . $local_retry
+				: ':fulfillment_unfinished:' . $local_error;
+		}
+
 		if ( 'reschedule' !== $decision['action'] ) {
 			if ( 'give_up' === $decision['action'] ) {
 				$exhausted = sprintf(
@@ -369,7 +418,7 @@ final class Kuka_Island_Shipping_Status_Poller {
 				$order->add_order_note( $exhausted );
 			}
 
-			return $decision['action'] . ':' . $decision['reason'];
+			return $decision['action'] . ':' . $decision['reason'] . $local_note;
 		}
 
 		$outcome = self::schedule_query( (int) $order->get_id(), $decision['delay'] );
@@ -383,7 +432,139 @@ final class Kuka_Island_Shipping_Status_Poller {
 			);
 		}
 
-		return 'rescheduled:' . $outcome;
+		return 'rescheduled:' . $outcome . $local_note;
+	}
+
+	/**
+	 * Is a FUTURE safe local retry already booked for this order?
+	 *
+	 * @param int $order_id Order id.
+	 */
+	public static function has_pending_sync( int $order_id ): bool {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( 'ActionScheduler_Store' ) ) {
+			return false;
+		}
+
+		$pending = as_get_scheduled_actions(
+			array(
+				'hook'     => self::SYNC_ACTION,
+				'args'     => array( 'order_id' => $order_id ),
+				'group'    => self::GROUP,
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 1,
+				'orderby'  => 'none',
+			),
+			'ids'
+		);
+
+		return array() !== (array) $pending;
+	}
+
+	/**
+	 * Book one safe local fulfilment retry, and say exactly what happened.
+	 *
+	 * Deliberately NOT gated on automation_enabled(): that switch exists to
+	 * stop carrier traffic, and this worker makes no carrier call. The runtime
+	 * gate -- the emergency stop -- still applies, and is checked by the worker
+	 * itself so a booked retry cannot outlive the stop.
+	 *
+	 * @param int $order_id Order id.
+	 * @param int $delay    Seconds from now.
+	 */
+	public static function schedule_sync( int $order_id, int $delay = 0 ): string {
+		if ( ! function_exists( 'as_schedule_single_action' ) ) {
+			return self::SCHEDULE_SCHEDULER_UNAVAILABLE;
+		}
+
+		if ( ! self::acquire_lock( $order_id ) ) {
+			return self::SCHEDULE_LOCK_CONTENDED;
+		}
+
+		try {
+			if ( self::has_pending_sync( $order_id ) ) {
+				return self::SCHEDULE_ALREADY_PENDING;
+			}
+
+			$action_id = (int) as_schedule_single_action(
+				time() + max( 1, 0 !== $delay ? $delay : self::SYNC_FIRST_DELAY ),
+				self::SYNC_ACTION,
+				array( 'order_id' => $order_id ),
+				self::GROUP
+			);
+
+			return $action_id > 0 ? self::SCHEDULE_CREATED : self::SCHEDULE_FAILED;
+		} finally {
+			self::release_lock( $order_id );
+		}
+	}
+
+	/**
+	 * The safe local retry worker. NO carrier call happens here.
+	 *
+	 * The status code is the one the carrier already gave and this module
+	 * already persisted, so the whole turn is a local write: the fulfilment
+	 * record and the customer notification that a claim refusal interrupted.
+	 *
+	 * @param mixed $order_id Order id as Action Scheduler stored it.
+	 * @return string The outcome, returned for the verification suite.
+	 */
+	public function run_sync( $order_id ): string {
+		if ( Kuka_Island_Shipping_Runtime_Gate::is_disabled() ) {
+			return 'runtime_disabled';
+		}
+
+		$order = wc_get_order( (int) $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return 'order_missing';
+		}
+
+		$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+		$reference = (string) $data['reference'];
+		$code      = (int) $data['status_code'];
+
+		if ( '' === $reference || 0 === $code ) {
+			// Nothing was ever read from the carrier, so there is nothing local
+			// to finish. This is not retried: it is a different problem.
+			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( $order );
+
+			return 'nothing_to_sync';
+		}
+
+		$synced = Kuka_Island_Shipping_Fulfillment_Writer::sync_status( $order, $reference, $code );
+		$reason = (string) ( $synced['reason'] ?? '' );
+
+		if ( ! in_array( $reason, Kuka_Island_Shipping_Notification::claim_refusals(), true ) ) {
+			// Either it worked, or it failed for something a retry cannot fix.
+			Kuka_Island_Shipping_Order_Store::clear_sync_refusal( wc_get_order( (int) $order->get_id() ) );
+
+			return 'synced:' . ( '' === $reason ? (string) $synced['action'] : $reason );
+		}
+
+		$fresh    = wc_get_order( (int) $order->get_id() );
+		$attempts = Kuka_Island_Shipping_Order_Store::record_sync_refusal(
+			$fresh instanceof WC_Order ? $fresh : $order,
+			$reason
+		);
+
+		if ( $attempts >= self::MAX_SYNC_ATTEMPTS ) {
+			$exhausted = sprintf(
+				/* translators: 1: allow-listed refusal code, 2: attempts made, 3: attempt ceiling. */
+				__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s, %2$d/%3$d deneme). Yeni deneme planlanmadı; kargo durumu doğru, bildirim manuel kontrol gerektiriyor.', 'kuka-island-shipping-automation' ),
+				$reason,
+				$attempts,
+				self::MAX_SYNC_ATTEMPTS
+			);
+
+			// One note, at the ceiling only. A wall met on every turn is one fact.
+			( $fresh instanceof WC_Order ? $fresh : $order )->add_order_note( $exhausted );
+
+			return 'sync_exhausted:' . $reason;
+		}
+
+		$booked = self::schedule_sync( (int) $order->get_id(), self::delay_for_attempt( $attempts ) );
+
+		return 'sync_retry:' . $reason . ':' . $booked;
 	}
 
 	private static function acquire_lock( int $order_id ): bool {

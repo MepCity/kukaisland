@@ -129,6 +129,7 @@ foreach ( $classes as $c ) { if ( ! class_exists( $c, false ) ) { $absent[] = $c
 
 $hooks = array(
   "poller_worker"     => has_action( "kuka_island_shipping_query_status" ),
+  "sync_worker"       => has_action( "kuka_island_shipping_sync_fulfillment" ),
   "admin_metabox"     => has_action( "add_meta_boxes" ),
   "admin_create"      => has_action( "admin_post_kuka_shipping_create" ),
   "admin_resume"      => has_action( "admin_post_kuka_shipping_resume" ),

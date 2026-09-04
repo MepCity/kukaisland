@@ -67,6 +67,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | İki eşzamanlı süreç aynı ilk `fulfilled` geçişine girip müşteriye iki e-posta gönderiyordu; ikinci yazma birincinin metasını ezdiği için durum makinesi tek gönderim gibi görünüyordu | Bildirim kararı sipariş bazlı sıfır beklemeli advisory lock altına alındı ve kayıtlar kilit içinde veritabanından taze okunuyor (K-50) |
 | 2026-09-04 | Bildirim borcu iki yerden düşüyordu: `pending` durumu `first_transition` kapısına takılıp hiç yeniden denenmiyordu, ve kayıt kaydedildikten sonra niyetten önce ölen süreç borcu kalıcı olarak kaybediyordu | Yeni `due` durumu kayıt kaydedilmeden önce yazılıyor; `due` ve `pending` borçlu sayılıyor; teslim anı borçla birlikte bir kez yazılıyor (K-51) |
 | 2026-09-04 | Claim'in üç sınırı fail-open'dı: kilit alınamasa, sipariş okunamasa ya da meta yazması diske düşmese bile kayıt `fulfilled` yapılıp e-posta gönderiliyordu | `claim()` artık ok/outcome/handover döndürüyor, yazma bayt bayt geri okunuyor ve başarısızlıkta fulfillment yazması hiç başlamıyor (K-52) |
+| 2026-09-05 | Taşıyıcının ilk ve tek durumu doğrudan terminal olup claim reddedildiğinde kayıt `unfulfilled` kalıyor, e-posta gitmiyor, ama poller `stop:terminal_lifecycle` ile bitip hiçbir şey planlamıyordu | Manager `sync_status()` sonucunu değerlendiriyor; taşıyıcıya hiç dokunmayan sınırlı yerel bir fulfillment/bildirim retry'ı planlanıyor (K-53) |
 
 ---
 
@@ -2132,10 +2133,13 @@ geçmez.
   satırın düştüğünün kanıtı değildir.
 - **`sync_status()` tarafı:** claim `ok:false` ise `set_status('fulfilled')`,
   `set_date_fulfilled()` ve `save()` aşamalarına **hiç geçilmez**; dönen
-  `reason` claim'in kendi outcome'ıdır. Taşıyıcının durumu ellenmediği için
-  sonraki poll yeniden dener ve ölçüm bunu kanıtlıyor:
-  `retry_outcome:sent|retry_mails:1|retry_fulfilled:yes`, ve tarih ilk BAŞARILI
-  claim anından geliyor (`date_from_first_successful_claim:yes`).
+  `reason` claim'in kendi outcome'ıdır.
+- **DÜZELTME (K-53):** Bu kaydın ilk hâlinde "taşıyıcının durumu ellenmediği
+  için sonraki poll yeniden dener" yazıyordu. Bu ifade **yalnız taşıyıcı durumu
+  terminal DEĞİLKEN** doğruydu. İlk ve tek gözlenen durum doğrudan terminal
+  olduğunda (kod 5) yeni bir poll hiç planlanmıyordu ve "sonraki poll" diye bir
+  şey yoktu. Yeniden denemeyi artık taşıyıcıya hiç dokunmayan ayrı bir yerel
+  işçi yapıyor; ölçülen hâli K-53'te.
 - **Neden kaydı da durdurmak doğru:** `fulfilled` diyen ama arkasında borç
   olmayan bir kayıt, K-51'de müşterinin bildirimini kalıcı olarak kaybeden
   durumun ta kendisidir. Onu bilerek üretmemek, taşıyıcı durumunu bir poll
@@ -2148,6 +2152,91 @@ geçmez.
   `claim_lock_contended` ise başka bir süreç aynı siparişte karar veriyordu ve
   bir sonraki poll ilerler; `notification_claim_unverified` ise yazma diske
   düşmüyor demektir ve sorun veritabanı tarafındadır.
+
+---
+
+## K-53 — Terminal ilk cevap bildirim zincirini kapatıyordu
+
+- **Tarih:** 2026-09-05
+- **Belirti:** Taşıyıcının **ilk ve tek** gözlenen durumu doğrudan terminal
+  olduğunda (kod 5, teslim edildi) ve bildirim claim'i reddedildiğinde: kayıt
+  `unfulfilled` kalıyor, tarih yazılmıyor, e-posta gitmiyor — ama
+  `query_status()` terminal BAŞARI döndürüyor, poller
+  `stop:terminal_lifecycle` ile bitiyor ve hiçbir şey planlanmıyor. Müşteri
+  hiçbir zaman bilgilendirilmiyor.
+- **Kesin kök neden:** `Shipment_Manager::query_status()` taşıyıcı
+  lifecycle'ını `save_status()` ile kaydediyor, ardından
+  `Fulfillment_Writer::sync_status()` çağrısının sonucunu **tamamen yok
+  sayıyordu**. Claim reddi hiçbir yere yazılmıyordu, dolayısıyla ne poller ne
+  operatör bunu görebiliyordu.
+- **Ölçülen kırmızı** (gerçek Action Scheduler worker'ı, üç engel için de
+  birebir aynı):
+
+  ```text
+  lifecycle:delivered | claim:none | fulfilled:no | date:absent | mails:0
+  follow_up:0 | runner:stop:terminal_lifecycle | total_mails:0
+  ```
+
+- **Neden mevcut poll action'ı yeniden kullanılamaz:** terminal bir cevap
+  `save_status()` içinde siparişin durumunu `delivered` yapar, ve poll
+  worker'ının ilk kapısı `STATE_SHIPMENT_CREATED` değilse `state_not_pollable`
+  ile durur. O hooka planlanan bir action hiçbir şey yapmadan biter. Ayrıca
+  taşıyıcıya yeniden sormak gereksiz bir istek olur ve taşıyıcıyı korumak için
+  var olan deneme bütçesinden harcar.
+- **Uygulanan düzeltme:** Taşıyıcıya **hiçbir yazma yapmayan** ayrı bir yerel
+  işçi: `kuka_island_shipping_sync_fulfillment`. Taşıyıcının ÇOKTAN verdiği ve
+  bu modülün çoktan kalıcılaştırdığı durum kodunu siparişin kendi metasından
+  okuyup `sync_status()`'u yeniden çalıştırır. Sınırlı:
+  `MAX_SYNC_ATTEMPTS = 5`, ilk gecikme 2 dakika, sonrası poll merdiveni;
+  tavanda **tek** sipariş notu yazılır, her turda değil. `automation_enabled()`
+  kapısına **bağlı değildir** — o anahtar taşıyıcı trafiğini durdurmak için
+  vardır ve bu işçi taşıyıcıya çıkmaz — ama çalışma kapısı (acil durdurma)
+  işçinin kendi içinde kontrol edilir.
+- **Manager artık sonucu değerlendiriyor:** `sync_status()` dönüşü okunuyor,
+  claim reddi `_kuka_shipping_sync_last_reason` metasına **güvenli kodla**
+  yazılıyor (operatör görebiliyor), retry planlanıyor, ve dönüş dizisi
+  `fulfillment`, `fulfillment_ok`, `fulfillment_error`, `fulfillment_retry`
+  alanlarını taşıyor. Poller'ın çıktısı da artık bunu söylüyor:
+  `stop:terminal_lifecycle:fulfillment_retry:created`. Sync başarılıysa red
+  kaydı temizleniyor.
+- **Yeniden denenmeyenler:** `claim_reference_missing` ve `claim_other_record`
+  veri problemleridir; bir retry onları sonsuza kadar tekrarlar, bu yüzden
+  `Notification::claim_refusals()` içinde **yok**. Yalnız geçici üç red
+  (`claim_lock_contended`, `claim_order_unreadable`,
+  `notification_claim_unverified`) yerel retry alır.
+- **Ölçülen yeşil, üç engel için de:**
+
+  ```text
+  lifecycle:delivered | claim:<red kodu> | fulfilled:no | date:absent | mails:0
+  follow_up:1 | runner:stop:terminal_lifecycle:fulfillment_retry:created
+  retry_fulfilled:yes | retry_mails:1 | total_mails:1
+  ```
+
+  Engel kaldırıldıktan sonra yerel retry işi bitiriyor, tarih **ilk başarılı
+  claim anından** geliyor, taşıyıcının terminal durumu korunuyor, ve sonraki
+  koşu ikinci ileti üretmiyor. Taşıyıcı yazması **0**.
+- **Engeller nasıl üretildi** (üretim kodunda test kancası yok):
+  - `claim_lock_contended`: ikinci bir `wpdb` bağlantısı — aynı süreç içinde
+    bile ayrı bir MySQL oturumu, çünkü adlandırılmış kilitler bağlantı başınadır
+    — `kuka_ship_notify_claim_<id>` kilidini tutar.
+  - `notification_claim_unverified`: WordPress'in `query` filtresi
+    `_kuka_shipping_notify` içeren INSERT/UPDATE'i `SELECT 1`'e çevirir.
+  - `claim_order_unreadable`: sipariş önce önbelleğe alınır, sonra
+    `woocommerce_order_class` filtresi o siparişin **her fabrika okumasını**
+    düşürür. Worker'ın kendi yüklemesi önbellekten gelir ve çalışır; claim'in
+    o önbelleği bilerek düşüren taze okuması çalışmaz.
+- **İlgili dosya:**
+  `SHIP/includes/shipping/class-shipment-manager.php` (`query_status`),
+  `SHIP/includes/shipping/class-shipment-status-poller.php` (`SYNC_ACTION`,
+  `schedule_sync`, `run_sync`),
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`record_sync_refusal`, `clear_sync_refusal`),
+  `SHIP/includes/shipping/class-shipment-notification.php` (`claim_refusals`),
+  `scripts/verify-shipping-automation.php`
+- **Tekrar yaşanırsa ilk bak:** `_kuka_shipping_sync_last_reason` metası.
+  Doluysa bildirim yerel olarak tamamlanamamış demektir ve
+  `_kuka_shipping_sync_attempts` kaçıncı denemede olduğunu söyler; tavana
+  gelindiğinde sipariş notu yazılır. Boşsa yerel yarım iş yok.
 
 ---
 

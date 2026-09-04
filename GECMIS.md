@@ -706,6 +706,19 @@ geçilmiyor. Üç sabotaj da WordPress'in kendi yüzeylerinden geliyor —
 `GET_LOCK`, `query` filtresi ve `woocommerce_order_class` — üretim kodunda
 tek bir test kancası yok. Bkz. K-52.
 
+**Tur 13 — terminal cevabın gölgesi.** Fail-closed olmanın bir bedeli
+vardı ve ölçülmemişti: reddedilen bir claim işi yarıda bırakıyor, ve
+taşıyıcının ilk ve tek gözlenen durumu doğrudan terminal olduğunda
+(kod 5) yeni bir poll hiç planlanmıyordu. `query_status()`
+`sync_status()` sonucunu tamamen yok saydığı için poller
+`stop:terminal_lifecycle` diyip bitiyor, kayıt `unfulfilled` kalıyor ve
+müşteri hiçbir zaman bilgilendirilmiyordu. Önceki turun raporundaki
+"sonraki poll yeniden dener" ifadesi bu şekil için doğru değildi ve
+belgede düzeltildi. Artık manager sonucu okuyor, claim reddini güvenli bir
+kodla siparişe yazıyor ve taşıyıcıya hiç dokunmayan, sınırlı, ayrı bir
+yerel işçi planlıyor: taşıyıcının çoktan verdiği durum kodunu siparişin
+kendi metasından okuyup işi bitiriyor. Bkz. K-53.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"

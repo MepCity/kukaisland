@@ -81,6 +81,17 @@ final class Kuka_Island_Shipping_Order_Store {
 	public const META_HISTORY            = '_kuka_shipping_history';
 
 	/**
+	 * The last claim refusal that stopped the fulfilment sync, safe code only.
+	 *
+	 * Written so an operator can see WHY a delivered shipment has no customer
+	 * notification yet, without the code having to guess from a silence.
+	 */
+	public const META_SYNC_LAST_REASON   = '_kuka_shipping_sync_last_reason';
+
+	/** How many safe local fulfilment retries have been booked for this order. */
+	public const META_SYNC_ATTEMPTS      = '_kuka_shipping_sync_attempts';
+
+	/**
 	 * The write whose effect at the carrier is not yet established.
 	 *
 	 * Written the instant a cancellation or an amendment has been ISSUED, and
@@ -1074,6 +1085,43 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * @param string   $message         Operator-facing sentence.
 	 * @return bool True when this was the first occurrence and was recorded.
 	 */
+	/**
+	 * Record that the fulfilment sync was refused, and count the attempt.
+	 *
+	 * Only the allow-listed code is stored. The counter is what makes the
+	 * retry bounded: a wall this module meets on every turn must not become an
+	 * endless chain of actions and order notes.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param string   $code  Allow-listed claim outcome.
+	 * @return int The attempt number this refusal is.
+	 */
+	public static function record_sync_refusal( WC_Order $order, string $code ): int {
+		$attempts = self::sync_attempts( $order ) + 1;
+
+		$order->update_meta_data( self::META_SYNC_LAST_REASON, $code );
+		$order->update_meta_data( self::META_SYNC_ATTEMPTS, $attempts );
+		self::persist( $order );
+
+		return $attempts;
+	}
+
+	/** Forget a refusal that has been resolved, counter included. */
+	public static function clear_sync_refusal( WC_Order $order ): void {
+		if ( '' === (string) $order->get_meta( self::META_SYNC_LAST_REASON, true )
+			&& 0 === self::sync_attempts( $order ) ) {
+			return;
+		}
+
+		$order->delete_meta_data( self::META_SYNC_LAST_REASON );
+		$order->delete_meta_data( self::META_SYNC_ATTEMPTS );
+		self::persist( $order );
+	}
+
+	public static function sync_attempts( WC_Order $order ): int {
+		return (int) $order->get_meta( self::META_SYNC_ATTEMPTS, true );
+	}
+
 	public static function record_local_refusal( WC_Order $order, string $operation, string $safe_error_code, string $message ): bool {
 		if ( (string) $order->get_meta( self::META_LAST_ERROR, true ) === $safe_error_code ) {
 			return false;
