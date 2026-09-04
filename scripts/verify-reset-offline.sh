@@ -56,21 +56,56 @@ cred_file="$xdg/kuka-island/edm-test.env"
 claim_file="$state_dir/sandbox-e2e.json"
 mkdir -p "$state_dir"
 
+# Linux bind mounts keep numeric ownership. The host-side mktemp directory is
+# mode 700 and belongs to the CI runner, while docker-compose deliberately runs
+# wp-cli as 33:33. Docker Desktop masks that distinction on macOS; a native
+# Linux runner does not, so the fixture could never be created there.
+#
+# Make only the randomly named path traversable and its state leaf writable.
+# The claim itself is still created by uid 33 with mode 600. The host never
+# relaxes or reads that file directly: read_fixture_claim() mounts the leaf
+# read-only and reads it as the same uid that owns it.
+chmod 0711 "$tmp_root" "$xdg" "$xdg/kuka-island"
+chmod 0733 "$state_dir"
+
+read_fixture_claim() {
+  "$real_docker" compose run --rm -T \
+    -v "$state_dir":/run/edm/state:ro \
+    wp-cli php -r '
+$path = "/run/edm/state/sandbox-e2e.json";
+if ( ! is_readable( $path ) ) {
+    exit( 1 );
+}
+echo file_get_contents( $path );
+'
+}
+
 # --------------------------------------------------------------------------
 # Seed a genuine 'uncertain' record through the state machine.
 # The JSON is never hand-written: an invented record would not prove the
 # transition the driver actually performs.
 # --------------------------------------------------------------------------
-"$real_docker" compose run --rm -T \
-  -v "$state_dir":/run/edm/state \
-  wp-cli wp eval '
+set +e
+seed_output=$(
+  "$real_docker" compose run --rm -T \
+    -v "$state_dir":/run/edm/state \
+    wp-cli wp eval '
 require_once "/project-scripts/lib-edm-sandbox.php";
 $claim = new Kuka_Sandbox_Claim( "/run/edm/state/sandbox-e2e.json" );
 $claim->acquire();
 $claim->claim( "uuid-reset-offline-fixture", "LoadInvoice" );
 $claim->settle( Kuka_Sandbox_Claim::S_UNCERTAIN, array( "outcome" => "transport_exception" ) );
 $claim->release();
-' >/dev/null 2>&1 || true
+' 2>&1
+)
+seed_exit=$?
+set -e
+
+if [ "$seed_exit" != "0" ]; then
+  echo "SANDBOX_RESET_HOST_WRITE_GATE=FAIL|reason:fixture_claim_seed_failed"
+  echo "SANDBOX_RESET_REAL_WRAPPER_DRIVER=FAIL|reason:fixture_claim_seed_failed"
+  exit 1
+fi
 
 if [ ! -f "$claim_file" ]; then
   echo "SANDBOX_RESET_HOST_WRITE_GATE=FAIL|reason:fixture_claim_not_created"
@@ -78,10 +113,11 @@ if [ ! -f "$claim_file" ]; then
   exit 1
 fi
 
-seeded_state=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["state"])' "$claim_file")
-seeded_uuid=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["uuid"])' "$claim_file")
-seeded_hash=$(shasum -a 256 "$claim_file" | cut -d' ' -f1)
-python3 -c 'import json,sys;json.dump(json.load(open(sys.argv[1]))["history"],open(sys.argv[2],"w"))' "$claim_file" "$tmp_root/history-before.json"
+seeded_json=$(read_fixture_claim)
+seeded_state=$(printf '%s' "$seeded_json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["state"])')
+seeded_uuid=$(printf '%s' "$seeded_json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["uuid"])')
+seeded_hash=$(printf '%s' "$seeded_json" | shasum -a 256 | cut -d' ' -f1)
+printf '%s' "$seeded_json" | python3 -c 'import json,sys;json.dump(json.load(sys.stdin)["history"],open(sys.argv[1],"w"))' "$tmp_root/history-before.json"
 
 # --------------------------------------------------------------------------
 # Test A -- host write gate. A shim that ONLY records: if the wrapper starts
@@ -107,7 +143,8 @@ gate_exit=$?
 set -e
 
 gate_docker_calls=$(wc -l < "$tmp_root/docker-a.log" | tr -d ' ')
-gate_hash=$(shasum -a 256 "$claim_file" | cut -d' ' -f1)
+gate_json=$(read_fixture_claim)
+gate_hash=$(printf '%s' "$gate_json" | shasum -a 256 | cut -d' ' -f1)
 gate_line="EDM_SANDBOX_RUN=BLOCKED|reason:write_gate_open_during_reset|credentials_mounted:no|docker_started:no|state_unchanged:yes"
 
 gate_ok=yes
@@ -148,12 +185,15 @@ reset_output=$(
 reset_exit=$?
 set -e
 
-after_state=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["state"])' "$claim_file")
-after_uuid=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["uuid"])' "$claim_file")
+after_json=$(read_fixture_claim)
+after_state=$(printf '%s' "$after_json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["state"])')
+after_uuid=$(printf '%s' "$after_json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["uuid"])')
+after_snapshot="$tmp_root/claim-after.json"
+printf '%s' "$after_json" > "$after_snapshot"
 
 # History must be append-only: every earlier entry survives unchanged and
 # exactly one entry carrying the evidence and the audit label was added.
-history_verdict=$(python3 - "$tmp_root/history-before.json" "$claim_file" <<'PY'
+history_verdict=$(python3 - "$tmp_root/history-before.json" "$after_snapshot" <<'PY'
 import json, sys
 before = json.load(open(sys.argv[1]))
 after = json.load(open(sys.argv[2]))["history"]

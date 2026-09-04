@@ -785,3 +785,28 @@ hızla gitmesi içindir.
   `scripts/edm-sandbox-send-run.sh`, `docs/EDM_AKTIVASYON_REHBERI.md`
 - **Tekrar yaşanırsa ilk bak:** Raporda önce “hangi yüzey ölçüldü?” sorusunu
   cevaplayın. Mock PASS, EDM kabulü ve GİB terminal başarısı üç farklı olgudur.
+
+---
+
+## K-28 — Native Linux bind mount'larında UID farkı hesaba katılmalıdır
+
+- **Tarih:** 2026-09-04
+- **Belirti:** EDM çevrimdışı reset testi macOS Docker Desktop'ta geçerken GitHub
+  Actions'ta `fixture_claim_not_created` ile duruyor.
+- **Kesin kök neden:** Host'un `mktemp` dizini `0700` ve CI runner kullanıcısına
+  aitti; Compose içindeki `wp-cli` ise kasıtlı olarak `33:33` çalışıyordu. Native
+  Linux bind mount bu sayısal sahipliği koruduğu için container geçici state
+  dizinine ulaşamıyor ve claim'i oluşturamıyordu. Seed hatasının bastırılması da
+  asıl izin hatasını belirsiz bir fixture hatasına dönüştürüyordu.
+- **Uygulanan düzeltme:** Yalnız rastgele geçici yol geçilebilir, state yaprağı
+  container UID'si tarafından yazılabilir yapıldı. Claim yine container içinde
+  `0600` oluşturulur. Host claim'i doğrudan okumaz; aynı UID ile çalışan ayrı bir
+  helper container state dizinini salt-okunur mount ederek JSON'u test sürecine
+  aktarır. Gerçek kullanıcı state'i ve credential dosyası bu yola girmez.
+- **Kanıt:** `SANDBOX_RESET_HOST_WRITE_GATE`,
+  `SANDBOX_RESET_REAL_WRAPPER_DRIVER`; GitHub Actions `Quality` işi.
+- **İlgili dosya:** `scripts/verify-reset-offline.sh`
+- **Tekrar yaşanırsa ilk bak:** Docker Desktop'ta geçen bind-mount testini native
+  Linux için kanıt saymayın. Container UID/GID'sini, üst dizinlerin execute
+  izinlerini ve claim'in gerçek modunu birlikte ölçün; güvenlik dosyasını host
+  okuyabilsin diye gevşetmeyin.
