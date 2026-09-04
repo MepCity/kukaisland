@@ -68,6 +68,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | Bildirim borcu iki yerden düşüyordu: `pending` durumu `first_transition` kapısına takılıp hiç yeniden denenmiyordu, ve kayıt kaydedildikten sonra niyetten önce ölen süreç borcu kalıcı olarak kaybediyordu | Yeni `due` durumu kayıt kaydedilmeden önce yazılıyor; `due` ve `pending` borçlu sayılıyor; teslim anı borçla birlikte bir kez yazılıyor (K-51) |
 | 2026-09-04 | Claim'in üç sınırı fail-open'dı: kilit alınamasa, sipariş okunamasa ya da meta yazması diske düşmese bile kayıt `fulfilled` yapılıp e-posta gönderiliyordu | `claim()` artık ok/outcome/handover döndürüyor, yazma bayt bayt geri okunuyor ve başarısızlıkta fulfillment yazması hiç başlamıyor (K-52) |
 | 2026-09-05 | Taşıyıcının ilk ve tek durumu doğrudan terminal olup claim reddedildiğinde kayıt `unfulfilled` kalıyor, e-posta gitmiyor, ama poller `stop:terminal_lifecycle` ile bitip hiçbir şey planlamıyordu | Manager `sync_status()` sonucunu değerlendiriyor; taşıyıcıya hiç dokunmayan sınırlı yerel bir fulfillment/bildirim retry'ı planlanıyor (K-53) |
+| 2026-09-05 | Yerel retry sözleşmesinin dört sınırı yanlıştı: her planlama sonucu kanıt sayılıyor, taşıyıcı ve yerel sayaçlar birbirini eziyor, ilk gecikme 1 saniye oluyor ve operatör panelde hiçbir şey görmüyordu | Yalnız `created`/`already_pending` kanıt; sayaçlar ayrıldı; gecikme gerçek Action Scheduler satırından 120 sn ölçüldü; panel dört olguyu ve elle müdahale cümlesini gösteriyor (K-54) |
 
 ---
 
@@ -2237,6 +2238,110 @@ geçmez.
   Doluysa bildirim yerel olarak tamamlanamamış demektir ve
   `_kuka_shipping_sync_attempts` kaçıncı denemede olduğunu söyler; tavana
   gelindiğinde sipariş notu yazılır. Boşsa yerel yarım iş yok.
+
+---
+
+## K-54 — Yerel retry sözleşmesinin dört sınırı
+
+- **Tarih:** 2026-09-05
+- **Belirti:** K-53'ün yerel retry'ı doğru çalışıyordu, ama etrafındaki dört
+  sınır yanlış davranıyordu. Üçü sessizce yanlış rapor veriyor, biri operatörü
+  hiç bilgilendirmiyordu.
+
+### 1. Planlama sonucu kanıt sayılıyordu
+
+`query_status()` `schedule_sync()`'in **boş olmayan her** cevabını "retry
+planlandı" diye taşıyordu. Oysa yalnız `created` ve `already_pending` bir
+action'ın var olduğunu kanıtlar. `lock_contended`, `schedule_failed` ve
+`scheduler_unavailable` üçü de "bu çağrı hiçbir şey oluşturmadı" demektir.
+
+Ölçülen kırmızı, gerçek Action Scheduler yüzeyleriyle:
+
+```text
+lock_contended : follow_up:yes | pending:0 | error_meta:none | notes:0
+schedule_failed: follow_up:yes | pending:0 | error_meta:none | notes:0
+```
+
+`follow_up:yes` derken bekleyen action **sıfır**. Poll zinciri terminal olarak
+kapanıyor ve kimse bir şey bilmiyor.
+
+**Düzeltme:** `Status_Poller::schedule_proves_action()` — yalnız iki kod
+kanıttır. Kanıtlanmayan bir sonuç için `has_pending_sync()` bir kez daha
+sorulur (bu bir okuma, varsayım değil); o da yoksa
+`_kuka_shipping_sync_schedule_error` metasına güvenli kod yazılır ve **tek**
+sipariş notu düşer. `run_sync()` kendi yeniden planlamasını aynı biçimde
+değerlendirir. Aynı planlama hatası her turda yeni not üretmez.
+
+Ölçülen yeşil:
+
+```text
+created        : follow_up:yes | pending:1 | error_meta:none
+already_pending: follow_up:yes | pending:1 | error_meta:none
+lock_contended : follow_up:no  | pending:0 | error_meta:lock_contended  | notes:1 | panel:yes
+schedule_failed: follow_up:no  | pending:0 | error_meta:schedule_failed | notes:1 | panel:yes
+```
+
+`scheduler_unavailable` uçtan uca üretilemez — bildirilmiş bir PHP fonksiyonu
+geri alınamaz — bu yüzden saf yüklem üzerinde ölçülür
+(`scheduler_unavailable:policy_only`); girdiği manager yolu `schedule_failed`
+ile uçtan uca kanıtlanmıştır.
+
+### 2. İki sayaç birbirini eziyordu
+
+Manager'da taşıyıcı sorgu denemesi ile yerel retry sayacı **tek bir
+`$attempts` değişkeniydi**. Bir claim reddi, poller'ın `MAX_ATTEMPTS`'e karşı
+harcadığı taşıyıcı bütçesini sıfırlıyordu.
+
+Ölçülen kırmızı: mağazada `stored_query_attempts:7`, dönen `attempts:1`.
+
+**Düzeltme:** `$query_attempts` ve `$sync_attempts` ayrı değişkenler. Dönen
+`attempts` **daima** taşıyıcı sorgu sayısı; yerel sayaç ayrı
+`fulfillment_sync_attempts` alanında. Yeşil: `attempts:7`,
+`fulfillment_sync_attempts:1`.
+
+### 3. İlk gecikme 1 saniyeydi
+
+Manager `schedule_sync( $order_id, 1 )` çağırıyordu — bir saniye — oysa
+`SYNC_FIRST_DELAY = 120`. Rapor iki dakika diyordu, kod bir saniye yapıyordu.
+
+**Düzeltme:** gecikme verilmez, sabit kullanılır. Ölçüm sabitin adına değil
+**gerçek Action Scheduler satırının timestamp farkına** bakar:
+`first_delay_seconds:120`.
+
+### 4. Operatör hiçbir şey görmüyordu
+
+`_kuka_shipping_sync_last_reason` yazılıyor, **hiç okunmuyordu**. Bildirimi
+sessizce takılmış teslim edilmiş bir kargo, gönderilmiş olanla ekranda birebir
+aynı görünüyordu.
+
+**Düzeltme:** Kargo panelinde `Admin::render_sync_state()` dört olguyu ve
+gerektiğinde bir cümleyi gösterir: son yerel sync nedeni, `Deneme: N/5`,
+bekleyen yeniden deneme var/yok, planlama sonucu, ve elle müdahale gerekiyorsa
+doğal Türkçe açıklama. Retry beklerken cümle "otomatik olarak yeniden
+denenecek" der, elle iş gerektiğinde "elle iletilmesi gerekiyor".
+
+`claim_reference_missing` ve `claim_other_record` otomatik retry **almaz**
+(`Notification::claim_blocks()`), ama kalıcı neden yazılır, panelde görünür ve
+**tek** not oluşur; paneli tekrar açmak ya da sorguyu yinelemek notu
+çoğaltmaz (`notes_after_first:1|notes_after_repeat:1`). Bu red bir deneme
+harcamaz.
+
+Başarılı sync'te neden, sayaç ve planlama hatası metaları **birlikte**
+temizlenir; nonretryable bir hata başarı gibi temizlenmez.
+
+- **İlgili dosya:**
+  `SHIP/includes/shipping/class-shipment-manager.php` (`query_status`),
+  `SHIP/includes/shipping/class-shipment-status-poller.php`
+  (`schedule_proves_action`, `run_sync`),
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`record_sync_block`, `record_sync_schedule_error`, `clear_sync_refusal`),
+  `SHIP/includes/shipping/class-shipment-notification.php` (`claim_blocks`),
+  `SHIP/includes/shipping/class-shipment-admin.php` (`render_sync_state`)
+- **Tekrar yaşanırsa ilk bak:** Kargo panelindeki "Müşteri bildirimi" satırı.
+  Kod varsa yerel yarım iş var; "Bekleyen yeniden deneme: yok" ile birlikte
+  görünüyorsa otomasyon bitmiştir ve kargo bilgisini müşteriye elle iletmek
+  gerekir. "Planlama sonucu" satırı doluysa sorun Action Scheduler
+  tarafındadır.
 
 ---
 

@@ -719,6 +719,21 @@ kodla siparişe yazıyor ve taşıyıcıya hiç dokunmayan, sınırlı, ayrı bi
 yerel işçi planlıyor: taşıyıcının çoktan verdiği durum kodunu siparişin
 kendi metasından okuyup işi bitiriyor. Bkz. K-53.
 
+**Tur 14 — kanıt ile cevabı ayırmak.** Yerel retry doğru çalışıyordu ama
+etrafındaki dört sınır yanlıştı. `schedule_sync()`'in boş olmayan her
+cevabı "planlandı" sayılıyordu: `lock_contended` ve `schedule_failed`
+durumlarında bekleyen action sıfırken sistem `follow_up:yes` diyordu.
+Taşıyıcı sorgu sayacı ile yerel retry sayacı tek değişkendi, dolayısıyla
+bir claim reddi poller'ın taşıyıcı bütçesini sıfırlıyordu — yedinci
+sorguda olan sipariş bir raporluyordu. İlk gecikme rapordaki iki dakika
+değil bir saniyeydi. Ve `_kuka_shipping_sync_last_reason` yazılıp hiç
+okunmadığı için bildirimi takılmış bir kargo ekranda gönderilmiş olanla
+aynı görünüyordu. Artık yalnız `created` ve `already_pending` kanıt;
+kanıtlanmayan sonuçta bekleyen action bir kez daha okunuyor, yoksa güvenli
+kod kalıcı yazılıp tek not düşüyor; sayaçlar ayrıldı; gecikme sabitin
+adına değil gerçek Action Scheduler satırına bakılarak ölçülüyor; ve panel
+dört olguyu doğal Türkçe bir müdahale cümlesiyle gösteriyor. Bkz. K-54.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"

@@ -92,6 +92,15 @@ final class Kuka_Island_Shipping_Order_Store {
 	public const META_SYNC_ATTEMPTS      = '_kuka_shipping_sync_attempts';
 
 	/**
+	 * Why the safe local retry could not be BOOKED, safe code only.
+	 *
+	 * Separate from the refusal itself: "the claim was refused" and "and the
+	 * retry could not even be scheduled" are two different facts, and the
+	 * second one is the one that needs a person.
+	 */
+	public const META_SYNC_SCHEDULE_ERROR = '_kuka_shipping_sync_schedule_error';
+
+	/**
 	 * The write whose effect at the carrier is not yet established.
 	 *
 	 * Written the instant a cancellation or an amendment has been ISSUED, and
@@ -1106,15 +1115,57 @@ final class Kuka_Island_Shipping_Order_Store {
 		return $attempts;
 	}
 
-	/** Forget a refusal that has been resolved, counter included. */
+	/**
+	 * Record a refusal a retry cannot fix, WITHOUT counting an attempt.
+	 *
+	 * Returns true only the first time this reason appears, so a screen that is
+	 * reloaded and a query that is repeated cannot multiply the order note.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param string   $code  Allow-listed claim outcome.
+	 */
+	public static function record_sync_block( WC_Order $order, string $code ): bool {
+		if ( (string) $order->get_meta( self::META_SYNC_LAST_REASON, true ) === $code ) {
+			return false;
+		}
+
+		$order->update_meta_data( self::META_SYNC_LAST_REASON, $code );
+		self::persist( $order );
+
+		return true;
+	}
+
+	/**
+	 * Record that the safe local retry could not be booked.
+	 *
+	 * Returns true only the first time this scheduling error appears: a wall
+	 * this module meets on every turn is one fact, not one note per turn.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param string   $code  Scheduler outcome that proved nothing was booked.
+	 */
+	public static function record_sync_schedule_error( WC_Order $order, string $code ): bool {
+		if ( (string) $order->get_meta( self::META_SYNC_SCHEDULE_ERROR, true ) === $code ) {
+			return false;
+		}
+
+		$order->update_meta_data( self::META_SYNC_SCHEDULE_ERROR, $code );
+		self::persist( $order );
+
+		return true;
+	}
+
+	/** Forget a refusal that has been resolved, counter and schedule error included. */
 	public static function clear_sync_refusal( WC_Order $order ): void {
 		if ( '' === (string) $order->get_meta( self::META_SYNC_LAST_REASON, true )
+			&& '' === (string) $order->get_meta( self::META_SYNC_SCHEDULE_ERROR, true )
 			&& 0 === self::sync_attempts( $order ) ) {
 			return;
 		}
 
 		$order->delete_meta_data( self::META_SYNC_LAST_REASON );
 		$order->delete_meta_data( self::META_SYNC_ATTEMPTS );
+		$order->delete_meta_data( self::META_SYNC_SCHEDULE_ERROR );
 		self::persist( $order );
 	}
 

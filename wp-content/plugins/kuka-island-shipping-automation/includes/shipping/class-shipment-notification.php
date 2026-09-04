@@ -214,6 +214,23 @@ final class Kuka_Island_Shipping_Notification {
 		);
 	}
 
+	/**
+	 * Claim refusals no retry can fix, which a person must look at.
+	 *
+	 * A retry would repeat them for ever: the reference is missing, or the
+	 * order's debt names a different shipment. They are still recorded and
+	 * shown, because a delivered parcel with no customer notification is not
+	 * allowed to be silent.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function claim_blocks(): array {
+		return array(
+			'claim_reference_missing',
+			'claim_other_record',
+		);
+	}
+
 	public static function state( WC_Order $order ): string {
 		return (string) $order->get_meta( self::META_STATE, true );
 	}

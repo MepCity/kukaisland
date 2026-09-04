@@ -436,6 +436,21 @@ final class Kuka_Island_Shipping_Status_Poller {
 	}
 
 	/**
+	 * Does this scheduler outcome PROVE an action exists?
+	 *
+	 * Only two of them do. `lock_contended`, `schedule_failed` and
+	 * `scheduler_unavailable` all mean "this call created nothing", and
+	 * treating a non-empty string as evidence is how an order ends up with a
+	 * reported retry that was never booked -- reported as
+	 * `fulfillment_retry:lock_contended` with zero pending actions.
+	 *
+	 * @param string $outcome One of the SCHEDULE_* codes.
+	 */
+	public static function schedule_proves_action( string $outcome ): bool {
+		return in_array( $outcome, array( self::SCHEDULE_CREATED, self::SCHEDULE_ALREADY_PENDING ), true );
+	}
+
+	/**
 	 * Is a FUTURE safe local retry already booked for this order?
 	 *
 	 * @param int $order_id Order id.
@@ -564,7 +579,33 @@ final class Kuka_Island_Shipping_Status_Poller {
 
 		$booked = self::schedule_sync( (int) $order->get_id(), self::delay_for_attempt( $attempts ) );
 
-		return 'sync_retry:' . $reason . ':' . $booked;
+		if ( self::schedule_proves_action( $booked ) ) {
+			return 'sync_retry:' . $reason . ':' . $booked;
+		}
+
+		/*
+		 * The retry could not be booked. Evaluated exactly like the manager's
+		 * first booking: an unproven outcome is only proof if a pending action
+		 * is actually there.
+		 */
+		if ( self::has_pending_sync( (int) $order->get_id() ) ) {
+			return 'sync_retry:' . $reason . ':' . self::SCHEDULE_ALREADY_PENDING;
+		}
+
+		$target = $fresh instanceof WC_Order ? $fresh : $order;
+
+		if ( Kuka_Island_Shipping_Order_Store::record_sync_schedule_error( $target, $booked ) ) {
+			$target->add_order_note(
+				sprintf(
+					/* translators: 1: allow-listed refusal code, 2: scheduler outcome. */
+					__( 'Kargo bildirimi yerel olarak tamamlanamadı (%1$s) ve yeniden deneme planlanamadı (%2$s). Bildirimin elle kontrol edilmesi gerekiyor.', 'kuka-island-shipping-automation' ),
+					$reason,
+					$booked
+				)
+			);
+		}
+
+		return 'sync_not_scheduled:' . $reason . ':' . $booked;
 	}
 
 	private static function acquire_lock( int $order_id ): bool {

@@ -189,6 +189,8 @@ final class Kuka_Island_Shipping_Admin {
 			echo '<p><strong>' . esc_html__( 'Son hata kodu:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['last_error'] ) . '</code></p>';
 		}
 
+		self::render_sync_state( $order, $order_id );
+
 		if ( '' !== $hint ) {
 			echo '<p>' . esc_html( $hint ) . '</p>';
 		}
@@ -286,6 +288,61 @@ final class Kuka_Island_Shipping_Admin {
 	 * @param Kuka_Island_Shipping_Carrier_Registry $registry Registry.
 	 * @return array{module: string, runtime: string, automation: string, adapters: string}
 	 */
+	/**
+	 * The local notification sync, as the operator needs to read it.
+	 *
+	 * Written before this existed, never shown: the reason code went into meta
+	 * and stayed there, so a delivered parcel whose customer notification had
+	 * quietly stalled looked exactly like one that had been sent. Four facts
+	 * and, when it matters, one sentence in plain Turkish saying that a person
+	 * has to act.
+	 *
+	 * @param WC_Order $order    Order.
+	 * @param int      $order_id Order id.
+	 */
+	public static function render_sync_state( WC_Order $order, int $order_id ): void {
+		$reason = (string) $order->get_meta( Kuka_Island_Shipping_Order_Store::META_SYNC_LAST_REASON, true );
+		$failed = (string) $order->get_meta( Kuka_Island_Shipping_Order_Store::META_SYNC_SCHEDULE_ERROR, true );
+
+		if ( '' === $reason && '' === $failed ) {
+			return;
+		}
+
+		$attempts = Kuka_Island_Shipping_Order_Store::sync_attempts( $order );
+		$pending  = Kuka_Island_Shipping_Status_Poller::has_pending_sync( $order_id );
+		$blocked  = in_array( $reason, Kuka_Island_Shipping_Notification::claim_blocks(), true );
+
+		echo '<p><strong>' . esc_html__( 'Müşteri bildirimi:', 'kuka-island-shipping-automation' ) . '</strong> ';
+		echo '<code>' . esc_html( '' !== $reason ? $reason : $failed ) . '</code></p>';
+
+		echo '<p class="description">';
+		printf(
+			/* translators: 1: attempts made, 2: attempt ceiling. */
+			esc_html__( 'Deneme: %1$d/%2$d', 'kuka-island-shipping-automation' ),
+			(int) $attempts,
+			(int) Kuka_Island_Shipping_Status_Poller::MAX_SYNC_ATTEMPTS
+		);
+		echo ' &middot; ';
+		echo esc_html(
+			$pending
+				? __( 'Bekleyen yeniden deneme: var', 'kuka-island-shipping-automation' )
+				: __( 'Bekleyen yeniden deneme: yok', 'kuka-island-shipping-automation' )
+		);
+		echo '</p>';
+
+		if ( '' !== $failed ) {
+			echo '<p><strong>' . esc_html__( 'Planlama sonucu:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $failed ) . '</code></p>';
+		}
+
+		if ( $pending && ! $blocked ) {
+			echo '<p class="description">' . esc_html__( 'Kargo durumu doğru kaydedildi; müşteri bildirimi otomatik olarak yeniden denenecek.', 'kuka-island-shipping-automation' ) . '</p>';
+
+			return;
+		}
+
+		echo '<p>' . esc_html__( 'Kargo durumu doğru kaydedildi fakat müşteri bildirimi otomatik tamamlanamıyor. Kargo bilgisinin müşteriye elle iletilmesi gerekiyor.', 'kuka-island-shipping-automation' ) . '</p>';
+	}
+
 	public static function module_status( Kuka_Island_Shipping_Carrier_Registry $registry ): array {
 		$booted = class_exists( 'Kuka_Island_Shipping_Plugin' )
 			&& Kuka_Island_Shipping_Plugin::instance()->is_booted();
