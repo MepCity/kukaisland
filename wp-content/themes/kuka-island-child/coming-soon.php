@@ -20,12 +20,17 @@ $brand_name   = $site_content['legal']['brand_name'] ?? get_bloginfo( 'name' );
 $owner        = $site_content['legal']['company_title'] ?? '';
 $logo_id      = absint( $site_content['brand']['logo_id'] ?? 0 );
 $emblem_id    = absint( $site_content['brand']['emblem_id'] ?? 0 );
-$media_uri    = get_stylesheet_directory_uri() . '/assets/media/';
 $media_path   = get_stylesheet_directory() . '/assets/media/';
 $has_video    = file_exists( $media_path . 'coming-soon-desktop.mp4' )
 	&& file_exists( $media_path . 'coming-soon-mobile.mp4' )
 	&& file_exists( $media_path . 'coming-soon-desktop-poster.jpg' )
 	&& file_exists( $media_path . 'coming-soon-mobile-poster.jpg' );
+$media_urls   = array(
+	'desktop'        => kuka_island_child_asset_url( 'assets/media/coming-soon-desktop.mp4' ),
+	'mobile'         => kuka_island_child_asset_url( 'assets/media/coming-soon-mobile.mp4' ),
+	'desktop_poster' => kuka_island_child_asset_url( 'assets/media/coming-soon-desktop-poster.jpg' ),
+	'mobile_poster'  => kuka_island_child_asset_url( 'assets/media/coming-soon-mobile-poster.jpg' ),
+);
 
 // Marka kilidi yüklüyse tek görsel yeter; değilse amblem + yazı kurulur.
 $emblem_html = '';
@@ -59,10 +64,10 @@ $wordmark_line = implode( ' ', $words );
 	<?php if ( $has_video ) : ?>
 		<div class="kuka-splash__media" aria-hidden="true">
 			<picture>
-				<source media="(max-width: 47.5em)" srcset="<?php echo esc_url( $media_uri . 'coming-soon-mobile-poster.jpg' ); ?>">
-				<img src="<?php echo esc_url( $media_uri . 'coming-soon-desktop-poster.jpg' ); ?>" alt="" width="1920" height="1080" fetchpriority="high">
+				<source media="(max-width: 47.5em)" srcset="<?php echo esc_url( $media_urls['mobile_poster'] ); ?>">
+				<img src="<?php echo esc_url( $media_urls['desktop_poster'] ); ?>" alt="" width="1920" height="1080" fetchpriority="high">
 			</picture>
-			<video class="kuka-splash__video" loop muted playsinline preload="none" disablepictureinpicture tabindex="-1" data-responsive-video data-mobile-src="<?php echo esc_url( $media_uri . 'coming-soon-mobile.mp4' ); ?>" data-desktop-src="<?php echo esc_url( $media_uri . 'coming-soon-desktop.mp4' ); ?>" data-mobile-poster="<?php echo esc_url( $media_uri . 'coming-soon-mobile-poster.jpg' ); ?>" data-desktop-poster="<?php echo esc_url( $media_uri . 'coming-soon-desktop-poster.jpg' ); ?>"></video>
+			<video class="kuka-splash__video" loop muted playsinline preload="none" disablepictureinpicture tabindex="-1" data-responsive-video data-mobile-src="<?php echo esc_url( $media_urls['mobile'] ); ?>" data-desktop-src="<?php echo esc_url( $media_urls['desktop'] ); ?>" data-mobile-poster="<?php echo esc_url( $media_urls['mobile_poster'] ); ?>" data-desktop-poster="<?php echo esc_url( $media_urls['desktop_poster'] ); ?>"></video>
 		</div>
 	<?php endif; ?>
 	<section class="kuka-splash__mark" aria-labelledby="kuka-splash-status">

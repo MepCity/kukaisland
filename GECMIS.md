@@ -414,7 +414,7 @@ docs/qa/                       ekran görüntüleri
 | 9 | Sipariş e-postası hata görünürlüğü, SMTP hazırlığı, yeniden gönderme yüzeyleri ve kapalı `mail()` davranış testi |
 | 10 | Checkout doğrulama özetleri, alan içi hata/odak davranışı ve iki dilli tarayıcı ölçümü |
 | 11 | Footer ödeme logolarını kaldırma, içerik başlık ölçeği ve site e-postasını tek kaynağa bağlama |
-| Deploy | Veridyen'e canlıya alma, coming soon ekranı |
+| Deploy | Veridyen'e canlıya alma, coming soon ekranı; ardından aynı 25 saniyelik responsive video çifti ana sayfa hero'sunda da kullanıldı. İlk web sıkıştırması hareketli ayrıntıları fazla eritince 2026-09-05'te masaüstü Git geçmişindeki en iyi kaynakla byte olarak aynı 1920×1080 / 13.660.330 bayt sürüme, mobil ise dengeli 900×1600 / 7.136.721 bayt sürüme geçirildi. `preload=none`, Save-Data ve reduced-motion poster kapıları değişmedi |
 | EDM | EDM SOAP/UBL entegrasyonu, güvenli sandbox taslak ve gönderim deneyleri, mükerrerlik/poller/kurtarma korumaları; sonra ayrı ve varsayılan pasif eklentiye çıkarma |
 
 ---

@@ -9,6 +9,16 @@ function kuka_island_child_asset_version( string $relative_path ): string {
 	return is_file( $absolute_path ) ? (string) filemtime( $absolute_path ) : '0.1.0';
 }
 
+/** Return a direct theme asset URL with the same cache-busting contract. */
+function kuka_island_child_asset_url( string $relative_path ): string {
+	$relative_path = ltrim( $relative_path, '/' );
+	return add_query_arg(
+		'ver',
+		kuka_island_child_asset_version( $relative_path ),
+		get_stylesheet_directory_uri() . '/' . $relative_path
+	);
+}
+
 /** Enqueue one child stylesheet. */
 function kuka_island_enqueue_style( string $name, array $dependencies ): void {
 	$relative = 'assets/css/' . $name . '.css';

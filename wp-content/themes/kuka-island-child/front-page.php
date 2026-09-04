@@ -8,9 +8,14 @@ $home = $content['home'] ?? array();
 $whatsapp_url = kuka_island_whatsapp_url();
 $desktop = ! empty( $hero['desktop_image_id'] ) ? wp_get_attachment_image_url( $hero['desktop_image_id'], 'full' ) : '';
 $mobile = ! empty( $hero['mobile_image_id'] ) ? wp_get_attachment_image_url( $hero['mobile_image_id'], 'full' ) : $desktop;
-$hero_video_uri  = get_stylesheet_directory_uri() . '/assets/media/';
 $hero_video_path = get_stylesheet_directory() . '/assets/media/';
 $has_hero_video  = file_exists( $hero_video_path . 'coming-soon-desktop.mp4' ) && file_exists( $hero_video_path . 'coming-soon-mobile.mp4' );
+$hero_video_urls = array(
+	'desktop'        => kuka_island_child_asset_url( 'assets/media/coming-soon-desktop.mp4' ),
+	'mobile'         => kuka_island_child_asset_url( 'assets/media/coming-soon-mobile.mp4' ),
+	'desktop_poster' => kuka_island_child_asset_url( 'assets/media/coming-soon-desktop-poster.jpg' ),
+	'mobile_poster'  => kuka_island_child_asset_url( 'assets/media/coming-soon-mobile-poster.jpg' ),
+);
 $category_items = array_values( array_filter( kuka_island_category_navigation(), static fn( array $item ): bool => $item['home'] ) );
 $products_shortcode = '[products limit="4" columns="4" orderby="date"';
 if ( 'featured' === ( $home['new_arrivals_source'] ?? 'latest' ) ) { $products_shortcode .= ' visibility="featured"'; }
@@ -31,7 +36,7 @@ $hero_title_length = function_exists( 'mb_strlen' ) ? mb_strlen( $hero_title ) :
 <?php if ( ! empty( $hero['enabled'] ) ) : ?>
 <section class="kuka-hero kuka-hero--<?php echo esc_attr( $hero['text_tone'] ?? 'light' ); ?> kuka-hero--<?php echo esc_attr( $hero['alignment'] ?? 'left' ); ?><?php echo $hero_title_length > 32 ? ' kuka-hero--long-title' : ''; ?>" style="--hero-desktop:url('<?php echo esc_url( $desktop ); ?>');--hero-mobile:url('<?php echo esc_url( $mobile ); ?>')">
 	<?php if ( $has_hero_video ) : ?>
-		<video class="kuka-hero__video" loop muted playsinline preload="none" poster="<?php echo esc_url( $hero_video_uri . 'coming-soon-desktop-poster.jpg' ); ?>" disablepictureinpicture tabindex="-1" aria-hidden="true" data-responsive-video data-mobile-src="<?php echo esc_url( $hero_video_uri . 'coming-soon-mobile.mp4' ); ?>" data-desktop-src="<?php echo esc_url( $hero_video_uri . 'coming-soon-desktop.mp4' ); ?>" data-mobile-poster="<?php echo esc_url( $hero_video_uri . 'coming-soon-mobile-poster.jpg' ); ?>" data-desktop-poster="<?php echo esc_url( $hero_video_uri . 'coming-soon-desktop-poster.jpg' ); ?>"></video>
+		<video class="kuka-hero__video" loop muted playsinline preload="none" poster="<?php echo esc_url( $hero_video_urls['desktop_poster'] ); ?>" disablepictureinpicture tabindex="-1" aria-hidden="true" data-responsive-video data-mobile-src="<?php echo esc_url( $hero_video_urls['mobile'] ); ?>" data-desktop-src="<?php echo esc_url( $hero_video_urls['desktop'] ); ?>" data-mobile-poster="<?php echo esc_url( $hero_video_urls['mobile_poster'] ); ?>" data-desktop-poster="<?php echo esc_url( $hero_video_urls['desktop_poster'] ); ?>"></video>
 	<?php endif; ?>
 	<div class="kuka-hero__content"><p class="kuka-eyebrow"><?php echo esc_html( $hero['eyebrow'] ?? '' ); ?></p><h1><span class="kuka-hero__title-main"><?php echo esc_html( $hero_title_main ); ?></span><?php if ( $hero_title_est ) : ?><span class="kuka-hero__est"><?php echo esc_html( $hero_title_est ); ?></span><?php endif; ?></h1><p><?php echo esc_html( $hero['copy'] ?? '' ); ?></p><a class="kuka-button" href="<?php echo esc_url( kuka_island_content_url( $hero['button_url'] ?? '/magaza/' ) ); ?>"><?php echo esc_html( $hero['button_label'] ?? '' ); ?></a></div>
 </section>
