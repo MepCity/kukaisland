@@ -312,7 +312,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 				 * other notification state answers 'already_sent',
 				 * 'manual_review' or 'not_due' without touching the transport.
 				 */
-				$notified = Kuka_Island_Shipping_Notification::on_fulfilled( $order, $fulfillment, false );
+				$notified = Kuka_Island_Shipping_Notification::on_fulfilled( $order, $fulfillment, false, $reference );
 
 				return array(
 					'ok'             => true,
@@ -338,7 +338,7 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 			 * After the save, deliberately: an e-mail about a dispatch that was
 			 * not persisted is worse than a late one.
 			 */
-			$notified = Kuka_Island_Shipping_Notification::on_fulfilled( $order, $fulfillment, $first_transition );
+			$notified = Kuka_Island_Shipping_Notification::on_fulfilled( $order, $fulfillment, $first_transition, $reference );
 
 			return array(
 				'ok'             => true,

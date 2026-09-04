@@ -132,6 +132,15 @@ final class Kuka_Island_Core_Email_Design {
 	/**
 	 * Bir adresin e-postaya konulabilir olup olmamasının gerekçesi.
 	 *
+	 * NE ÖLÇÜLDÜĞÜ, TAM OLARAK: adresin BİÇİMİ. Şema `https` mi, sunucu adı
+	 * açıkça yerel ya da özel bir aralık mı, uzantı SVG mi. DNS sorgusu
+	 * yapılmaz, HTTP isteği atılmaz; bu kapı bir adresin gerçekten
+	 * çözülebildiğini ya da dosyanın orada durduğunu KANITLAMAZ. Yanlış yazılmış
+	 * bir alan adı ya da 404 veren bir yol buradan geçer.
+	 *
+	 * Kapının işi tek bir sınıf hatayı kesmek: e-postaya erişilemeyeceği
+	 * biçimden belli olan bir adres koymak — `http://localhost:8080/...` gibi.
+	 *
 	 * Dönen değerler ölçülebilir olsun diye sabit: `ok`, `empty`, `not_https`,
 	 * `private_host`, `vector`.
 	 *
@@ -152,7 +161,7 @@ final class Kuka_Island_Core_Email_Design {
 			return 'not_https';
 		}
 
-		if ( '' === $host || ! self::host_is_public( $host ) ) {
+		if ( '' === $host || ! self::host_looks_public( $host ) ) {
 			return 'private_host';
 		}
 
@@ -165,11 +174,15 @@ final class Kuka_Island_Core_Email_Design {
 	}
 
 	/**
-	 * Bir sunucu adı internetten çözülebilir mi?
+	 * Sunucu adı BİÇİM olarak dışarıya açık bir adres mi?
+	 *
+	 * Bir ad çözümlemesi değil, bir biçim kontrolü: nokta içermeyen adlar,
+	 * bilinen yerel son ekler ve özel/döngü IP aralıkları reddedilir. Geçen bir
+	 * adın gerçekten çözüldüğü İDDİA EDİLMEZ.
 	 *
 	 * @param string $host Küçük harfe indirilmiş sunucu adı.
 	 */
-	private static function host_is_public( string $host ): bool {
+	private static function host_looks_public( string $host ): bool {
 		if ( 'localhost' === $host || ! str_contains( $host, '.' ) ) {
 			return false;
 		}
@@ -183,7 +196,8 @@ final class Kuka_Island_Core_Email_Design {
 		$literal = filter_var( trim( $host, '[]' ), FILTER_VALIDATE_IP );
 
 		if ( false !== $literal ) {
-			// Özel ve döngü aralıkları dışarıdan erişilemez.
+			// Özel ve döngü aralıkları dışarıdan erişilemez; geri kalanın
+			// erişilebilir olduğu iddia edilmez, yalnız yerel olmadığı.
 			return false !== filter_var(
 				$literal,
 				FILTER_VALIDATE_IP,

@@ -50,11 +50,19 @@ Geri kalan her şey kancayla çözülür: `woocommerce_email_styles`,
 verir ve kopya elden geçirilir. `WOOCOMMERCE_OVERRIDES=8` sayısı da sabitlidir:
 dördüncü bir e-posta şablonu sessizce kopyalanamaz.
 
-## Görsel kapısı — tek kural
+## Görsel kapısı — tek kural, ve ne kanıtlamadığı
 
 `Email_Design::image_gate()` bir adresi yalnız şu koşullarda geçirir: şema
-**https**, sunucu internetten çözülebilir, uzantı **SVG değil**. Red gerekçesi
-ölçülebilir bir koddur: `not_https`, `private_host`, `vector`, `empty`.
+**https**, sunucu adı **biçim olarak** yerel ya da özel bir aralık değil,
+uzantı **SVG değil**. Red gerekçesi ölçülebilir bir koddur: `not_https`,
+`private_host`, `vector`, `empty`.
+
+**Kapı gerçek erişilebilirliği ÖLÇMEZ.** DNS sorgusu yapmaz, HTTP isteği
+atmaz. `https://yanlis-alan-adi.example.com/a.jpg` ya da 404 veren bir yol
+buradan geçer ve müşteride yine kırık resim olur. Kapının işi tek bir sınıf
+hatayı kesmektir: adresin erişilemez olduğu **biçiminden** belli olan durum —
+`http://localhost:8080/...` gibi. Gerçek erişilebilirlik ancak üretim alan
+adında bir gönderimle görülür.
 
 Bu kapı olmadan yerel ortamda ürün fotoğrafının adresi
 `http://localhost:8080/wp-content/uploads/...` olur. Şablon `show_image=true`
@@ -73,6 +81,16 @@ Logo panelden gelir: **Site Görünümü > Marka > Logo**, yalnız attachment ID
 saklanır. Adres kapıdan geçerse `<img>`, geçmezse **tipografik wordmark**
 (mağaza adının büyük harfli hâli) yazılır. Hayalî ya da yeni bir logo
 üretilmez, SVG ve yerel adres dış e-postaya konulmaz.
+
+### Panelin şu andaki hâli — 4 Eylül 2026
+
+`logo_id` **0**, `email_banner_id` **0**. Yani bu kurulumda e-postada
+**logo görseli yok**: müşteri tipografik "KUKA ISLAND" wordmark'ını görüyor ve
+banner hiç render edilmiyor. Ölçüm bunu açıkça yazar
+(`configured_logo_id:0`, `panel_banner_id:0`); wordmark'ın görünmesi logonun
+yapılandırıldığı anlamına **gelmez**, tam tersini gösterir. Operatör panelden
+bir logo seçtiğinde ve o görselin adresi halka açık HTTPS olduğunda `<img>`
+çıkar — ölçümün `public_logo_img:2` satırı bunu aynı kod yolundan kanıtlar.
 
 ## Banner
 
@@ -129,7 +147,7 @@ Takip adresi yoksa ya da `http(s)` değilse **düğme basılmaz**; boş `href`
 | `EMAIL_DESIGN_IMAGES` | yerelde `<img>` 0, halka açık HTTPS'te 1, alt metin ürün adından, kapının yedi gerekçesi |
 | `EMAIL_DESIGN_LOGO` | logo yoksa wordmark, varsa ve halka açıksa `<img>`, varsa ama yerelse yine wordmark |
 | `EMAIL_DESIGN_ACCESS` | misafirde Hesabım 0, imzalı bağlantı 1, üyelik açıkken Hesabım var, adres yokken düğme 0, boş `href` 0 |
-| `EMAIL_DESIGN_BANNER` | alan boşken 0, doluyken 1, ürünler yine görünür |
+| `EMAIL_DESIGN_BANNER` | panelde seçili banner kimliği, alan boşken 0, doluyken 1, ürünler yine görünür |
 | `EMAIL_DESIGN_SECRETS` | parola müşteri HTML'inde 0; kullanıcı adı bu kurulumda mağazanın **yayınlanmış** adresiyle aynı ve modül şablonlarında 0 |
 | `EMAIL_DESIGN_ADMIN` | yönetici iletisi çalışıyor, müşteri etiketi taşımıyor |
 | `EMAIL_DESIGN_PLAIN_TEXT` | düz metinde HTML etiketi 0, takip numarası var |

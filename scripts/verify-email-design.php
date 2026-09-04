@@ -775,7 +775,8 @@ printf(
 );
 
 printf(
-	'EMAIL_DESIGN_BANNER=unconfigured:%d|configured:%d|items_still_shown:%d' . PHP_EOL,
+	'EMAIL_DESIGN_BANNER=panel_banner_id:%d|unconfigured:%d|configured:%d|items_still_shown:%d' . PHP_EOL,
+	class_exists( 'Kuka_Island_Core_Site_Appearance' ) ? (int) ( Kuka_Island_Core_Site_Appearance::get()['brand']['email_banner_id'] ?? 0 ) : -1,
 	(int) $facts['tr_fulfillment']['banner'],
 	(int) $banner_facts['banner'],
 	(int) $banner_facts['items']

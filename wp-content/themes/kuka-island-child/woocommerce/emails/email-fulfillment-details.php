@@ -11,10 +11,12 @@
  *   - misafir siparişinde bile "Hesabım > Siparişler" bağlantısı,
  *   - 48 pikselik ürün görseli.
  *
- * Görsel adresi tek bir kapıdan geçer: yalnız halka açık HTTPS. Yerel
- * ortamda ürün görselinin adresi `http://localhost:8080/...` olur ve Gmail bu
- * adrese erişemez; o durumda kırık bir resim çerçevesi basmak yerine temiz
- * tipografik satır kullanılır ve HTML'e yalnız bir ölçüm kodu düşülür.
+ * Görsel adresi tek bir kapıdan geçer. Kapı adresin BİÇİMİNE bakar — şema
+ * https mi, sunucu açıkça yerel/özel mi, uzantı SVG mi — DNS ya da HTTP
+ * denemesi YAPMAZ. Yerel ortamda ürün görselinin adresi
+ * `http://localhost:8080/...` olur ve Gmail bu adrese erişemez; o durumda kırık
+ * bir resim çerçevesi basmak yerine temiz tipografik satır kullanılır ve HTML'e
+ * yalnız bir ölçüm kodu düşülür.
  *
  * Kaynak: WooCommerce templates/emails/email-fulfillment-details.php sürüm 10.7.0.
  *

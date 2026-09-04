@@ -39,6 +39,24 @@
  * person. This is the same rule the carrier writes follow -- see
  * Order_Store::begin_mutation() -- applied to the mail transport.
  *
+ * WHY THERE IS A LOCK AS WELL AS A STATE. The state alone is a read followed
+ * by a write, and two real processes can sit between them. A scheduled status
+ * query and an operator's "durumu sorgula" press both load the order at the
+ * start of their request; both then see a record that is not fulfilled yet and
+ * an empty notification state, and both send. Measured with two processes and
+ * two MySQL sessions before this lock existed: mail attempts 2, notification
+ * events 2 -- and the second write left `sent|attempts:1` behind, so the state
+ * machine's own evidence hid the duplicate. The decision is therefore taken
+ * under an order-keyed advisory lock, and the records it decides from are
+ * re-read from the database INSIDE the lock.
+ *
+ * The lock waits for nobody: GET_LOCK with a zero timeout either takes it or
+ * refuses immediately. A process that does not get it does not send, and does
+ * not wait either -- which is also why it cannot deadlock against the carrier
+ * mutation lock (Order_Store / Shipment_Manager, same zero timeout): no process
+ * in this module ever blocks holding a lock, so no cycle can form. The lock
+ * covers the notification lifecycle only; the carrier writes keep their own.
+ *
  * NOTHING SECRET IS RECORDED. The transport's own error text can carry the SMTP
  * user name, the server's banner or part of the message, so it is never stored:
  * only an allow-listed code reaches meta, notes and history.
@@ -79,6 +97,15 @@ final class Kuka_Island_Shipping_Notification {
 
 	/** The WooCommerce action a person's "notify customer" tick fires. */
 	private const CREATED_NOTIFICATION = 'woocommerce_fulfillment_created_notification';
+
+	/**
+	 * Advisory lock name prefix, order-keyed.
+	 *
+	 * Deliberately NOT the carrier mutation prefix: a notification must not be
+	 * able to refuse a carrier write, and a carrier write must not be able to
+	 * refuse a notification. Both are zero-wait, so neither can block the other.
+	 */
+	private const LOCK_PREFIX = 'kuka_ship_notify_';
 
 	/**
 	 * Codes this class is allowed to store. Anything else becomes 'mail_failed'.
@@ -129,12 +156,71 @@ final class Kuka_Island_Shipping_Notification {
 	/**
 	 * Send the customer e-mail for a fulfilment that has just become fulfilled.
 	 *
+	 * Everything here happens under an order-keyed, zero-wait advisory lock,
+	 * and the order and the fulfilment record are re-read from the database
+	 * once the lock is held. The caller's objects were loaded before its own
+	 * decision to write, so they cannot answer "has anybody already notified
+	 * this customer?" -- only a fresh read can.
+	 *
 	 * @param WC_Order $order            Order.
 	 * @param object   $fulfillment      This module's own fulfilment record.
 	 * @param bool     $first_transition True when THIS call flipped the record.
+	 * @param string   $reference        Carrier reference, for the fresh re-read.
 	 * @return array{sent: bool, outcome: string, code: string, attempts: int}
 	 */
-	public static function on_fulfilled( WC_Order $order, $fulfillment, bool $first_transition ): array {
+	public static function on_fulfilled( WC_Order $order, $fulfillment, bool $first_transition, string $reference = '' ): array {
+		$order_id = (int) $order->get_id();
+
+		if ( ! self::acquire_lock( $order_id ) ) {
+			/*
+			 * Another process is inside this decision right now. It does not
+			 * matter what it decides: this process must not send, and must not
+			 * wait for it either. The winner's result is durable, so the next
+			 * poll reads it and answers 'already_sent' without a second
+			 * message.
+			 */
+			return self::outcome( false, 'lock_contended', self::code( $order ), self::attempts( $order ) );
+		}
+
+		try {
+			$fresh = self::reload_order( $order_id );
+
+			if ( ! $fresh instanceof WC_Order ) {
+				return self::outcome( false, 'order_unreadable', '', 0 );
+			}
+
+			if ( '' === $reference ) {
+				$reference = is_object( $fulfillment ) && method_exists( $fulfillment, 'get_meta' )
+					? (string) $fulfillment->get_meta( Kuka_Island_Shipping_Fulfillment_Writer::META_REFERENCE, true )
+					: '';
+			}
+
+			$record = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $fresh, $reference );
+
+			if ( null === $record ) {
+				/*
+				 * The record this notification is about cannot be re-read. A
+				 * "your parcel has shipped" message for a dispatch that cannot
+				 * be confirmed is not sent.
+				 */
+				return self::outcome( false, 'record_unreadable', self::code( $fresh ), self::attempts( $fresh ) );
+			}
+
+			return self::decide( $fresh, $record, $first_transition );
+		} finally {
+			self::release_lock( $order_id );
+		}
+	}
+
+	/**
+	 * The decision itself, taken only from records read inside the lock.
+	 *
+	 * @param WC_Order $order            Freshly read order.
+	 * @param object   $fulfillment      Freshly read fulfilment record.
+	 * @param bool     $first_transition True when the caller flipped the record.
+	 * @return array{sent: bool, outcome: string, code: string, attempts: int}
+	 */
+	private static function decide( WC_Order $order, $fulfillment, bool $first_transition ): array {
 		$state = self::state( $order );
 
 		if ( self::STATE_SENT === $state ) {
@@ -164,6 +250,15 @@ final class Kuka_Island_Shipping_Notification {
 			}
 		} elseif ( ! $first_transition ) {
 			// Nothing is owed: the record was already fulfilled before this poll.
+			return self::outcome( false, 'not_due', self::code( $order ), self::attempts( $order ) );
+		}
+
+		/*
+		 * Read inside the lock, from the database: the record must really be
+		 * fulfilled right now. The caller decided to write before this lock was
+		 * held, so its own view is not evidence.
+		 */
+		if ( ! self::is_fulfilled( $fulfillment ) ) {
 			return self::outcome( false, 'not_due', self::code( $order ), self::attempts( $order ) );
 		}
 
@@ -381,5 +476,64 @@ final class Kuka_Island_Shipping_Notification {
 	/** An order note carrying only this project's own sentence. */
 	private static function note( WC_Order $order, string $message ): void {
 		$order->add_order_note( $message );
+	}
+
+	/** Is this fulfilment record fulfilled, as the database has it right now? */
+	private static function is_fulfilled( $fulfillment ): bool {
+		return is_object( $fulfillment )
+			&& method_exists( $fulfillment, 'get_is_fulfilled' )
+			&& (bool) $fulfillment->get_is_fulfilled();
+	}
+
+	/**
+	 * The order as the database has it, not as this process remembers it.
+	 *
+	 * The caller loaded its order object at the start of its own work, before
+	 * any decision was written. Under HPOS that object also sits in this
+	 * process's order cache, so wc_get_order() would hand back the same stale
+	 * meta. It is dropped from the caches first; what comes back is a read.
+	 */
+	private static function reload_order( int $order_id ): ?WC_Order {
+		if ( function_exists( 'wc_get_container' ) && class_exists( '\Automattic\WooCommerce\Caches\OrderCache' ) ) {
+			try {
+				$cache = wc_get_container()->get( \Automattic\WooCommerce\Caches\OrderCache::class );
+
+				if ( is_object( $cache ) && method_exists( $cache, 'remove' ) ) {
+					$cache->remove( $order_id );
+				}
+			} catch ( Throwable $unavailable ) {
+				unset( $unavailable );
+			}
+		}
+
+		wp_cache_delete( $order_id, 'orders' );
+		wp_cache_delete( $order_id, 'post_meta' );
+
+		$order = wc_get_order( $order_id );
+
+		return $order instanceof WC_Order ? $order : null;
+	}
+
+	/**
+	 * Take the notification lock for one order, or refuse immediately.
+	 *
+	 * Zero timeout, per connection: a second process gets 0 rather than
+	 * waiting, which is what makes a deadlock against the carrier mutation lock
+	 * impossible -- nothing in this module ever waits while holding a lock.
+	 */
+	private static function acquire_lock( int $order_id ): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$acquired = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', self::LOCK_PREFIX . $order_id ) );
+
+		return '1' === (string) $acquired;
+	}
+
+	private static function release_lock( int $order_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::LOCK_PREFIX . $order_id ) );
 	}
 }

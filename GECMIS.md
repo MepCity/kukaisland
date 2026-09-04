@@ -666,6 +666,18 @@ tipografik wordmark yazılıyor. Vendor şablonlarının tamamı kopyalanmadı;
 yalnız filtresi olmayan üç dosya kopyalandı, kaynak sürümleri kaydedildi ve
 yukarı akış farkı ölçümle kilitlendi. Bkz. K-49 ve docs/EPOSTA_TASARIMI.md.
 
+**Tur 10 — iki süreç, tek e-posta.** Bildirim durum makinesi kilitsiz bir
+"oku, sonra yaz"dı. Zamanlanmış durum sorgusu ile operatörün "durumu
+sorgula" basışı aynı siparişe aynı anda girdiğinde ikisi de `fulfilled`
+olmayan bir kayıt ve boş bir bildirim durumu görüyor, ikisi de
+gönderiyordu. Sıralı tekrar-poll ölçümleri bunu göstermiyordu; iki gerçek
+PHP süreci ve iki ayrı MySQL oturumu gösterdi: iki e-posta, iki bildirim
+olayı, ve ikinci yazma birincinin metasını ezdiği için geride kalan kayıt
+tek gönderim gibi görünüyordu. Karar artık sipariş bazlı, sıfır beklemeli
+bir advisory lock altında veriliyor ve kayıtlar kilit içinde veritabanından
+taze okunuyor; kilidi alamayan süreç göndermiyor ve beklemiyor, dolayısıyla
+taşıyıcı mutasyon kilidiyle deadlock kurulamıyor. Bkz. K-50.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"

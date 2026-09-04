@@ -138,6 +138,8 @@ printf '%s\n' "$shipping_behaviour"
 
 shipping_lifecycle=$(./scripts/verify-shipping-activation-lifecycle.sh)
 printf '%s\n' "$shipping_lifecycle"
+shipping_race=$(docker compose run --rm -T wp-cli php /project-scripts/verify-shipping-notification-race.php measure)
+printf '%s\n' "$shipping_race"
 
 # The cache custodian's SHUTDOWN path, which needs its own processes: a run that
 # exits or crashes before its cleanup must still leave the shop's carrier
@@ -482,7 +484,7 @@ expect_sandbox_line() {
 expect_shipping_match() {
   label=$1
   pattern=$2
-  if printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" "$dhl_runner_offline" "$shipping_custodian" | grep -Eq "$pattern"; then
+  if printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" "$dhl_runner_offline" "$shipping_custodian" "$shipping_race" | grep -Eq "$pattern"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected pattern $pattern)" >&2
@@ -1027,6 +1029,10 @@ expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIF
 # Activation and deactivation, driven for real through WP-CLI.
 expect_shipping_match "the shipping lifecycle test records its starting state and has its dependencies" "^SHIPPING_LIFECYCLE_START=PASS\\|measured:wp_cli\\|plugin:(in)?active\\|core:active\\|woocommerce:active\\|gate_option:(yes|no|absent)\\|.*\\|starting_state:recorded_not_asserted$"
 expect_shipping_match "activation registers every hook and opens no carrier route" "^SHIPPING_LIFECYCLE_ACTIVATION=PASS\\|active:yes\\|composition_root:loaded\\|booted:yes\\|missing_deps:none\\|classes_absent:none\\|hooks_unregistered:none\\|order_status_routes:none\\|runtime_gate_open:yes\\|automation:off\\|poll_actions:0$"
+expect_shipping_match "two concurrent processes on the same first dispatch send one e-mail" "^SHIPPING_NOTIFICATION_CONCURRENT_FIRST_DISPATCH=PASS\\|processes:2\\|both_started_from_unfulfilled:yes\\|lock_winners:1\\|mail_attempts:1\\|notification_events:1\\|final_state:sent\\|attempts:1\\|order_status:pending$"
+expect_shipping_match "the loser of the race declines instead of waiting" "^SHIPPING_NOTIFICATION_RACE_OUTCOMES=(lock_contended,sent|sent,lock_contended)$"
+expect_shipping_match "a stale second process decides from the database, not from its own memory" "^SHIPPING_NOTIFICATION_STALE_SECOND_PROCESS=PASS\\|both_started_from_unfulfilled:yes\\|first:sent\\|second:already_sent\\|mail_attempts:1\\|notification_events:1\\|final_state:sent\\|attempts:1\\|order_status:pending$"
+expect_shipping_match "the notification lock is released and the race fixtures leave nothing" "^SHIPPING_NOTIFICATION_RACE_HYGIENE=lock_released:yes\\|outbound_http:0\\|worker_errors:0$"
 expect_shipping_match "WooCommerce's own notify-customer route still sends while the plugin is inactive" "^SHIPPING_MANUAL_ROUTE_WITH_PLUGIN_INACTIVE=PASS\\|measured:fresh_wp_process_with_plugin_inactive\\|plugin_active:no\\|module_loaded:no\\|api:available\\|notify_false_mails:0\\|notify_true_mails:1\\|subject:present$"
 expect_shipping_match "deactivation unloads everything, closes the gate and keeps the audit trail" "^SHIPPING_LIFECYCLE_DEACTIVATION=PASS\\|classes_declared:none\\|hooks_registered:none\\|pending_poll_actions:0\\|shipping_meta_preserved:[0-9]+\\|runtime_gate_closed:yes\\|core_works:yes$"
 expect_shipping_match "the shipping lifecycle test restores the state it found" "^SHIPPING_LIFECYCLE_RESTORED=PASS\\|plugin:(in)?active\\|gate_option:(yes|no)\\|active_plugins_identical:yes\\|"
@@ -1499,7 +1505,7 @@ expect_email_design_match "the shipping copy is natural in both languages and ca
 expect_email_design_line "product images are only sent when the address is publicly reachable" "EMAIL_DESIGN_IMAGES=localhost_img:0|localhost_gate:not_https|public_https_img:1|public_https_gate:0|alt_from_product:yes|gate:public:ok,localhost:not_https,https_lan:private_host,loopback:private_host,test_tld:private_host,vector:vector,empty:empty"
 expect_email_design_line "the logo falls back to a typographic wordmark instead of a broken image" "EMAIL_DESIGN_LOGO=configured_logo_id:0|no_logo_wordmark:1|public_logo_img:2|public_logo_wordmark:0|local_logo_img:0|local_logo_wordmark:1"
 expect_email_design_line "guests get a signed tracking link, never a My Account link" "EMAIL_DESIGN_ACCESS=membership:off|guest_my_account:0|guest_tokenized:1|customer_my_account_membership_off:0|customer_my_account_membership_on:2|tracking_button:1|no_url_button:0|empty_href:0"
-expect_email_design_line "the banner renders only when the panel field holds a public image" "EMAIL_DESIGN_BANNER=unconfigured:0|configured:1|items_still_shown:1"
+expect_email_design_line "the banner renders only when the panel field holds a public image" "EMAIL_DESIGN_BANNER=panel_banner_id:0|unconfigured:0|configured:1|items_still_shown:1"
 expect_email_design_line "no SMTP credential is introduced by the e-mail templates" "EMAIL_DESIGN_SECRETS=password_in_customer_html:0|username_in_module_templates:0|username_is:public_brand_address"
 expect_email_design_line "the admin e-mail still works on the shared skeleton and carries no customer label" "EMAIL_DESIGN_ADMIN=rendered:yes|order_number:yes|customer_eyebrow:0|shared_skeleton:yes"
 expect_email_design_line "the plain-text version stays plain and keeps the tracking number" "EMAIL_DESIGN_PLAIN_TEXT=html_tags:0|tracking_number:present|bytes:nonempty"

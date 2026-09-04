@@ -64,6 +64,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | `FS_CHMOD_FILE` sabitinin varlığı bir eklentinin yükleme sırasına ve `get_filesystem_method()` cevabına bağlıydı | Core sabiti WordPress'in kendi formülüyle, yalnız tanımsızsa tanımlıyor; vendor dosyasına dokunulmadı (K-47) |
 | 2026-09-04 | Gerçek SMTP açılınca e-posta kabul ölçümleri kırıldı: üçü panelden değişen marka adresini sabit yazıyordu, ikisi `mail()` yerine SMTP'ye kayıp her koşuda dışarı gerçek mesaj bırakıyordu | Ölçümler adres yerine tek kaynağa bağlandı; `disabled-mail` taşıyıcısı `isMail()`'e geri çekilip `DISABLED_MAIL_TRANSPORT` ile ölçülüyor (K-48) |
 | 2026-09-04 | Kargo e-postası WooCommerce'in 600 pikselik varsayılan görünümünde, ham `dhl` taşıyıcı adıyla ve misafirde Hesabım bağlantısıyla gidiyordu; ürün fotoğrafı Gmail'de `localhost` adresi yüzünden görünmüyordu | Ortak tasarım katmanı, 780 pikselik mobil uyumlu iskelet ve tek görsel kapısı; sözleşme `docs/EPOSTA_TASARIMI.md` (K-49) |
+| 2026-09-04 | İki eşzamanlı süreç aynı ilk `fulfilled` geçişine girip müşteriye iki e-posta gönderiyordu; ikinci yazma birincinin metasını ezdiği için durum makinesi tek gönderim gibi görünüyordu | Bildirim kararı sipariş bazlı sıfır beklemeli advisory lock altına alındı ve kayıtlar kilit içinde veritabanından taze okunuyor (K-50) |
 
 ---
 
@@ -1924,6 +1925,73 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `EMAIL_DESIGN_IMAGES` satırındaki
   `localhost_gate`. `not_https` ise kapı çalışıyor ve müşteriye kırık resim
   gitmiyor demektir; üretimde `public_https_img:1` beklenir.
+
+---
+
+## K-50 — İki eşzamanlı süreç aynı kargoya iki e-posta gönderiyordu
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Tekrar-poll ölçümleri yeşilken müşteri iki "kargoya verildi"
+  e-postası alabiliyordu. O ölçümler SIRALI çalışıyor: biri bitmeden öteki
+  başlamaz ve o sırada durum makinesi çoktan `sent` yazmış olur. Yarışı
+  kanıtlamazlar.
+- **Kesin kök neden:** Bildirim kararı kilitsiz bir "oku, sonra yaz"dı.
+  `query_status()` mutasyon kilidi almıyor; `sync_status()` fulfillment
+  durumunu ve `_kuka_shipping_notify_state` metasını ayrı ayrı, kilitsiz
+  okuyordu. Üretimdeki iki yol — Action Scheduler'ın zamanlanmış sorgusu ve
+  operatörün "durumu sorgula" basışı — siparişi isteğin BAŞINDA belleğe alır.
+  İkisi de `fulfilled` olmayan bir kayıt ve boş bir bildirim durumu görüp
+  gönderiyordu.
+- **Ölçülen kırmızı** (iki gerçek PHP süreci, iki ayrı MySQL oturumu, ortak
+  mikro saniye bariyeri):
+
+  ```text
+  SHIPPING_NOTIFICATION_CONCURRENT_FIRST_DISPATCH=FAIL|processes:2
+  |both_started_from_unfulfilled:yes|lock_winners:2|mail_attempts:2
+  |notification_events:2|final_state:sent|attempts:1|order_status:pending
+  ```
+
+  İki e-posta, iki bildirim olayı — ve **ikinci yazma birincinin metasını
+  eziyor**, dolayısıyla `sent|attempts:1` tek gönderim gibi görünüyor. Durum
+  makinesinin kendi kanıtı mükerrer iletiyi saklıyordu.
+- **Uygulanan düzeltme:** Bildirim kararı sipariş bazlı, **sıfır beklemeli**
+  bir advisory lock altına alındı: `kuka_ship_notify_<order_id>`. Kilit
+  alındıktan sonra sipariş **veritabanından taze okunuyor** (HPOS sipariş
+  önbelleği düşürülerek) ve fulfillment kaydı `find_own()` ile yeniden
+  okunuyor; "ilk geçiş mi" ve durum kararı yalnız bu taze kayıtlardan
+  veriliyor. SMTP niyeti yine dış çağrıdan **önce** kalıcı yazılıyor.
+- **Kilidi alamayan süreç ne yapar:** hiçbir şey göndermez, `lock_contended`
+  döner ve **beklemez**. Kazananın sonucu kalıcı olduğu için sonraki poll onu
+  taze okur ve `already_sent` der.
+- **Neden deadlock üretmez:** Bu modüldeki bütün adlandırılmış kilitler
+  `GET_LOCK(..., 0)`, yani hiçbir süreç bir kilidi tutarken başka bir kilidi
+  BEKLEMEZ. Bekleme olmadan döngü kurulamaz. Bildirim kilidi taşıyıcı mutasyon
+  kilidinden (`kuka_ship_mutate_`) ayrı bir addır: bir bildirim taşıyıcı
+  yazmasını, taşıyıcı yazması bildirimi reddedemez.
+- **İki yarım düzeltme, iki ayrı ölçüm:** kilit tek başına yetmez, çünkü
+  kazanan kilidi bıraktıktan sonra giren süreç onu çekişmesiz alır ve elindeki
+  meta bayattır. `SHIPPING_NOTIFICATION_STALE_SECOND_PROCESS` o sıralamayı
+  ölçer: `first:sent|second:already_sent`. Taze okuma kaldırılınca bu ölçüm
+  FAIL verir (`second:not_due` — karar bayat durumdan, kazara güvenli).
+- **İlgili dosya:**
+  `SHIP/includes/shipping/class-shipment-notification.php` (`on_fulfilled`,
+  `decide`, `reload_order`, `acquire_lock`),
+  `SHIP/includes/shipping/class-fulfillment-writer.php` (`sync_status`
+  referansı geçiriyor), `scripts/verify-shipping-notification-race.php`
+- **Kapsam dışı bırakılan, dürüstçe:** Fulfillment kaydının kendi yazması hâlâ
+  kilitsizdir. İki süreç aynı anda `set_status('fulfilled')` ve boşsa
+  `_date_fulfilled` yazabilir; sonuç ikisinde de `fulfilled`, tarih ise mikro
+  saniye farkıyla ikinci sürecin damgası olur. Kilidin kapsamı bilinçli olarak
+  **yalnız bildirim yaşam döngüsüdür**; taşıyıcı yolunu da aynı kilide almak
+  taşıyıcı davranışını değiştirirdi.
+- **Dış çağrı yok, ölçülmüş hâliyle:** ölçüm durum kodunu doğrudan
+  `sync_status()` içine verir, taşıyıcı istemcisi hiç kurulmaz, posta taşıyıcısı
+  `pre_wp_mail` üzerinde kesilir ve işçiler `pre_http_request` kancasını
+  fail-closed tutar: `outbound_http:0`. Fixture'lar `SHIPPING_DB_ISOLATION`
+  parantezinin içindedir ve `keyset_match:yes` verir.
+- **Tekrar yaşanırsa ilk bak:** `SHIPPING_NOTIFICATION_RACE_OUTCOMES`.
+  `sent,sent` görünüyorsa kilit alınmıyor demektir; `lock_released:NO`
+  görünüyorsa `finally` yolu kırılmıştır.
 
 ---
 
