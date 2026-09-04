@@ -254,8 +254,28 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 			 * e-mail belongs to the TRANSITION, not to the status.
 			 */
 			$first_transition = ! $fulfillment->get_is_fulfilled();
+			$handover         = '';
 
 			if ( $first_transition ) {
+				/*
+				 * THE DEBT, BEFORE THE RECORD REACHES THE DATABASE.
+				 *
+				 * A process that dies after the save and before the
+				 * notification used to leave a record that was fulfilled on
+				 * disk with no notification state at all, and every later poll
+				 * read `first_transition = false` and answered `not_due`: the
+				 * customer was never told and nothing said anything was owed.
+				 * The debt is therefore written first, and only here -- on the
+				 * real first automatic transition of a record this module owns.
+				 * A manual fulfilment never passes through this line, so it is
+				 * never adopted.
+				 *
+				 * The claim also hands back the handover instant both
+				 * concurrent processes agree on, so the date below is written
+				 * once even when two of them write it.
+				 */
+				$handover = Kuka_Island_Shipping_Notification::claim( $order, $reference );
+
 				$fulfillment->set_status( 'fulfilled' );
 				$changed = true;
 			}
@@ -292,7 +312,19 @@ final class Kuka_Island_Shipping_Fulfillment_Writer {
 			 * moment the parcel actually left.
 			 */
 			if ( '' === (string) ( $fulfillment->get_date_fulfilled() ?? '' ) ) {
-				$fulfillment->set_date_fulfilled( ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' ) );
+				/*
+				 * The instant comes from the claim when there is one, so two
+				 * concurrent dispatches write the SAME string and the later
+				 * save cannot move the date to the other side of a local
+				 * midnight. Without a claim -- a record already fulfilled by
+				 * somebody else, with no debt -- there is no second writer to
+				 * agree with and `now` is correct.
+				 */
+				$fulfillment->set_date_fulfilled(
+					'' !== $handover
+						? $handover
+						: ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' )
+				);
 				$changed   = true;
 				$date_note = 'set';
 			}

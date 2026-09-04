@@ -678,6 +678,21 @@ bir advisory lock altında veriliyor ve kayıtlar kilit içinde veritabanından
 taze okunuyor; kilidi alamayan süreç göndermiyor ve beklemiyor, dolayısıyla
 taşıyıcı mutasyon kilidiyle deadlock kurulamıyor. Bkz. K-50.
 
+**Tur 11 — kaybolan bildirim.** Mükerrer gönderim kapandıktan sonra ters
+yönde iki kayıp yolu kaldı, ikisinde de müşteri hiç bilgilendirilmiyor ve
+sistemde bir borç görünmüyordu. Birincisi: `recipient_missing` ve
+`mailer_unavailable` "sonra denenmeli" anlamında `pending` yazıyordu ama
+`pending` özel işlenmediği için sonraki poll'da `first_transition` false
+görülüp `not_due` dönüyordu. İkincisi: bildirim niyeti kayıt kaydedildikten
+SONRA yazıldığı için arada ölen süreç diskte `fulfilled` bir kayıt ve boş
+bir durum bırakıyor, sonraki her poll `not_due` diyordu. Artık borç kayıt
+kaydedilmeden önce `due` olarak yazılıyor, `due` ve `pending` borçlu
+sayılıyor ve ikisi de deneme hakkı harcamıyor; durumun boş olması ise
+gönderime izin vermiyor, dolayısıyla manuel ya da sahipsiz bir kayıt
+kendiliğinden sahiplenilmiyor. Teslim anı da borçla birlikte bir kez
+yazıldığı için iki sürecin tarih ezmesi artık aynı dizgiyi yazıyor ve mali
+gönderi tarihi kaymıyor. Bkz. K-51.
+
 ### On bir tekrarlayan ders
 
 1. **`success` bir alındıdır, kanıt değildir.** Taşıyıcının "iptal edildi"

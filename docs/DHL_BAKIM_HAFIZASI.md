@@ -65,6 +65,7 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-04 | Gerçek SMTP açılınca e-posta kabul ölçümleri kırıldı: üçü panelden değişen marka adresini sabit yazıyordu, ikisi `mail()` yerine SMTP'ye kayıp her koşuda dışarı gerçek mesaj bırakıyordu | Ölçümler adres yerine tek kaynağa bağlandı; `disabled-mail` taşıyıcısı `isMail()`'e geri çekilip `DISABLED_MAIL_TRANSPORT` ile ölçülüyor (K-48) |
 | 2026-09-04 | Kargo e-postası WooCommerce'in 600 pikselik varsayılan görünümünde, ham `dhl` taşıyıcı adıyla ve misafirde Hesabım bağlantısıyla gidiyordu; ürün fotoğrafı Gmail'de `localhost` adresi yüzünden görünmüyordu | Ortak tasarım katmanı, 780 pikselik mobil uyumlu iskelet ve tek görsel kapısı; sözleşme `docs/EPOSTA_TASARIMI.md` (K-49) |
 | 2026-09-04 | İki eşzamanlı süreç aynı ilk `fulfilled` geçişine girip müşteriye iki e-posta gönderiyordu; ikinci yazma birincinin metasını ezdiği için durum makinesi tek gönderim gibi görünüyordu | Bildirim kararı sipariş bazlı sıfır beklemeli advisory lock altına alındı ve kayıtlar kilit içinde veritabanından taze okunuyor (K-50) |
+| 2026-09-04 | Bildirim borcu iki yerden düşüyordu: `pending` durumu `first_transition` kapısına takılıp hiç yeniden denenmiyordu, ve kayıt kaydedildikten sonra niyetten önce ölen süreç borcu kalıcı olarak kaybediyordu | Yeni `due` durumu kayıt kaydedilmeden önce yazılıyor; `due` ve `pending` borçlu sayılıyor; teslim anı borçla birlikte bir kez yazılıyor (K-51) |
 
 ---
 
@@ -1992,6 +1993,92 @@ geçmez.
 - **Tekrar yaşanırsa ilk bak:** `SHIPPING_NOTIFICATION_RACE_OUTCOMES`.
   `sent,sent` görünüyorsa kilit alınmıyor demektir; `lock_released:NO`
   görünüyorsa `finally` yolu kırılmıştır.
+
+---
+
+## K-51 — Bildirim borcu iki yerden düşüyordu: `pending` ödenmiyor, çökme kaybediyor
+
+- **Tarih:** 2026-09-04
+- **Belirti:** Mükerrer gönderim kapandıktan sonra ters yönde iki kayıp yolu
+  kaldı. İkisinde de müşteri **hiç** bilgilendirilmiyor ve sistemde bir borç
+  görünmüyor.
+- **Kök neden 1 — `pending` yeniden denenmiyordu.** `recipient_missing` ve
+  `mailer_unavailable` "gönderilmedi, sonra denenmeli" anlamında `pending`
+  yazıyor. Ama `decide()` yalnız `failed` durumunu özel işliyordu; `pending`
+  `first_transition` kapısına düşüyordu. Sonraki poll'da kayıt zaten
+  `fulfilled` olduğu için `first_transition` FALSE gelir ve
+  `elseif ( ! $first_transition ) return not_due;` dalı çalışır. Borç kalıcı
+  olarak ödenmez.
+- **Ölçülen kırmızı:**
+
+  ```text
+  SHIPPING_NOTIFICATION_PENDING_RETRIES_WHEN_DUE=FAIL|first:recipient_missing
+  |state_after_first:pending|attempts_after_first:0|mails_first:0
+  |second_first_transition:no|second:not_due|mails_second:0|state:pending
+  |attempts:0|third:not_due|mails_total:0|order_status:pending
+  ```
+
+- **Kök neden 2 — kayıt ile niyet arasında çökme aralığı.** `sync_status()`
+  kaydı `fulfilled` yapıp `save()` ediyor, bildirim niyeti ancak ondan SONRA
+  `on_fulfilled()` içinde yazılıyordu. Arada ölen süreç, diskte `fulfilled`
+  bir kayıt ve **boş** bir bildirim durumu bırakır; sonraki her poll
+  `first_transition` false görüp `not_due` der.
+- **Ölçülen kırmızı** (süreç, `woocommerce_fulfillment_after_update` içinden
+  öldürüldü — o kanca satır yazıldıktan sonra ve hiçbir transaction içinde
+  olmadan tetikleniyor, yani ölüm tam bildirilen aralıkta):
+
+  ```text
+  SHIPPING_NOTIFICATION_CRASH_BEFORE_SEND_INTENT_RECOVERS=FAIL|crash_exit:nonzero
+  |crash_mails:0|record_fulfilled_after_crash:yes|state_after_crash:absent
+  |recovery:not_due|mails_total:0|state:absent|attempts:0
+  |second_automatic_send:0|order_status:pending
+  ```
+
+- **Uygulanan düzeltme:** Yeni bir durum, `due`, ve onu yazan
+  `Notification::claim()`. Borç **kayıt kaydedilmeden ÖNCE** yazılıyor ve yalnız
+  modülün kendi kaydının gerçek ilk otomatik geçişinde. `decide()` artık `due`
+  ve `pending` durumlarını **borçlu** sayıyor: `first_transition` ne derse desin
+  koşul düzeldiğinde gönderiyor, ve ikisi de deneme hakkı harcamıyor.
+- **Kendiliğinden sahiplenme yok:** durumun BOŞ olması gönderime izin vermez.
+  Manuel fulfillment bu satırdan hiç geçmez; modülün referansını taşıyan ama
+  borcu yazılmamış, önceden `fulfilled` bir kayıt da `not_due` alır
+  (`SHIPPING_NOTIFICATION_NO_SELF_ADOPTION`). Borç ayrıca kendi kaydına
+  bağlıdır: `_kuka_shipping_notify_reference` başka bir referans gösteriyorsa
+  karar `other_record` ile durur.
+- **Değişmeyenler:** `sending` çökme davranışı (`reconciliation_required`,
+  otomatik ikinci gönderim 0), `failed` sınırlı yeniden deneme, sipariş bazlı
+  sıfır beklemeli bildirim kilidi ve kilit sonrası taze sipariş/kayıt okuması.
+- **Fulfillment tarihi, ölçümle:** ezme gerçek —
+  `concurrent_date_writes:2`. Ama 120 ms arayla koşan ikinci süreç tarihi zaten
+  dolu gördüğü için hiç yazmıyor (`offset_process_date_writes:1`), yani ezme
+  yalnız ikisi de kaydı kaydetmeden önce okuduğu pencerede oluyor ve o pencerede
+  iki damga birbirinden mikro saniyeler kadar uzak. Saklanan değer saniye
+  çözünürlüğünde olduğu için fark ancak iki damga bir saniye tikinin iki yanına
+  düşerse ortaya çıkar. Bir milisaniyelik yarışı kovalayan ölçüm kararsızdır ve
+  hiçbir şey kanıtlamaz; bu yüzden soru **mekanizma** olarak sorulup kapatıldı:
+  teslim anı borçla birlikte **bir kez** yazılıyor
+  (`_kuka_shipping_notify_handover_at`) ve tarih o değerden alınıyor, dolayısıyla
+  ikinci yazma AYNI dizgiyi yazar. Ölçüm bunu, borcunu yazıp çökmüş bir sürecin
+  bıraktığı hâli 26 saat öncesine kurup saklanan tarihin onu takip etmesiyle
+  kanıtlıyor: `stored_matches_agreed:yes|retry_moves_date:no`. Anlaşma
+  kaldırılınca ölçüm FAIL verir (`retry_moves_date:yes`). Yan kazanç: bir gün
+  sonra çalışan yeniden deneme mali tarihi kaydırmıyor.
+- **Neden `claim()` bekleyebiliyor:** kendi kilidi (`kuka_ship_notify_claim_`)
+  bir YAPRAK kilit — tutan süreç bir meta okur, bir meta yazar ve hiçbir şey
+  beklemez, dolayısıyla her zaman bırakır. Bekleyen her zaman ilerler ve döngü
+  kurulamaz; çağıran taşıyıcı mutasyon kilidini tutuyor olsa bile. Zaman aşımı
+  ölümcül değildir: o durumda claim kendi anını kullanır, yani düzeltme
+  öncesindeki davranışa döner.
+- **İlgili dosya:**
+  `SHIP/includes/shipping/class-shipment-notification.php` (`claim`, `decide`,
+  `STATE_DUE`, `META_HANDOVER_AT`),
+  `SHIP/includes/shipping/class-fulfillment-writer.php` (`sync_status`),
+  `scripts/verify-shipping-notification-race.php`
+- **Tekrar yaşanırsa ilk bak:** `_kuka_shipping_notify_state` metası. `due` ise
+  borç yazılmış ama gönderim henüz olmamıştır ve sonraki poll onu ödemelidir;
+  `pending` ise bir koşul eksikti (`_kuka_shipping_notify_code`), koşul
+  düzeldiğinde gönderilir. Boş ve kayıt `fulfilled` ise bu modül o geçişi hiç
+  görmemiştir — kendiliğinden sahiplenmez.
 
 ---
 

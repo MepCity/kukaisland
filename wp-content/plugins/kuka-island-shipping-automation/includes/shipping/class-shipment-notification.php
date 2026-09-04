@@ -22,8 +22,12 @@
  * evidence that a send was started, and the retry finds it:
  *
  *   (absent)                 nothing owed yet
- *     -> pending             owed, nothing attempted (transport not available)
+ *     -> due                 OWED. Written BEFORE the fulfilment is saved.
+ *   due
+ *     -> pending             owed, nothing attempted (address or mailer missing)
  *     -> sending             INTENT WRITTEN, transport about to be contacted
+ *   pending
+ *     -> sending             the missing condition was fixed; retried
  *   sending
  *     -> sent                the transport accepted the message
  *     -> failed              the transport definitively refused it
@@ -38,6 +42,27 @@
  * second one is a decision with a customer consequence and it belongs to a
  * person. This is the same rule the carrier writes follow -- see
  * Order_Store::begin_mutation() -- applied to the mail transport.
+ *
+ * WHY THE DEBT IS WRITTEN BEFORE THE FULFILMENT IS SAVED. `sync_status()` used
+ * to save the record first and only then reach this class, so a process that
+ * died in between left a record that was fulfilled on disk with no notification
+ * state at all. Every later poll then read `first_transition = false` -- the
+ * record was already fulfilled -- and answered `not_due`: the customer was
+ * never told, and nothing in the system said anything was owed. Measured
+ * through the production path, killing the process inside
+ * `woocommerce_fulfillment_after_update` (which fires after the row is written
+ * and inside no transaction): record fulfilled yes, state absent, next poll
+ * not_due, mails 0. The debt is therefore claimed FIRST, as `due`, and only
+ * for this module's own record on its real first automatic transition. A
+ * manual fulfilment and a record somebody else already fulfilled are never
+ * adopted, because nothing ever wrote a debt for them.
+ *
+ * `pending` is the other half of the same defect. `recipient_missing` and
+ * `mailer_unavailable` mean "not sent, try again later", but `pending` used to
+ * fall through the `first_transition` gate too, so the retry never came. `due`
+ * and `pending` are now both OWED states: they send when the condition is
+ * fixed, whatever `first_transition` says, and neither of them spends an
+ * attempt.
  *
  * WHY THERE IS A LOCK AS WELL AS A STATE. The state alone is a read followed
  * by a write, and two real processes can sit between them. A scheduled status
@@ -80,6 +105,31 @@ final class Kuka_Island_Shipping_Notification {
 	/** When the current state was written. */
 	public const META_AT = '_kuka_shipping_notify_at';
 
+	/**
+	 * Which fulfilment record the current debt is about.
+	 *
+	 * Without it an owed state could be spent on a different record -- a
+	 * manual fulfilment, or a second shipment -- simply because the order
+	 * carried a debt. The reference is this module's ownership marker, so a
+	 * debt can only ever be paid for the record that created it.
+	 */
+	public const META_DUE_REFERENCE = '_kuka_shipping_notify_reference';
+
+	/**
+	 * The handover instant both processes agree on, written with the debt.
+	 *
+	 * Two concurrent dispatches both find `_date_fulfilled` empty and both
+	 * write their own `now`; the later save wins. The values are under a second
+	 * apart, which is invisible everywhere except at day granularity -- and the
+	 * handover date is exactly what EDM's Internet_Sales_Details reads. Taking
+	 * the instant from this single agreed value makes the second write a write
+	 * of the SAME string, so no local midnight can fall between them.
+	 */
+	public const META_HANDOVER_AT = '_kuka_shipping_notify_handover_at';
+
+	/** Owed, recorded before the fulfilment reached the database. */
+	public const STATE_DUE           = 'due';
+
 	public const STATE_PENDING       = 'pending';
 	public const STATE_SENDING       = 'sending';
 	public const STATE_SENT          = 'sent';
@@ -106,6 +156,20 @@ final class Kuka_Island_Shipping_Notification {
 	 * refuse a notification. Both are zero-wait, so neither can block the other.
 	 */
 	private const LOCK_PREFIX = 'kuka_ship_notify_';
+
+	/**
+	 * The claim's own lock, and the only one in this module that waits.
+	 *
+	 * Waiting is safe here because this is a LEAF lock: a process holding it
+	 * reads one meta value and writes one meta value, and waits for nothing.
+	 * A holder therefore always releases, so a waiter always makes progress and
+	 * no cycle can form -- even when the caller already holds the carrier
+	 * mutation lock.
+	 */
+	private const CLAIM_LOCK_PREFIX = 'kuka_ship_notify_claim_';
+
+	/** Seconds the claim may wait for its leaf lock before giving up. */
+	private const CLAIM_LOCK_WAIT = 2;
 
 	/**
 	 * Codes this class is allowed to store. Anything else becomes 'mail_failed'.
@@ -151,6 +215,56 @@ final class Kuka_Island_Shipping_Notification {
 			'attempts' => self::attempts( $order ),
 			'at'       => (int) $order->get_meta( self::META_AT, true ),
 		);
+	}
+
+	/**
+	 * Record that a customer notification is owed, BEFORE the record is saved.
+	 *
+	 * Called only when the caller has established that this is the real first
+	 * automatic transition of this module's own record. Idempotent: an order
+	 * that already carries any notification state is left alone, so a repeated
+	 * poll, a retry and a second shipment cannot reopen a settled decision.
+	 *
+	 * Returns the agreed handover instant, as a string carrying its own UTC
+	 * offset. Both concurrent processes get the same value: the first one to
+	 * hold the leaf lock writes it and the other reads it.
+	 *
+	 * @param WC_Order $order     Order.
+	 * @param string   $reference This module's carrier reference for the record.
+	 * @return string Handover instant, 'Y-m-d H:i:sP'.
+	 */
+	public static function claim( WC_Order $order, string $reference ): string {
+		$order_id = (int) $order->get_id();
+		$now      = ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' );
+		$locked   = self::acquire_claim_lock( $order_id );
+
+		try {
+			$fresh = self::reload_order( $order_id );
+
+			if ( ! $fresh instanceof WC_Order ) {
+				return $now;
+			}
+
+			$agreed = (string) $fresh->get_meta( self::META_HANDOVER_AT, true );
+
+			if ( '' !== self::state( $fresh ) ) {
+				// Somebody already decided. Never reopen it; reuse their instant.
+				return '' === $agreed ? $now : $agreed;
+			}
+
+			$fresh->update_meta_data( self::META_STATE, self::STATE_DUE );
+			$fresh->update_meta_data( self::META_CODE, '' );
+			$fresh->update_meta_data( self::META_DUE_REFERENCE, $reference );
+			$fresh->update_meta_data( self::META_HANDOVER_AT, '' === $agreed ? $now : $agreed );
+			$fresh->update_meta_data( self::META_AT, time() );
+			$fresh->save_meta_data();
+
+			return '' === $agreed ? $now : $agreed;
+		} finally {
+			if ( $locked ) {
+				self::release_claim_lock( $order_id );
+			}
+		}
 	}
 
 	/**
@@ -206,7 +320,7 @@ final class Kuka_Island_Shipping_Notification {
 				return self::outcome( false, 'record_unreadable', self::code( $fresh ), self::attempts( $fresh ) );
 			}
 
-			return self::decide( $fresh, $record, $first_transition );
+			return self::decide( $fresh, $record, $first_transition, $reference );
 		} finally {
 			self::release_lock( $order_id );
 		}
@@ -218,9 +332,10 @@ final class Kuka_Island_Shipping_Notification {
 	 * @param WC_Order $order            Freshly read order.
 	 * @param object   $fulfillment      Freshly read fulfilment record.
 	 * @param bool     $first_transition True when the caller flipped the record.
+	 * @param string   $reference        The record this decision is about.
 	 * @return array{sent: bool, outcome: string, code: string, attempts: int}
 	 */
-	private static function decide( WC_Order $order, $fulfillment, bool $first_transition ): array {
+	private static function decide( WC_Order $order, $fulfillment, bool $first_transition, string $reference ): array {
 		$state = self::state( $order );
 
 		if ( self::STATE_SENT === $state ) {
@@ -244,13 +359,42 @@ final class Kuka_Island_Shipping_Notification {
 			return self::outcome( false, 'crashed_previous_attempt', 'send_outcome_unknown', self::attempts( $order ) );
 		}
 
+		/*
+		 * OWED STATES. `due` was written before the record was saved, and
+		 * `pending` means a condition was missing when the transport was
+		 * reached for. Both are debts this module wrote for itself, so they
+		 * are paid whatever `first_transition` says -- that flag only answers
+		 * "did THIS call flip the record", and by the second poll it is false
+		 * for a debt that is still perfectly real.
+		 */
+		$owed = in_array( $state, array( self::STATE_DUE, self::STATE_PENDING ), true );
+
 		if ( self::STATE_FAILED === $state ) {
 			if ( self::attempts( $order ) >= self::MAX_ATTEMPTS ) {
 				return self::outcome( false, 'retry_exhausted', self::code( $order ), self::attempts( $order ) );
 			}
-		} elseif ( ! $first_transition ) {
-			// Nothing is owed: the record was already fulfilled before this poll.
+
+			$owed = true;
+		} elseif ( ! $owed && ! $first_transition ) {
+			/*
+			 * Nothing is owed and this call did not flip anything: the record
+			 * was already fulfilled and no debt was ever written for it. A
+			 * manual fulfilment and somebody else's already-fulfilled record
+			 * both land here, and neither is adopted.
+			 */
 			return self::outcome( false, 'not_due', self::code( $order ), self::attempts( $order ) );
+		}
+
+		/*
+		 * A debt belongs to the record that created it. If the order carries a
+		 * reference and it is not this one, the debt is somebody else's.
+		 */
+		if ( $owed ) {
+			$owner = (string) $order->get_meta( self::META_DUE_REFERENCE, true );
+
+			if ( '' !== $owner && '' !== $reference && $owner !== $reference ) {
+				return self::outcome( false, 'other_record', self::code( $order ), self::attempts( $order ) );
+			}
 		}
 
 		/*
@@ -535,5 +679,31 @@ final class Kuka_Island_Shipping_Notification {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::LOCK_PREFIX . $order_id ) );
+	}
+
+	/**
+	 * Take the claim's leaf lock, waiting a bounded time.
+	 *
+	 * The only wait in this module, and it cannot deadlock: the holder does one
+	 * meta read and one meta write and waits for nothing, so it always
+	 * releases. A timeout is not fatal -- the claim falls back to its own
+	 * instant, which is what the code did before this lock existed.
+	 */
+	private static function acquire_claim_lock( int $order_id ): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$acquired = $wpdb->get_var(
+			$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', self::CLAIM_LOCK_PREFIX . $order_id, self::CLAIM_LOCK_WAIT )
+		);
+
+		return '1' === (string) $acquired;
+	}
+
+	private static function release_claim_lock( int $order_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::CLAIM_LOCK_PREFIX . $order_id ) );
 	}
 }

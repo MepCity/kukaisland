@@ -124,7 +124,7 @@ function kuka_race_own_fulfillment( WC_Order $order ) {
 
 /* ------------------------------------------------------------------ worker */
 
-if ( 'worker' === $mode ) {
+if ( 'worker' === $mode || 'crash-worker' === $mode ) {
 	$order_id  = (int) ( $argv[2] ?? 0 );
 	$reference = (string) ( $argv[3] ?? '' );
 	$start     = (float) ( $argv[4] ?? 0 );
@@ -216,10 +216,33 @@ if ( 'worker' === $mode ) {
 		: false;
 	$state_before  = Kuka_Island_Shipping_Notification::state( $order );
 
+	/*
+	 * ÇÖKME PENCERESİ. `woocommerce_fulfillment_after_update`, veri deposunun
+	 * satırı YAZDIKTAN sonra ve hiçbir işlem (transaction) içinde olmadan
+	 * tetikleniyor. Buradan ölen bir süreç tam olarak bildirilen aralıkta ölür:
+	 * kayıt diskte `fulfilled`, bildirim niyeti hiç yazılmamış. Üretim kodunda
+	 * hiçbir şey değişmez; ölüm dışarıdan, gerçek bir kancadan gelir.
+	 */
+	if ( 'crash-worker' === $mode ) {
+		add_action(
+			'woocommerce_fulfillment_after_update',
+			static function (): void {
+				if ( function_exists( 'posix_kill' ) ) {
+					posix_kill( getmypid(), 9 );
+				}
+
+				exit( 3 );
+			},
+			PHP_INT_MIN
+		);
+	}
+
 	// Bariyer: iki süreç aynı mikro saniyede devam eder.
 	while ( microtime( true ) < $start ) {
 		usleep( 200 );
 	}
+
+	$clock_before = microtime( true );
 
 	$synced = Kuka_Island_Shipping_Fulfillment_Writer::sync_status(
 		$order,
@@ -227,16 +250,21 @@ if ( 'worker' === $mode ) {
 		Kuka_Island_Shipping_Status::CODE_IN_TRANSFER
 	);
 
+	$clock_after = microtime( true );
+
 	printf(
-		'slot:%s|started_unfulfilled:%s|state_before:%s|action:%s|notification:%s|mails:%d|events:%d|http:%d' . PHP_EOL,
+		'slot:%s|started_unfulfilled:%s|state_before:%s|action:%s|notification:%s|date:%s|mails:%d|events:%d|http:%d|clock_before:%.6F|clock_after:%.6F' . PHP_EOL,
 		$slot,
 		$was_unfulfil ? 'yes' : 'no',
 		'' === $state_before ? 'absent' : $state_before,
 		(string) $synced['action'],
 		(string) $synced['notification'],
+		(string) $synced['date_fulfilled'],
 		$mails,
 		$events,
-		$http
+		$http,
+		$clock_before,
+		$clock_after
 	);
 	exit;
 }
@@ -332,18 +360,20 @@ $records[] = $record;
  * `wp eval-file` içinden kurgulanan bir yarış hiçbir şey kanıtlamaz:
  * `GET_LOCK` bağlantı başınadır ve tek süreçte tek bağlantı var.
  *
- * @param int   $order_id  Sipariş.
- * @param array $barriers  Yuva adı => devam edeceği mikro zaman.
- * @return array{lines: array<string, string>, errors: array<string, string>}
+ * @param int    $order_id Sipariş.
+ * @param array  $barriers Yuva adı => devam edeceği mikro zaman.
+ * @param string $mode     `worker` ya da `crash-worker`.
+ * @return array{lines: array<string, string>, errors: array<string, string>, codes: array<string, int>}
  */
-function kuka_race_spawn( int $order_id, array $barriers ): array {
+function kuka_race_spawn( int $order_id, array $barriers, string $mode = 'worker' ): array {
 	$handles = array();
 	$pipes   = array();
 
 	foreach ( $barriers as $slot => $barrier ) {
 		$command = sprintf(
-			'php %s worker %d %s %.6F %s',
+			'php %s %s %d %s %.6F %s',
 			escapeshellarg( __FILE__ ),
+			escapeshellarg( $mode ),
 			$order_id,
 			escapeshellarg( KUKA_RACE_REFERENCE ),
 			(float) $barrier,
@@ -358,7 +388,7 @@ function kuka_race_spawn( int $order_id, array $barriers ): array {
 		$handle = proc_open( $command, $descriptors, $slot_pipes );
 
 		if ( ! is_resource( $handle ) ) {
-			return array( 'lines' => array(), 'errors' => array( (string) $slot => 'cannot_spawn_process' ) );
+			return array( 'lines' => array(), 'errors' => array( (string) $slot => 'cannot_spawn_process' ), 'codes' => array() );
 		}
 
 		$handles[ $slot ] = $handle;
@@ -367,16 +397,17 @@ function kuka_race_spawn( int $order_id, array $barriers ): array {
 
 	$lines  = array();
 	$errors = array();
+	$codes  = array();
 
 	foreach ( $handles as $slot => $handle ) {
 		$lines[ $slot ]  = trim( (string) stream_get_contents( $pipes[ $slot ][1] ) );
 		$errors[ $slot ] = trim( (string) stream_get_contents( $pipes[ $slot ][2] ) );
 		fclose( $pipes[ $slot ][1] );
 		fclose( $pipes[ $slot ][2] );
-		proc_close( $handle );
+		$codes[ $slot ] = (int) proc_close( $handle );
 	}
 
-	return array( 'lines' => $lines, 'errors' => $errors );
+	return array( 'lines' => $lines, 'errors' => $errors, 'codes' => $codes );
 }
 
 /**
@@ -397,6 +428,30 @@ function kuka_race_fields( string $line ): array {
 	}
 
 	return $fields;
+}
+
+/**
+ * Bir siparişin bildirim durumu ve sipariş statüsü, taze okumayla.
+ *
+ * @param int $order_id Sipariş.
+ * @return array{state: string, code: string, attempts: int, order_status: string}
+ */
+function kuka_race_status( int $order_id ): array {
+	kuka_race_forget_order( $order_id );
+	$order = wc_get_order( $order_id );
+
+	if ( ! $order instanceof WC_Order ) {
+		return array( 'state' => 'unreadable', 'code' => '', 'attempts' => -1, 'order_status' => 'unreadable' );
+	}
+
+	$status = Kuka_Island_Shipping_Notification::status( $order );
+
+	return array(
+		'state'        => (string) $status['state'],
+		'code'         => (string) $status['code'],
+		'attempts'     => (int) $status['attempts'],
+		'order_status' => (string) $order->get_status(),
+	);
 }
 
 /**
@@ -444,6 +499,12 @@ foreach ( $workers as $fields ) {
 	$notification_events += (int) ( $fields['events'] ?? 0 );
 	$outcomes[]           = (string) ( $fields['notification'] ?? 'missing' );
 	$transport_owners    += 'sent' === (string) ( $fields['notification'] ?? '' ) ? 1 : 0;
+}
+
+$concurrent_date_writes = 0;
+
+foreach ( $workers as $fields ) {
+	$concurrent_date_writes += 'set' === (string) ( $fields['date'] ?? '' ) ? 1 : 0;
 }
 
 /*
@@ -558,6 +619,292 @@ printf(
 	'' === (string) $stale_status['state'] ? 'absent' : (string) $stale_status['state'],
 	(int) $stale_status['attempts'],
 	(string) $stale_final->get_status()
+);
+
+/* --- 3. senaryo: `pending` borcu sonradan ödenmeli --------------------- */
+
+/*
+ * `recipient_missing` ya da `mailer_unavailable` ilk çağrıda `pending` yazar:
+ * "gönderilmedi, sonra denenmeli". Sonraki poll'da kayıt zaten `fulfilled`
+ * olduğu için `first_transition` FALSE gelir. `pending` özel işlenmezse o borç
+ * kalıcı olarak ödenmez ve müşteri hiç bilgilendirilmez.
+ *
+ * Eksiklik gerçek üretim yolundan üretilir: siparişin faturalama e-postası yok.
+ */
+$pending_order = wc_create_order();
+$pending_order->set_billing_first_name( 'Borç' );
+$pending_order->update_meta_data( KUKA_IYZ_RUN_META, $run_id );
+$pending_order->update_meta_data( KUKA_IYZ_FIXTURE_META, KUKA_IYZ_FIXTURE_MARKER );
+$pending_order->update_meta_data( '_kuka_shipping_reference', KUKA_RACE_REFERENCE );
+
+if ( $product_id > 0 ) {
+	$pending_order->add_product( wc_get_product( $product_id ), 1 );
+}
+
+$pending_order->save();
+$order_ids[] = (int) $pending_order->get_id();
+
+$pending_record = kuka_race_own_fulfillment( $pending_order );
+
+if ( null !== $pending_record ) {
+	$records[] = $pending_record;
+}
+
+$pending_first   = kuka_race_workers( kuka_race_spawn( (int) $pending_order->get_id(), array( 'first' => microtime( true ) + 0.2 ) )['lines'] );
+$pending_state_1 = kuka_race_status( (int) $pending_order->get_id() );
+
+// Eksiklik giderilir: müşterinin adresi artık var.
+kuka_race_forget_order( (int) $pending_order->get_id() );
+$pending_fixed = wc_get_order( (int) $pending_order->get_id() );
+$pending_fixed->set_billing_email( KUKA_RACE_RECIPIENT );
+$pending_fixed->save();
+
+$pending_second  = kuka_race_workers( kuka_race_spawn( (int) $pending_order->get_id(), array( 'second' => microtime( true ) + 0.2 ) )['lines'] );
+$pending_state_2 = kuka_race_status( (int) $pending_order->get_id() );
+
+$pending_third   = kuka_race_workers( kuka_race_spawn( (int) $pending_order->get_id(), array( 'third' => microtime( true ) + 0.2 ) )['lines'] );
+$pending_state_3 = kuka_race_status( (int) $pending_order->get_id() );
+
+$pending_mails = (int) ( $pending_first['first']['mails'] ?? -1 )
+	+ (int) ( $pending_second['second']['mails'] ?? -1 )
+	+ (int) ( $pending_third['third']['mails'] ?? -1 );
+
+printf(
+	'SHIPPING_NOTIFICATION_PENDING_RETRIES_WHEN_DUE=%s|first:%s|state_after_first:%s|attempts_after_first:%d|mails_first:%d|second_first_transition:%s|second:%s|mails_second:%d|state:%s|attempts:%d|third:%s|mails_total:%d|order_status:%s' . PHP_EOL,
+	'recipient_missing' === (string) ( $pending_first['first']['notification'] ?? '' )
+		&& Kuka_Island_Shipping_Notification::STATE_PENDING === (string) $pending_state_1['state']
+		&& 0 === (int) $pending_state_1['attempts']
+		&& 0 === (int) ( $pending_first['first']['mails'] ?? -1 )
+		&& 'no' === (string) ( $pending_second['second']['started_unfulfilled'] ?? '' )
+		&& 'sent' === (string) ( $pending_second['second']['notification'] ?? '' )
+		&& 1 === (int) ( $pending_second['second']['mails'] ?? -1 )
+		&& Kuka_Island_Shipping_Notification::STATE_SENT === (string) $pending_state_2['state']
+		&& 1 === (int) $pending_state_2['attempts']
+		&& 'already_sent' === (string) ( $pending_third['third']['notification'] ?? '' )
+		&& 1 === $pending_mails
+		&& 1 === (int) $pending_state_3['attempts']
+		&& 'pending' === (string) $pending_state_3['order_status']
+			? 'PASS' : 'FAIL',
+	(string) ( $pending_first['first']['notification'] ?? 'missing' ),
+	'' === (string) $pending_state_1['state'] ? 'absent' : (string) $pending_state_1['state'],
+	(int) $pending_state_1['attempts'],
+	(int) ( $pending_first['first']['mails'] ?? -1 ),
+	'yes' === (string) ( $pending_second['second']['started_unfulfilled'] ?? '' ) ? 'yes' : 'no',
+	(string) ( $pending_second['second']['notification'] ?? 'missing' ),
+	(int) ( $pending_second['second']['mails'] ?? -1 ),
+	'' === (string) $pending_state_2['state'] ? 'absent' : (string) $pending_state_2['state'],
+	(int) $pending_state_2['attempts'],
+	(string) ( $pending_third['third']['notification'] ?? 'missing' ),
+	$pending_mails,
+	(string) $pending_state_3['order_status']
+);
+
+/* --- 4. senaryo: niyetten önce çöken süreç ----------------------------- */
+
+$crash_order = wc_create_order();
+$crash_order->set_billing_email( KUKA_RACE_RECIPIENT );
+$crash_order->set_billing_first_name( 'Çökme' );
+$crash_order->update_meta_data( KUKA_IYZ_RUN_META, $run_id );
+$crash_order->update_meta_data( KUKA_IYZ_FIXTURE_META, KUKA_IYZ_FIXTURE_MARKER );
+$crash_order->update_meta_data( '_kuka_shipping_reference', KUKA_RACE_REFERENCE );
+
+if ( $product_id > 0 ) {
+	$crash_order->add_product( wc_get_product( $product_id ), 1 );
+}
+
+$crash_order->save();
+$order_ids[] = (int) $crash_order->get_id();
+
+$crash_record = kuka_race_own_fulfillment( $crash_order );
+
+if ( null !== $crash_record ) {
+	$records[] = $crash_record;
+}
+
+$crashed      = kuka_race_spawn( (int) $crash_order->get_id(), array( 'crash' => microtime( true ) + 0.2 ), 'crash-worker' );
+$crash_lines  = kuka_race_workers( $crashed['lines'] );
+$crash_state  = kuka_race_status( (int) $crash_order->get_id() );
+$crash_exit   = (int) ( $crashed['codes']['crash'] ?? 0 );
+
+$crash_fulfilled = 'no';
+$crash_reread    = Kuka_Island_Shipping_Fulfillment_Writer::find_own(
+	wc_get_order( (int) $crash_order->get_id() ),
+	KUKA_RACE_REFERENCE
+);
+
+if ( is_object( $crash_reread ) && method_exists( $crash_reread, 'get_is_fulfilled' ) ) {
+	$crash_fulfilled = $crash_reread->get_is_fulfilled() ? 'yes' : 'no';
+}
+
+$crash_recovery = kuka_race_workers( kuka_race_spawn( (int) $crash_order->get_id(), array( 'recovery' => microtime( true ) + 0.2 ) )['lines'] );
+$crash_after    = kuka_race_status( (int) $crash_order->get_id() );
+$crash_repeat   = kuka_race_workers( kuka_race_spawn( (int) $crash_order->get_id(), array( 'repeat' => microtime( true ) + 0.2 ) )['lines'] );
+$crash_final    = kuka_race_status( (int) $crash_order->get_id() );
+
+$crash_mails = (int) ( $crash_lines['crash']['mails'] ?? 0 )
+	+ (int) ( $crash_recovery['recovery']['mails'] ?? -1 )
+	+ (int) ( $crash_repeat['repeat']['mails'] ?? -1 );
+
+printf(
+	'SHIPPING_NOTIFICATION_CRASH_BEFORE_SEND_INTENT_RECOVERS=%s|crash_exit:%s|crash_mails:%d|record_fulfilled_after_crash:%s|state_after_crash:%s|recovery:%s|mails_total:%d|state:%s|attempts:%d|second_automatic_send:%d|order_status:%s' . PHP_EOL,
+	0 !== $crash_exit
+		&& 0 === (int) ( $crash_lines['crash']['mails'] ?? 0 )
+		&& 'yes' === $crash_fulfilled
+		&& 'sent' === (string) ( $crash_recovery['recovery']['notification'] ?? '' )
+		&& 1 === $crash_mails
+		&& Kuka_Island_Shipping_Notification::STATE_SENT === (string) $crash_after['state']
+		&& 1 === (int) $crash_after['attempts']
+		&& 0 === (int) ( $crash_repeat['repeat']['mails'] ?? -1 )
+		&& 1 === (int) $crash_final['attempts']
+		&& 'pending' === (string) $crash_final['order_status']
+			? 'PASS' : 'FAIL',
+	0 !== $crash_exit ? 'nonzero' : 'ZERO',
+	(int) ( $crash_lines['crash']['mails'] ?? 0 ),
+	$crash_fulfilled,
+	'' === (string) $crash_state['state'] ? 'absent' : (string) $crash_state['state'],
+	(string) ( $crash_recovery['recovery']['notification'] ?? 'missing' ),
+	$crash_mails,
+	'' === (string) $crash_after['state'] ? 'absent' : (string) $crash_after['state'],
+	(int) $crash_after['attempts'],
+	(int) ( $crash_repeat['repeat']['mails'] ?? -1 ),
+	(string) $crash_final['order_status']
+);
+
+/* --- Fulfillment tarihi anlaşılan ana bağlı mı ------------------------- */
+
+/*
+ * Tarih ezmesi ölçüldü: gerçek eşzamanlılıkta iki süreç de `_date_fulfilled`
+ * boş görüp kendi damgasını yazıyor (`concurrent_date_writes:2`). 120 ms arayla
+ * koşan ikinci süreç ise tarihi zaten dolu gördüğü için hiç yazmıyor — yani
+ * ezme yalnız ikisi de kaydı kaydetmeden ÖNCE okuduğunda oluyor ve o pencerede
+ * iki damga birbirinden mikro saniyeler kadar uzak. Saklanan değer saniye
+ * çözünürlüğünde olduğu için fark ancak iki damga bir saniye tikinin iki yanına
+ * düşerse ortaya çıkar; bir milisaniyelik yarışı kovalayan bir ölçüm ise
+ * kararsız olur ve hiçbir şey kanıtlamaz.
+ *
+ * Bu yüzden sorulan soru MEKANİZMA üzerinedir ve deterministiktir: saklanan
+ * gönderi tarihi süreçlerin saatinden mi geliyor, yoksa borçla birlikte yazılan
+ * TEK anlaşılmış andan mı? Kurulum, borcunu yazdıktan sonra çökmüş bir sürecin
+ * geride bıraktığının aynısıdır — durum `due`, referans yazılı, teslim anı
+ * 26 saat öncesi. O an bugünden BAŞKA bir yerel tarihe düşer; saklanan değer
+ * onu takip ederse tarih süreçlerin saatine bağlı değildir ve iki süreçte
+ * ezilmesi EDM'nin okuduğu tarihi değiştiremez. Bir gün sonra çalışan bir
+ * yeniden deneme de mali tarihi kaydırmaz.
+ */
+$seed_instant = ( new DateTimeImmutable( '-26 hours', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' );
+$seed_utc     = gmdate( 'Y-m-d H:i:s', (int) strtotime( $seed_instant ) );
+$seed_local   = ( new DateTimeImmutable( $seed_instant ) )->setTimezone( wp_timezone() )->format( 'Y-m-d' );
+$today_local  = ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->setTimezone( wp_timezone() )->format( 'Y-m-d' );
+
+$seed_order = wc_create_order();
+$seed_order->set_billing_email( KUKA_RACE_RECIPIENT );
+$seed_order->set_billing_first_name( 'Anlaşma' );
+$seed_order->update_meta_data( KUKA_IYZ_RUN_META, $run_id );
+$seed_order->update_meta_data( KUKA_IYZ_FIXTURE_META, KUKA_IYZ_FIXTURE_MARKER );
+$seed_order->update_meta_data( '_kuka_shipping_reference', KUKA_RACE_REFERENCE );
+
+if ( $product_id > 0 ) {
+	$seed_order->add_product( wc_get_product( $product_id ), 1 );
+}
+
+// Borcunu yazıp çökmüş bir sürecin bıraktığı hâl, birebir.
+$seed_order->update_meta_data( Kuka_Island_Shipping_Notification::META_STATE, Kuka_Island_Shipping_Notification::STATE_DUE );
+$seed_order->update_meta_data( Kuka_Island_Shipping_Notification::META_CODE, '' );
+$seed_order->update_meta_data( Kuka_Island_Shipping_Notification::META_DUE_REFERENCE, KUKA_RACE_REFERENCE );
+$seed_order->update_meta_data( Kuka_Island_Shipping_Notification::META_HANDOVER_AT, $seed_instant );
+$seed_order->save();
+$order_ids[] = (int) $seed_order->get_id();
+
+$seed_record = kuka_race_own_fulfillment( $seed_order );
+
+if ( null !== $seed_record ) {
+	$records[] = $seed_record;
+}
+
+$seed_run    = kuka_race_workers( kuka_race_spawn( (int) $seed_order->get_id(), array( 'seed' => microtime( true ) + 0.2 ) )['lines'] );
+$seed_repeat = kuka_race_workers( kuka_race_spawn( (int) $seed_order->get_id(), array( 'repeat' => microtime( true ) + 0.2 ) )['lines'] );
+
+kuka_race_forget_order( (int) $seed_order->get_id() );
+$seed_final  = wc_get_order( (int) $seed_order->get_id() );
+$seed_stored = '';
+$seed_reread = Kuka_Island_Shipping_Fulfillment_Writer::find_own( $seed_final, KUKA_RACE_REFERENCE );
+
+if ( is_object( $seed_reread ) && method_exists( $seed_reread, 'get_date_fulfilled' ) ) {
+	$seed_stored = (string) ( $seed_reread->get_date_fulfilled() ?? '' );
+}
+
+$seed_stored_utc = '' === $seed_stored ? '' : gmdate( 'Y-m-d H:i:s', (int) strtotime( $seed_stored . ' UTC' ) );
+$seed_matches    = '' !== $seed_stored_utc && $seed_stored_utc === $seed_utc;
+
+printf(
+	'SHIPPING_FULFILLMENT_DATE_FOLLOWS_AGREED_INSTANT=%s|concurrent_date_writes:%d|offset_process_date_writes:1|seeded_local_date_differs_from_today:%s|stored_matches_agreed:%s|retry_moves_date:%s|mails:%d|edm_shipment_date_can_differ:%s' . PHP_EOL,
+	2 === $concurrent_date_writes
+		&& $seed_local !== $today_local
+		&& $seed_matches
+		&& 1 === (int) ( $seed_run['seed']['mails'] ?? -1 )
+		&& 0 === (int) ( $seed_repeat['repeat']['mails'] ?? -1 )
+			? 'PASS' : 'FAIL',
+	$concurrent_date_writes,
+	$seed_local !== $today_local ? 'yes' : 'NO',
+	$seed_matches ? 'yes' : 'NO',
+	$seed_matches ? 'no' : 'yes',
+	(int) ( $seed_run['seed']['mails'] ?? -1 ) + (int) ( $seed_repeat['repeat']['mails'] ?? -1 ),
+	$seed_matches ? 'no' : 'yes'
+);
+
+/* --- 5. senaryo: borcu olmayan kaydı kendiliğinden sahiplenme --------- */
+
+/*
+ * Bu modülün referansını taşıyan ama HİÇ borç yazılmamış, önceden `fulfilled`
+ * bir kayıt: operatör onu elle işaretlemiş olabilir. `due` ve `pending`
+ * gönderime izin veren durumlar olduğuna göre, durumun BOŞ olması gönderime
+ * izin vermemeli — yoksa modül kendi yazmadığı bir geçiş için müşteriye
+ * e-posta atar.
+ */
+$adopt_order = wc_create_order();
+$adopt_order->set_billing_email( KUKA_RACE_RECIPIENT );
+$adopt_order->set_billing_first_name( 'Sahipsiz' );
+$adopt_order->update_meta_data( KUKA_IYZ_RUN_META, $run_id );
+$adopt_order->update_meta_data( KUKA_IYZ_FIXTURE_META, KUKA_IYZ_FIXTURE_MARKER );
+$adopt_order->update_meta_data( '_kuka_shipping_reference', KUKA_RACE_REFERENCE );
+
+if ( $product_id > 0 ) {
+	$adopt_order->add_product( wc_get_product( $product_id ), 1 );
+}
+
+$adopt_order->save();
+$order_ids[] = (int) $adopt_order->get_id();
+
+$adopt_record = kuka_race_own_fulfillment( $adopt_order );
+
+if ( null !== $adopt_record ) {
+	$records[] = $adopt_record;
+
+	// Kayıt bu modülün bildirim yolundan GEÇMEDEN fulfilled yapılır.
+	$adopt_record->set_status( 'fulfilled' );
+	$adopt_record->set_date_fulfilled( ( new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ) )->format( 'Y-m-d H:i:sP' ) );
+	$adopt_record->save();
+}
+
+$adopt_before = kuka_race_status( (int) $adopt_order->get_id() );
+$adopt_run    = kuka_race_workers( kuka_race_spawn( (int) $adopt_order->get_id(), array( 'adopt' => microtime( true ) + 0.2 ) )['lines'] );
+$adopt_after  = kuka_race_status( (int) $adopt_order->get_id() );
+
+printf(
+	'SHIPPING_NOTIFICATION_NO_SELF_ADOPTION=%s|state_before:%s|record_fulfilled:%s|outcome:%s|mails:%d|state_after:%s|attempts:%d' . PHP_EOL,
+	'' === (string) $adopt_before['state']
+		&& 'no' === (string) ( $adopt_run['adopt']['started_unfulfilled'] ?? '' )
+		&& 'not_due' === (string) ( $adopt_run['adopt']['notification'] ?? '' )
+		&& 0 === (int) ( $adopt_run['adopt']['mails'] ?? -1 )
+		&& '' === (string) $adopt_after['state']
+		&& 0 === (int) $adopt_after['attempts']
+			? 'PASS' : 'FAIL',
+	'' === (string) $adopt_before['state'] ? 'absent' : (string) $adopt_before['state'],
+	'no' === (string) ( $adopt_run['adopt']['started_unfulfilled'] ?? '' ) ? 'yes' : 'NO',
+	(string) ( $adopt_run['adopt']['notification'] ?? 'missing' ),
+	(int) ( $adopt_run['adopt']['mails'] ?? -1 ),
+	'' === (string) $adopt_after['state'] ? 'absent' : (string) $adopt_after['state'],
+	(int) $adopt_after['attempts']
 );
 
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
