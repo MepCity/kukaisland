@@ -39,12 +39,28 @@ services:
       WORDPRESS_DB_NAME: ${DB_NAME}
       WORDPRESS_DB_USER: ${DB_USER}
       WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      KUKA_SMTP_HOST: ${KUKA_SMTP_HOST:-}
+      KUKA_SMTP_PORT: ${KUKA_SMTP_PORT:-}
+      KUKA_SMTP_USERNAME: ${KUKA_SMTP_USERNAME:-}
+      KUKA_SMTP_PASSWORD: ${KUKA_SMTP_PASSWORD:-}
+      KUKA_SMTP_ENCRYPTION: ${KUKA_SMTP_ENCRYPTION:-}
+      KUKA_SMTP_FROM_NAME: ${KUKA_SMTP_FROM_NAME:-}
+      KUKA_SMTP_REPLY_TO_EMAIL: ${KUKA_SMTP_REPLY_TO_EMAIL:-}
+      KUKA_SMTP_REPLY_TO_NAME: ${KUKA_SMTP_REPLY_TO_NAME:-}
       WORDPRESS_DEBUG: "0"
       WORDPRESS_CONFIG_EXTRA: |
         define( 'WP_ENVIRONMENT_TYPE', 'local' );
         define( 'WP_DEBUG_LOG', false );
         define( 'WP_DEBUG_DISPLAY', false );
         define( 'DISABLE_WP_CRON', true );
+        defined( 'KUKA_SMTP_HOST' ) || define( 'KUKA_SMTP_HOST', getenv( 'KUKA_SMTP_HOST' ) ?: '' );
+        defined( 'KUKA_SMTP_PORT' ) || define( 'KUKA_SMTP_PORT', (int) ( getenv( 'KUKA_SMTP_PORT' ) ?: 0 ) );
+        defined( 'KUKA_SMTP_USERNAME' ) || define( 'KUKA_SMTP_USERNAME', getenv( 'KUKA_SMTP_USERNAME' ) ?: '' );
+        defined( 'KUKA_SMTP_PASSWORD' ) || define( 'KUKA_SMTP_PASSWORD', getenv( 'KUKA_SMTP_PASSWORD' ) ?: '' );
+        defined( 'KUKA_SMTP_ENCRYPTION' ) || define( 'KUKA_SMTP_ENCRYPTION', getenv( 'KUKA_SMTP_ENCRYPTION' ) ?: '' );
+        defined( 'KUKA_SMTP_FROM_NAME' ) || define( 'KUKA_SMTP_FROM_NAME', getenv( 'KUKA_SMTP_FROM_NAME' ) ?: '' );
+        defined( 'KUKA_SMTP_REPLY_TO_EMAIL' ) || define( 'KUKA_SMTP_REPLY_TO_EMAIL', getenv( 'KUKA_SMTP_REPLY_TO_EMAIL' ) ?: '' );
+        defined( 'KUKA_SMTP_REPLY_TO_NAME' ) || define( 'KUKA_SMTP_REPLY_TO_NAME', getenv( 'KUKA_SMTP_REPLY_TO_NAME' ) ?: '' );
     volumes:
       - wordpress_data:/var/www/html
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
@@ -82,9 +98,25 @@ services:
       WORDPRESS_DB_NAME: ${DB_NAME}
       WORDPRESS_DB_USER: ${DB_USER}
       WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      KUKA_SMTP_HOST: ${KUKA_SMTP_HOST:-}
+      KUKA_SMTP_PORT: ${KUKA_SMTP_PORT:-}
+      KUKA_SMTP_USERNAME: ${KUKA_SMTP_USERNAME:-}
+      KUKA_SMTP_PASSWORD: ${KUKA_SMTP_PASSWORD:-}
+      KUKA_SMTP_ENCRYPTION: ${KUKA_SMTP_ENCRYPTION:-}
+      KUKA_SMTP_FROM_NAME: ${KUKA_SMTP_FROM_NAME:-}
+      KUKA_SMTP_REPLY_TO_EMAIL: ${KUKA_SMTP_REPLY_TO_EMAIL:-}
+      KUKA_SMTP_REPLY_TO_NAME: ${KUKA_SMTP_REPLY_TO_NAME:-}
       WORDPRESS_CONFIG_EXTRA: |
         define( 'WP_ENVIRONMENT_TYPE', 'local' );
         define( 'DISABLE_WP_CRON', true );
+        defined( 'KUKA_SMTP_HOST' ) || define( 'KUKA_SMTP_HOST', getenv( 'KUKA_SMTP_HOST' ) ?: '' );
+        defined( 'KUKA_SMTP_PORT' ) || define( 'KUKA_SMTP_PORT', (int) ( getenv( 'KUKA_SMTP_PORT' ) ?: 0 ) );
+        defined( 'KUKA_SMTP_USERNAME' ) || define( 'KUKA_SMTP_USERNAME', getenv( 'KUKA_SMTP_USERNAME' ) ?: '' );
+        defined( 'KUKA_SMTP_PASSWORD' ) || define( 'KUKA_SMTP_PASSWORD', getenv( 'KUKA_SMTP_PASSWORD' ) ?: '' );
+        defined( 'KUKA_SMTP_ENCRYPTION' ) || define( 'KUKA_SMTP_ENCRYPTION', getenv( 'KUKA_SMTP_ENCRYPTION' ) ?: '' );
+        defined( 'KUKA_SMTP_FROM_NAME' ) || define( 'KUKA_SMTP_FROM_NAME', getenv( 'KUKA_SMTP_FROM_NAME' ) ?: '' );
+        defined( 'KUKA_SMTP_REPLY_TO_EMAIL' ) || define( 'KUKA_SMTP_REPLY_TO_EMAIL', getenv( 'KUKA_SMTP_REPLY_TO_EMAIL' ) ?: '' );
+        defined( 'KUKA_SMTP_REPLY_TO_NAME' ) || define( 'KUKA_SMTP_REPLY_TO_NAME', getenv( 'KUKA_SMTP_REPLY_TO_NAME' ) ?: '' );
     volumes:
       - wordpress_data:/var/www/html
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
@@ -118,9 +150,25 @@ services:
       WORDPRESS_DB_NAME: ${DB_NAME}
       WORDPRESS_DB_USER: ${DB_USER}
       WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      KUKA_SMTP_HOST: ${KUKA_SMTP_HOST:-}
+      KUKA_SMTP_PORT: ${KUKA_SMTP_PORT:-}
+      KUKA_SMTP_USERNAME: ${KUKA_SMTP_USERNAME:-}
+      KUKA_SMTP_PASSWORD: ${KUKA_SMTP_PASSWORD:-}
+      KUKA_SMTP_ENCRYPTION: ${KUKA_SMTP_ENCRYPTION:-}
+      KUKA_SMTP_FROM_NAME: ${KUKA_SMTP_FROM_NAME:-}
+      KUKA_SMTP_REPLY_TO_EMAIL: ${KUKA_SMTP_REPLY_TO_EMAIL:-}
+      KUKA_SMTP_REPLY_TO_NAME: ${KUKA_SMTP_REPLY_TO_NAME:-}
       WORDPRESS_CONFIG_EXTRA: |
         define( 'WP_ENVIRONMENT_TYPE', 'local' );
         define( 'DISABLE_WP_CRON', true );
+        defined( 'KUKA_SMTP_HOST' ) || define( 'KUKA_SMTP_HOST', getenv( 'KUKA_SMTP_HOST' ) ?: '' );
+        defined( 'KUKA_SMTP_PORT' ) || define( 'KUKA_SMTP_PORT', (int) ( getenv( 'KUKA_SMTP_PORT' ) ?: 0 ) );
+        defined( 'KUKA_SMTP_USERNAME' ) || define( 'KUKA_SMTP_USERNAME', getenv( 'KUKA_SMTP_USERNAME' ) ?: '' );
+        defined( 'KUKA_SMTP_PASSWORD' ) || define( 'KUKA_SMTP_PASSWORD', getenv( 'KUKA_SMTP_PASSWORD' ) ?: '' );
+        defined( 'KUKA_SMTP_ENCRYPTION' ) || define( 'KUKA_SMTP_ENCRYPTION', getenv( 'KUKA_SMTP_ENCRYPTION' ) ?: '' );
+        defined( 'KUKA_SMTP_FROM_NAME' ) || define( 'KUKA_SMTP_FROM_NAME', getenv( 'KUKA_SMTP_FROM_NAME' ) ?: '' );
+        defined( 'KUKA_SMTP_REPLY_TO_EMAIL' ) || define( 'KUKA_SMTP_REPLY_TO_EMAIL', getenv( 'KUKA_SMTP_REPLY_TO_EMAIL' ) ?: '' );
+        defined( 'KUKA_SMTP_REPLY_TO_NAME' ) || define( 'KUKA_SMTP_REPLY_TO_NAME', getenv( 'KUKA_SMTP_REPLY_TO_NAME' ) ?: '' );
     volumes:
       - wordpress_data:/var/www/html
       - ./wp-content/themes/kuka-island-child:/var/www/html/wp-content/themes/kuka-island-child
