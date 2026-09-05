@@ -110,6 +110,23 @@ add_action( 'woocommerce_before_shop_loop', 'kuka_island_catalog_controls', 5 );
 // already shows the count, so suppress the duplicate to keep a single toolbar row.
 remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 10 );
 
+/**
+ * Blocksy renders its own hero block with a second <h1> on the shop and
+ * category archives. The theme prints the archive heading itself, so the
+ * vendor hero is switched off through Blocksy's public filter: one <h1> per
+ * page and nothing left in the DOM to hide. The CSS rule stays as a fallback.
+ *
+ * @param mixed $source Blocksy's resolved hero source.
+ * @return mixed
+ */
+function kuka_island_disable_blocksy_catalog_hero( $source ) {
+	if ( ( function_exists( 'is_shop' ) && is_shop() ) || is_product_taxonomy() ) {
+		return false;
+	}
+	return $source;
+}
+add_filter( 'blocksy:hero:custom-source', 'kuka_island_disable_blocksy_catalog_hero' );
+
 /** Render the archive title inside the WooCommerce content rhythm. */
 function kuka_island_catalog_heading(): void {
 	?>

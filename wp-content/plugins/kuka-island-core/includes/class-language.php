@@ -49,6 +49,7 @@ final class Kuka_Island_Core_Language {
 				'free_shipping_ready_copy', 'flat_rate_copy', 'hygiene_copy', 'hygiene_defect_copy',
 				'hygiene_try_on_copy', 'secure_payment_copy', 'support_hours',
 			) ),
+			'seo' => self::simple_fields( array( 'home_meta_description', 'shop_meta_description' ) ),
 		);
 	}
 
@@ -118,6 +119,10 @@ final class Kuka_Island_Core_Language {
 				'hygiene_try_on_copy_en' => 'You may try the item on over your underwear without removing the hygiene seal.',
 				'secure_payment_copy_en' => 'Your payment details are processed over a secure connection.',
 				'support_hours_en' => 'Weekdays 09:00–18:00',
+			),
+			'seo' => array(
+				'home_meta_description_en' => 'Kuka Island: bikinis, swimsuits and beachwear for women. Discover the new-season pieces.',
+				'shop_meta_description_en' => 'The Kuka Island shop: bikini tops, bikini bottoms, swimsuits and beachwear. The full collection with size and colour options.',
 			),
 		);
 	}

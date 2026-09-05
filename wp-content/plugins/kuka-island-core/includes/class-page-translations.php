@@ -51,6 +51,9 @@ final class Kuka_Island_Core_Page_Translations {
 		echo '</div><div><p><strong>(EN)</strong></p>';
 		wp_editor( $content, 'kuka_page_content_en', array( 'textarea_name' => 'kuka_content_en', 'textarea_rows' => 18, 'media_buttons' => true ) );
 		echo '</div></div>';
+		$meta_tr = (string) get_post_meta( $post->ID, '_kuka_meta_description', true );
+		$meta_en = (string) get_post_meta( $post->ID, '_kuka_meta_description_en', true );
+		echo '<div class="kuka-paired-fields kuka-page-meta-description"><div><label for="kuka_meta_description"><strong>' . esc_html__( 'Meta açıklaması (Türkçe)', 'kuka-island-core' ) . '</strong></label><p class="description">' . esc_html__( 'Arama sonuçlarında başlığın altında ve paylaşım kartlarında görünür; 150–160 karakter hedeflenir. Boşsa etiket basılmaz.', 'kuka-island-core' ) . '</p><textarea class="widefat" id="kuka_meta_description" name="kuka_meta_description" rows="3" maxlength="320">' . esc_textarea( $meta_tr ) . '</textarea></div><div><label for="kuka_meta_description_en"><strong>' . esc_html__( 'Meta açıklaması (EN)', 'kuka-island-core' ) . '</strong></label><p class="description">' . esc_html__( 'Boşsa İngilizce sayfada Türkçe açıklama kullanılır.', 'kuka-island-core' ) . '</p><textarea class="widefat" id="kuka_meta_description_en" name="kuka_meta_description_en" rows="3" maxlength="320">' . esc_textarea( $meta_en ) . '</textarea></div></div>';
 		if ( 'publish' === $post->post_status ) { echo '<p><a href="' . esc_url( get_permalink( $post ) ) . '" target="_blank" rel="noopener">' . esc_html__( 'Sitede gör', 'kuka-island-core' ) . '</a></p>'; }
 	}
 
@@ -60,6 +63,9 @@ final class Kuka_Island_Core_Page_Translations {
 		if ( ! isset( $_POST['kuka_page_english_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['kuka_page_english_nonce'] ) ), 'kuka_page_english' ) ) { return; }
 		update_post_meta( $post_id, '_kuka_title_en', sanitize_text_field( wp_unslash( $_POST['kuka_title_en'] ?? '' ) ) );
 		update_post_meta( $post_id, '_kuka_content_en', wp_kses_post( wp_unslash( $_POST['kuka_content_en'] ?? '' ) ) );
+		// Meta açıklaması tek satırdır: satır sonu ve etiket taşımaz.
+		update_post_meta( $post_id, '_kuka_meta_description', sanitize_text_field( wp_unslash( $_POST['kuka_meta_description'] ?? '' ) ) );
+		update_post_meta( $post_id, '_kuka_meta_description_en', sanitize_text_field( wp_unslash( $_POST['kuka_meta_description_en'] ?? '' ) ) );
 		$this->saving_editor = true;
 		wp_update_post( array( 'ID' => $post_id, 'post_content' => wp_kses_post( wp_unslash( $_POST['kuka_page_content_tr'] ?? $post->post_content ) ) ) );
 		$this->saving_editor = false;

@@ -186,6 +186,10 @@ final class Kuka_Island_Core_Site_Appearance {
 			'membership' => array(
 				'enabled' => false, 'guest_session_hours' => 48,
 			),
+			'seo' => array(
+				'home_meta_description' => 'Kuka Island: kadınlar için bikini, mayo ve plaj giyim. Yeni sezon parçalarını keşfedin.',
+				'shop_meta_description' => 'Kuka Island mağazası: bikini üstleri, bikini altları, mayolar ve plaj giyim. Beden ve renk seçenekleriyle tüm koleksiyon.',
+			),
 		);
 	}
 
@@ -545,6 +549,14 @@ final class Kuka_Island_Core_Site_Appearance {
 				'fields' => array(
 					'enabled'             => array( __( 'Üyelik sistemini aç', 'kuka-island-core' ), 'checkbox' ),
 					'guest_session_hours' => array( __( 'Misafir sepeti ömrü (saat)', 'kuka-island-core' ), 'number' ),
+				),
+			),
+			'seo'          => array(
+				'label'  => __( '14. SEO', 'kuka-island-core' ),
+				'note'   => __( 'Arama motoru sonuçlarında başlığın altında ve sosyal paylaşım kartlarında görünen açıklama metinleri. 150–160 karakter hedeflenir; boş bırakılan alan için etiket basılmaz. Ürün açıklamaları ürün düzenleme ekranında, içerik sayfalarınınki sayfa düzenleme ekranında, kategorilerinki kategori açıklamasındadır.', 'kuka-island-core' ),
+				'fields' => array(
+					'home_meta_description' => array( __( 'Ana sayfa meta açıklaması', 'kuka-island-core' ), 'textarea' ),
+					'shop_meta_description' => array( __( 'Mağaza sayfası meta açıklaması', 'kuka-island-core' ), 'textarea' ),
 				),
 			),
 		);

@@ -130,7 +130,7 @@ $brand_email = sanitize_email( (string) ( $site_content['brand']['email'] ?? '' 
 WP_CLI::line( 'SITE_EMAIL=' . ( is_email( $brand_email ) && str_ends_with( $brand_email, '@kukaisland.com' ) ? 'configured' : 'unconfigured' ) );
 WP_CLI::line( 'LANGUAGE_TRANSLATABLE_FIELDS=' . ( class_exists( 'Kuka_Island_Core_Language' ) ? Kuka_Island_Core_Language::translation_field_count() : 0 ) );
 WP_CLI::line( 'PRODUCT_EN_FIELD_SCHEMA=9' );
-WP_CLI::line( 'PAGE_EN_FIELD_SCHEMA=2' );
+WP_CLI::line( 'PAGE_EN_FIELD_SCHEMA=3' );
 WP_CLI::line( 'TAXONOMY_EN_FIELD=' . ( function_exists( 'kuka_island_term_name' ) ? '_kuka_name_en' : 'missing' ) );
 $translation_plugins = array_filter( (array) get_option( 'active_plugins', array() ), static fn( string $plugin ): bool => (bool) preg_match( '/polylang|sitepress|wpml|translatepress|weglot|gtranslate/i', $plugin ) );
 WP_CLI::line( 'TRANSLATION_PLUGIN=' . ( $translation_plugins ? implode( ',', $translation_plugins ) : 'none' ) );
