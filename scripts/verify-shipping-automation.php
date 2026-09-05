@@ -9960,6 +9960,23 @@ foreach ( $smtp_required as $smtp_constant ) {
 $smtp_configured = class_exists( 'Kuka_Island_Core_Email_Delivery' )
 	&& Kuka_Island_Core_Email_Delivery::smtp_is_configured();
 
+$smtp_has_runtime_value = false;
+foreach ( $smtp_required as $smtp_constant ) {
+	if ( ! defined( $smtp_constant ) ) {
+		continue;
+	}
+
+	if ( 'KUKA_SMTP_PORT' === $smtp_constant ) {
+		$smtp_has_runtime_value = $smtp_has_runtime_value || 0 < (int) constant( $smtp_constant );
+		continue;
+	}
+
+	$smtp_has_runtime_value = $smtp_has_runtime_value || '' !== trim( (string) constant( $smtp_constant ) );
+}
+
+// CI deliberately carries no mail credential. Empty is safe; partial is not.
+$smtp_runtime_state = $smtp_configured ? 'configured' : ( $smtp_has_runtime_value ? 'INVALID' : 'unconfigured' );
+
 /*
  * The compose transport, the runbook line and .gitignore are HOST files: this
  * container mounts only /project-scripts, so they cannot be read from here and
@@ -9975,17 +9992,16 @@ $report(
 	&& 0 === $smtp_registered
 	// The database is not carrying it.
 	&& 0 === $smtp_option_rows
-	// The transport has it, from wp-config.
+	// Runtime values come only from wp-config; CI may deliberately leave them empty.
 	&& 6 === $smtp_defined
-	&& $smtp_configured
-	&& $smtp_configured,
+	&& 'INVALID' !== $smtp_runtime_state,
 	sprintf(
-		'measured:source_and_options_table|password_input_fields:%d|registered_settings:%d|smtp_option_rows:%d|constants_from_wp_config:%d/6|transport_configured:%s|host_files:measured_by_SMTP_SECRET_TRANSPORT',
+		'measured:source_and_options_table|password_input_fields:%d|registered_settings:%d|smtp_option_rows:%d|constants_from_wp_config:%d/6|runtime_state:%s|host_files:measured_by_SMTP_SECRET_TRANSPORT',
 		$smtp_input_fields,
 		$smtp_registered,
 		$smtp_option_rows,
 		$smtp_defined,
-		$smtp_configured ? 'yes' : 'NO'
+		$smtp_runtime_state
 	)
 );
 
