@@ -68,7 +68,8 @@ $emblem_html = $has_logo ? '' : kuka_island_emblem_markup();
 	<?php else : ?>
 	<div class="kuka-header-actions">
 		<a class="kuka-icon-button kuka-search-button" href="<?php echo esc_url( home_url( '/?s=&post_type=product' ) ); ?>" data-panel-trigger="kuka-search-panel" aria-controls="kuka-search-panel" aria-expanded="false" aria-label="<?php esc_attr_e( 'Ürün ara', 'kuka-island' ); ?>"><?php echo kuka_island_icon( 'search' ); // phpcs:ignore ?></a>
-		<a class="kuka-icon-button kuka-bag-button" href="<?php echo esc_url( wc_get_cart_url() ); ?>" data-panel-trigger="kuka-cart-panel" aria-label="<?php esc_attr_e( 'Sepeti aç', 'kuka-island' ); ?>" aria-controls="kuka-cart-panel" aria-expanded="false"><?php echo kuka_island_icon( 'bag' ); // phpcs:ignore ?><?php echo kuka_island_cart_count_markup(); // phpcs:ignore ?></a>
+		<?php /* Erişilebilir ad görünür sayacı da içersin diye aria-label yerine ekran okuyucu metni kullanılır: "Sepeti aç 0". */ ?>
+		<a class="kuka-icon-button kuka-bag-button" href="<?php echo esc_url( wc_get_cart_url() ); ?>" data-panel-trigger="kuka-cart-panel" aria-controls="kuka-cart-panel" aria-expanded="false"><span class="kuka-sr-only"><?php esc_html_e( 'Sepeti aç', 'kuka-island' ); ?></span><?php echo kuka_island_icon( 'bag' ); // phpcs:ignore ?><?php echo kuka_island_cart_count_markup(); // phpcs:ignore ?></a>
 	</div>
 	<?php endif; ?>
 </header>
