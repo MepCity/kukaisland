@@ -502,6 +502,17 @@ expect_shipping_match() {
     failures=$((failures + 1))
   fi
 }
+expect_email_match() {
+  label=$1
+  pattern=$2
+  if printf '%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp" | grep -Eq "$pattern"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected pattern $pattern)" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 expect_email_design_line() {
   label=$1
   line=$2
@@ -1519,7 +1530,10 @@ expect_email_line "Exception cannot abort checkout mail" "THROWABLE_EXCEPTION_CA
 expect_email_line "Error cannot abort checkout mail" "THROWABLE_ERROR_CAUGHT=yes"
 expect_email_line "failed order mail creates two notes" "THROWABLE_ORDER_NOTES=2/2"
 expect_email_line "PHP mail is actually disabled in acceptance process" "PHP_MAIL_FUNCTION=disabled"
-expect_email_line "the disabled-mail acceptance never reaches a real SMTP server" "DISABLED_MAIL_TRANSPORT=mail"
+# Two valid shapes: with an SMTP account present the transport is pulled back to
+# mail() for this one send; without one (CI, clean install) Core refuses before
+# PHPMailer is ever built. Either way no real SMTP server is reached.
+expect_email_match "the disabled-mail acceptance never reaches a real SMTP server" "^DISABLED_MAIL_TRANSPORT=(mail|none:refused_before_transport)$"
 expect_email_line "disabled PHP mail fails safely" "DISABLED_MAIL_SAFE=yes"
 expect_email_line "disabled PHP mail creates an order note" "DISABLED_MAIL_ORDER_NOTE=yes"
 expect_email_line "disabled PHP mail appears on Start" "DISABLED_MAIL_START_WARNING=yes"
@@ -1535,7 +1549,10 @@ expect_email_design_line "product images are only sent when the address is publi
 expect_email_design_line "the logo falls back to a typographic wordmark instead of a broken image" "EMAIL_DESIGN_LOGO=configured_logo_id:0|no_logo_wordmark:1|public_logo_img:2|public_logo_wordmark:0|local_logo_img:0|local_logo_wordmark:1"
 expect_email_design_line "guests get a signed tracking link, never a My Account link" "EMAIL_DESIGN_ACCESS=membership:off|guest_my_account:0|guest_tokenized:1|customer_my_account_membership_off:0|customer_my_account_membership_on:2|tracking_button:1|no_url_button:0|empty_href:0"
 expect_email_design_line "the banner renders only when the panel field holds a public image" "EMAIL_DESIGN_BANNER=panel_banner_id:0|unconfigured:0|configured:1|items_still_shown:1"
-expect_email_design_line "no SMTP credential is introduced by the e-mail templates" "EMAIL_DESIGN_SECRETS=password_in_customer_html:0|username_in_module_templates:0|username_is:public_brand_address"
+# username_is:undefined is the SMTP-less environment (CI, clean install): there is
+# no credential to leak. private_credential stays a failure: the SMTP user must
+# be the public brand address (K-48).
+expect_email_design_match "no SMTP credential is introduced by the e-mail templates" "^EMAIL_DESIGN_SECRETS=password_in_customer_html:0\\|username_in_module_templates:0\\|username_is:(public_brand_address|undefined)$"
 expect_email_design_line "the admin e-mail still works on the shared skeleton and carries no customer label" "EMAIL_DESIGN_ADMIN=rendered:yes|order_number:yes|customer_eyebrow:0|shared_skeleton:yes"
 expect_email_design_line "the plain-text version stays plain and keeps the tracking number" "EMAIL_DESIGN_PLAIN_TEXT=html_tags:0|tracking_number:present|bytes:nonempty"
 expect_email_design_line "the three copied WooCommerce templates still match their pinned upstream version" "EMAIL_DESIGN_TEMPLATE_DRIFT=email-header.php:pinned|email-footer.php:pinned|email-fulfillment-details.php:pinned"

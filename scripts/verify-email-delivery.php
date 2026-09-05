@@ -130,6 +130,16 @@ if ( 'disabled-mail' === $mode ) {
 
 	$delivery->capture_order_context( '', 'new_order', $order );
 	$sent = wp_mail( 'acceptance@example.test', 'Disabled mail acceptance', 'No message is sent.' );
+	/*
+	 * SMTP hesabı olmayan ortamda (CI, temiz kurulum) Core, mail() kapalı ve
+	 * SMTP yapılandırılmamış olduğunu görüp PHPMailer'a hiç inmeden reddeder;
+	 * phpmailer_init hiç ateşlenmez. Bu da "gerçek SMTP sunucusuna ulaşılmadı"
+	 * sonucudur ve ayrı adıyla raporlanır. SMTP yapılandırılmışken kancanın
+	 * ateşlenmemesi ise gerçek bir anormalliktir ve 'unknown' olarak kalır.
+	 */
+	if ( 'unknown' === $disabled_mail_transport && ! Kuka_Island_Core_Email_Delivery::smtp_is_configured() ) {
+		$disabled_mail_transport = 'none:refused_before_transport';
+	}
 	$order = wc_get_order( $order->get_id() );
 	$notes = wc_get_order_notes( array( 'order_id' => $order->get_id() ) );
 	$note_text = implode( ' ', wp_list_pluck( $notes, 'content' ) );
