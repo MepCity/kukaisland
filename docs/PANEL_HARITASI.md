@@ -1,13 +1,13 @@
 # Kuka Island panel haritası
 
-Ölçüm tarihi: 10 Ağustos 2026. Kaynak: `Kuka_Island_Core_Site_Appearance::field_inventory()` ve ilgili WordPress/WooCommerce kayıt ekranları.
+Ölçüm tarihi: 5 Eylül 2026. Kaynak: `Kuka_Island_Core_Site_Appearance::field_inventory()` ve ilgili WordPress/WooCommerce kayıt ekranları.
 
 ## Ölçüm özeti
 
-- Site Görünümü: **13 sekme, 113 görünen alan satırı, 154 saklanan alan kontrolü**. Fark, 41 Türkçe alanın aynı satırdaki `(EN)` karşılığıdır.
+- Site Görünümü: **14 sekme, 118 görünen alan satırı, 161 saklanan alan kontrolü**. Fark, 43 Türkçe alanın aynı satırdaki `(EN)` karşılığıdır.
 - Marka Hikâyesi `scenes` alanı tek sözleşme alanıdır; her sahne kendi içinde TR/EN metin, dört medya, iki metin tonu ve üç sanat yönü kontrolü taşır.
 - Ürün: 7 ortak Kuka alanı + 8 İngilizce karşılık + ürün adı/açıklama/kısa açıklama dil çiftleri. Fiyat, stok, SKU, varyasyon ve görseller ortaktır.
-- Sayfa: başlık ve içerik için TR/EN çifti. Taksonomi terimi: ad için TR/EN çifti.
+- Sayfa: başlık, içerik ve meta açıklaması için TR/EN çifti. Taksonomi terimi: ad için TR/EN çifti; kategori açıklaması kategori sayfasının meta açıklamasıdır.
 
 ## Site Görünümü envanteri
 
@@ -28,6 +28,7 @@ Tipler: `text` tek satır, `textarea` çok satır, `checkbox` anahtar, `number` 
 | 11. Ödeme Formu Alanları | Checkout alan zorunlulukları | `require_phone: checkbox`; `require_company: checkbox`; `require_address_2: checkbox`; `require_city: checkbox` |
 | 12. Beden Rehberi Verileri | Beden Rehberi sayfasındaki üç tablo | `size_top_rows: size_rows`; `size_bottom_rows: size_rows`; `size_swimsuit_rows: size_rows` |
 | 13. Üyelik | Misafir ödeme ve sepet oturumu | `enabled: checkbox`; `guest_session_hours: number` |
+| 14. SEO | Ana sayfa ve mağaza sayfasının arama sonucu açıklaması; aynı metin Open Graph/Twitter kartlarında da kullanılır. Boş alan etiket basmaz | `home_meta_description: textarea`; `home_meta_description_en: textarea`; `shop_meta_description: textarea`; `shop_meta_description_en: textarea` |
 
 ## Site Görünümü dışından yönetilen yüzeyler
 
@@ -35,9 +36,9 @@ Tipler: `text` tek satır, `textarea` çok satır, `checkbox` anahtar, `number` 
 |---|---|---|
 | Ürün adı, açıklamalar, kumaş/bakım/kalıp/model/SEO | Ürün düzenleme | TR ve `(EN)` aynı ekranda; fiyat/stok/SKU/görseller ortaktır. |
 | Fiyat, stok, SKU, varyasyon, ürün görselleri | Ürün düzenleme → Ürün verisi / Görseller | WooCommerce tek kaynaktır. |
-| Kategori adı ve sırası | Ürünler → Kategoriler | Ad ve `Ad (EN)` aynı formdadır. |
+| Kategori adı, sırası ve açıklaması | Ürünler → Kategoriler | Ad ve `Ad (EN)` aynı formdadır; açıklama kategori sayfasının meta açıklamasıdır. |
 | Renk, beden, kesim terimleri | Ürünler → Nitelikler → Terimleri yapılandır | Ad ve `Ad (EN)` aynı formdadır; renk teriminde swatch rengi de bulunur. |
-| Sayfa başlığı ve gövdesi | Sayfalar → ilgili sayfa | TR ve `(EN)` aynı ekrandadır. |
+| Sayfa başlığı, gövdesi ve meta açıklaması | Sayfalar → ilgili sayfa | TR ve `(EN)` aynı ekrandadır; meta açıklaması boşsa etiket basılmaz. |
 | Kargo bölgeleri/yöntemleri | WooCommerce → Ayarlar → Gönderim | Bölge ve yöntem WooCommerce'te; tutar/eşik Site Görünümü'nden senkronlanır. |
 | Vergi, ödeme yöntemi, kupon | WooCommerce ayarları / Pazarlama | Ödeme matematiği ve kupon motoru yeniden yazılmaz. |
 | Siparişler ve müşteriler | WooCommerce → Siparişler / Analiz | HPOS tek kaynaktır. |

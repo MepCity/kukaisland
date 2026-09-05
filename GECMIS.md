@@ -890,6 +890,31 @@ Yerel kabulün bilinçli sınırı: site adresi `localhost` olduğu için görse
 wordmark ve metin satırı gösterildi. Üretim HTTPS alanında logo/ürün görselinin
 gerçek istemciden indirilebilmesi yayına alma kabulünde ayrıca ölçülecek.
 
+## 15.4 SEO katmanı ve ilk ekran hızı — 5 Eylül teslim denetimi
+
+Teslim öncesi Lighthouse ölçümü (yerel, mobil emülasyon, yavaş 4G) üç şeyi
+gösterdi: ana sayfa ve katalogda meta açıklaması yoktu, katalogda Blocksy’nin
+gizlenmiş ikinci `h1`’i duruyordu ve ana sayfa açılır açılmaz 6,5 MB mobil
+videoyu hero fotoğrafıyla aynı anda indirip LCP’yi 7,9 saniyeye çekiyordu.
+
+SEO katmanı temada `inc/seo.php` içinde tek dosyaya toplandı: meta açıklaması
+ürün metası, panelin yeni 14. SEO grubu, kategori açıklaması ve sayfa metası
+sırasıyla okunur; boş alan etiket üretmez, hiçbir açıklama uydurulmaz. Open
+Graph/Twitter kartı site genelinde basılır, ürün sayfası kendi görselini
+taşır. Ana sayfada panel verisinden `OnlineStore` JSON-LD ve hero fotoğrafı
+için mobil/masaüstü ayrı `preload` eklendi. Blocksy hero’su artık CSS ile
+gizlenmiyor, `blocksy:hero:custom-source` filtresiyle hiç üretilmiyor.
+
+Video kararı basit tutuldu: dosyalar aynı, yalnız **ne zaman** ve **kime**
+indiği değişti. `load` sonrası boşta başlar; tarayıcı 2G/3G bildiriyorsa hiç
+inmez ve poster kalır. Ölçüm: ana sayfa 68→74, LCP 7,9→7,2 s; katalog
+83→96. Ana sayfanın kalan yükü videodan değil 430 KB mobil hero JPEG’inden ve
+mobilde de inen masaüstü posterinden geliyor; o ikinci turun işi.
+
+**Ders:** Lab skoru tek sayı değil, tek elemandır. LCP elemanını bulmadan
+“video ağır” demek yarım teşhisti; video ertelendi, LCP yalnız 0,7 s kazandı,
+çünkü ölçülen eleman videonun altındaki fotoğraftı.
+
 ---
 
 ## 16. Bu belgeyi okuyan yapay zekâya
