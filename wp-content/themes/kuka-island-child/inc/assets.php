@@ -111,7 +111,9 @@ function kuka_island_child_enqueue_assets(): void {
 			)
 		);
 	}
-	if ( is_page() ) {
+	// Ana sayfa da statik bir sayfadır ama içerik sayfası stilinden hiçbir kural
+	// kullanmaz; orada yüklenmesi yalnız render'ı bloklayan bir istek eklerdi.
+	if ( is_page() && ! is_front_page() ) {
 		kuka_island_enqueue_style( 'content', array( 'kuka-island-global' ) );
 	}
 
