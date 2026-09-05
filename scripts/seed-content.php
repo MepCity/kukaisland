@@ -60,7 +60,7 @@ $contact_page = kuka_content_html(
 		'<h2>Destek kanalları</h2>',
 		'[kuka_contact_details]',
 		'<h2>İletişim formu</h2>',
-		'<p class="kuka-service-disabled"><strong>Form şu anda devre dışıdır.</strong> Mesaj gönderim altyapısı bağlanana kadar e-posta, telefon, WhatsApp veya Instagram kanalını kullanın.</p>',
+		'[kuka_contact_form]',
 	)
 );
 
@@ -366,7 +366,7 @@ $english_pages = array(
 		'<h2>Support channels</h2>',
 		'[kuka_contact_details]',
 		'<h2>Contact form</h2>',
-		'<p class="kuka-service-disabled"><strong>The form is currently unavailable.</strong> Until the messaging service is connected, please contact us by email, phone, WhatsApp or Instagram.</p>',
+		'[kuka_contact_form]',
 	) ) ),
 	'sik-sorulan-sorular' => array( 'Frequently Asked Questions', kuka_content_html( array(
 		'<h2>Size and fit</h2>',

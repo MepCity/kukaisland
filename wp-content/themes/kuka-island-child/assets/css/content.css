@@ -129,6 +129,77 @@
   background: var(--color-sand);
 }
 
+.kuka-contact-form {
+  max-width: var(--measure-copy);
+  margin-block: var(--space-3) var(--space-8);
+}
+
+.kuka-contact-form form,
+.kuka-contact-form__field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.kuka-contact-form form {
+  gap: var(--space-2);
+}
+
+.kuka-contact-form__field label {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+}
+
+.kuka-contact-form input,
+.kuka-contact-form textarea {
+  width: 100%;
+  border: var(--stroke) solid var(--color-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.kuka-contact-form input {
+  min-height: var(--control-large);
+  padding-inline: var(--space-1-5);
+}
+
+.kuka-contact-form textarea {
+  min-height: calc(var(--control-large) * 3);
+  padding: var(--space-1-5);
+  resize: vertical;
+}
+
+.kuka-contact-form input:focus-visible,
+.kuka-contact-form textarea:focus-visible {
+  border-color: var(--color-ink);
+  outline: var(--stroke) solid var(--color-ink);
+  outline-offset: var(--stroke);
+}
+
+.kuka-contact-form__privacy,
+.kuka-contact-form__message {
+  margin: 0;
+  font-size: var(--text-caption);
+}
+
+.kuka-contact-form__message {
+  margin-bottom: var(--space-2);
+  padding: var(--space-2);
+  border-left: var(--space-0-5) solid currentColor;
+  background: var(--color-sand);
+}
+
+.kuka-contact-form__message--error {
+  color: var(--color-error);
+}
+
+.kuka-contact-form__trap {
+  position: absolute;
+  width: var(--stroke);
+  height: var(--stroke);
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .kuka-table-scroll {
   max-width: 100%;
   overflow-x: auto;

@@ -1871,6 +1871,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 - [x] Checkout telefon standardı: doğrudan/`0`/`+90` girişleri `3/3` → `530 948 19 96`; eksik TR ve EN mesajları ayrı PASS, odak `billing_phone`, görünür konum `352 px`, üst özet `0`; geçerli girişte hata/ARIA `0`; JS'siz EN hata ve TR `0` normalizasyonu PASS
 - [x] Faz 9 e-posta katmanı `Throwable` koruması, `wp-config.php` tabanlı PHPMailer SMTP, alan adı göndereni, ayrı Reply-To, sipariş notu/logu, Başlangıç uyarısı ve test düğmesiyle tamamlandı
 - [x] Faz 9 yerel ölçümü: kapalı `mail()` güvenli; `Exception` + `Error` 2/2 yakalandı; SMTP taşıyıcısı `smtp`; yerleşik müşteri/yönetici yeniden gönderme eylemleri mevcut
+- [x] İletişim formu e-posta akışı: TR/EN form marka destek adresine mevcut SMTP katmanıyla bağlı; gönderen kimliği site alanında, ziyaretçi yalnız `Reply-To`; nonce, honeypot, doğrulama, oran sınırı, header-injection reddi, tek deneme ve sır sızıntısı davranışı `CONTACT_FORM_DELIVERY=PASS` ile ölçüldü. Masaüstü 420 px, 390 px mobilde 358 px; iki dilde yatay taşma 0. Tek kontrollü canlı iletide SMTP kabulü, marka posta kutusunda ileti ve ziyaretçi `Reply-To` değeri salt-okunur IMAP kontrolüyle doğrulandı
 - [ ] Canlı sipariş #87 durumu, gerçek SMTP teslimatı/SPF/DKIM ve canlı cron anlık ölçümü üretim erişimiyle doğrulanacak
 - [x] Faz 8 footer ödeme şeridi, iki dil logosu, şirket/iletişim alanları ve 12 otomatik + 5 manuel iyzico hazırlık kontrolü tamamlandı
 - [x] Faz 8 ölçümü: otomatik hazırlık 7/12; 14/14 TR/EN viewport yatay taşma 0; Visa 20 CSS px / 5,29 mm

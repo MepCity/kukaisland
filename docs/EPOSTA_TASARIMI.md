@@ -135,6 +135,33 @@ değiştirilmez, sipariş ekranı ve mağaza etkilenmez.
 Takip adresi yoksa ya da `http(s)` değilse **düğme basılmaz**; boş `href`
 üretilmez.
 
+## İletişim formu
+
+`[kuka_contact_form]` kısa kodu Türkçe ve İngilizce iletişim sayfasında aynı
+güvenli teslim yolunu kullanır. Ziyaretçiden yalnız e-posta adresi, konu ve
+mesaj alınır. Alıcı **Site Görünümü > Marka** bölümündeki yayınlanmış marka
+e-postasıdır; SMTP gönderen kimliği her zaman site alanında kalır, ziyaretçi
+adresi yalnız `Reply-To` olur. Böylece SPF/DMARC göndereni taklit edilmez ve
+yanıt düğmesi ziyaretçiye döner.
+
+Form nonce, görünmez honeypot, katı alan türü ve uzunluk kontrolü, CR/LF
+header-injection reddi, IP ve IP/e-posta çifti oran sınırı kullanır. Oran
+anahtarlarında IP ve e-posta açık metin tutulmaz; HMAC özeti transient anahtarı
+olur. Bir gönderim yalnız bir kez `wp_mail()` çağırır. Kesin posta reddinde
+otomatik ikinci deneme yoktur ve ziyaretçiye taşıyıcı hata metni gösterilmez.
+Post/Redirect/Get dönüşündeki sorgu yalnız tek kullanımlık rastgele sonuç
+anahtarı taşır; e-posta, konu ve mesaj URL'ye yazılmaz.
+
+Mevcut kurulumlar için göç yalnız eski, birebir eşleşen “form devre dışı”
+kutusunu kısa kodla değiştirir. Operatörün sonradan özelleştirdiği iletişim
+metni eşleşmiyorsa sessizce ezilmez.
+
+Davranış ölçümü `scripts/verify-contact-form.php` içindedir ve gerçek SMTP'ye
+çıkmadan geçerli gönderimi, anlık tekrarı, altı bozuk girdi biçimini, kesin
+posta reddini, Reply-To üstünlüğünü ve sır sızıntısını sınar. Tarayıcı kabulü:
+TR/EN sayfada form birer kez; masaüstünde 420 piksel, 390 piksel viewport'ta
+358 piksel; yatay taşma sıfır.
+
 ## Ölçümler
 
 `make verify` içinde, `scripts/verify-email-design.php measure`:
@@ -152,6 +179,16 @@ Takip adresi yoksa ya da `http(s)` değilse **düğme basılmaz**; boş `href`
 | `EMAIL_DESIGN_ADMIN` | yönetici iletisi çalışıyor, müşteri etiketi taşımıyor |
 | `EMAIL_DESIGN_PLAIN_TEXT` | düz metinde HTML etiketi 0, takip numarası var |
 | `EMAIL_DESIGN_TEMPLATE_DRIFT` | üç kopya yukarı akış sürümüne sabit |
+
+İletişim formu ayrı olarak `CONTACT_FORM_DELIVERY` satırıyla ölçülür; bu satır
+SMTP sunucusuna gerçek teslim iddiası değildir. Gerçek teslim, kontrollü canlı
+bir form gönderimi ve hedef posta kutusu gözlemiyle ayrıca doğrulanır.
+
+5 Eylül 2026'da bu ikinci kanıt da tek iletiyle alındı: üretim form yolu
+`success` döndü, ileti marka posta kutusunda bulundu ve teslim edilmiş başlığın
+RFC adres ayrıştırmasında `Reply-To` ziyaretçi adresiyle eşleşti. Kontrol posta
+kutusunu salt okunur açtı; ikinci ileti gönderilmedi. Kimlik bilgisi, ileti
+içeriği veya açık adres bakım kaydına yazılmadı.
 
 Tarayıcı ölçümü (`scripts/verify-email-design.php <mod>` çıktısı bir dosyaya
 render edilip açılır): masaüstü `#wrapper` genişliği **780 px**, yatay taşma

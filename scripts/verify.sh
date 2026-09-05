@@ -401,6 +401,17 @@ expect_email_line() {
   fi
 }
 
+expect_contact_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$contact_report" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 expect_fulfillment_line() {
   label=$1
   expected=$2
@@ -1467,7 +1478,10 @@ expect_reset_offline_line "an open write gate refuses the reset before docker st
 expect_reset_offline_line "the real wrapper resets offline with no credential mount" "SANDBOX_RESET_REAL_WRAPPER_DRIVER=PASS|credentials_file:absent|credentials_mounted:no|from:uncertain|to:idle|uuid_unchanged:yes|history:append_only|real_claim_unchanged:yes"
 expect_sandbox_line "state fixtures are cleaned up" "SANDBOX_STATE_FIXTURES_CLEANED=PASS|temp_root_removed:yes"
 expect_iyzico_line "a cancelled order is not treated as paid" "IYZICO_CANCELLED_NOT_PAID=yes"
-expect_line "contact has one company and one support block" "CONTACT_SHORTCODES=company:1|support:1"
+expect_line "contact has one company, support and form block" "CONTACT_SHORTCODES=company:1|support:1|form:1"
+contact_report=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-contact-form.php)
+printf '%s\n' "$contact_report"
+expect_contact_line "contact form validates, rate-limits and sends once" "CONTACT_FORM_DELIVERY=PASS|valid:success|mail_attempts:2|recipient:brand_source|reply_to:visitor|repeat:rate|invalid_refused:6/6|failure:error|nonce:yes|honeypot:yes|page_shortcodes:tr1+en1|secret_leaks:0"
 expect_line "unknown legal values stay hidden" "APPLICATION_LEGAL_ROWS=mersis:0|kep:0|chamber:0|rules:0|etbis:0"
 expect_line "footer payment logos and CSS are absent" "FOOTER_PAYMENT_LOGOS=absent"
 expect_line "footer payment panel field is retired" "FOOTER_PAYMENT_PANEL_FIELD=absent"

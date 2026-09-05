@@ -559,7 +559,6 @@ Bu bölüm bakım sözleşmesi değildir. Bir belirtiyi çözmek için önce
 - Gerçek ürünler, fotoğraf ve fiyatlarla (150 parça, çekim başlamadı)
 - iyzico canlı üye işyeri bilgileri ve canlı ilk ödeme kontrolü; sandbox ödeme,
   callback/idempotency ve iade korumaları geliştirme ortamında doğrulandı
-- **SMTP** (§4.4 zorunlu) — sipariş e-postaları buna bağlı
 - EDM canlı başvuru/kimlik/seri kurulumu — müşteri hacme ulaşana kadar eklenti pasif, faturalar manuel
 - Kombin indirimi kararı → varsa WPC Product Bundles Premium **$29 tek seferlik**
 - Logo SVG yatay lockup + font lisansı (§4.6 self-hosted zorunlu)
@@ -841,6 +840,33 @@ son ve yalnız operatör kontrolünde.
 
 Bu bölümde hiçbir kimlik bilgisi, token, parola veya müşteri numarası yoktur ve
 yazılmayacaktır.
+
+## 15.2 İletişim formu — SMTP göndereni ile ziyaretçiyi ayırmak
+
+Sipariş e-postaları çalışırken iletişim sayfasında hâlâ “form devre dışı”
+kutusu vardı. Yeni form ayrı bir posta altyapısı veya panelde parola alanı
+açmadı; mevcut fail-safe SMTP katmanını ve Site Görünümü'ndeki marka e-posta
+kaynağını kullandı. En önemli karar, ziyaretçinin adresini `From` yapmamak:
+alan adı göndereni korunuyor, ziyaretçi yalnız `Reply-To` oluyor.
+
+Form iki dilde tek kısa kodla çalışıyor. Nonce ve honeypot yanında CR/LF içeren
+e-posta/konu reddediliyor, alan uzunlukları sınırlı, oran anahtarları HMAC ile
+özetli ve posta katmanına her kabulde en fazla bir çağrı var. Sonuç URL'sinde
+kişisel veri yok; tek kullanımlık rastgele anahtar var. Eski kurulum göçü de
+yalnız birebir eski devre-dışı kutusunu değiştiriyor, özelleştirilmiş sayfa
+içeriğini tahmin ederek ezmiyor.
+
+Bakımda “test geçti” ile “posta kutusuna ulaştı” ayrılmalıdır:
+`CONTACT_FORM_DELIVERY=PASS` doğrulaması gerçek SMTP'yi keserek kod yolunu
+ölçer. Canlı teslim ancak kontrollü bir gönderim ve alıcı kutusu gözlemiyle
+kanıtlanır. Görsel kabulte TR/EN form birer kez render edildi; masaüstü ve
+390 piksel mobil görünümde yatay taşma sıfırdı. Ayrıntılı sözleşme
+`docs/EPOSTA_TASARIMI.md` içindedir.
+
+5 Eylül'deki tek kontrollü canlı kabul bu sınırı da kapattı: form sonucu
+`success`, hedef marka kutusunda ileti mevcut ve teslim edilmiş başlıkta
+ziyaretçi `Reply-To` değeri doğruydu. Kutu salt okunur denetlendi, yeniden
+gönderim yapılmadı ve kimlik bilgisi rapora taşınmadı.
 
 ---
 
