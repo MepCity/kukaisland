@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help up down install seed reset shell wp status verify pot deploy-package
+.PHONY: help up down install seed reset shell wp status verify pot deploy-package edm-probe edm-status
 
 help:
 	@echo "make install  Ortamı kurar ve pilot veriyi yükler"
@@ -13,6 +13,8 @@ help:
 	@echo "make verify   Kabul ölçümlerini raporlar"
 	@echo "make pot      Tema ve eklenti çeviri kataloglarını üretir"
 	@echo "make deploy-package  Veridyen aktarım arşivini üretir"
+	@echo "make edm-probe   EDM sağlık kontrolü: salt-okunur bağlantı/kontör/seri probu"
+	@echo "make edm-status  Sandbox'ta gönderilmiş belgenin EDM durumunu sorgular (salt-okunur)"
 
 up:
 	@./scripts/ensure-env.sh
@@ -50,3 +52,11 @@ pot:
 
 deploy-package:
 	@./scripts/build-deploy-package.sh
+
+# Her ikisi de salt-okunur: hiçbir belge göndermez, hiçbir kayıt yazmaz.
+# Ayrıntı ve yorumlama: docs/EDM_BAKIM_HAFIZASI.md, docs/EDM_AKTIVASYON_REHBERI.md
+edm-probe:
+	@./scripts/edm-test-run.sh test-edm-sandbox.php
+
+edm-status:
+	@./scripts/edm-sandbox-send-run.sh status=confirm
