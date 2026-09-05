@@ -868,6 +868,28 @@ kanıtlanır. Görsel kabulte TR/EN form birer kez render edildi; masaüstü ve
 ziyaretçi `Reply-To` değeri doğruydu. Kutu salt okunur denetlendi, yeniden
 gönderim yapılmadı ve kimlik bilgisi rapora taşınmadı.
 
+## 15.3 Sipariş ve manuel kargo e-postası — gerçek müşteri kutusu kabulü
+
+5 Eylül'de kontrollü bir WooCommerce siparişi gerçek SMTP üzerinden müşteri
+kontrol kutusuna gönderildi. Sipariş #45354, “Asimetrik Bikini Üstü — Siyah,
+M” ürünüyle `processing` durumuna geçti; tahsilat ve stok hareketi yapılmadı.
+Kutuya “Kuka Island siparişiniz alındı!” iletisi ulaştı ve sipariş numarası,
+ürün, varyasyon, adet, fiyat ve toplam doğru görüldü.
+
+Aynı siparişe otomatik taşıyıcı adaptörü kullanılmadan WooCommerce'in manuel
+fulfillment kaydı eklendi: sağlayıcı Aras Kargo, test takip numarası
+`KUKA-MANUEL-45354`, müşteri bildirimi açık. “Kuka Island siparişiniz kargoya
+verildi!” iletisi aynı kutuya ulaştı; sağlayıcı, takip numarası ve bağlantısı,
+ürün, varyasyon, adet ve fiyat doğruydu. Sipariş yine `processing` kaldı ve dış
+taşıyıcı çağrısı yapılmadı. Böylece manuel süreçte iki müşteri e-postasının
+gerçek kutuya ulaştığı ölçüldü; SMTP kabulüyle kutu teslimi birbirine
+karıştırılmadı.
+
+Yerel kabulün bilinçli sınırı: site adresi `localhost` olduğu için görsel kapısı
+ürün fotoğrafını ve panelde yapılandırılmamış logoyu e-postaya koymadı; temiz
+wordmark ve metin satırı gösterildi. Üretim HTTPS alanında logo/ürün görselinin
+gerçek istemciden indirilebilmesi yayına alma kabulünde ayrıca ölçülecek.
+
 ---
 
 ## 16. Bu belgeyi okuyan yapay zekâya

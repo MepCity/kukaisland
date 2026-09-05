@@ -190,6 +190,21 @@ RFC adres ayrıştırmasında `Reply-To` ziyaretçi adresiyle eşleşti. Kontrol
 kutusunu salt okunur açtı; ikinci ileti gönderilmedi. Kimlik bilgisi, ileti
 içeriği veya açık adres bakım kaydına yazılmadı.
 
+Aynı gün müşteri posta kutusuyla sipariş zinciri de uçtan uca gözlendi. Kontrollü
+bir sipariş `processing` durumuna geçirildi; müşteri kutusunda yalnız beklenen
+“siparişiniz alındı” iletisi görüldü. Aynı siparişe WooCommerce'in manuel
+fulfillment yolu üzerinden Aras Kargo ve bir test takip numarası girilip müşteri
+bildirimi açıkça istendi; kutuda yalnız beklenen “siparişiniz kargoya verildi”
+iletisi görüldü. İkinci ileti taşıyıcı adını, takip numarasını, takip düğmesini,
+ürün adını, varyasyonu, adedi ve fiyatı doğru taşıdı. Sipariş `processing`
+kaldı, stok değişmedi ve hiçbir taşıyıcı API çağrısı yapılmadı.
+
+Bu kabul yerel alan adında yapıldığı için logo ve ürün görseli kasıtlı olarak
+tipografik geri dönüşe düştü; bağlantılar da yerel siteyi gösterdi. Bu, kırık
+`localhost` görselinin müşteriye taşınmadığını kanıtlar; üretim HTTPS alanında
+görselin gerçekten indirilebildiğini kanıtlamaz. O son kabul canlı alan adı
+yayına alındığında ayrıca yapılmalıdır.
+
 Tarayıcı ölçümü (`scripts/verify-email-design.php <mod>` çıktısı bir dosyaya
 render edilip açılır): masaüstü `#wrapper` genişliği **780 px**, yatay taşma
 **0**; 390 piksel genişlikte `#wrapper` **390 px**, yatay taşma **0**, viewport
