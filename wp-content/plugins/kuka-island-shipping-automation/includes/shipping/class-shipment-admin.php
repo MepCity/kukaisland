@@ -54,6 +54,93 @@ final class Kuka_Island_Shipping_Admin {
 		add_action( 'admin_post_kuka_shipping_reconcile', array( $this, 'handle_reconcile' ) );
 		add_action( 'admin_post_kuka_shipping_update', array( $this, 'handle_update' ) );
 		add_action( 'admin_post_kuka_shipping_cancel', array( $this, 'handle_cancel' ) );
+		add_action( 'admin_post_kuka_shipping_label', array( $this, 'handle_label' ) );
+	}
+
+	/**
+	 * Hand one stored ZPL label to an authorised operator, and nobody else.
+	 *
+	 * THE LABEL IS PERSONAL DATA. It prints the recipient's name, address and
+	 * phone, so it never becomes a public file: there is no URL under uploads,
+	 * no guessable path and no redirect. It is streamed from order meta by an
+	 * admin-post action that checks the same nonce family and the same
+	 * capability every other carrier action checks, for the one order named in
+	 * the request.
+	 *
+	 * One file per piece. A multi-piece shipment is downloaded piece by piece
+	 * rather than repackaged, so what reaches the printer is byte for byte what
+	 * the carrier produced.
+	 */
+	public function handle_label(): void {
+		$order = $this->authorise( 'kuka_shipping_label' );
+
+		if ( ! $order instanceof WC_Order ) {
+			$this->go_back();
+
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorise() checked it.
+		$response = self::label_response( $order, absint( $_POST['piece'] ?? 0 ) );
+
+		if ( null === $response ) {
+			wp_die(
+				esc_html__( 'Bu parçaya ait etiket bulunamadı.', 'kuka-island-shipping-automation' ),
+				'',
+				array( 'response' => 404 )
+			);
+		}
+
+		nocache_headers();
+
+		foreach ( $response['headers'] as $name => $value ) {
+			header( $name . ': ' . $value );
+		}
+
+		// The bytes the carrier produced, unmodified: no escaping, no filter.
+		echo $response['body']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		exit;
+	}
+
+	/**
+	 * The whole answer for one piece: its headers and its exact bytes.
+	 *
+	 * Separate from handle_label() because the answer is a decision and the
+	 * streaming is not: everything that decides WHAT a caller receives lives
+	 * here, while handle_label() only puts it on the wire. Authorisation is
+	 * deliberately NOT part of it -- the caller has already passed authorise()
+	 * -- so this method never widens who may download a label.
+	 *
+	 * @param WC_Order $order Order the label belongs to.
+	 * @param int      $piece Piece number asked for.
+	 * @return array{headers: array<string, string>, body: string}|null Null when there is no such piece.
+	 */
+	public static function label_response( WC_Order $order, int $piece ): ?array {
+		$label = null;
+
+		foreach ( Kuka_Island_Shipping_Order_Store::labels( $order ) as $candidate ) {
+			if ( (int) $candidate['pieceNumber'] === $piece ) {
+				$label = $candidate;
+				break;
+			}
+		}
+
+		if ( null === $label ) {
+			return null;
+		}
+
+		$body     = (string) $label['value'];
+		$filename = sprintf( 'kuka-%d-parca-%d.zpl', (int) $order->get_id(), (int) $label['pieceNumber'] );
+
+		return array(
+			'headers' => array(
+				'Content-Type'           => 'application/vnd.zebra.zpl; charset=utf-8',
+				'Content-Disposition'    => 'attachment; filename="' . $filename . '"',
+				'X-Content-Type-Options' => 'nosniff',
+				'Content-Length'         => (string) strlen( $body ),
+			),
+			'body'    => $body,
+		);
 	}
 
 	/**
@@ -173,6 +260,12 @@ final class Kuka_Island_Shipping_Admin {
 			echo '<p><strong>' . esc_html__( 'Gönderi no:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['shipment_id'] ) . '</code></p>';
 		}
 
+		if ( 0 < (int) ( $data['pieces'] ?? 0 ) ) {
+			echo '<p><strong>' . esc_html__( 'Parça sayısı:', 'kuka-island-shipping-automation' ) . '</strong> ' . esc_html( (string) (int) $data['pieces'] ) . '</p>';
+		}
+
+		// Orders created before the label receipt existed still carry their own
+		// barcode rows; those are real barcodes and are shown as such.
 		if ( array() !== $data['barcodes'] ) {
 			echo '<p><strong>' . esc_html__( 'Barkodlar:', 'kuka-island-shipping-automation' ) . '</strong> ' . esc_html( implode( ', ', $data['barcodes'] ) ) . '</p>';
 		}
@@ -195,8 +288,45 @@ final class Kuka_Island_Shipping_Admin {
 			echo '<p>' . esc_html( $hint ) . '</p>';
 		}
 
+		/*
+		 * THE TWO-STAGE LIMIT, STATED AS WHAT IT IS.
+		 *
+		 * DHL's written answer: made back to back, the barcode call can fail
+		 * because the destination branch may not be resolved yet. Nothing in
+		 * the read-only documents proves when it IS resolved, so this module
+		 * does not claim to verify it. What it does is refuse to make both
+		 * carrier writes in one action: the operator decides when to press the
+		 * second button.
+		 */
+		if ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === $data['state'] ) {
+			echo '<p class="description">' . esc_html__(
+				'Taşıyıcıda sipariş oluşturuldu. Barkod ayrı bir adımdır: DHL, iki çağrı arka arkaya yapılırsa hedef şubenin henüz belirlenmemiş olabileceğini ve barkod isteğinin hata verebileceğini bildirdi. Şubenin hazır olduğunu doğrulayan bir alan belgede yok; bekleme süresi operatörün kararıdır.',
+				'kuka-island-shipping-automation'
+			) . '</p>';
+		}
+
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			return;
+		}
+
+		/*
+		 * THE LABEL, FOR AN AUTHORISED OPERATOR ONLY.
+		 *
+		 * The ZPL itself is never rendered here -- it is personal data and it
+		 * is megabytes of print commands. One download button per piece, each
+		 * carrying the same nonce family as every other carrier action.
+		 */
+		foreach ( Kuka_Island_Shipping_Order_Store::labels( $order ) as $label ) {
+			$this->action_button(
+				$order_id,
+				'kuka_shipping_label',
+				sprintf(
+					/* translators: %d: piece number. */
+					__( 'ZPL etiketini indir (parça %d)', 'kuka-island-shipping-automation' ),
+					(int) $label['pieceNumber']
+				),
+				array( 'piece' => (int) $label['pieceNumber'] )
+			);
 		}
 
 		/*
@@ -456,9 +586,14 @@ final class Kuka_Island_Shipping_Admin {
 	 * register a second order at the carrier.
 	 */
 	public static function resume_button_label( Kuka_Island_Shipping_Carrier_Interface $carrier ): string {
+		/*
+		 * THE SAME WORDS THE PANEL AND THE MANAGER USE. An operator reading
+		 * "Barkodu oluştur" in the message has to find that phrase on the
+		 * button, not a synonym.
+		 */
 		return sprintf(
 			/* translators: %s: carrier name, e.g. DHL eCommerce Türkiye. */
-			__( '%s gönderi/barkod oluşturmayı sürdür (sipariş yeniden oluşturulmaz)', 'kuka-island-shipping-automation' ),
+			__( 'Barkodu oluştur (%s; sipariş yeniden oluşturulmaz)', 'kuka-island-shipping-automation' ),
 			$carrier->get_label()
 		);
 	}
@@ -466,10 +601,15 @@ final class Kuka_Island_Shipping_Admin {
 	/**
 	 * One nonce-protected POST button.
 	 */
-	private function action_button( int $order_id, string $action, string $label ): void {
+	private function action_button( int $order_id, string $action, string $label, array $extra = array() ): void {
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="margin-bottom:8px;">';
 		echo '<input type="hidden" name="action" value="' . esc_attr( $action ) . '" />';
 		echo '<input type="hidden" name="order_id" value="' . esc_attr( (string) $order_id ) . '" />';
+
+		foreach ( $extra as $name => $value ) {
+			echo '<input type="hidden" name="' . esc_attr( (string) $name ) . '" value="' . esc_attr( (string) $value ) . '" />';
+		}
+
 		wp_nonce_field( $action . '_' . $order_id, '_kuka_ship_nonce' );
 		echo '<button type="submit" class="button">' . esc_html( $label ) . '</button>';
 		echo '</form>';

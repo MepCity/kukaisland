@@ -218,6 +218,13 @@ Ayrı ve bilinçli bir adım.
 **Kontrol listesi:**
 
 - [ ] Canlı WSDL sözleşmesi test WSDL'i ile karşılaştırıldı
+- [ ] `OTHER_ENTEGRATION` alanının anlamı ve test/canlı ortamda kullanılacak
+      değeri EDM tarafından yazılı teyit edildi.
+      Şu an alan yalnız şema zorunlu kıldığı için `0` ile gönderiliyor; `0` bir
+      iş değeri değil, `xs:int` kodlayıcısının tabanıdır. Bu kapı
+      cevaplanmadan canlı gönderim yapılmaz.
+      Bkz. EDM_BAKIM_HAFIZASI.md **K-31**, EDM_ENTEGRASYONU.md `tns:INVOICE`
+      HEADER alanları.
 - [ ] Canlı ortamda yalnız salt-okunur çağrılarla `Login` doğrulandı
 - [ ] Kimlik dosyası izinleri doğrulandı
 

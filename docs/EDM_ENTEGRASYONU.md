@@ -128,6 +128,19 @@ Tüm isteklerde `REQUEST_HEADER/APPLICATION_NAME = ozelyazilim.kukaisland`.
 - `EARCHIVE_REPORT_SENDDATE`, `CANCEL_EARCHIVE_REPORT_SENDDATE` (xs:date, `minOccurs="1"` — şemada zorunlu, EDM'e göre iş kuralı olarak gereksiz; bkz. §16.2)
 - `ISACTIVE`, `MARKED` (xs:boolean)
 - **`INVOICESERIAL_REQUESTED` (xs:token, `minOccurs="0"`)**
+- **`OTHER_ENTEGRATION` = `0`** (xs:int, `minOccurs="1"` — şemada zorunlu,
+  **iş anlamı EDM tarafından henüz yazılı teyit edilmedi**; §16.2'deki iki
+  `SENDDATE` alanıyla aynı sınıf, fakat oradaki yazılı cevap bunu kapsamıyor)
+
+> **Kapsam sınırı — `OTHER_ENTEGRATION`.** Bu alan yalnızca WSDL zorunlu kıldığı
+> için gönderiliyor: `minOccurs="1"` olduğundan ext-soap alan yokken **hiç zarf
+> üretmiyor**. Gönderilen `0` bir **anlam değil**, `xs:int` kodlayıcısının
+> tabanıdır — alanı hiç atamayan resmî C# connector da `default(int)` yani `0`
+> serileştirir. İki `SENDDATE` alanının aksine bunun için EDM'den **yazılı
+> hiçbir cevap yoktur**. Alanın iş anlamı ve test/canlı ortamda beklenen değeri
+> EDM desteğine sorulmadan canlı gönderim yapılmamalıdır; kapı
+> [EDM_AKTIVASYON_REHBERI.md](EDM_AKTIVASYON_REHBERI.md) Aşama 1 kontrol
+> listesindedir. Ayrıntılı bakım kaydı: EDM_BAKIM_HAFIZASI.md **K-31**.
 
 `CONTENT`: `xmlmime:base64Binary`. Ham UTF-8 UBL XML verilir; SoapClient tek kez base64'ler (çift kodlama yok, test bunu SHA-256 ile ölçer).
 

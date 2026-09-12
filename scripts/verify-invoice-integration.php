@@ -4,9 +4,20 @@
  *
  * Every SOAP contract assertion runs through the PRODUCTION
  * Kuka_Island_Core_EDM_Client, whose transport hands the real request to a
- * SoapClient built from the real EDM WSDL. The intercepted, WSDL-serialised
- * request XML is then asserted with DOMXPath. No hand-rolled SOAP array is used
- * as evidence of what production sends.
+ * SoapClient built from a REVIEWED LOCAL COPY of the EDM test WSDL. The
+ * intercepted, WSDL-serialised request XML is then asserted with DOMXPath. No
+ * hand-rolled SOAP array is used as evidence of what production sends.
+ *
+ * NOTHING IS TRANSMITTED, AND NOTHING IS FETCHED.
+ *
+ * SoapClient::__doRequest() is overridden, so the production send path runs to
+ * completion and its serialised request is captured instead of posted. That was
+ * always true of the SEND. What was NOT true is the READ: the WSDL itself used
+ * to be pulled from EDM's live test service by the SoapClient constructor and by
+ * DOMDocument::load(), which made this suite depend on an external host and on
+ * a document EDM can change without telling anybody. It now reads the pinned
+ * fixture below, and the fixture advertises a reserved-TLD endpoint, so no
+ * transport in this file can reach EDM even if an override were lost.
  *
  * Run with:
  * docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-invoice-integration.php
@@ -27,6 +38,36 @@ add_filter( 'woocommerce_email_enabled_customer_processing_order', '__return_fal
 add_filter( 'woocommerce_email_enabled_customer_completed_order', '__return_false' );
 add_filter( 'woocommerce_email_enabled_customer_refunded_order', '__return_false' );
 
+/* ========================================================================== */
+/* The WSDL this run reads: a local file, pinned by content                     */
+/* ========================================================================== */
+
+/*
+ * WHY A FIXTURE AND NOT THE SERVICE.
+ *
+ * `Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL` is a URL. Handing it to
+ * SoapClient or to DOMDocument::load() means every `make verify` run performs an
+ * outbound HTTPS GET to test.edmbilisim.com.tr and then asserts a contract
+ * against whatever that host happened to return. Two things follow, and both
+ * were observed: the suite fails when the network or EDM's test service is
+ * unavailable, and it silently changes meaning whenever EDM edits the document.
+ *
+ * So the contract is measured against a reviewed copy, taken once, pinned by
+ * SHA-256, with EDM's endpoint replaced by a reserved-TLD sentinel. The file is
+ * pure WSDL/XSD: element and type declarations only, zero text nodes, no
+ * credential, session id, alias or document content of any kind.
+ *
+ * The pin is not decoration. A fixture edited by accident -- or on purpose --
+ * would quietly weaken every XPath assertion in this file, so the hash is
+ * checked before the first SoapClient is built and the run FAILS on a mismatch
+ * rather than measuring against an unknown document.
+ */
+const KUKA_INVOICE_WSDL_FIXTURE        = __DIR__ . '/fixtures/edm/edm-efaturaedm-test.wsdl';
+const KUKA_INVOICE_WSDL_FIXTURE_SHA256 = '690d2b0c8d41f2f94a890017f462b3a3ae03ce2394ab15b81b7c747ad8355d33';
+
+/** The EDM host that must never appear in a WSDL source or a SOAP location. */
+const KUKA_INVOICE_EDM_HOSTS = array( 'edmbilisim.com.tr' );
+
 $failures = array();
 $report    = static function ( string $name, bool $passed, string $detail = '' ) use ( &$failures ): void {
 	WP_CLI::line( sprintf( '%s=%s%s', $name, $passed ? 'PASS' : 'FAIL', '' !== $detail ? '|' . $detail : '' ) );
@@ -37,6 +78,112 @@ $report    = static function ( string $name, bool $passed, string $detail = '' )
 $note = static function ( string $line ): void {
 	WP_CLI::line( $line );
 };
+
+/**
+ * What this run read, what it serialised, and what it tried to send.
+ *
+ * One place, written by the code that actually does each thing, so the
+ * isolation claim is a measurement rather than a promise. Static because the
+ * SoapClient subclass below is a class and has no other way to reach it.
+ */
+final class Kuka_Island_Invoice_Network_Ledger {
+	/** @var array<int, string> Every WSDL source a SoapClient/DOMDocument was given. */
+	public static array $wsdl_sources = array();
+
+	/** @var array<int, string> Every endpoint SoapClient asked __doRequest to post to. */
+	public static array $soap_locations = array();
+
+	/** Production send paths that ran to serialisation and were captured. */
+	public static int $intercepted = 0;
+
+	/** Captured calls answered from a mock envelope supplied by this suite. */
+	public static int $mock_answers = 0;
+
+	/** Outbound HTTP requests to an EDM host that WordPress was asked to make. */
+	public static int $edm_http_attempts = 0;
+
+	/** @var array<int, string> Those requests' URLs, for the report. */
+	public static array $edm_http_urls = array();
+
+	public static function record_wsdl_source( string $source ): string {
+		self::$wsdl_sources[] = $source;
+
+		return $source;
+	}
+
+	/**
+	 * Does any recorded string name an EDM host?
+	 *
+	 * @param array<int, mixed> $values Strings to test.
+	 */
+	public static function touches_edm( array $values ): bool {
+		foreach ( $values as $value ) {
+			foreach ( KUKA_INVOICE_EDM_HOSTS as $host ) {
+				if ( str_contains( (string) $value, $host ) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+}
+
+/*
+ * A HARD FLOOR UNDER THE WHOLE RUN.
+ *
+ * Anything that tries to reach an EDM host through WordPress is counted and
+ * refused here, whatever asked for it. This is not how the suite is meant to
+ * work -- the WSDL is a local file and __doRequest never posts -- which is
+ * exactly why the counter is worth having: it turns "we believe nothing goes
+ * out" into a number the report prints.
+ */
+add_filter(
+	'pre_http_request',
+	static function ( $preempt, $args, $url ) {
+		unset( $args );
+
+		if ( ! Kuka_Island_Invoice_Network_Ledger::touches_edm( array( $url ) ) ) {
+			return $preempt;
+		}
+
+		++Kuka_Island_Invoice_Network_Ledger::$edm_http_attempts;
+		Kuka_Island_Invoice_Network_Ledger::$edm_http_urls[] = (string) $url;
+
+		return new WP_Error( 'kuka_invoice_offline', 'Refused: this verification never contacts EDM.' );
+	},
+	PHP_INT_MAX,
+	3
+);
+
+/**
+ * The pinned WSDL fixture's path, or a hard stop.
+ *
+ * Checked by CONTENT, not by existence: a fixture whose bytes changed is a
+ * different contract, and measuring against it while reporting PASS would be
+ * the worst outcome this file can produce.
+ */
+function kuka_invoice_wsdl_fixture(): string {
+	static $verified = '';
+
+	if ( '' !== $verified ) {
+		return Kuka_Island_Invoice_Network_Ledger::record_wsdl_source( $verified );
+	}
+
+	if ( ! is_file( KUKA_INVOICE_WSDL_FIXTURE ) || ! is_readable( KUKA_INVOICE_WSDL_FIXTURE ) ) {
+		WP_CLI::error( 'INVOICE_WSDL_FIXTURE=MISSING|path:' . KUKA_INVOICE_WSDL_FIXTURE );
+	}
+
+	$actual = (string) hash_file( 'sha256', KUKA_INVOICE_WSDL_FIXTURE );
+
+	if ( ! hash_equals( KUKA_INVOICE_WSDL_FIXTURE_SHA256, $actual ) ) {
+		WP_CLI::error( 'INVOICE_WSDL_FIXTURE=SHA256_MISMATCH|expected:' . KUKA_INVOICE_WSDL_FIXTURE_SHA256 . '|actual:' . $actual );
+	}
+
+	$verified = KUKA_INVOICE_WSDL_FIXTURE;
+
+	return Kuka_Island_Invoice_Network_Ledger::record_wsdl_source( $verified );
+}
 
 /* ========================================================================== */
 /* The one live setting this run touches, and a shutdown coordinator for it     */
@@ -1409,11 +1556,27 @@ class Kuka_Island_Test_WSDL_Interceptor extends SoapClient {
 	public string $mock_response_body = '';
 
 	public function __doRequest( $request, $location, $action, $version, $one_way = 0 ): ?string {
+		/*
+		 * THE PRODUCTION SEND PATH ENDS HERE, BY DESIGN.
+		 *
+		 * Everything above this line is production code: the client built the
+		 * request array and SoapClient serialised it against the WSDL. What is
+		 * replaced is only the socket. The endpoint is recorded rather than
+		 * used, so the report can state which host a real transport would have
+		 * been handed -- the fixture's reserved-TLD sentinel, never EDM.
+		 */
+		Kuka_Island_Invoice_Network_Ledger::$soap_locations[] = (string) $location;
+		++Kuka_Island_Invoice_Network_Ledger::$intercepted;
+
 		$this->last_request_xml = (string) $request;
 
-		return '' !== $this->mock_response_body
-			? $this->mock_response_body
-			: '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body/></s:Envelope>';
+		if ( '' !== $this->mock_response_body ) {
+			++Kuka_Island_Invoice_Network_Ledger::$mock_answers;
+
+			return $this->mock_response_body;
+		}
+
+		return '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body/></s:Envelope>';
 	}
 }
 
@@ -1427,6 +1590,7 @@ class Kuka_Island_Test_WSDL_Interceptor extends SoapClient {
  */
 final class Kuka_Island_Test_WSDL_Transport implements Kuka_Island_Core_SOAP_Transport_Interface {
 	public array $operations = array();
+	public string $last_soap_fault = '';
 	private Kuka_Island_Test_WSDL_Interceptor $client;
 
 	public function __construct( Kuka_Island_Test_WSDL_Interceptor $client ) {
@@ -1436,7 +1600,22 @@ final class Kuka_Island_Test_WSDL_Transport implements Kuka_Island_Core_SOAP_Tra
 	public function call( string $action, array $parameters ) {
 		$this->operations[] = $action;
 
-		return $this->client->__soapCall( $action, array( $parameters ) );
+		/*
+		 * THE RAW FAULT IS KEPT.
+		 *
+		 * The production client deliberately turns a SoapFault into a safe,
+		 * message-free verdict -- correct in production, useless in a test that
+		 * then reports only "EDM refused the request." A serialisation fault
+		 * raised by the SOAP extension itself never reaches __doRequest, so
+		 * without this the suite could not say WHY nothing was captured.
+		 */
+		try {
+			return $this->client->__soapCall( $action, array( $parameters ) );
+		} catch ( SoapFault $fault ) {
+			$this->last_soap_fault = $action . ': ' . $fault->getMessage();
+
+			throw $fault;
+		}
 	}
 
 	public function get_last_request(): string {
@@ -1521,7 +1700,7 @@ $soap_wsdl_error  = '';
 
 try {
 	$soap_interceptor = new Kuka_Island_Test_WSDL_Interceptor(
-		Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL,
+		kuka_invoice_wsdl_fixture(),
 		array(
 			'trace'      => 1,
 			'exceptions' => 1,
@@ -1771,7 +1950,11 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 	try {
 		$soap_client->send_invoice( $earchive_payload );
 	} catch ( Throwable $t ) {
-		$send_error = get_class( $t ) . ': ' . $t->getMessage();
+		// The production verdict AND the fault the SOAP extension actually
+		// raised: the first is what an operator sees, the second is the only
+		// thing that says why a request was never serialised.
+		$send_error = get_class( $t ) . ': ' . $t->getMessage()
+			. ( '' !== $soap_transport->last_soap_fault ? ' [soap_fault: ' . $soap_transport->last_soap_fault . ']' : '' );
 	}
 
 	$send_request_xml = $soap_interceptor->last_request_xml;
@@ -1821,6 +2004,17 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 			// is absent rather than emitted empty.
 			'//*[local-name()="gonderiTasiyan"]/*[local-name()="gercekKisi"]'          => false,
 			'//*[local-name()="HEADER"]/*[local-name()="INTERNETSALES"]'               => 'true',
+			/*
+			 * The WSDL declares OTHER_ENTEGRATION as minOccurs="1", so ext-soap
+			 * refuses to build an envelope at all without it. Asserting the
+			 * VALUE, not merely its presence, is the point: 0 is the int
+			 * encoder's floor -- what the official C# connector serialises for
+			 * a field it never assigns -- and this client asserts nothing about
+			 * the field's business meaning. If that value ever needs to change,
+			 * it must change because EDM said so in writing, and this line is
+			 * what will force the conversation.
+			 */
+			'//*[local-name()="HEADER"]/*[local-name()="OTHER_ENTEGRATION"]'          => '0',
 		)
 	);
 
@@ -1955,7 +2149,7 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 	};
 
 	$senddate_probe = new Kuka_Island_Test_WSDL_Interceptor(
-		Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL,
+		kuka_invoice_wsdl_fixture(),
 		array(
 			'trace'        => 1,
 			'exceptions'   => true,
@@ -1978,6 +2172,13 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 		'INVOICE_TYPE'   => 'SATIS',
 		'ISACTIVE'       => true,
 		'MARKED'         => false,
+		/*
+		 * The OTHER required HEADER element, present in the probe's baseline so
+		 * that the one thing under test is the SENDDATE pair. Without it the
+		 * encoder stops on OTHER_ENTEGRATION instead and the control can never
+		 * serialise, which makes the probe unsound rather than negative.
+		 */
+		'OTHER_ENTEGRATION' => 0,
 	);
 
 	$senddate_request = static function ( array $header ): array {
@@ -2048,7 +2249,7 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 	// The exact declarations, quoted from the WSDL rather than characterised.
 	$senddate_declarations = array();
 	$senddate_wsdl_dom     = new DOMDocument();
-	if ( @$senddate_wsdl_dom->load( Kuka_Island_Core_Invoice_Config::DEFAULT_TEST_WSDL ) ) {
+	if ( @$senddate_wsdl_dom->load( kuka_invoice_wsdl_fixture() ) ) {
 		$senddate_wsdl_xp = new DOMXPath( $senddate_wsdl_dom );
 		$senddate_wsdl_xp->registerNamespace( 'xs', 'http://www.w3.org/2001/XMLSchema' );
 		foreach ( $senddate_names as $decl_name ) {
@@ -2084,7 +2285,7 @@ if ( $soap_interceptor instanceof Kuka_Island_Test_WSDL_Interceptor ) {
 			'INVOICE_OUTGOING_REQUEST_OMITS_REPORT_SENDDATES=%s|%s',
 			( $omission_refused && $control_serialises ) ? 'BLOCKED' : 'BLOCKED_PROBE_UNSOUND',
 			sprintf(
-				'measured:real_wsdl_soap_encoder|network_soap_operations:0|omission_verdict:%s|omission_envelope_produced:%s|encoder_message:%s|control_serialises:%s|control_senddate_nodes:%d,%d|wsdl_declares:%s|conflict:edm_written_answer_says_not_required_but_wsdl_says_minOccurs_1|action:fields_sent_as_0001-01-01_matching_official_request_examples|resolution:documented_dotnet_minvalue_means_no_value|probe_sound:%s',
+				'measured:pinned_wsdl_fixture_soap_encoder|network_soap_operations:0|omission_verdict:%s|omission_envelope_produced:%s|encoder_message:%s|control_serialises:%s|control_senddate_nodes:%d,%d|wsdl_declares:%s|conflict:edm_written_answer_says_not_required_but_wsdl_says_minOccurs_1|action:fields_sent_as_0001-01-01_matching_official_request_examples|resolution:documented_dotnet_minvalue_means_no_value|probe_sound:%s',
 				$omit_attempt['verdict'],
 				'' === trim( (string) $omit_attempt['xml'] ) ? 'no' : 'YES',
 				'' === $omit_attempt['message'] ? 'none' : $omit_attempt['message'],
@@ -2727,7 +2928,7 @@ $report(
 	&& 'sending' !== (string) ( $seam_closed_data['status'] ?? '' )
 	&& 0 === $seam_production_sites,
 	sprintf(
-		'measured:constructed_objects_and_real_send_path|production_default:%s|open_gate_consulted:%d|open_gate_SendInvoice:%d|closed_gate_consulted:%d|closed_gate_code:%s|closed_gate_SendInvoice:%d|closed_gate_uuid:%s|production_sites_passing_a_gate:%d|open_error:%s',
+		'measured:constructed_objects_and_production_send_path_intercepted|production_default:%s|open_gate_consulted:%d|open_gate_SendInvoice:%d|closed_gate_consulted:%d|closed_gate_code:%s|closed_gate_SendInvoice:%d|closed_gate_uuid:%s|production_sites_passing_a_gate:%d|open_error:%s',
 		$seam_default_is_real ? 'Kuka_Island_Core_Invoice_Runtime_Gate' : 'WRONG',
 		$seam_open_gate->asked,
 		$seam_open_transport->calls['SendInvoice'] ?? 0,
@@ -8363,7 +8564,7 @@ if ( $runner_available
 		&& Kuka_Island_Core_Invoice_Status::STATUS_BLOCKED === Kuka_Island_Core_Invoice_Order_Store::get_status( $bad_reloaded )
 		&& 'Kargoya verilme tarihi okunamadı; fatura oluşturulmadı.' === $bad_hint,
 		sprintf(
-			'measured:woocommerce_setter_roundtrip_and_real_send|php_tz:%s|wp_tz:%s|storage:utc|roundtrip_cases:%d|%s|boundary:%s|refused:%d/%d|wrongly_accepted:%s|canonical:%s|midnight_ordering:%s|stored_raw:%s|soap_gonderimTarihi:%s|helper_day:%s|shop_today:%s|invalid_date:%s/SendInvoice=%d|status:%s|hint:%s',
+			'measured:woocommerce_setter_roundtrip_and_production_send_path_intercepted|php_tz:%s|wp_tz:%s|storage:utc|roundtrip_cases:%d|%s|boundary:%s|refused:%d/%d|wrongly_accepted:%s|canonical:%s|midnight_ordering:%s|stored_raw:%s|soap_gonderimTarihi:%s|helper_day:%s|shop_today:%s|invalid_date:%s/SendInvoice=%d|status:%s|hint:%s',
 			date_default_timezone_get(),
 			wp_timezone()->getName(),
 			count( $tz_roundtrip_cases ),
@@ -8499,7 +8700,7 @@ if ( $runner_available
 		&& 1 === $xml_tuzel
 		&& 0 === $xml_gercek,
 		sprintf(
-			'measured:production_resolver_real_send_and_real_wsdl|cases:%d|%s|eleven_digit_send:%s/SendInvoice=%d|xml_tuzel_vkn:%s|xml_vkn_digits:%d|xml_tuzel_unvan:%s|tuzelKisi_nodes:%d|gercekKisi_nodes:%d',
+			'measured:production_resolver_production_send_path_intercepted_and_pinned_wsdl_fixture|cases:%d|%s|eleven_digit_send:%s/SendInvoice=%d|xml_tuzel_vkn:%s|xml_vkn_digits:%d|xml_tuzel_unvan:%s|tuzelKisi_nodes:%d|gercekKisi_nodes:%d',
 			count( $vkn_cases ),
 			implode( ' ', $vkn_details ),
 			$tckn_code ?: 'none',
@@ -9026,6 +9227,99 @@ $report(
 		empty( $leak_found ) ? 'none' : implode( ',', $leak_found ),
 		(string) ( $leak_code ?? 'none' ),
 		(string) ( $leak_diagnostic ?? 'none' )
+	)
+);
+
+/* ========================================================================== */
+/* This whole run read one local file and sent nothing                          */
+/* ========================================================================== */
+
+/*
+ * WHAT THIS ANSWERS.
+ *
+ * Two different claims used to be confused with each other, and the confusion
+ * survived into a written report:
+ *
+ *   - "the production SEND path ran"   -- true, and it is the point of the
+ *     suite: the real client built the request and SoapClient serialised it.
+ *   - "a real EDM send happened"       -- FALSE. __doRequest() is overridden,
+ *     so the envelope is captured, never posted.
+ *
+ * What WAS reaching EDM was the READ: SoapClient's constructor and
+ * DOMDocument::load() both fetched the live test WSDL over HTTPS, which made
+ * `make verify` fail whenever that host was unreachable and quietly change
+ * meaning whenever EDM edited the document.
+ *
+ * Everything below is counted by the code that does the work -- the fixture
+ * loader, the WordPress HTTP layer and __doRequest itself -- so none of it is
+ * an assurance.
+ */
+$iso_sources     = Kuka_Island_Invoice_Network_Ledger::$wsdl_sources;
+$iso_locations   = Kuka_Island_Invoice_Network_Ledger::$soap_locations;
+$iso_unique_loc  = array_values( array_unique( $iso_locations ) );
+$iso_fixture_sha = is_file( KUKA_INVOICE_WSDL_FIXTURE ) ? (string) hash_file( 'sha256', KUKA_INVOICE_WSDL_FIXTURE ) : '';
+
+// Every WSDL source used was THE pinned local file, and a local file at that.
+$iso_all_local = array() !== $iso_sources;
+
+foreach ( $iso_sources as $iso_source ) {
+	if ( KUKA_INVOICE_WSDL_FIXTURE !== $iso_source || ! is_file( $iso_source ) ) {
+		$iso_all_local = false;
+	}
+}
+
+// The fixture itself names no EDM host, so no transport built from it can
+// reach one -- this is the structural half of the guarantee.
+$iso_fixture_body = is_file( KUKA_INVOICE_WSDL_FIXTURE ) ? (string) file_get_contents( KUKA_INVOICE_WSDL_FIXTURE ) : '';
+$iso_fixture_clean = '' !== $iso_fixture_body
+	&& ! Kuka_Island_Invoice_Network_Ledger::touches_edm( array( $iso_fixture_body ) );
+
+// No endpoint SoapClient was handed named EDM, and WordPress was never asked
+// for an EDM URL -- the behavioural half.
+$iso_no_edm_endpoint = ! Kuka_Island_Invoice_Network_Ledger::touches_edm( $iso_locations );
+$iso_http_attempts   = Kuka_Island_Invoice_Network_Ledger::$edm_http_attempts;
+
+// The production send path really did run, and really was answered by a mock.
+$iso_intercepted = Kuka_Island_Invoice_Network_Ledger::$intercepted;
+$iso_mocked      = Kuka_Island_Invoice_Network_Ledger::$mock_answers;
+$iso_sendinvoice = 0;
+
+if ( isset( $soap_transport ) && $soap_transport instanceof Kuka_Island_Test_WSDL_Transport ) {
+	$iso_sendinvoice = count(
+		array_filter(
+			$soap_transport->operations,
+			static fn( $op ): bool => 'SendInvoice' === $op
+		)
+	);
+}
+
+$report(
+	'INVOICE_VERIFY_NETWORK_ISOLATED',
+	$iso_all_local
+		&& $iso_fixture_clean
+		&& hash_equals( KUKA_INVOICE_WSDL_FIXTURE_SHA256, $iso_fixture_sha )
+		&& $iso_no_edm_endpoint
+		&& 0 === $iso_http_attempts
+		&& $iso_intercepted > 0
+		&& $iso_mocked > 0
+		&& $iso_sendinvoice > 0,
+	sprintf(
+		'measured:fixture_loader_wp_http_layer_and___doRequest'
+			. '|wsdl_source:%s|wsdl_reads:%d|all_reads_local_file:%s|wsdl_sha256_pinned:%s'
+			. '|fixture_names_an_edm_host:%s|edm_endpoint_posts:%d|edm_http_requests_attempted:%d'
+			. '|production_send_path_intercepted:%d|SendInvoice_through_production_client:%d|mock_responses_used:%d'
+			. '|soap_endpoints_offered:%s',
+		$iso_all_local ? 'local_file' : 'NOT_LOCAL',
+		count( $iso_sources ),
+		$iso_all_local ? 'yes' : 'NO',
+		hash_equals( KUKA_INVOICE_WSDL_FIXTURE_SHA256, $iso_fixture_sha ) ? 'yes' : 'NO',
+		$iso_fixture_clean ? 'no' : 'YES',
+		$iso_no_edm_endpoint ? 0 : count( $iso_locations ),
+		$iso_http_attempts,
+		$iso_intercepted,
+		$iso_sendinvoice,
+		$iso_mocked,
+		array() === $iso_unique_loc ? 'none' : implode( ',', $iso_unique_loc )
 	)
 );
 

@@ -401,6 +401,33 @@ final class Kuka_Island_Core_EDM_Client {
 					 */
 					'EARCHIVE_REPORT_SENDDATE'        => '0001-01-01',
 					'CANCEL_EARCHIVE_REPORT_SENDDATE' => '0001-01-01',
+					/*
+					 * OTHER_ENTEGRATION is the same kind of field, and omitting
+					 * it has the same effect: the test WSDL declares
+					 *
+					 *   <xs:element name="OTHER_ENTEGRATION"
+					 *               type="xs:int" minOccurs="1" maxOccurs="1"/>
+					 *
+					 * inside INVOICE/HEADER, and ext-soap enforces minOccurs at
+					 * ENCODING time. Without it every SendInvoice raises
+					 * "SOAP-ERROR: Encoding: object has no
+					 * 'OTHER_ENTEGRATION' property", no envelope is built at
+					 * all, and the client's fault classifier reports the
+					 * generic "EDM refused the request" for something EDM never
+					 * saw.
+					 *
+					 * 0 is the encoder floor, not a meaning: xs:int has no null,
+					 * and the official C# connector -- which never assigns this
+					 * field -- serialises default(int), which is 0. This client
+					 * therefore asserts NOTHING about the field's business
+					 * sense.
+					 *
+					 * NOT CONFIRMED BY EDM. Unlike the two SENDDATE fields
+					 * above, no written EDM answer covers this one yet. It is
+					 * sent because the schema makes it unomittable, and it must
+					 * be put to EDM support before any live transmission.
+					 */
+					'OTHER_ENTEGRATION'               => 0,
 					'ISACTIVE'                        => true,
 					'MARKED'                          => false,
 				);

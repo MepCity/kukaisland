@@ -64,6 +64,9 @@ final class Kuka_Island_Shipping_DHL_Client {
 	 * the maintenance notes as unverified until a sandbox call settles it.
 	 * KUKA_DHL_AUTHORIZATION_SCHEME=raw sends the token on its own.
 	 */
+	/** The only Authorization scheme the vendor's document declares. */
+	public const AUTHORIZATION_SCHEME = Kuka_Island_Shipping_DHL_Config::AUTHORIZATION_SCHEME;
+
 	private string $authorization_scheme;
 
 	public function __construct(
@@ -75,8 +78,43 @@ final class Kuka_Island_Shipping_DHL_Client {
 		$this->transport = $transport ?? new Kuka_Island_Shipping_DHL_HTTP_Transport();
 		$this->tokens    = $tokens ?? new Kuka_Island_Shipping_DHL_Token_Store();
 
-		$scheme = defined( 'KUKA_DHL_AUTHORIZATION_SCHEME' ) ? strtolower( trim( (string) KUKA_DHL_AUTHORIZATION_SCHEME ) ) : 'bearer';
-		$this->authorization_scheme = 'raw' === $scheme ? 'raw' : 'bearer';
+		/*
+		 * THE SCHEME IS NO LONGER A GUESS. The vendor's "Rest Api Detay
+		 * Döküman" states it in the request-header table of every
+		 * authenticated service: `Authorization: Bearer XXXXXXXX`, capital B,
+		 * and the accompanying answer repeats it. The `raw` escape hatch
+		 * existed only while the format was unmeasured; leaving it reachable
+		 * now would let one wrong constant send a token every endpoint
+		 * rejects, and the failure would look like bad credentials.
+		 *
+		 * An unrecognised value is REFUSED rather than silently corrected, the
+		 * same way KUKA_DHL_ADAPTER treats one.
+		 */
+		$this->authorization_scheme = $config->get_authorization_scheme();
+	}
+
+	/**
+	 * Unwrap a response the vendor documents two ways.
+	 *
+	 * The OpenAPI files declare `CreateOrderResponse` and
+	 * `CreateBarcodeResponse` as single objects. The "Rest Api Detay Döküman"
+	 * PDF shows the very same responses wrapped in a one-element JSON array.
+	 * Both are vendor documents and they disagree, so BOTH are accepted: a
+	 * one-element list is unwrapped, anything else is passed through. Nothing
+	 * is invented -- no field is read that neither document declares.
+	 *
+	 * @param mixed $decoded Decoded JSON body.
+	 * @return mixed
+	 */
+	private static function unwrap( $decoded ) {
+		if ( is_array( $decoded )
+			&& 1 === count( $decoded )
+			&& array_key_exists( 0, $decoded )
+			&& is_array( $decoded[0] ) ) {
+			return $decoded[0];
+		}
+
+		return $decoded;
 	}
 
 	public function get_config(): Kuka_Island_Shipping_DHL_Config {
@@ -136,6 +174,9 @@ final class Kuka_Island_Shipping_DHL_Client {
 			$payload,
 			true,
 			static function ( $decoded ): ?array {
+				// Both documented envelopes; see self::unwrap().
+				$decoded = self::unwrap( $decoded );
+
 				if ( ! is_array( $decoded ) ) {
 					return null;
 				}
@@ -221,32 +262,51 @@ final class Kuka_Island_Shipping_DHL_Client {
 					return null;
 				}
 
-				$shipment_id = trim( (string) ( $decoded['shipmentId'] ?? '' ) );
+				$decoded     = self::unwrap( $decoded );
+				$shipment_id = is_array( $decoded ) ? trim( (string) ( $decoded['shipmentId'] ?? '' ) ) : '';
 
 				if ( '' === $shipment_id ) {
 					return null;
 				}
 
-				$values = array();
-				foreach ( (array) ( $decoded['barcodes'] ?? array() ) as $barcode ) {
-					if ( ! is_array( $barcode ) ) {
+				/*
+				 * ONLY THE TWO DOCUMENTED FIELDS. `Barcode_Command_API-1.0.json`
+				 * declares `BarcodeInfo` with exactly `pieceNumber` and
+				 * `value`; nothing else in the barcode element is read, because
+				 * the pinned OpenAPI is this project's single source for field
+				 * names.
+				 *
+				 * `value` IS THE LABEL, NOT AN IDENTIFIER: the ready 10x10 cm
+				 * ZPL print string for a Zebra printer, several kilobytes of
+				 * `^` commands containing commas, CRLFs and Turkish text. It is
+				 * carried through UNTOUCHED -- no trim, no delimiter, no
+				 * re-encoding -- because a successful createbarcode cannot be
+				 * repeated to get it again, and the operator has to be able to
+				 * print it.
+				 *
+				 * The list travels as JSON, not as a delimited string: a
+				 * delimiter is a guess about what the value cannot contain, and
+				 * this value can contain anything.
+				 */
+				$labels = array();
+
+				foreach ( (array) ( $decoded['barcodes'] ?? array() ) as $index => $barcode ) {
+					if ( ! is_array( $barcode ) || ! array_key_exists( 'value', $barcode ) ) {
 						continue;
 					}
 
-					$value = trim( (string) ( $barcode['value'] ?? '' ) );
-					if ( '' !== $value ) {
-						$values[] = $value;
-					}
+					$labels[] = array(
+						'pieceNumber' => (int) ( $barcode['pieceNumber'] ?? $index + 1 ),
+						'value'       => (string) $barcode['value'],
+					);
 				}
 
 				return array(
 					'shipment_id'  => $shipment_id,
 					'reference_id' => trim( (string) ( $decoded['referenceId'] ?? '' ) ),
 					'invoice_id'   => trim( (string) ( $decoded['invoiceId'] ?? '' ) ),
-					// Flattened to a string because Result holds scalars only;
-					// the store splits it back into a list.
-					'barcodes'     => implode( ',', $values ),
-					'barcode_count' => count( $values ),
+					'labels'       => (string) wp_json_encode( $labels ),
+					'label_count'  => count( $labels ),
 				);
 			}
 		);
@@ -313,6 +373,11 @@ final class Kuka_Island_Shipping_DHL_Client {
 			null,
 			false,
 			static function ( $decoded ): ?array {
+				// The sandbox returns the documented order envelope inside the
+				// vendor's also-documented one-element response list. Creation
+				// already accepts both forms; the matching query must do the same.
+				$decoded = self::unwrap( $decoded );
+
 				if ( ! is_array( $decoded ) || ! isset( $decoded['order'] ) || ! is_array( $decoded['order'] ) ) {
 					return null;
 				}
@@ -383,6 +448,10 @@ final class Kuka_Island_Shipping_DHL_Client {
 			null,
 			false,
 			static function ( $decoded ): ?array {
+				// As measured in the sandbox, the documented status object may be
+				// wrapped in the vendor's one-element response list.
+				$decoded = self::unwrap( $decoded );
+
 				if ( ! is_array( $decoded ) ) {
 					return null;
 				}
@@ -619,6 +688,19 @@ final class Kuka_Island_Shipping_DHL_Client {
 		}
 
 		$needs_token = ! self::is_cbs_operation( $operation );
+
+		/*
+		 * THE SCHEME IS CHECKED BEFORE ANY SOCKET, INCLUDING THE TOKEN'S.
+		 *
+		 * It used to be checked where the header is built, which is AFTER
+		 * tokens->acquire(). The operation itself was still refused, but the
+		 * Identity call had already gone out: a misconfigured constant spent a
+		 * real authentication against the carrier every time. Configuration is
+		 * knowable without the network, so it is decided without the network.
+		 */
+		if ( $needs_token && self::AUTHORIZATION_SCHEME !== $this->authorization_scheme ) {
+			return Kuka_Island_Shipping_Result::local_refusal( $operation, 'configuration_invalid' );
+		}
 		$headers     = array(
 			'Accept'              => 'application/json',
 			'X-IBM-Client-Id'     => $this->config->get_client_id(),
@@ -638,9 +720,8 @@ final class Kuka_Island_Shipping_DHL_Client {
 				return new Kuka_Island_Shipping_Result( $session['outcome'], $operation, array(), $session['code'], $session['http'] );
 			}
 
-			$headers['Authorization'] = 'raw' === $this->authorization_scheme
-				? $session['token']
-				: 'Bearer ' . $session['token'];
+			// The scheme was validated before the token was acquired.
+			$headers['Authorization'] = 'Bearer ' . $session['token'];
 		}
 
 		$body = '';

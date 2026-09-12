@@ -86,6 +86,40 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * Written so an operator can see WHY a delivered shipment has no customer
 	 * notification yet, without the code having to guess from a silence.
 	 */
+	/**
+	 * The carrier's ZPL labels, one entry per piece, byte for byte.
+	 *
+	 * A successful createbarcode cannot be repeated to get these back, so they
+	 * are kept rather than counted. Stored as a JSON document because the value
+	 * is an arbitrary byte string -- it carries commas, CRLFs, `^` commands and
+	 * Turkish text -- and any delimiter would be a guess about what it cannot
+	 * contain. It is PERSONAL DATA: the label prints the recipient's name,
+	 * address and phone, so it never reaches a note, an e-mail, a log line or
+	 * the general panel; it leaves only through an authorised download.
+	 */
+	/**
+	 * The whole createbarcode answer, as ONE canonical JSON document.
+	 *
+	 * Written BEFORE anything else is settled, and settled from only after it
+	 * has been read back from the database and compared byte for byte. One row
+	 * rather than several, because several rows written in sequence are not
+	 * atomic and calling them atomic is how a half-written shipment looks
+	 * finished: `{referenceId, shipmentId, invoiceId, labels:[{pieceNumber,value}]}`.
+	 */
+	public const META_BARCODE_RECEIPT    = '_kuka_shipping_barcode_receipt';
+
+	/** When the carrier CONFIRMED the order. Not when the parcel started moving. */
+	public const META_ORDER_REGISTERED_AT = '_kuka_shipping_order_registered_at';
+
+	/** The ZPL list is absent or unusable in an otherwise successful answer. */
+	public const LABEL_RESPONSE_INVALID  = 'label_response_invalid';
+
+	/** A stored carrier answer that no open intent on this order claims. */
+	public const RECEIPT_UNCLAIMED       = 'barcode_receipt_unclaimed';
+
+	/** Why the label could not be stored, when that is what happened. */
+	public const LABEL_STORAGE_UNVERIFIED = 'label_storage_unverified';
+
 	public const META_SYNC_LAST_REASON   = '_kuka_shipping_sync_last_reason';
 
 	/** How many safe local fulfilment retries have been booked for this order. */
@@ -699,6 +733,15 @@ final class Kuka_Island_Shipping_Order_Store {
 			return true;
 		}
 
+		/*
+		 * The receipt is the source for shipments this module created. The old
+		 * META_BARCODES row is still READ so orders created before the receipt
+		 * existed keep answering the same way; nothing writes it any more.
+		 */
+		if ( array() !== self::labels( $order ) ) {
+			return true;
+		}
+
 		return array() !== array_filter( array_map( 'strval', (array) ( $order->get_meta( self::META_BARCODES, true ) ?: array() ) ) );
 	}
 
@@ -765,6 +808,7 @@ final class Kuka_Island_Shipping_Order_Store {
 			'reference_history' => array_values( array_filter( array_map( 'strval', (array) ( $order->get_meta( self::META_REFERENCE_HISTORY, true ) ?: array() ) ) ) ),
 			'shipment_id'       => (string) $order->get_meta( self::META_SHIPMENT_ID, true ),
 			'barcodes'          => array_values( array_filter( array_map( 'strval', (array) ( $order->get_meta( self::META_BARCODES, true ) ?: array() ) ) ) ),
+			'pieces'            => count( self::labels( $order ) ),
 			'tracking_url'      => (string) $order->get_meta( self::META_TRACKING_URL, true ),
 			'order_invoice_id'  => (string) $order->get_meta( self::META_ORDER_INVOICE_ID, true ),
 			'status_code'       => (int) $order->get_meta( self::META_STATUS_CODE, true ),
@@ -772,6 +816,7 @@ final class Kuka_Island_Shipping_Order_Store {
 			'last_error'        => (string) $order->get_meta( self::META_LAST_ERROR, true ),
 			'last_operation'    => (string) $order->get_meta( self::META_LAST_OPERATION, true ),
 			'created_at'        => (int) $order->get_meta( self::META_CREATED_AT, true ),
+			'order_registered_at' => (int) $order->get_meta( self::META_ORDER_REGISTERED_AT, true ),
 			'last_queried_at'   => (int) $order->get_meta( self::META_LAST_QUERIED_AT, true ),
 			'query_attempts'    => (int) $order->get_meta( self::META_QUERY_ATTEMPTS, true ),
 			'pending_mutation'  => self::pending_mutation( $order ),
@@ -899,8 +944,19 @@ final class Kuka_Island_Shipping_Order_Store {
 			$order->update_meta_data( self::META_ORDER_INVOICE_ID, $order_invoice_id );
 		}
 
-		if ( 0 === (int) $order->get_meta( self::META_CREATED_AT, true ) ) {
-			$order->update_meta_data( self::META_CREATED_AT, time() );
+		/*
+		 * THE ORDER'S CLOCK, NOT THE SHIPMENT'S.
+		 *
+		 * META_CREATED_AT is what the poller measures MAX_ELAPSED against, and
+		 * the poller is following a PARCEL. Stamping it here used to start the
+		 * fourteen-day budget at createOrder -- and now that the barcode is a
+		 * separate operator action that may come a day later, an order
+		 * registered on Monday and dispatched on Friday would arrive at its
+		 * first poll with most of the budget already spent. The two moments are
+		 * different facts and are recorded separately.
+		 */
+		if ( 0 === (int) $order->get_meta( self::META_ORDER_REGISTERED_AT, true ) ) {
+			$order->update_meta_data( self::META_ORDER_REGISTERED_AT, time() );
 		}
 
 		self::add_history_entry( $order, self::STATE_ORDER_CREATED, __( 'Taşıyıcıda sipariş oluşturuldu.', 'kuka-island-shipping-automation' ) );
@@ -914,6 +970,340 @@ final class Kuka_Island_Shipping_Order_Store {
 	 * @param string            $shipment_id Carrier shipment id.
 	 * @param array<int,string> $barcodes    Piece barcodes the carrier returned.
 	 */
+
+	/**
+	 * PHASE ONE: write the carrier's answer, settle nothing.
+	 *
+	 * The state is not moved, the pending mutation is not cleared and no
+	 * protected door is opened. A process that dies right after this leaves an
+	 * order that still says "a createbarcode was started" -- which is exactly
+	 * what must stop a second one -- plus the answer it got, so a later process
+	 * can finish the LOCAL work without asking the carrier again.
+	 *
+	 * @param WC_Order             $order   Order.
+	 * @param array<string, mixed> $receipt Canonical receipt.
+	 * @return bool True when the document is a string this store can hold.
+	 */
+	public static function save_barcode_receipt( WC_Order $order, array $receipt ): bool {
+		$document = wp_json_encode( $receipt );
+
+		if ( ! is_string( $document ) ) {
+			return false;
+		}
+
+		$order->update_meta_data( self::META_BARCODE_RECEIPT, $document );
+		self::persist( $order );
+
+		return true;
+	}
+
+	/**
+	 * The receipt as the DATABASE has it, read through a fresh order object.
+	 *
+	 * @return array<string, mixed> Empty when there is none or it is unreadable.
+	 */
+	public static function read_barcode_receipt( int $order_id ): array {
+		$order = self::reload( $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return array();
+		}
+
+		$decoded = json_decode( (string) $order->get_meta( self::META_BARCODE_RECEIPT, true ), true );
+
+		return is_array( $decoded ) ? $decoded : array();
+	}
+
+	/**
+	 * Is the stored receipt the same answer the carrier gave, byte for byte?
+	 *
+	 * @param array<string, mixed> $expected Receipt as built from the answer.
+	 * @param array<string, mixed> $stored   Receipt as read back.
+	 */
+	public static function receipt_matches( array $expected, array $stored ): bool {
+		foreach ( array( 'referenceId', 'shipmentId', 'invoiceId' ) as $field ) {
+			if ( (string) ( $stored[ $field ] ?? '' ) !== (string) ( $expected[ $field ] ?? '' ) ) {
+				return false;
+			}
+		}
+
+		$want = array_values( (array) ( $expected['labels'] ?? array() ) );
+		$have = array_values( (array) ( $stored['labels'] ?? array() ) );
+
+		if ( count( $want ) !== count( $have ) ) {
+			return false;
+		}
+
+		foreach ( $want as $index => $label ) {
+			$kept = is_array( $have[ $index ] ?? null ) ? $have[ $index ] : array();
+
+			if ( (int) ( $kept['pieceNumber'] ?? -1 ) !== (int) ( $label['pieceNumber'] ?? -2 ) ) {
+				return false;
+			}
+
+			if ( (string) ( $kept['value'] ?? '' ) !== (string) ( $label['value'] ?? '' ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Is this a usable set of labels, by the vendor's own field list?
+	 *
+	 * An answer with a shipmentId but no printable label is NOT a success: the
+	 * carrier write happened and cannot be repeated, but the operator has
+	 * nothing to put on the parcel. Refusing to call that success is what keeps
+	 * a second createbarcode from being sent.
+	 *
+	 * @param mixed $labels Decoded `barcodes` list.
+	 */
+	public static function labels_are_usable( $labels ): bool {
+		if ( ! is_array( $labels ) || array() === $labels ) {
+			return false;
+		}
+
+		$seen = array();
+
+		foreach ( $labels as $label ) {
+			if ( ! is_array( $label ) || ! array_key_exists( 'value', $label ) ) {
+				return false;
+			}
+
+			if ( '' === (string) $label['value'] ) {
+				return false;
+			}
+
+			$piece = (int) ( $label['pieceNumber'] ?? 0 );
+
+			if ( $piece < 1 || in_array( $piece, $seen, true ) ) {
+				return false;
+			}
+
+			$seen[] = $piece;
+		}
+
+		return true;
+	}
+
+	/**
+	 * PHASE TWO: the shipment is real, proven, and now it is settled.
+	 *
+	 * Called only after the receipt has been read back and compared. This is
+	 * where the state moves, the shipment clock starts and the pending mutation
+	 * is closed -- the three facts that together mean "finished".
+	 *
+	 * @param WC_Order             $order   Order.
+	 * @param array<string, mixed> $receipt Verified receipt.
+	 */
+	public static function settle_barcode_receipt( WC_Order $order, array $receipt, string $state = self::STATE_SHIPMENT_CREATED, string $code = '' ): void {
+		$order->update_meta_data( self::META_STATE, $state );
+		$order->update_meta_data( self::META_LAST_OPERATION, 'create_barcode' );
+		$order->update_meta_data( self::META_LAST_ERROR, $code );
+
+		/*
+		 * The pending intent is closed because the answer IS proven locally --
+		 * that is the whole meaning of this method. A settlement whose receipt
+		 * was never proven belongs to save_carrier_evidence() + a halt, which
+		 * deliberately leaves the intent open.
+		 */
+		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
+
+		$shipment_id = (string) ( $receipt['shipmentId'] ?? '' );
+
+		if ( '' !== $shipment_id ) {
+			$order->update_meta_data( self::META_SHIPMENT_ID, $shipment_id );
+		}
+
+		/*
+		 * THE PARCEL'S CLOCK, started once and never moved by a retry, and
+		 * started only by a real shipment settlement. A record halted for a
+		 * person does not start a delivery clock nobody is watching.
+		 */
+		if ( self::STATE_SHIPMENT_CREATED === $state && 0 === (int) $order->get_meta( self::META_CREATED_AT, true ) ) {
+			$order->update_meta_data( self::META_CREATED_AT, time() );
+		}
+
+		if ( self::STATE_SHIPMENT_CREATED === $state ) {
+			self::add_history_entry( $order, $state, __( 'Taşıyıcıda gönderi oluşturuldu.', 'kuka-island-shipping-automation' ) );
+		} else {
+			self::add_history_entry(
+				$order,
+				$state,
+				sprintf(
+					/* translators: %s: allow-listed reason code. */
+					__( 'Taşıyıcı cevabı kaydedildi, manuel inceleme gerekiyor (%s).', 'kuka-island-shipping-automation' ),
+					$code
+				)
+			);
+		}
+
+		self::persist( $order );
+	}
+
+	/**
+	 * The shipment id belongs to the ORDER, not only to the fulfilment.
+	 *
+	 * A fulfilment write is a second, separate write that can fail on its own.
+	 * When it does, the parcel exists at the carrier and nothing local can
+	 * follow it. So every path that learns a shipment id -- including the ones
+	 * that then halt -- puts it in the order's own durable evidence first.
+	 *
+	 * State, pending mutation and the parcel clock are NOT touched here: this
+	 * only records what the carrier said, it settles nothing.
+	 *
+	 * @param WC_Order $order       Order.
+	 * @param string   $shipment_id Carrier shipment id, possibly empty.
+	 */
+	public static function save_carrier_evidence( WC_Order $order, string $shipment_id ): void {
+		if ( '' === $shipment_id ) {
+			return;
+		}
+
+		$order->update_meta_data( self::META_SHIPMENT_ID, $shipment_id );
+		self::persist( $order );
+	}
+
+	/**
+	 * Did the final settlement actually land in the database?
+	 *
+	 * Read through a NEW order object, past every cache this process holds. A
+	 * settlement that was not written must never be answered with `ok:true`:
+	 * the caller would go on to the fulfilment and the poller for a shipment
+	 * the record does not know about.
+	 *
+	 * @param int                  $order_id  Order id.
+	 * @param array<string, mixed> $receipt   Verified receipt.
+	 * @param string               $state     State the settlement claimed.
+	 * @param string               $provider  Provider that must be unchanged.
+	 * @param string               $reference Reference that must be unchanged.
+	 */
+	public static function settlement_matches( int $order_id, array $receipt, string $state, string $provider = '', string $reference = '' ): bool {
+		$order = self::reload( $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return false;
+		}
+
+		if ( (string) $order->get_meta( self::META_STATE, true ) !== $state ) {
+			return false;
+		}
+
+		if ( (string) $order->get_meta( self::META_SHIPMENT_ID, true ) !== (string) ( $receipt['shipmentId'] ?? '' ) ) {
+			return false;
+		}
+
+		$stored = json_decode( (string) $order->get_meta( self::META_BARCODE_RECEIPT, true ), true );
+
+		if ( ! is_array( $stored ) || ! self::receipt_matches( $receipt, $stored ) ) {
+			return false;
+		}
+
+		// The intent must be CLOSED: an open one means a createbarcode is still
+		// considered in flight and reconciliation would claim this order.
+		$pending = $order->get_meta( self::META_PENDING_MUTATION, true );
+
+		if ( is_array( $pending ) && array() !== $pending ) {
+			return false;
+		}
+
+		// The clock starts only on a real shipment settlement.
+		$created_at = (int) $order->get_meta( self::META_CREATED_AT, true );
+
+		if ( self::STATE_SHIPMENT_CREATED === $state && $created_at <= 0 ) {
+			return false;
+		}
+
+		if ( '' !== $provider && (string) $order->get_meta( self::META_PROVIDER, true ) !== $provider ) {
+			return false;
+		}
+
+		if ( '' !== $reference && (string) $order->get_meta( self::META_REFERENCE, true ) !== $reference ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Move an order to manual review with a safe, visible reason.
+	 *
+	 * Used when something a person must look at happened AFTER a carrier write
+	 * that cannot be repeated. The state is protected: nothing automatic moves
+	 * an order out of it.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param string   $code  Allow-listed reason code.
+	 */
+	public static function save_manual_review( WC_Order $order, string $code ): void {
+		$order->update_meta_data( self::META_STATE, self::STATE_MANUAL_REVIEW );
+		$order->update_meta_data( self::META_LAST_ERROR, $code );
+
+		self::add_history_entry(
+			$order,
+			self::STATE_MANUAL_REVIEW,
+			sprintf(
+				/* translators: %s: allow-listed reason code. */
+				__( 'Manuel inceleme gerekiyor (%s).', 'kuka-island-shipping-automation' ),
+				$code
+			)
+		);
+
+		self::persist( $order );
+	}
+
+	/**
+	 * The stored labels, decoded, in the order the carrier returned them.
+	 *
+	 * @return array<int, array{pieceNumber: int, value: string}>
+	 */
+	public static function labels( WC_Order $order ): array {
+		$receipt = json_decode( (string) $order->get_meta( self::META_BARCODE_RECEIPT, true ), true );
+		$decoded = is_array( $receipt ) ? ( $receipt['labels'] ?? array() ) : array();
+
+		if ( ! is_array( $decoded ) ) {
+			return array();
+		}
+
+		$labels = array();
+
+		foreach ( $decoded as $entry ) {
+			if ( ! is_array( $entry ) || ! array_key_exists( 'value', $entry ) ) {
+				continue;
+			}
+
+			$labels[] = array(
+				'pieceNumber' => (int) ( $entry['pieceNumber'] ?? count( $labels ) + 1 ),
+				'value'       => (string) $entry['value'],
+			);
+		}
+
+		return $labels;
+	}
+
+	/** An order read from the database, past this process's caches. */
+	private static function reload( int $order_id ): ?WC_Order {
+		if ( function_exists( 'wc_get_container' ) && class_exists( '\Automattic\WooCommerce\Caches\OrderCache' ) ) {
+			try {
+				$cache = wc_get_container()->get( \Automattic\WooCommerce\Caches\OrderCache::class );
+
+				if ( is_object( $cache ) && method_exists( $cache, 'remove' ) ) {
+					$cache->remove( $order_id );
+				}
+			} catch ( Throwable $unavailable ) {
+				unset( $unavailable );
+			}
+		}
+
+		wp_cache_delete( $order_id, 'orders' );
+		wp_cache_delete( $order_id, 'post_meta' );
+
+		$order = wc_get_order( $order_id );
+
+		return $order instanceof WC_Order ? $order : null;
+	}
+
 	public static function save_shipment_created( WC_Order $order, string $shipment_id, array $barcodes ): void {
 		$order->update_meta_data( self::META_STATE, self::STATE_SHIPMENT_CREATED );
 		$order->update_meta_data( self::META_LAST_OPERATION, 'create_barcode' );

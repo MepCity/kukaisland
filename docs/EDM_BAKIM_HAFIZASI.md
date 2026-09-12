@@ -37,6 +37,8 @@ hızla gitmesi içindir.
 | 2026-09-03 | Entegrasyon Core'dan ayrıldı | `kuka-island-edm` ayrı, varsayılan pasif eklenti oldu; manuel süreç korunuyor (K-18, K-19, K-24) |
 | 2026-09-03 | EDM pasif teslim durumunda gerçek `make verify` exit 2; 21 mock ölçümü kapalı çalışma kapısında düşüyordu | `Invoice_Manager`'a varsayılanı gerçek kapı olan enjekte edilebilir kapı; kapının kendi testi varsayılanı kullanır (K-28) |
 | 2026-09-03 | Lifecycle suite'i başlangıç durumunun "hiç deaktive edilmemiş kurulum" olmasını dayatıyordu | Başlangıç durumu kaydediliyor, dayatılmıyor; geri yükleme kontrolü kapı **değerini** de karşılaştırıyor (K-29) |
+| 2026-09-04 | Çevrimdışı reset testi macOS'ta geçip GitHub Actions'ta `fixture_claim_not_created` ile duruyordu | Native Linux bind mount sayısal sahipliği koruduğu için sandbox wrapper host UID/GID ile çalıştırılıyor; izin gevşetilmedi (K-30) |
+| 2026-09-12 | Üç `INVOICE_*` ölçümü "EDM refused the request." ile düşüyordu; suite EDM'in canlı test WSDL'ini her koşuda indiriyordu | Kök neden EDM değil, WSDL'e sonradan giren `minOccurs=1` `OTHER_ENTEGRATION` alanıydı; WSDL SHA-256 çivili yerel fixture'a alındı, alan nötr `0` ile gönderiliyor ve iş anlamı için EDM teyidi bekleniyor (K-31) |
 | Tüm süreç | Sandbox yazma araçlarında “bir daha deneyelim” ve test PASS'ini gerçek EDM sonucu sanma riski tekrarlandı | Kalıcı claim/reset sözleşmesi, byte-katı endpoint/kimlik girişi ve üç ayrı kanıt düzeyi yazıldı (K-25, K-26, K-27) |
 
 
@@ -788,7 +790,7 @@ hızla gitmesi içindir.
 
 ---
 
-## K-28 — Native Linux bind mount'larında UID farkı hesaba katılmalıdır
+## K-30 — Native Linux bind mount'larında UID farkı hesaba katılmalıdır
 
 - **Tarih:** 2026-09-04
 - **Belirti:** EDM çevrimdışı reset testi macOS Docker Desktop'ta geçerken GitHub
@@ -814,3 +816,158 @@ hızla gitmesi içindir.
   Linux için kanıt saymayın. Container UID/GID'sini, üst dizinlerin execute
   izinlerini ve claim'in gerçek modunu birlikte ölçün; güvenlik dosyasını host
   okuyabilsin diye gevşetmeyin.
+
+---
+
+## K-31 — Uzaktaki WSDL sessizce değişti; eksik zorunlu alan "EDM reddetti" gibi göründü
+
+- **Tarih:** 2026-09-12
+- **Nerede ortaya çıktı:** DHL kargo turunun `make verify` kapısında. Kargo
+  tarafındaki kaydı DHL_BAKIM_HAFIZASI.md **K-60**'tadır; bu kayıt olayın EDM
+  yüzünü anlatır ve ikisi birbirine bağlıdır.
+
+### Belirti
+
+`make verify` üç `INVOICE_*` ölçümünde düşüyordu:
+
+```text
+INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=FAIL   ... error: EDM refused the request.
+INVOICE_SOAP_XPATH_SEND_INVOICE_EINVOICE=FAIL
+INVOICE_LEGAL_CARRIER_REQUIRES_10_DIGIT_VKN=FAIL
+```
+
+Hata metni EDM'i işaret ediyordu. **Etmiyordu.**
+
+### Uzaktaki WSDL değişimi nasıl fark edildi?
+
+Suite'in kendisi değişmemişti ve daha önce yeşildi; değişen tek şey dışarıdaydı.
+`SoapClient` constructor'ı ve `DOMDocument::load()` her koşuda
+`Invoice_Config::DEFAULT_TEST_WSDL` **URL'sini** indiriyordu, yani ölçüm EDM'in
+istediği zaman değiştirebileceği bir belgeye karşı yapılıyordu. Belge bir kez
+indirilip yerel fixture'a alındığında ve şema okunduğunda fark görüldü:
+
+```xml
+<xs:complexType name="INVOICE"> … <xs:element name="HEADER"> …
+  <xs:element minOccurs="1" maxOccurs="1" name="OTHER_ENTEGRATION" type="xs:int"/>
+```
+
+`INVOICE/HEADER` sırasının sonunda, üretim istemcisinin hiç bilmediği, **zorunlu**
+bir alan. Kaynakta tek bir `OTHER_ENTEGRATION` geçmiyordu.
+
+Bunun ağdan bağımsız olduğu ayrıca ölçüldü: hata, WSDL yerel fixture'a çevrildikten
+sonra da birebir tekrar etti. Ağ hiçbir zaman sebep değildi; ağ yalnızca sebebi
+**gizleyen** şeydi.
+
+### Hiçbir gerçek SendInvoice yapılmadığı nasıl kanıtlandı?
+
+Dört ayrı kanıt, üçü sayıya dayalı:
+
+1. `Kuka_Island_Test_WSDL_Interceptor::__doRequest()` geçersiz kılınmıştır. Üretim
+   istemcisi isteği kurar, `SoapClient` WSDL'e göre serileştirir, ve zarf **tele
+   çıkmadan** yakalanıp mock cevapla yanıtlanır. Değiştirilen tek şey sokettir.
+2. Fixture'ın ilan ettiği uç nokta ayrılmış TLD'ye çevrildi
+   (`http://edm-offline-fixture.invalid/EFaturaEDM.svc`), böylece `__doRequest`
+   geçersiz kılınmasa dahi hiçbir taşıyıcı EDM'e ulaşamaz. Fixture'da
+   `edmbilisim` dizgesi **sıfır** kez geçer.
+3. `pre_http_request` üzerinde EDM hostuna giden her isteği sayan ve reddeden bir
+   taban var. Yeni ölçüm bunların hepsini birden yazar:
+
+   ```text
+   INVOICE_VERIFY_NETWORK_ISOLATED=PASS|wsdl_source:local_file|wsdl_reads:3
+   |all_reads_local_file:yes|wsdl_sha256_pinned:yes|fixture_names_an_edm_host:no
+   |edm_endpoint_posts:0|edm_http_requests_attempted:0
+   |production_send_path_intercepted:11|SendInvoice_through_production_client:2
+   |mock_responses_used:11
+   |soap_endpoints_offered:http://edm-offline-fixture.invalid/EFaturaEDM.svc
+   ```
+
+4. Bağımsız doğrulama: konteyner içinde `edmbilisim.com.tr` → `127.0.0.1`
+   çivilenerek koşuldu. Suite birebir aynı sonuçla tamamen yeşil kaldı.
+
+Ölçüm adlarındaki eski `real_send` etiketi bu karışıklığın kaynağıydı: "gerçek ağ
+yazması" değil, "üretim gönderim kod yolu" demekti ve bir kez yanlış yorumlanıp
+rapora taşındı. Adlar artık `production_send_path_intercepted` ve
+`pinned_wsdl_fixture_soap_encoder`.
+
+### Kesin kök neden: ext-soap `minOccurs`'u kodlama anında uygular
+
+```text
+SOAP-ERROR: Encoding: object has no 'OTHER_ENTEGRATION' property
+```
+
+`minOccurs="1"` bir istek alanı gönderilmezse ext-soap **hiç zarf üretmez**. Bu
+bir taşıma hatası değildir; `__doRequest`'e hiç gelinmez. Sonuç zinciri:
+
+- `last_request_xml` boş kalır →
+- `..._EARCHIVE` ve `..._EINVOICE` bütün XPath'leri "absent" raporlar →
+- `..._VKN` aynı boş XML'i okur →
+- üretim istemcisinin fault sınıflandırıcısı `SoapFault`'u "kalıcı" sayıp
+  **"EDM refused the request."** der.
+
+O cümle EDM'den gelmiyordu. EDM bu isteği hiç görmedi. Kök nedeni bulmayı mümkün
+kılan tek şey, üretim istemcisinin güvenlik gereği yuttuğu ham `SoapFault`
+mesajını testin saklamaya başlamasıydı
+(`Kuka_Island_Test_WSDL_Transport::$last_soap_fault`).
+
+Aynı sınıfın daha eski bir örneği `EARCHIVE_REPORT_SENDDATE` ve
+`CANCEL_EARCHIVE_REPORT_SENDDATE` idi; onlar da bu yolla eklenmişti.
+
+### 0 değeri yalnız int kodlayıcı tabanıdır
+
+`'OTHER_ENTEGRATION' => 0` gönderiliyor. **Bu bir anlam değildir:**
+
+- `xs:int`'in null'u yoktur; alanı atlamak mümkün değil, boş göndermek mümkün değil.
+- Bu alanı hiç atamayan resmî C# connector `default(int)` yani **0** serileştirir.
+- Bu istemci alanın iş anlamı hakkında hiçbir şey iddia etmez; yalnızca
+  kodlayıcının kabul edeceği en nötr değeri verir.
+
+Ölçüm değeri de çiviler, yalnız varlığını değil:
+
+```text
+//*[local-name()="HEADER"]/*[local-name()="OTHER_ENTEGRATION"] => '0'
+INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE=PASS|assertions:26|…|failed:none
+```
+
+### Kapsam sınırı — EDM yazılı teyidi YOK
+
+İki `SENDDATE` alanının aksine (EDM teknik desteği 3 Eylül 2026'da yazılı olarak
+cevapladı), `OTHER_ENTEGRATION` için **EDM'den yazılı hiçbir cevap yoktur**. Alan
+yalnızca şema zorunlu kıldığı için gönderiliyor.
+
+> **Canlı EDM aktivasyonundan önce EDM desteğine sorulmalıdır:** alanın iş anlamı
+> nedir, test ve canlı ortamda hangi değer beklenir, 0 kabul edilebilir mi?
+> Bu kapı `docs/EDM_AKTIVASYON_REHBERI.md` **Aşama 6 — Canlı kimlik bilgileri**
+> kontrol listesindedir ve cevap gelene kadar canlı gönderim yapılmamalıdır.
+
+### Tekrar aynı SOAP encoding hatası görülürse ilk bakılacak yerler
+
+`SOAP-ERROR: Encoding: object has no '<ALAN_ADI>' property` görüldüğünde, sırayla:
+
+1. **Alanı WSDL fixture'ında ara.**
+   `grep -o 'name="<ALAN_ADI>"[^/]*' scripts/fixtures/edm/edm-efaturaedm-test.wsdl`
+   `minOccurs="1"` ise sebep budur; alan gönderilmelidir.
+2. **Fixture güncel mi?** SHA-256 koda çivilidir
+   (`KUKA_INVOICE_WSDL_FIXTURE_SHA256`). Alan fixture'da yoksa EDM canlı WSDL'i
+   fixture alındıktan sonra değişmiş olabilir: belgeyi yeniden indirin, **gözden
+   geçirin** (saf WSDL/XSD olmalı; metin düğümü, kimlik, oturum veya belge verisi
+   içermemeli), uç noktayı yine `.invalid` sentinel'e çevirin ve hash'i yeniden
+   çivileyin.
+3. **Üretim istemcisinin HEADER dizisi:**
+   `EDM/includes/invoice/class-edm-client.php` — `$header` kurulumu. Sandbox
+   aracının kopyası `scripts/lib-edm-sandbox.php` ile **aynı** alanları
+   taşımalıdır; ikisi ayrışırsa sandbox ile verify farklı şeyleri ölçer.
+4. **Probe'un kendi baseline'ı:** `verify-invoice-integration.php` içindeki
+   `$senddate_header`. Yeni zorunlu alan buraya da eklenmezse probe "negatif"
+   değil **unsound** olur (`control_serialises:NO`) — beklentiyi gevşetmek değil,
+   baseline'ı tamamlamak doğrudur.
+5. **Ham fault'u okuyun.** Rapor satırındaki `[soap_fault: …]` parçası hangi alanda
+   durulduğunu söyler. Üretim istemcisinin görünür verdicti (`EDM refused the
+   request.`) kasten mesajsızdır ve teşhis için kullanılamaz.
+6. **Yanlış sonucu yazmayın.** Zarf üretilmediyse EDM isteği hiç görmemiştir;
+   "EDM reddetti" bir ölçüm değil, bir yanlış teşhistir.
+
+- **İlgili dosyalar:** `scripts/verify-invoice-integration.php`,
+  `scripts/fixtures/edm/edm-efaturaedm-test.wsdl`, `scripts/verify.sh`,
+  `EDM/includes/invoice/class-edm-client.php`, `scripts/lib-edm-sandbox.php`,
+  `docs/EDM_ENTEGRASYONU.md`, `docs/EDM_AKTIVASYON_REHBERI.md`
+- **Çapraz kayıt:** DHL_BAKIM_HAFIZASI.md **K-60** (olayın kargo turundaki yüzü).

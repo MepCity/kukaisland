@@ -714,6 +714,35 @@ final class Kuka_Island_Shipping_Manager {
 				(string) $created->get( 'order_invoice_id', '' )
 			);
 			$this->note( $order, __( 'Taşıyıcıda sipariş oluşturuldu.', 'kuka-island-shipping-automation' ) . ' ' . $created->to_safe_line() );
+
+			/*
+			 * THE TWO CARRIER WRITES DO NOT SHARE ONE FLOW.
+			 *
+			 * DHL's own written answer: the normal sequence is CreateOrder and
+			 * then createbarcode, but made back to back the destination branch
+			 * may not be resolved yet and the barcode call can fail. This
+			 * method used to fall straight through to run_barcode(), so one
+			 * operator press sent both writes with nothing between them.
+			 *
+			 * WHAT THIS IS, EXACTLY. It is a controlled manual boundary, NOT a
+			 * verified one. Nothing here measures whether the destination
+			 * branch is resolved, and no such field exists in the read-only
+			 * documents: `OrderOUT` carries only `isTransformedToShipment` and
+			 * `shipmentId`, and a recipient branch appears in `ShipmentOUT`,
+			 * which exists after the barcode rather than before it. No interval
+			 * is invented either -- DHL named none. What is guaranteed is
+			 * narrower and true: one operator action makes one carrier write,
+			 * and the second write needs a second, explicit action. The
+			 * operator may press it immediately; the order screen tells them
+			 * why they may not want to.
+			 */
+			return array(
+				'ok'      => true,
+				'state'   => Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
+				'code'    => '',
+				'message' => __( 'Taşıyıcıda sipariş oluşturuldu. Barkod ayrı bir adımdır; hazır olduğunuzda "Barkodu oluştur" ile devam edin.', 'kuka-island-shipping-automation' ),
+				'detail'  => $created->to_safe_line(),
+			);
 		}
 
 		/*
@@ -757,6 +786,14 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	private function run_barcode( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, array $shipment ): array {
+		/*
+		 * A RECEIPT ALREADY HERE MEANS THE CARRIER ALREADY ANSWERED.
+		 *
+		 * An earlier process got a successful createbarcode, wrote the receipt
+		 * and died before settling. The shipment exists at the carrier; asking
+		 * again would register a second one. So this path never reaches the
+		 * network: it verifies what is on disk and finishes the LOCAL half.
+		 */
 		$guarded = $this->guarded_write(
 			$order,
 			$carrier,
@@ -793,25 +830,322 @@ final class Kuka_Island_Shipping_Manager {
 			return $this->record_failure( $order, $barcoded );
 		}
 
-		$shipment_id = (string) $barcoded->get( 'shipment_id', '' );
-		$barcodes    = array_values( array_filter( explode( ',', (string) $barcoded->get( 'barcodes', '' ) ) ) );
+		/*
+		 * TWO PHASES, BECAUSE ONE CARRIER ANSWER CANNOT BE ASKED FOR TWICE.
+		 *
+		 * The old order was: settle the shipment, clear the pending mutation,
+		 * then store the labels. A process that died between the first and the
+		 * third left a shipment that existed at DHL, an order that looked
+		 * perfectly finished, and no ZPL anywhere -- and nothing said so.
+		 *
+		 * Phase one writes the WHOLE answer as one canonical receipt and
+		 * settles nothing: the state stays where it was and the pending
+		 * mutation stays open, which is what refuses a second createbarcode.
+		 * Phase two runs only after that receipt has been read back from the
+		 * database through a fresh order object and compared byte for byte.
+		 */
+		/*
+		 * THE WHOLE ANSWER IS STORED BEFORE ANY JUDGEMENT IS PASSED ON IT.
+		 *
+		 * An answer with an unusable label list is still the only local proof
+		 * that this createbarcode happened and must never happen again. Halting
+		 * before writing it threw that proof away. So the receipt is built and
+		 * persisted whatever the labels look like; only then does the label
+		 * question get asked.
+		 */
+		$receipt = self::barcode_receipt( $barcoded );
 
-		Kuka_Island_Shipping_Order_Store::save_shipment_created( $order, $shipment_id, $barcodes );
+		if ( '' === (string) $receipt['shipmentId'] ) {
+			// A success with no shipment id is not a success this module can
+			// settle; the uncertainty path owns it.
+			return $this->handle_uncertain( $order, $carrier, $reference, $barcoded );
+		}
 
-		$this->write_fulfillment( $order, $carrier, $reference, $shipment_id, $barcodes );
+		$stored = Kuka_Island_Shipping_Order_Store::save_barcode_receipt( $order, $receipt )
+			&& Kuka_Island_Shipping_Order_Store::receipt_matches(
+				$receipt,
+				Kuka_Island_Shipping_Order_Store::read_barcode_receipt( (int) $order->get_id() )
+			);
+
+		if ( ! $stored ) {
+			/*
+			 * The answer could not be proven to be on disk. The pending intent
+			 * stays OPEN -- it is the thing that refuses a second
+			 * createbarcode -- and a person is told.
+			 */
+			return $this->halt_barcode(
+				$order,
+				$carrier,
+				$reference,
+				$barcoded,
+				Kuka_Island_Shipping_Order_Store::LABEL_STORAGE_UNVERIFIED,
+				__( 'Kargo gönderisi oluşturuldu fakat taşıyıcı cevabı kaydedilemedi. Gönderi taşıyıcıda vardır ve yeniden oluşturulmaz; kayıt manuel incelemeye alındı.', 'kuka-island-shipping-automation' )
+			);
+		}
+
+		if ( ! Kuka_Island_Shipping_Order_Store::labels_are_usable( $receipt['labels'] ) ) {
+			return $this->settle_invalid_labels( $order, $carrier, $reference, $receipt, $barcoded->to_safe_line() );
+		}
+
+		return $this->settle_barcode( $order, $carrier, $reference, $receipt, $barcoded->to_safe_line() );
+	}
+
+	/**
+	 * Finish a createbarcode whose answer is already on disk. No network.
+	 *
+	 * Returns null when there is nothing to recover, so the caller falls
+	 * through to its normal contract. Returns a result -- success or refusal --
+	 * whenever a receipt EXISTS, because a stored carrier answer is never
+	 * ignored and never re-requested.
+	 *
+	 * THE EVIDENCE IS COMPLETE OR THERE IS NO RECOVERY. A receipt alone proves
+	 * nothing about who it belongs to: it is accepted only when the order's own
+	 * provider, its pinned reference, the receipt's reference and shipmentId,
+	 * and a pending create/create_barcode/shipment intent carrying the same
+	 * provider and reference all agree. Anything else is a refusal a person
+	 * looks at -- never a second carrier write.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function recover_from_receipt( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier ): ?array {
+		$receipt = Kuka_Island_Shipping_Order_Store::read_barcode_receipt( (int) $order->get_id() );
+
+		if ( array() === $receipt ) {
+			return null;
+		}
+
+		/*
+		 * ONLY AN INTERRUPTED CREATEBARCODE IS RECOVERABLE. A createbarcode
+		 * that was cut short leaves the order either in `order_created` (the
+		 * intent never opened) or in `reconcile_required` (begin_mutation's own
+		 * protected state). Every other state -- cancelled, delivered, manual
+		 * review, an update or cancel reconciliation -- already belongs to
+		 * something else, and a leftover receipt must not drag it anywhere.
+		 * Those presses fall through to the ordinary allow-list and are
+		 * refused there, exactly as before this recovery existed.
+		 */
+		$recoverable = array(
+			Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
+			Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED,
+		);
+
+		if ( ! in_array( (string) Kuka_Island_Shipping_Order_Store::get_state( $order ), $recoverable, true ) ) {
+			return null;
+		}
+
+		$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+		$reference = (string) $data['reference'];
+		$pending   = (array) $data['pending_mutation'];
+		$provider  = (string) Kuka_Island_Shipping_Order_Store::provider( $order );
+
+		$evidence = '' !== $reference
+			&& $provider === $carrier->get_key()
+			&& (string) ( $receipt['referenceId'] ?? '' ) === $reference
+			&& '' !== (string) ( $receipt['shipmentId'] ?? '' )
+			&& array() !== $pending
+			&& Kuka_Island_Shipping_Order_Store::MUTATION_CREATE === (string) ( $pending['kind'] ?? '' )
+			&& 'create_barcode' === (string) ( $pending['operation'] ?? '' )
+			&& 'shipment' === (string) ( $pending['target'] ?? '' )
+			&& (string) ( $pending['provider'] ?? '' ) === $provider
+			&& (string) ( $pending['reference'] ?? '' ) === $reference;
+
+		if ( ! $evidence ) {
+			/*
+			 * A receipt that cannot be tied to this order's own open intent is
+			 * not adopted. The carrier is not contacted either -- whatever this
+			 * is, another createbarcode cannot be the answer to it.
+			 */
+			Kuka_Island_Shipping_Order_Store::save_manual_review(
+				$order,
+				Kuka_Island_Shipping_Order_Store::RECEIPT_UNCLAIMED
+			);
+
+			$this->note(
+				$order,
+				__( 'Taşıyıcı barkod cevabı bulundu fakat bu siparişin açık işlemine bağlanamadı. Yeni barkod isteği gönderilmedi; kayıt manuel incelemeye alındı.', 'kuka-island-shipping-automation' )
+			);
+
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+				'code'    => Kuka_Island_Shipping_Order_Store::RECEIPT_UNCLAIMED,
+				'message' => __( 'Taşıyıcı barkod cevabı bu siparişin açık işlemine bağlanamadı.', 'kuka-island-shipping-automation' ),
+				'detail'  => '',
+			);
+		}
+
+		if ( ! Kuka_Island_Shipping_Order_Store::labels_are_usable( $receipt['labels'] ?? null ) ) {
+			return $this->settle_invalid_labels( $order, $carrier, $reference, $receipt, 'create_barcode recovered_from_receipt' );
+		}
+
+		return $this->settle_barcode( $order, $carrier, $reference, $receipt, 'create_barcode recovered_from_receipt' );
+	}
+
+	/**
+	 * The carrier's answer as one canonical receipt.
+	 *
+	 * @return array{referenceId: string, shipmentId: string, invoiceId: string, labels: array<int, array{pieceNumber: int, value: string}>}
+	 */
+	private static function barcode_receipt( Kuka_Island_Shipping_Result $barcoded ): array {
+		$labels = json_decode( (string) $barcoded->get( 'labels', '[]' ), true );
+
+		return array(
+			'referenceId' => (string) $barcoded->get( 'reference_id', '' ),
+			'shipmentId'  => (string) $barcoded->get( 'shipment_id', '' ),
+			'invoiceId'   => (string) $barcoded->get( 'invoice_id', '' ),
+			'labels'      => is_array( $labels ) ? array_values( $labels ) : array(),
+		);
+	}
+
+	/**
+	 * PHASE TWO. Everything here is local; the carrier is not contacted.
+	 *
+	 * Reachable from the createbarcode answer AND from a later process that
+	 * found a verified receipt an earlier one never got to settle.
+	 *
+	 * @param array<string, mixed> $receipt Verified receipt.
+	 * @return array<string, mixed>
+	 */
+	private function settle_barcode( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, array $receipt, string $detail ): array {
+		$shipment_id = (string) ( $receipt['shipmentId'] ?? '' );
+
+		Kuka_Island_Shipping_Order_Store::settle_barcode_receipt( $order, $receipt );
+
+		/*
+		 * THE SETTLEMENT IS READ BACK TOO. A save that returns without an error
+		 * is not proof that the state moved: if this write did not land, the
+		 * order still says a createbarcode is open, and answering `ok:true`
+		 * here would send the caller on to the fulfilment and the poller for a
+		 * shipment nothing recorded.
+		 */
+		if ( ! Kuka_Island_Shipping_Order_Store::settlement_matches( (int) $order->get_id(), $receipt, Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED, $carrier->get_key(), $reference ) ) {
+			$message = __( 'Kargo gönderisi oluşturuldu fakat kaydın tamamlanması doğrulanamadı. Taşıyıcıya ikinci istek gönderilmedi; kayıt manuel incelemeye alındı.', 'kuka-island-shipping-automation' );
+
+			Kuka_Island_Shipping_Order_Store::save_manual_review( $order, Kuka_Island_Shipping_Order_Store::LABEL_STORAGE_UNVERIFIED );
+			$this->note( $order, $message );
+
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+				'code'    => Kuka_Island_Shipping_Order_Store::LABEL_STORAGE_UNVERIFIED,
+				'message' => $message,
+				'detail'  => $detail,
+			);
+		}
+
+		$pieces = array();
+
+		foreach ( (array) ( $receipt['labels'] ?? array() ) as $label ) {
+			if ( is_array( $label ) ) {
+				$pieces[] = (int) ( $label['pieceNumber'] ?? 0 );
+			}
+		}
+
+		/*
+		 * The tracking number is the carrier's shipmentId. The piece numbers go
+		 * to the fulfilment as piece numbers, never as barcodes: `1` is not a
+		 * barcode and calling it one taught the panel to print nonsense.
+		 */
+		$this->write_fulfillment( $order, $carrier, $reference, $shipment_id, array() );
 
 		// A first status query, once. Everything after it is booked by the
 		// poller itself, and only while the status says the parcel is moving.
 		Kuka_Island_Shipping_Status_Poller::schedule_query( (int) $order->get_id() );
 
-		$this->note( $order, __( 'Taşıyıcıda gönderi oluşturuldu.', 'kuka-island-shipping-automation' ) . ' ' . $barcoded->to_safe_line() );
+		$this->note( $order, __( 'Taşıyıcıda gönderi oluşturuldu.', 'kuka-island-shipping-automation' ) . ' ' . $detail );
 
 		return array(
 			'ok'      => true,
 			'state'   => Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED,
 			'code'    => '',
 			'message' => __( 'Kargo gönderisi oluşturuldu.', 'kuka-island-shipping-automation' ),
+			'detail'  => $detail,
+			'pieces'  => count( $pieces ),
+		);
+	}
+
+	/**
+	 * The carrier wrote, the local half did not. Stop, visibly, for a person.
+	 *
+	 * The shipment exists: `ok` is false so no caller treats this as a clean
+	 * success, the order moves to manual review with a safe code, and the
+	 * tracking number is still recorded so the parcel can be followed. No
+	 * second createbarcode is ever attempted from any path.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function halt_barcode( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, Kuka_Island_Shipping_Result $barcoded, string $code, string $message ): array {
+		$shipment_id = (string) $barcoded->get( 'shipment_id', '' );
+
+		/*
+		 * THE RECEIPT IS NOT PROVEN, SO THE INTENT STAYS OPEN.
+		 *
+		 * The shipment id is still written to the order's own carrier evidence
+		 * rather than only to the fulfilment: a fulfilment write can fail on
+		 * its own, and the parcel must stay followable either way.
+		 */
+		Kuka_Island_Shipping_Order_Store::save_carrier_evidence( $order, $shipment_id );
+		Kuka_Island_Shipping_Order_Store::save_manual_review( $order, $code );
+		$this->write_fulfillment( $order, $carrier, $reference, $shipment_id, array() );
+		$this->note( $order, $message );
+
+		return array(
+			'ok'      => false,
+			'state'   => Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+			'code'    => $code,
+			'message' => $message,
 			'detail'  => $barcoded->to_safe_line(),
+		);
+	}
+
+	/**
+	 * The receipt is proven; the labels in it are not usable.
+	 *
+	 * Different from halt_barcode() on purpose: here the carrier's answer IS
+	 * proven locally, so the pending intent is CLOSED -- nothing is waiting to
+	 * be reconciled. What is missing is a printable label, which is a person's
+	 * problem and never a retry's.
+	 *
+	 * @param array<string, mixed> $receipt Verified receipt.
+	 * @return array<string, mixed>
+	 */
+	private function settle_invalid_labels( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, array $receipt, string $detail ): array {
+		$shipment_id = (string) ( $receipt['shipmentId'] ?? '' );
+		$message     = __( 'Kargo gönderisi oluşturuldu fakat taşıyıcı yazdırılabilir bir etiket döndürmedi. Gönderi taşıyıcıda vardır ve yeniden oluşturulmaz; etiket için taşıyıcıyla iletişime geçilmelidir.', 'kuka-island-shipping-automation' );
+
+		Kuka_Island_Shipping_Order_Store::save_carrier_evidence( $order, $shipment_id );
+		Kuka_Island_Shipping_Order_Store::settle_barcode_receipt(
+			$order,
+			$receipt,
+			Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+			Kuka_Island_Shipping_Order_Store::LABEL_RESPONSE_INVALID
+		);
+
+		if ( ! Kuka_Island_Shipping_Order_Store::settlement_matches( (int) $order->get_id(), $receipt, Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW, $carrier->get_key(), $reference ) ) {
+			// The halt itself did not land. Say so; do not call it settled.
+			$message = __( 'Kargo gönderisi oluşturuldu fakat kaydın tamamlanması doğrulanamadı. Taşıyıcıya ikinci istek gönderilmedi; kayıt manuel incelemeye alındı.', 'kuka-island-shipping-automation' );
+
+			Kuka_Island_Shipping_Order_Store::save_manual_review( $order, Kuka_Island_Shipping_Order_Store::LABEL_STORAGE_UNVERIFIED );
+			$this->note( $order, $message );
+
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+				'code'    => Kuka_Island_Shipping_Order_Store::LABEL_STORAGE_UNVERIFIED,
+				'message' => $message,
+				'detail'  => $detail,
+			);
+		}
+
+		$this->write_fulfillment( $order, $carrier, $reference, $shipment_id, array() );
+		$this->note( $order, $message );
+
+		return array(
+			'ok'      => false,
+			'state'   => Kuka_Island_Shipping_Order_Store::STATE_MANUAL_REVIEW,
+			'code'    => Kuka_Island_Shipping_Order_Store::LABEL_RESPONSE_INVALID,
+			'message' => $message,
+			'detail'  => $detail,
 		);
 	}
 
@@ -879,6 +1213,27 @@ final class Kuka_Island_Shipping_Manager {
 
 			$carrier = $admitted['carrier'];
 			$state   = Kuka_Island_Shipping_Order_Store::get_state( $order );
+
+			/*
+			 * THE RECOVERY GATE, BEFORE THE STATE ALLOW-LIST.
+			 *
+			 * begin_mutation() moves a create to `reconcile_required` BEFORE
+			 * the carrier is contacted, so a process that received a good
+			 * createbarcode, wrote the receipt and died leaves the order in
+			 * that protected state -- never in `order_created`. The allow-list
+			 * below refuses it, correctly, as not resumable; and that is
+			 * exactly why the receipt had to be examined FIRST. Otherwise the
+			 * shipment exists at the carrier, its answer is on disk, and no
+			 * operator action can finish the local half.
+			 *
+			 * Nothing here contacts anyone: it is a read of this order's own
+			 * meta followed by a local settlement.
+			 */
+			$recovered = $this->recover_from_receipt( $order, $carrier );
+
+			if ( null !== $recovered ) {
+				return $recovered;
+			}
 
 			if ( Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED !== $state ) {
 				return array(

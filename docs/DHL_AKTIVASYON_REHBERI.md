@@ -87,7 +87,9 @@ makinede beklenir.
 
 ## Aşama 2 — Kimlik dosyasını tamamlama
 
-Şu anda dosyada API ağ geçidi çifti vardır, Identity çifti yoktur:
+2026-09-12'de Identity çifti DHL/MNG desteğinden geldi ve dosya `4/4`
+tamamlandı. Değerler yalnız repo dışındaki mod-600 dosyadadır; bu belgeye,
+çıktıya veya git geçmişine yazılmaz.
 
 Portal hazırlığı 4 Eylül 2026'da tamamlandı: `Kuka Island WooCommerce
 Sandbox` uygulaması Identity, CBS Info, Standard Command, Barcode Command ve
@@ -106,11 +108,11 @@ sunucusu `401 unauthorized` döndürdü. Bu örnekleri kimlik dosyasına yazmay�
 DHL_TEST_CREDENTIALS=PRESENT|mode:600|path_outside_repo:yes|git_reachable:no
   KUKA_DHL_SANDBOX_CLIENT_ID=supplied
   KUKA_DHL_SANDBOX_CLIENT_SECRET=supplied
-  KUKA_DHL_SANDBOX_CUSTOMER_NUMBER=absent
-  KUKA_DHL_SANDBOX_PASSWORD=absent
+  KUKA_DHL_SANDBOX_CUSTOMER_NUMBER=supplied
+  KUKA_DHL_SANDBOX_PASSWORD=supplied
 ```
 
-Eksik iki değeri eklemek için:
+Kimlikleri ileride değiştirmek için:
 
 ```bash
 ./scripts/dhl-test-credentials.sh
@@ -122,7 +124,7 @@ Eksik iki değeri eklemek için:
   kaybetmemek için sadece son iki soruyu doldurun.
 - Dosya atomik olarak yazılır; yarıda kesilen çalışma dosyayı bozmaz.
 
-Bu iki değer olmadan **hiçbir dış çağrı yapılmaz** ve araç bunu söyler:
+Son iki değer eksik olursa **hiçbir dış çağrı yapılmaz** ve araç bunu söyler:
 
 ```
 DHL_SANDBOX_CREDENTIALS=INCOMPLETE|present:2/4|missing:KUKA_DHL_CUSTOMER_NUMBER,KUKA_DHL_PASSWORD
@@ -156,9 +158,9 @@ Beklenen:
 
 ```
 DHL_SANDBOX_CREDENTIALS=READY|present:4/4|missing:none
-DHL_SANDBOX_CONFIG=READY|environment:test|live_blocked:no|ready:yes|automation:off|cod:off|tracking_number_source:unmeasured
+DHL_SANDBOX_CONFIG=READY|environment:test|live_blocked:no|ready:yes|automation:off|cod:off|tracking_number_source:shipment_id
 DHL_SANDBOX_IDENTITY=PASS|operation:authenticate|outcome:success|code:none|http:200|token_stored_in_database:no|token_printed:no
-DHL_SANDBOX_CBS_CITIES=PASS|operation:get_cities|outcome:success|code:none|http:200|count:81
+DHL_SANDBOX_CBS_CITIES=PASS|operation:get_cities|outcome:success|code:none|http:200|count:82
 DHL_SANDBOX_CBS_DISTRICTS=PASS|operation:get_districts|outcome:success|code:none|http:200|count:...
 DHL_SANDBOX_CACHE_CLEARED=PASS|entries_removed:2
 DHL_SANDBOX_CONNECTION=PASS|read_only:yes|orders_created:0|barcodes_created:0|shipments_touched:0
@@ -291,21 +293,23 @@ Onay cümlesi eksik ya da yanlışsa hiçbir çağrı yapılmaz:
 DHL_SANDBOX_RUN=BLOCKED|reason:confirmation_phrase_missing_or_wrong|external_calls:0
 ```
 
-Beklenen başarı:
+2026-09-12'de ölçülen başarı (araç iki üretim yazmasını iki ayrı kapıdan
+çalıştırır):
 
 ```
-DHL_SANDBOX_CREATE=PASS|state:shipment_created|code:none|shipment_id_present:yes|barcodes:1|...
+DHL_SANDBOX_CREATE_ORDER=PASS|state:order_created|code:none|shipment_id_present:no|...
+DHL_SANDBOX_RECONCILE_ORDER=PASS|verdict:order_present|state:order_created
+DHL_SANDBOX_CREATE_BARCODE=PASS|state:shipment_created|code:none|shipment_id_present:yes|pieces:1|...
 DHL_SANDBOX_QUERY=PASS|lifecycle:in_progress|stored_code:1|...
 DHL_SANDBOX_CANCEL=PASS|state:cancelled|code:none|...
-DHL_SANDBOX_SHIPMENT=PASS|created:1|queried:1|cancelled:1|left_at_carrier:0
+DHL_SANDBOX_SHIPMENT=PASS|orders_created:1|barcodes_created:1|queried:1|cancelled:1|left_at_carrier:0
 ```
 
-**Bu turda ölçülmesi gereken asıl şey:** `shipmentId` ve `barcodes[].value`
-değerlerinden hangisinin taşıyıcının kendi takip ekranında çalıştığı. Bunu
-taşıyıcı panelinden veya `trackingUrl` bağlantısından doğrulayın ve sonucu
-bakım hafızasına yazın.
+**Ölçülen takip kaynağı:** `trackingUrl` gerçek `shipmentId` değerini birebir
+taşıyor. `barcodes[].value` bir ZPL baskı gövdesidir, takip numarası değildir.
+Bakım kaydı: K-61.
 
-`DHL_SANDBOX_CREATE=FAIL` ve durum `reconcile_required` ise: **yeniden
+`DHL_SANDBOX_CREATE_ORDER=FAIL` ve durum `reconcile_required` ise: **yeniden
 denemeyin.** Sipariş ekranındaki `Mutabakat sorgusu çalıştır (salt-okunur)`
 düğmesini kullanın.
 
@@ -314,23 +318,25 @@ panelinden elle kontrol edin.
 
 ---
 
-## Aşama 6 — Takip numarası kaynağını sabitleme
+## Aşama 6 — Takip numarası kaynağını sabitleme (tamamlandı)
 
-Aşama 5'te hangi değerin gerçekten takip ettiği ölçüldüyse:
+2026-09-12 gerçek sandbox ölçümünde `trackingUrl`, `shipmentId` değerini
+birebir taşıdı. Yapılandırma bu nedenle `shipment_id` kullanır:
 
 ```php
-define( 'KUKA_DHL_TRACKING_NUMBER_SOURCE', 'shipment_id' ); // veya 'barcode'
+define( 'KUKA_DHL_TRACKING_NUMBER_SOURCE', 'shipment_id' );
 ```
 
-Bu sabit yokken fulfillment kaydının takip numarası alanı **boş** kalır ve
-siparişe şu not düşülür:
+Geçersiz veya ölçülmemiş bir kaynak seçilirse fulfillment kaydının takip
+numarası alanı **boş** kalır ve siparişe şu not düşülür:
 
 > Fulfillment kaydı yazıldı. Takip numarası alanı boş bırakıldı: taşıyıcı
 > yanıtındaki hangi değerin WooCommerce takip numarası olduğu sandbox ölçümüyle
 > doğrulanmadı.
 
-Ölçmeden bu sabiti yazmayın. Takip etmeyen bir numara müşteri e-postasına ve
-destek konuşmalarına girer.
+Kaynağı yeni bir değerle değiştirmeden önce yeniden gerçek sandbox ölçümü
+yapın. Takip etmeyen bir numara müşteri e-postasına ve destek konuşmalarına
+girer.
 
 ---
 

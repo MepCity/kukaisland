@@ -70,6 +70,8 @@ olarak aşağıda `SHIP/` kullanılır.
 | 2026-09-05 | Taşıyıcının ilk ve tek durumu doğrudan terminal olup claim reddedildiğinde kayıt `unfulfilled` kalıyor, e-posta gitmiyor, ama poller `stop:terminal_lifecycle` ile bitip hiçbir şey planlamıyordu | Manager `sync_status()` sonucunu değerlendiriyor; taşıyıcıya hiç dokunmayan sınırlı yerel bir fulfillment/bildirim retry'ı planlanıyor (K-53) |
 | 2026-09-05 | Yerel retry sözleşmesinin dört sınırı yanlıştı: her planlama sonucu kanıt sayılıyor, taşıyıcı ve yerel sayaçlar birbirini eziyor, ilk gecikme 1 saniye oluyor ve operatör panelde hiçbir şey görmüyordu | Yalnız `created`/`already_pending` kanıt; sayaçlar ayrıldı; gecikme gerçek Action Scheduler satırından 120 sn ölçüldü; panel dört olguyu ve elle müdahale cümlesini gösteriyor (K-54) |
 | 2026-09-05 | Yerel sync worker'ı, başarı olmadan da operatöre gösterilecek neden/deneme/planlama kaydını siliyordu; ayrıca kanıtlanmış yeni booking eski planlama hatasını temizlemiyordu | Tek yerleşim yolu `settle_sync()`: temizlik yalnız gerçek başarıda, nonretryable sonuç kalıcı ve tek notla görünür, `clear_sync_schedule_error()` yalnız planlama hatasını siliyor (K-55) |
+| 2026-09-12 | DHL/MNG sandbox Identity çifti ulaştı; gerçek bağlantı ve üç kontrollü oluştur–barkod–sorgu–iptal turu çalıştırıldı | Kimlik ve CBS geçti; sorguların tek elemanlı liste zarfı ölçülüp ayrıştırıcı düzeltildi; son tur bütünüyle geçti ve açık taşıyıcı kaydı kalmadı (K-61) |
+| 2026-09-12 | Gerçek CBS okumasından sonra davranış suite'i önceden var olan üretim önbelleğini test kalıntısı saydı | Kontrol transient'leri benzersiz test adlarına taşındı; başlangıçtaki bütün CBS satırları bitişte bayt düzeyinde aynı olmak zorunda (K-62) |
 
 ---
 
@@ -78,46 +80,46 @@ olarak aşağıda `SHIP/` kullanılır.
 Bunlar **bilinmeyen**dir, varsayım değil. Her biri ölçüldüğünde bu dosyaya
 sonucu yazılır.
 
-**2026-09-04 itibarıyla Ö-01…Ö-05'in hiçbiri ölçülmemiştir.** Aşağıdaki K
-kayıtlarının hiçbiri bunları kapatmaz; kod düzeltmeleri sandbox ölçümünün yerine
-geçmez.
+**2026-09-12 itibarıyla Ö-01…Ö-04 gerçek sandbox ile kapandı.** Ö-05 yalnız
+satıcının resmî canlı uçlarıyla kapanabilir; canlı ortam bu yüzden blokeli
+kalmaktadır.
 
 ### Ö-01 — `Authorization` başlığının biçimi
 
-- **Durum:** ölçülmedi.
+- **Durum:** ölçüldü — `Bearer <jwt>` ile Identity, Command ve Query çağrıları
+  HTTP 200 verdi.
 - **Neden belirsiz:** Identity API `jwt` adında bir alan döner. Command ve Query
   dokümanları `Authorization` adında, `string` tipinde, **zorunlu** bir başlık
   beyan eder ve biçimi hakkında tek kelime yazmaz.
-- **Şu anki davranış:** varsayılan `Bearer <jwt>`. Sözleşmedir, dokümandan
-  gelmez.
-- **Nasıl ölçülür:** Aşama 3 salt-okunur testi. `DHL_SANDBOX_IDENTITY=PASS`
-  fakat sonraki bir Query çağrısı `code:unauthorized` verirse
-  `KUKA_DHL_AUTHORIZATION_SCHEME=raw` ile tekrar deneyin.
+- **Şu anki davranış:** yalnız `Bearer <jwt>` kabul edilir; eski `raw` kaçış
+  yolu kapalıdır.
+- **Kanıt:** gerçek `createOrder`, `getorder`, `createbarcode` ve
+  `getshipmentstatus` çağrıları HTTP 200 verdi (K-61).
 - **İlgili dosya:** `SHIP/includes/shipping/dhl/class-dhl-client.php`
   (`$authorization_scheme`).
 
 ### Ö-02 — CBS uçlarının token isteyip istemediği
 
-- **Durum:** ölçülmedi.
+- **Durum:** ölçüldü — token gönderilmeyen CBS şehir ve ilçe çağrıları HTTP 200
+  verdi.
 - **Neden belirsiz:** `CBS_Info_API-1.0.json` hiçbir operasyonunda
   `Authorization` parametresi beyan etmez — yalnız `x-api-version` ve global
   güvenlik bloğundaki ağ geçidi anahtarları vardır.
 - **Şu anki davranış:** CBS çağrılarında token **gönderilmiyor**. Doküman böyle
   diyor.
-- **Nasıl ölçülür:** Aşama 3. `DHL_SANDBOX_CBS_CITIES` `code:unauthorized`
-  verirse doküman eksik demektir; `is_cbs_operation()` kaldırılır.
+- **Kanıt:** `DHL_SANDBOX_CBS_CITIES=PASS` ve
+  `DHL_SANDBOX_CBS_DISTRICTS=PASS` (K-61).
 - **İlgili dosya:** `SHIP/includes/shipping/dhl/class-dhl-client.php`
   (`is_cbs_operation`).
 
 ### Ö-03 — Hangi değer WooCommerce takip numarası
 
-- **Durum:** ölçülmedi. **Bu yüzden hiçbir takip numarası yazılmıyor.**
+- **Durum:** ölçüldü — takip numarası `shipmentId`.
 - **Neden belirsiz:** `createbarcode` yanıtı hem `shipmentId` hem parça bazında
   `barcodes[].value` döner. İkisi de "numara" gibi görünür.
-- **Şu anki davranış:** `KUKA_DHL_TRACKING_NUMBER_SOURCE` tanımsızken
-  fulfillment kaydının takip numarası **boş** bırakılır ve siparişe not düşülür.
-- **Nasıl ölçülür:** Aşama 5'te oluşturulan tek gönderinin `trackingUrl`
-  bağlantısı veya taşıyıcı paneli. Hangi numara gerçekten takip ediyorsa o.
+- **Kanıt:** gerçek durum yanıtındaki HTTPS `trackingUrl`, dönen `shipmentId`
+  değerini birebir taşıdı. `barcodes[].value` ise bir ZPL baskı gövdesidir ve
+  takip numarası değildir (K-59, K-61).
 - **İlgili dosyalar:** `SHIP/includes/shipping/class-fulfillment-writer.php`
   (`tracking_number`) ve seçimin geldiği yer:
   `SHIP/includes/shipping/interface-carrier-provider.php`
@@ -126,7 +128,8 @@ geçmez.
 
 ### Ö-04 — `recipient.customerId`
 
-- **Durum:** ölçülmedi. **Bu yüzden alan hiç gönderilmiyor.**
+- **Durum:** alan gönderilmeden ölçüldü; gerçek `createOrder` ve
+  `createbarcode` HTTP 200 verdi. Alanın atlanması kabul ediliyor.
 - **Neden belirsiz:** `Customer.customerId` "Müşteri Numarası" diye
   tanımlanmıştır ve örnekte açıklanmayan bir sayı taşır. Hiçbir zorunlu listede
   değildir.
@@ -2424,6 +2427,242 @@ temizlenir; nonretryable bir hata başarı gibi temizlenmez.
 
 ---
 
+## K-56 — Yazılan receipt'e hiçbir public girişten ulaşılamıyordu
+
+- **Tarih:** 2026-09-11
+- **Belirti:** `createbarcode` başarılı döner, cevap diske yazılır, süreç ölür.
+  Gönderi DHL'de vardır, cevabı elimizdedir — ve hiçbir operatör basışı yerel
+  yarıyı bitiremez.
+- **Kesin kök neden:** `begin_mutation()` taşıyıcıyı aramadan **önce** durumu
+  `reconcile_required` yapar. Receipt yazıldıktan sonraki bir çökme siparişi
+  orada bırakır. `resume_barcode()` ise yalnız `order_created` kabul ediyordu;
+  dolayısıyla `run_barcode()` içindeki receipt kurtarması üretimde **hiç
+  erişilemez** koddu.
+- **Ölçülen kırmızı** (gerçek public resume, taze `WC_Order` + taze manager +
+  taze adaptör):
+
+  ```text
+  verified_receipt   : createbarcode=0 token=0 state=reconcile_required ok=no
+  no_pending_mutation: createbarcode=0 token=0 state=shipment_created    ok=yes   <-- sahiplenme
+  ```
+
+  İkinci satır ayrı bir kusuru da açığa çıkardı: sahibi belli olmayan bir
+  receipt kendini benimsiyordu.
+- **Uygulanan düzeltme:** `recover_from_receipt()`, `resume_barcode()` içinde
+  **mutation kilidinden ve taze DB okumasından sonra, durum allow-list'inden
+  önce** değerlendirilir. Kanıt eksiksiz olmadan açılmaz: sipariş provider'ı ==
+  çağrılan taşıyıcı, receipt `referenceId` siparişin çivili referansıyla
+  byte-aynı, `shipmentId` boş değil, açık bir pending mutation var ve o
+  mutation `kind=create` / `operation=create_barcode` / `target=shipment` ile
+  aynı provider+reference'ı taşıyor. Aksi hâlde `barcode_receipt_unclaimed` ile
+  görünür manuel inceleme; taşıyıcıya hiçbir istek yok.
+
+  Kurtarma yalnız **kesilmiş bir createbarcode'un bırakabileceği** iki durumda
+  açılır: `order_created` ve `reconcile_required`. `cancelled`, `delivered`,
+  `manual_review` ve iptal/güncelleme mutabakat durumları allow-list'e düşer ve
+  orada reddedilir — yerleşmiş bir kaydı kendi başarı kanıtı manuel incelemeye
+  sürükleyemez.
+- **Ölçülen yeşil:**
+
+  ```text
+  SHIPPING_RECEIPT_RECOVERY_IS_REACHABLE=PASS
+  |verified_receipt:createbarcode=0/token=0/state=shipment_created/labels=2/ok=yes
+  |wrong_reference|empty_shipment_id|pending_is_cancel|no_pending_mutation:
+     hepsi createbarcode=0/token=0/state=manual_review/ok=no
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`recover_from_receipt`, `resume_barcode`),
+  `SHIP/includes/shipping/class-shipment-order-store.php` (`RECEIPT_UNCLAIMED`)
+- **Tekrar yaşanırsa ilk bak:** `_kuka_shipping_barcode_receipt` dolu ama durum
+  `reconcile_required` ise kurtarma kapısı çalışmıyor demektir; `token` ve
+  `createbarcode` sayacı 0 kalmalı, aksi hâlde ikinci gönderi riski vardır.
+
+---
+
+## K-57 — Etiket geçersizse taşıyıcının cevabı hiç yazılmıyordu
+
+- **Tarih:** 2026-09-11
+- **Belirti:** `createbarcode` `shipmentId` ile döner ama yazdırılabilir etiket
+  vermezse, modül receipt'i **yazmadan** halt ediyordu. Gönderi taşıyıcıda
+  vardı; yerelde numarasını ve ham cevabı tutan hiçbir kayıt yoktu. Sonraki
+  süreç "hiç gönderilmedi" ile "gönderildi ama etiketi kullanılamaz"ı ayırt
+  edemiyordu.
+- **Kesin kök neden:** Sıra tersti — önce etiket yargısı, sonra kayıt.
+- **Uygulanan düzeltme:** Sıra `shipmentId` zorunlu → kanonik receipt kurulur
+  (etiket geçerliliğine **bakılmadan**) → pending mutation korunarak yazılır →
+  taze `WC_Order` ile byte-aynı geri okuma → ancak bundan sonra etiket sorusu.
+  İki halt şekli artık ayrı metotlar, çünkü sözleşmeleri farklı:
+
+  | durum | yöntem | pending mutation | `created_at` |
+  |---|---|---|---|
+  | receipt kanıtlandı, etiket kullanılamaz | `settle_invalid_labels()` | **kapanır** | yazılmaz |
+  | receipt kanıtlanamadı | `halt_barcode()` | **açık kalır** | yazılmaz |
+
+  `halt_barcode()` ayrıca `save_carrier_evidence()` ile `shipmentId`'yi
+  siparişin kendi kalıcı kanıtına yazar; fulfillment yazımı kendi başına
+  başarısız olabildiği için koli takip edilebilir kalmalıdır.
+
+  Son yerleşim de taze bir `WC_Order` ile geri okunur
+  (`settlement_matches()`: durum, `shipmentId`, receipt byte-aynı, pending
+  kapalı, `created_at` yalnız gerçek gönderi yerleşiminde, provider/reference
+  değişmemiş). Geri okuma tutmazsa `ok:true` dönülmez ve fulfillment/poller
+  adımına geçilmez.
+- **Ölçülen yeşil** (gerçek manager + mock transport + `query` sabotajı):
+
+  ```text
+  invalid_labels       : createbarcode=1 code=label_response_invalid   receipt=stored intent=closed booked=0
+  receipt_write_dropped: createbarcode=1 code=label_storage_unverified receipt=absent intent=open   booked=0
+  settlement_dropped   : createbarcode=1 code=label_storage_unverified receipt=stored intent=closed booked=0
+  üçünde de ikinci basış: createbarcode=1 (yeni istek yok)
+  ```
+
+- **Yan etki — `SHIPPING_MUTATION_OUTCOME_ATOMIC` 4'ten 5'e çıktı.** Bir
+  createOrder+createbarcode artık beş ayrı geçiştir: create_order intent'i,
+  sipariş onayı, create_barcode intent'i, **cevabın yazılması**, yerleşim.
+  Dördüncüsü bu düzeltmenin kendisidir; 4 ile 5 arasında ölen bir süreç
+  receipt'i diskte ve intent'i açık bulmak zorundadır.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-manager.php`
+  (`run_barcode`, `settle_barcode`, `settle_invalid_labels`, `halt_barcode`),
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`save_barcode_receipt`, `settle_barcode_receipt`, `save_carrier_evidence`,
+  `settlement_matches`)
+
+---
+
+## K-58 — Siparişin saati ile kolinin saati aynı alandaydı
+
+- **Tarih:** 2026-09-11
+- **Belirti:** İki aşamalı akışta createOrder ile createbarcode haftalar
+  ayrı olabilir. Tek alan kullanıldığında 15 gün önce kaydedilmiş bir siparişin
+  bugün oluşan kolisi, **ilk sorguda** `MAX_ELAPSED`'i aşmış sayılıyor ve zincir
+  hiçbir şey okumadan vazgeçiyordu.
+- **Uygulanan düzeltme:** `_kuka_shipping_order_registered_at` taşıyıcının
+  **siparişi** kabul ettiği an; `_kuka_shipping_created_at` **kolinin** var
+  olduğu an. İkincisi yalnız gerçek gönderi yerleşiminde, bir kez yazılır;
+  retry de ikinci basış da oynatmaz. Mutabakatla benimsenen gönderide boş değer
+  bir kez doldurulur, dolu değer korunur (K-43).
+- **Ölçülen yeşil:**
+
+  ```text
+  after_createOrder  : created_at=0 / order_registered_at=set
+  after_createbarcode: created_at=set / skew_seconds=0 / order_registered_at_unchanged=yes
+  first_poll         : reschedule/still_moving
+  tek alan olsaydı   : give_up/max_elapsed_reached
+  retry ve ikinci basış: created_at_moved=no
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`META_ORDER_REGISTERED_AT`, `save_order_created`, `settle_barcode_receipt`)
+
+---
+
+## K-59 — ZPL etiketi kişisel veridir, takip numarası değildir
+
+- **Tarih:** 2026-09-11
+- **Belirti:** `barcodes[].value` alanı alıcının adını, adresini ve telefonunu
+  içeren kilobaytlarca ZPL yazdırma komutudur. Bir kimlik değildir; takip
+  numarası olarak kaydedilmesi bu veriyi gösteren her ekrana taşır.
+- **Uygulanan düzeltme:** Takip numarası `shipmentId`'dir — satıcının kendi
+  belgesinde "Gönderi Numarası". Yapılandırmada `barcode` kaynağı **reddedilir**
+  (`TRACKING_SOURCE_UNSET`). Etiketler yalnız kanonik receipt'te saklanır;
+  eski `META_BARCODES` satırı yeni akışta boş kalır — parça numarası barkod
+  değildir. Operatör etiketi ancak `admin-post` üzerinden, aynı nonce ailesi ve
+  `manage_woocommerce` ile, parça parça indirir; uploads altında dosya yoktur,
+  tahmin edilebilir URL yoktur.
+- **Ölçülen yeşil:**
+
+  ```text
+  SHIPPING_LABEL_DOWNLOAD_IS_GUARDED=PASS|pieces:2|piece_1_bytes:exact|piece_2_bytes:exact
+  |content_type:application/vnd.zebra.zpl; charset=utf-8|nosniff:nosniff|content_length:exact
+  |disposition:attachment|missing_piece:refused(404)|wrong_action_nonce:refused
+  |cross_order_nonce:refused|reverse_cross_order:refused|unauthorised:refused
+  |zpl_in_notes:no|zpl_in_panel:no|zpl_files_under_uploads:0
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-admin.php`
+  (`handle_label`, `label_response`),
+  `SHIP/includes/shipping/dhl/class-dhl-config.php` (`tracking_number_source`)
+
+---
+
+## K-60 — Fatura doğrulaması EDM'in canlı WSDL'ine bağlıydı
+
+- **Tarih:** 2026-09-12
+- **Neyin doğru olmadığını önce yazalım:** Bu suite **gerçek bir EDM
+  SendInvoice çağrısı yapmıyor** ve hiç yapmadı.
+  `Kuka_Island_Test_WSDL_Interceptor::__doRequest()` SOAP gönderimini yakalar ve
+  mock cevap döndürür. Ölçüm adlarındaki eski `real_send` etiketi "gerçek ağ
+  yazması" değil "üretim gönderim kod yolu" demekti; bu belgede bir kez yanlış
+  yorumlandı ve düzeltilmiştir. Etiketler artık
+  `production_send_path_intercepted` ve `pinned_wsdl_fixture_soap_encoder`.
+- **Asıl kusur — okuma tarafı:** `SoapClient` constructor'ı ve
+  `DOMDocument::load()` `Invoice_Config::DEFAULT_TEST_WSDL` **URL'sini** her
+  koşuda uzaktan okuyordu. `make verify` böylece dış ağa ve EDM'in istediği
+  zaman değiştirebileceği bir belgeye bağlıydı.
+- **Üç kırmızının ölçülen kök nedeni** (ağ kapalıyken de birebir tekrar eder,
+  yani ağ hiç sebep değildi):
+
+  ```text
+  SOAP-ERROR: Encoding: object has no 'OTHER_ENTEGRATION' property
+  ```
+
+  EDM test WSDL'i `INVOICE/HEADER` içinde
+  `<xs:element name="OTHER_ENTEGRATION" type="xs:int" minOccurs="1"/>`
+  tanımlar. ext-soap `minOccurs`'u **kodlama** anında uygular: alan
+  gönderilmezse hiç zarf üretilmez. `last_request_xml` boş kaldığı için
+  `INVOICE_SOAP_XPATH_SEND_INVOICE_EARCHIVE` ve `..._EINVOICE` bütün XPath'leri
+  "absent" raporladı, `INVOICE_LEGAL_CARRIER_REQUIRES_10_DIGIT_VKN` aynı boş
+  XML'i okudu, ve üretim istemcisinin fault sınıflandırıcısı bunu EDM'in hiç
+  görmediği bir istek için **"EDM refused the request."** diye bildirdi. "EDM
+  reddetti" sonucu bir yanlış teşhisti.
+- **Uygulanan düzeltme, dört parça:**
+  1. WSDL'in gözden geçirilmiş yerel kopyası
+     `scripts/fixtures/edm/edm-efaturaedm-test.wsdl`; SHA-256 koda çivili ve ilk
+     `SoapClient`'tan önce doğrulanıyor — uyuşmazlıkta koşu durur. Dosya saf
+     WSDL/XSD'dir: sıfır metin düğümü, hiçbir kimlik/oturum/belge verisi yok.
+  2. Fixture'ın ilan ettiği uç nokta ayrılmış TLD'ye çevrildi
+     (`http://edm-offline-fixture.invalid/EFaturaEDM.svc`), böylece
+     `__doRequest` geçersiz kılınmasa bile hiçbir taşıyıcı EDM'e ulaşamaz.
+  3. Üretim istemcisi eksik zorunlu alanı gönderiyor:
+     `'OTHER_ENTEGRATION' => 0`. Sıfır bir **anlam değil**, kodlayıcı tabanıdır:
+     `xs:int`'in null'u yoktur ve bu alanı hiç atamayan resmî C# connector
+     `default(int)` yani 0 serileştirir. İki `SENDDATE` alanının aksine bunun
+     için **EDM'den yazılı bir cevap yok**; canlı gönderimden önce EDM desteğine
+     sorulmalıdır.
+  4. `INVOICE_VERIFY_NETWORK_ISOLATED` ölçümü eklendi; fixture yükleyicisi,
+     WordPress HTTP katmanı ve `__doRequest` kendi işlerini sayar.
+- **Ölçülen yeşil:**
+
+  ```text
+  INVOICE_VERIFY_NETWORK_ISOLATED=PASS|wsdl_source:local_file|wsdl_reads:3
+  |all_reads_local_file:yes|wsdl_sha256_pinned:yes|fixture_names_an_edm_host:no
+  |edm_endpoint_posts:0|edm_http_requests_attempted:0
+  |production_send_path_intercepted:11|SendInvoice_through_production_client:2
+  |mock_responses_used:11|soap_endpoints_offered:http://edm-offline-fixture.invalid/EFaturaEDM.svc
+  ```
+
+  Ayrıca konteyner içinde `edmbilisim.com.tr` 127.0.0.1'e çivilenerek koşuldu:
+  suite birebir aynı sonuçla tamamen yeşil. Dış ağa bağımlılık yok.
+- **İlgili dosya:** `scripts/verify-invoice-integration.php`,
+  `scripts/fixtures/edm/edm-efaturaedm-test.wsdl`, `scripts/verify.sh`,
+  `EDM/includes/invoice/class-edm-client.php`, `scripts/lib-edm-sandbox.php`
+- **Asıl kayıt EDM tarafındadır:**
+  [EDM_BAKIM_HAFIZASI.md K-31](EDM_BAKIM_HAFIZASI.md) — uzaktaki WSDL
+  değişiminin nasıl fark edildiği, hiçbir gerçek `SendInvoice` yapılmadığının
+  dört ayrı kanıtı, `0` değerinin neden yalnız int kodlayıcı tabanı olduğu,
+  EDM'in bu alanı **yazılı olarak teyit etmediği** ve aynı kodlama hatası
+  tekrarlarsa izlenecek altı adımlık sıra orada yazılıdır. Olay bu kargo turunda
+  ortaya çıktığı için burada da duruyor; bakım sırasında o kayıt esastır.
+- **Tekrar yaşanırsa ilk bak:** `SOAP-ERROR: Encoding: object has no '<AD>'
+  property` görülüyorsa EDM WSDL'i yeni bir `minOccurs=1` alan eklemiştir.
+  Doğru tepki beklentiyi gevşetmek değil, alanı şemanın nötr değeriyle
+  göndermek ve EDM'e anlamını sormaktır — `EARCHIVE_REPORT_SENDDATE` ve
+  `OTHER_ENTEGRATION` bu yolla eklendi. Ayrıntılı sıra: EDM_BAKIM_HAFIZASI.md
+  K-31.
+
+---
+
 ## Bakım sırası
 
 Bir kargo belirtisi geldiğinde izlenecek sıra:
@@ -2451,7 +2690,12 @@ Bir kargo belirtisi geldiğinde izlenecek sıra:
 
 ---
 
-## Sandbox hazırlığı — 2026-09-04
+## Sandbox hazırlığı — 2026-09-04 (tarihsel anlık görüntü)
+
+**Güncel durum 2026-09-12:** Kimlikler `4/4`, salt-okunur bağlantı PASS ve
+kontrollü tam gönderi zinciri PASS. Aşağıdaki `2/4`, “yapılmadı” ve “onay
+bekliyor” ifadeleri 4 Eylül'deki hazırlık turunun tarihsel kaydıdır; güncel
+sonuç ve iki gerçek yanıt uyumsuzluğu K-61'dedir.
 
 Bu bölüm **ölçülen** durumu kaydeder. Gerçek sandbox kanıtı ile mock/offline
 kanıtı burada kasten ayrı tutulur; ikisi aynı şey değildir.
@@ -2638,3 +2882,65 @@ autoload durumunu başlangıçtaki baytlarla geri yükler.
   tanınmayan bir değer verilirse `configuration_invalid` ile **kapanır** (K-33).
 - Aktiflik tek başına kargo oluşturmaz; gönderi yalnız operatörün açık
   basışıyla oluşur.
+
+## K-61 — Gerçek sandbox sorguları tek elemanlı liste döndürdü
+
+- **Tarih:** 2026-09-12
+- **Belirti:** Gerçek `createOrder` ve `createbarcode` HTTP 200 verirken
+  `getorder` ile `getshipmentstatus` HTTP 200 gövdeleri
+  `malformed_response` sayılıyordu. İlk tur barkod kapısından önce, ikinci tur
+  durum sorgusunda durdu.
+- **Kök neden:** OpenAPI sorgu cevabını nesne olarak tarif ediyor; sandbox aynı
+  nesneyi tek elemanlı JSON listesi içinde döndürüyor. Ölçülen alan şekilleri:
+  `getorder => list(1):object(order+orderPieceList+recipient+shipper)` ve
+  `getshipmentstatus => list(1):object(...+shipmentStatusCode+trackingUrl)`.
+  Yanıt değerleri ve kişisel veriler raporlanmadı.
+- **Çözüm:** `DHL_Client::get_order()` ve `get_shipment_status()` ayrıştırıcıları
+  oluşturma cevaplarında zaten kullanılan `unwrap()` sınırını kullanıyor;
+  belgelenmiş çıplak nesne biçimi de çalışmaya devam ediyor. Sandbox aracı
+  güncel iki aşamalı üretim akışını uygular: `createOrder`, salt-okunur
+  `getorder`, ayrı `resume_barcode`, durum sorgusu, iptal ve iptali okuma ile
+  doğrulama. Daha önce tamamlanmış `order_created` kaydında `createOrder`
+  tekrarlanmaz; `cancelled` kayıtta yalnız teşhis okuması yapılır.
+- **Gerçek kanıt:** Kimlik `4/4`; Identity HTTP 200; token taşımayan CBS şehir
+  ve ilçe okumaları HTTP 200. Üç kontrollü test kaydının her birinde bir
+  `createOrder`, bir `createbarcode` ve doğrulanmış bir `cancelshipment` oldu.
+  Son turda `getorder`, `createbarcode`, `getshipmentstatus` ve iptal zinciri
+  bütünüyle PASS; durum `1 / in_progress`; her üç yerel kayıt `cancelled`,
+  pending mutation yok, receipt'te bir ZPL etiket var ve taşıyıcıda açık kayıt
+  kalmadı. Canlı uç kullanılmadı.
+- **Takip numarası:** gerçek `trackingUrl` HTTPS ve taşıyıcı alan adında; URL
+  `shipmentId` değerini birebir içeriyor. `barcodes[].value` takip numarası
+  değil, kişisel veri taşıyan ZPL baskı içeriğidir.
+- **Kapanan ölçümler:** Ö-01 `Bearer`, Ö-02 CBS tokensız, Ö-03 `shipmentId`,
+  Ö-04 `recipient.customerId` atlanabilir. Ö-05 canlı uçlar açık kalır ve canlı
+  ortam blokesi kaldırılmaz.
+- **Tekrar yaşanırsa ilk bak:** HTTP 200 ile `malformed_response` birlikteyse
+  önce yalnız JSON alan **şeklini** ölç; gövdeyi loglama. Sonra
+  `DHL_Client::unwrap()` ve `SHIPPING_QUERY_LIST_ENVELOPES` ölçümüne bak.
+
+## K-62 — Doğrulama gerçek CBS önbelleğini kalıntı saymamalı
+
+- **Tarih:** 2026-09-12
+- **Belirti:** Gerçek salt-okunur CBS çağrısından sonra ilk `make verify`,
+  `SHIPPING_CBS_CACHE_PRESERVED` ve `SHIPPING_FIXTURES_REMOVED` ölçümlerinde
+  düştü. Entegrasyon çağrıları değil, testin temizlik varsayımı hatalıydı.
+- **Kök neden:** Kontrol senaryosu üretimin sabit `v1` şehir ve ilçe transient
+  adlarını kullanıyor, sonra bu adları kendi fixture'ı kabul edip siliyordu.
+  Son kapı da başlangıç durumunu kaydetmeden toplam CBS satır sayısının sıfır
+  olmasını istiyordu. Gerçek bir okumanın bıraktığı geçerli TTL önbelleği bu
+  varsayımı bozuyordu.
+- **Çözüm:** Kontrol transient'leri her koşuda benzersiz bir `testrun-*`
+  namespace'ine taşındı. Suite başlamadan önce bütün CBS option satırları ham
+  değer ve `autoload` bayrağıyla kaydediliyor; yalnız suite'in açıkça sahiplendiği
+  adlar silindikten sonra son kümenin başlangıç kümesine birebir eşit olması
+  zorunlu. `cache_rows_left:0` artık bir başarı koşulu değil;
+  `cache_rows_restored:yes` başarı koşuludur.
+- **Kanıt:** Suite dışından iki satırlık geçici bir CBS kontrol transient'i
+  oluşturuldu. Davranış suite'i `cache_rows_restored:yes|cache_rows_left:2`
+  ile geçti; kontrol transient'i sonrasında tam adıyla kaldırıldı. Ardından
+  standart `make verify` de geçti.
+- **Tekrar yaşanırsa ilk bak:** Bir temizlik testi “satır sayısı sıfır” diyorsa
+  önce bu satırların gerçekten teste mi ait olduğunu sor. Önbellek için
+  sahiplik yalnız benzersiz namespace ve açık exact-name listesiyle kurulur;
+  üretim namespace'ine test verisi yazılmaz ve `LIKE` ile silme yapılmaz.

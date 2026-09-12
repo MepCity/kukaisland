@@ -215,6 +215,14 @@ final class Kuka_Island_Shipping_DHL_Config {
 	public const TRACKING_SOURCE_SHIPMENT_ID = Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_SHIPMENT_ID;
 	public const TRACKING_SOURCE_BARCODE     = Kuka_Island_Shipping_Carrier_Interface::TRACKING_SOURCE_BARCODE;
 
+	/**
+	 * The only Authorization scheme the vendor's document declares.
+	 *
+	 * "Rest Api Detay Döküman" states it in the request-header table of every
+	 * authenticated service: `Authorization: Bearer XXXXXXXX`.
+	 */
+	public const AUTHORIZATION_SCHEME = 'bearer';
+
 	private string $environment;
 	private string $client_id;
 	private string $client_secret;
@@ -223,6 +231,9 @@ final class Kuka_Island_Shipping_DHL_Config {
 	private bool $automation_enabled;
 	private bool $cod_enabled;
 	private string $tracking_number_source;
+
+	/** Authorization scheme, validated before any network use. */
+	private string $authorization_scheme;
 	private int $timeout;
 
 	/**
@@ -257,19 +268,31 @@ final class Kuka_Island_Shipping_DHL_Config {
 		$this->cod_enabled = (bool) ( $overrides['cod_enabled'] ?? self::read_bool( 'KUKA_DHL_COD_ENABLED' ) );
 
 		/*
-		 * Which value in the carrier's answer IS the WooCommerce tracking
-		 * number has not been measured against the sandbox, so the default is
-		 * "do not claim to know". createbarcode returns a shipmentId and a list
-		 * of per-piece barcode values, and picking one of them by intuition
-		 * would put a number on the customer's order e-mail that may not track
-		 * anything.
+		 * THE DOCUMENT SETTLES THIS. "Rest Api Detay Döküman" describes
+		 * `shipmentId` as "Gönderi Numarası" -- the number the parcel is
+		 * tracked by -- and describes `barcodes[].value` as the ready ZPL print
+		 * string for a 10x10 cm label. A print string is not an identifier, so
+		 * `barcode` is no longer an acceptable source for THIS carrier: it is
+		 * refused and falls back to "not measured", which writes nothing.
+		 *
+		 * The default is now `shipment_id` rather than unset, because the
+		 * source is documented rather than guessed.
 		 */
-		$source = strtolower( trim( (string) ( $overrides['tracking_number_source'] ?? self::read( 'KUKA_DHL_TRACKING_NUMBER_SOURCE', self::TRACKING_SOURCE_UNSET ) ) ) );
-		$this->tracking_number_source = in_array(
-			$source,
-			array( self::TRACKING_SOURCE_SHIPMENT_ID, self::TRACKING_SOURCE_BARCODE ),
-			true
-		) ? $source : self::TRACKING_SOURCE_UNSET;
+		$source = strtolower( trim( (string) ( $overrides['tracking_number_source'] ?? self::read( 'KUKA_DHL_TRACKING_NUMBER_SOURCE', self::TRACKING_SOURCE_SHIPMENT_ID ) ) ) );
+		$this->tracking_number_source = self::TRACKING_SOURCE_SHIPMENT_ID === $source
+			? $source
+			: self::TRACKING_SOURCE_UNSET;
+
+		/*
+		 * The Authorization scheme is configuration like everything else here,
+		 * read through the same overrides. It used to be read straight from a
+		 * constant inside the client, which made the invalid case impossible to
+		 * measure without defining a process-wide constant that would have
+		 * broken every other measurement in the same run.
+		 */
+		$this->authorization_scheme = strtolower(
+			trim( (string) ( $overrides['authorization_scheme'] ?? self::read( 'KUKA_DHL_AUTHORIZATION_SCHEME', self::AUTHORIZATION_SCHEME ) ) )
+		);
 
 		$timeout       = (int) ( $overrides['timeout'] ?? self::read( 'KUKA_DHL_TIMEOUT', 30 ) );
 		$this->timeout = max( 5, min( 120, $timeout ) );
@@ -282,6 +305,10 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 * @param mixed  $default Fallback.
 	 * @return mixed
 	 */
+	public function get_authorization_scheme(): string {
+		return $this->authorization_scheme;
+	}
+
 	private static function read( string $name, $default = '' ) {
 		if ( defined( $name ) ) {
 			return constant( $name );

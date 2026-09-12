@@ -1008,6 +1008,119 @@ bağlı değildir.
 `SHIPPING_MODULE_STATUS_VISIBLE`, `SHIPPING_DEACTIVATION_PRESERVES_OWNERSHIP`,
 ve gerçek `wp plugin activate/deactivate` turu için `SHIPPING_LIFECYCLE_*`.
 
+## 17.1 İki aşamalı oluşturma, receipt ve etiket
+
+Bu bölüm 11 Eylül 2026 turunda ölçülen davranışı yazar. Ayrıntılı kusur kaydı:
+DHL_BAKIM_HAFIZASI.md K-56…K-59.
+
+### İki ayrı basış
+
+`createOrder` taşıyıcıda **siparişi** kaydeder ve orada durur; `createbarcode`
+ikinci ve ayrı bir operatör basışıdır. Zincirleme yok:
+
+```text
+SHIPPING_CREATE_ORDER_DOES_NOT_CHAIN_BARCODE=PASS
+createOrder=1 createbarcode=0 state=order_created
+tekrar basış: createOrder=1 createbarcode=0 ok=no
+resume      : createOrder=1 createbarcode=1 state=shipment_created ok=yes
+ikinci resume: not_resumable
+```
+
+DHL, iki çağrı arka arkaya yapılırsa hedef şubenin henüz belirlenmemiş
+olabileceğini yazılı olarak bildirdi. Şubenin hazır olduğunu doğrulayan bir alan
+belgede yoktur; bekleme süresi operatörün kararıdır ve panel bunu böyle söyler.
+
+### Cevap önce saklanır, etiket sonra yargılanır
+
+`createbarcode` başarılı döndüğünde sıra şudur:
+
+1. `shipmentId` zorunlu — yoksa belirsizlik yolu devralır.
+2. Kanonik receipt kurulur: `{referenceId, shipmentId, invoiceId, labels[]}` —
+   **etiketlerin kullanılabilir olup olmadığına bakılmadan**.
+3. Receipt, pending mutation korunarak `_kuka_shipping_barcode_receipt`
+   satırına yazılır.
+4. Taze bir `WC_Order` ile byte-aynı geri okunur.
+5. Ancak şimdi etiket sorusu sorulur.
+
+| sonuç | durum | pending mutation | `created_at` | ikinci createbarcode |
+|---|---|---|---|---|
+| etiketler kullanılabilir | `shipment_created` | kapanır | yazılır | yok |
+| receipt kanıtlandı, etiket geçersiz | `manual_review` (`label_response_invalid`) | kapanır | yazılmaz | yok |
+| receipt kanıtlanamadı | `manual_review` (`label_storage_unverified`) | **açık kalır** | yazılmaz | yok |
+
+Son yerleşim de taze bir `WC_Order` ile doğrulanır: durum, `shipmentId`,
+receipt byte-aynılığı, pending'in kapalı/açık olması, `created_at` yalnız
+gerçek gönderi yerleşiminde ve provider/reference'ın değişmemiş olması. Bu
+doğrulama tutmazsa `ok:true` dönülmez ve fulfillment/poller adımına geçilmez.
+
+### Kesilmiş bir createbarcode'un kurtarılması
+
+Receipt diske yazıldıktan sonra süreç ölürse, sonraki public `resume` basışı
+kaydı taşıyıcıya sormadan tamamlar. Kapı mutation kilidinden ve taze DB
+okumasından sonra, durum allow-list'inden önce değerlendirilir ve **bütün**
+kanıtlar uyuşmadan açılmaz: sipariş provider'ı == çağrılan taşıyıcı, receipt
+`referenceId` siparişin çivili referansıyla byte-aynı, `shipmentId` boş değil,
+açık bir `kind=create` / `operation=create_barcode` / `target=shipment` pending
+mutation var ve o mutation aynı provider+reference'ı taşıyor.
+
+Kurtarma yalnız `order_created` ve `reconcile_required` durumlarında açılır.
+Diğer her durum — `cancelled`, `delivered`, `manual_review`, iptal/güncelleme
+mutabakatları — allow-list'e düşer ve orada reddedilir.
+
+```text
+SHIPPING_RECEIPT_RECOVERY_IS_REACHABLE=PASS
+verified_receipt   : createbarcode=0 token=0 state=shipment_created labels=2 ok=yes
+wrong_reference / empty_shipment_id / pending_is_cancel / no_pending_mutation:
+                     createbarcode=0 token=0 state=manual_review ok=no
+```
+
+### İki ayrı saat
+
+- `_kuka_shipping_order_registered_at` — taşıyıcının **siparişi** kabul ettiği an.
+- `_kuka_shipping_created_at` — **kolinin** var olduğu an. Yalnız gerçek gönderi
+  yerleşiminde, bir kez yazılır; retry de ikinci basış da oynatmaz.
+
+Durum sorgusu geçen süreyi kolinin saatinden ölçer. Tek alan kullanılsaydı 15
+gün önce kaydedilmiş bir siparişin bugünkü kolisi ilk sorguda
+`max_elapsed_reached` ile vazgeçerdi; ölçülen davranış
+`first_poll:reschedule/still_moving`.
+
+### ZPL etiketi ile takip numarası ayrı şeylerdir
+
+`barcodes[].value` alanı alıcının adını, adresini ve telefonunu içeren
+kilobaytlarca ZPL yazdırma komutudur. Bir kimlik değildir.
+
+- Takip numarası **`shipmentId`**'dir; yapılandırmada `barcode` kaynağı
+  reddedilir (`TRACKING_SOURCE_UNSET`).
+- Etiketler yalnız kanonik receipt'te durur; eski `_kuka_shipping_barcodes`
+  satırı yeni akışta boş kalır — parça numarası barkod değildir.
+- İndirme `admin-post` üzerinden, `kuka_shipping_label_<id>` nonce ailesi ve
+  `manage_woocommerce` ile, parça parça yapılır:
+  `application/vnd.zebra.zpl`, `attachment`, `nosniff`, doğru `Content-Length`.
+  Uploads altında dosya yok, tahmin edilebilir URL yok, müşteri e-postasında,
+  sipariş notunda ve panel gövdesinde ZPL yok.
+
+```text
+SHIPPING_LABEL_DOWNLOAD_IS_GUARDED=PASS|pieces:2|piece_1_bytes:exact|piece_2_bytes:exact
+|missing_piece:refused(404)|wrong_action_nonce:refused|cross_order_nonce:refused
+|reverse_cross_order:refused|unauthorised:refused
+|zpl_in_notes:no|zpl_in_panel:no|zpl_files_under_uploads:0
+```
+
+### Kimlik durumu
+
+2026-09-12'de sandbox kimlikleri **4/4** tamamlandı. Gerçek Identity, CBS,
+`createOrder`, `getorder`, `createbarcode`, `getshipmentstatus` ve
+`cancelshipment` zinciri test ortamında çalıştı; üç kontrollü kayıt iptal
+sorgusuyla `cancelled` durumuna ulaştı ve taşıyıcıda açık kayıt kalmadı.
+
+Gerçek sorgular, OpenAPI'deki çıplak nesneye ek olarak tek elemanlı liste
+zarfıyla döndü. `get_order()` ve `get_shipment_status()` iki resmî biçimi de
+`unwrap()` ile kabul eder; bu davranış `SHIPPING_QUERY_LIST_ENVELOPES` ile
+kilitlidir. Ayrıntılı ölçüm ve güvenli çıktı sınırı bakım hafızası K-61'dedir.
+Canlı uçlar hâlâ resmî olarak doğrulanmadığı için canlı ortam blokesi devam
+eder; sandbox başarısı canlı aktivasyon izni değildir.
+
 ## 18. Dokunulmayacaklar
 
 - `wp-content/plugins/kuka-island-core/assets/admin-orders.css` kargo çekmecesi

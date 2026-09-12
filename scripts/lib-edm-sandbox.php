@@ -1715,6 +1715,8 @@ function kuka_sandbox_build_load_request( array $ctx ): array {
 		// Kuka_Island_Core_EDM_Client::send_invoice().
 		'EARCHIVE_REPORT_SENDDATE'        => '0001-01-01',
 		'CANCEL_EARCHIVE_REPORT_SENDDATE' => '0001-01-01',
+		// Required by the WSDL at encoding time; see Kuka_Island_Core_EDM_Client.
+		'OTHER_ENTEGRATION'               => 0,
 		'ISACTIVE'                        => true,
 		'MARKED'                          => false,
 	);

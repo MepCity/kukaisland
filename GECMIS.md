@@ -821,15 +821,30 @@ hem "planlanamadı" hem "bekleyen deneme var" diyordu. Bkz. K-55.
 
 ### Sandbox: nerede kaldı
 
-Kimlik dosyasında **2/4** anahtar var; kargo hesabı çifti
-(`KUKA_DHL_CUSTOMER_NUMBER`, `KUKA_DHL_PASSWORD`) eksik. Salt-okunur bağlantı
-testi çalıştırıldı ve kimlik kapısında durdu: **dış çağrı 0**. Yani bu projede
-kargo tarafında henüz **hiçbir gerçek taşıyıcı çağrısı yapılmadı** — bütün
-kanıt mock transport ve offline ölçüm. `Ö-01`…`Ö-05` açık.
+12 Eylül 2026'da kimlik dosyası **4/4** tamamlandı. Gerçek Identity ve tokensız
+CBS şehir/ilçe okumaları HTTP 200 verdi. Kullanıcının o tura ait açık onayıyla
+üç kontrollü sandbox kaydı oluşturuldu; her birinde `createOrder`, ayrı
+`createbarcode` ve `cancelshipment` birer kez çalıştı, iptal salt-okunur
+sorguyla doğrulandı ve açık taşıyıcı kaydı kalmadı. Son tam turda durum kodu
+`1 / in_progress` başarıyla okundu.
 
-Tek sandbox gönderisi için çalıştırılacak tam komut, beklenen dış etkileri ve
-geri alma zinciri `docs/DHL_BAKIM_HAFIZASI.md` → "Sandbox hazırlığı" Aşama 5'te
-yazılı ve **açık kullanıcı onayı bekliyor**.
+Gerçek sandbox iki doküman/uygulama farkını açtı: `getorder` ve
+`getshipmentstatus`, belgelenmiş nesneyi tek elemanlı JSON listesi içinde
+döndürüyor. İlk durumda barkod kapısı fail-closed durdu; ikincisinde durum
+sorgusu `malformed_response` verdi fakat iptal yine doğrulandı. İki ayrıştırıcı
+ortak `unwrap()` sınırına alındı ve son tur bütünüyle geçti. Gerçek
+`trackingUrl`, `shipmentId` değerini içerdi; ZPL etiketi takip numarası değildir.
+Bakım kaydı: `docs/DHL_BAKIM_HAFIZASI.md` K-61.
+
+Aynı gün gerçek CBS okumasının bıraktığı geçerli önbellek, doğrulama suite'i
+tarafından kalıntı sanıldı. Test üretimin `v1` transient adlarını kullandığı için
+ilk tam koşu iki temizlik ölçümünde düştü. Kontrol verileri benzersiz test
+namespace'ine taşındı ve son kapı “önbellek boş” yerine “başlangıçtaki satırlar
+bayt düzeyinde geri geldi” şartına çevrildi. Bakım kaydı: K-62.
+
+Sandbox entegrasyonu çalışır durumdadır. **Canlı entegrasyon hazır değildir:**
+resmî üretim uçları hâlâ verilmediği için canlı ortam kod tarafından blokelidir
+ve otomatik durum sorgusu kapalıdır.
 
 ### Bakım sırasında izlenecek sıra
 
@@ -916,6 +931,71 @@ mobilde de inen masaüstü posterinden geliyor; o ikinci turun işi.
 çünkü ölçülen eleman videonun altındaki fotoğraftı.
 
 ---
+
+## 15.5 Doğrulama altyapısının kendisi — 11–12 Eylül denetimi
+
+İki turluk bir iş, ve ikisi de aynı dersin farklı yüzü: **bir ölçüm yanlışsa,
+geçmesi kötüdür.**
+
+### Kargo: yazdığını bulamayan kurtarma
+
+Receipt kurtarması kod olarak vardı, üretimde **erişilemezdi**. `begin_mutation()`
+taşıyıcıyı aramadan önce durumu `reconcile_required` yapıyor; receipt yazıldıktan
+sonraki bir çökme siparişi orada bırakıyor; `resume_barcode()` ise yalnız
+`order_created` kabul ediyordu. Yani gönderi DHL'de var, cevabı diskte, ve hiçbir
+operatör basışı yerel yarıyı bitiremiyor.
+
+Kırmızıyı gerçek public girişle üretmek ikinci bir kusuru da açtı: sahibi belli
+olmayan bir receipt kendini benimsiyordu
+(`no_pending_mutation → state=shipment_created ok=yes`). Kanıt listesi eksiksiz
+olmadan kurtarma açılmıyor artık, ve kurtarma yalnız kesilmiş bir createbarcode'un
+bırakabileceği iki durumda deneniyor.
+
+Aynı turda üç şey daha düzeldi: taşıyıcının cevabı artık **etiket yargısından
+önce** yazılıyor (geçersiz etiketli bir cevap bile gönderinin var olduğunun tek
+yerel kanıtıdır); siparişin saati ile kolinin saati ayrıldı; ve ZPL etiketi
+kişisel veri olarak ele alınıp yetkili operatöre parça parça indiriliyor — takip
+numarası `shipmentId`, etiket değil.
+
+Bir sayı bu turun özeti: `create_and_barcode_confirmed` 4'ten **5**'e çıktı.
+Beşinci geçiş, cevabın yazılmasıdır. 4 ile 5 arasında ölen bir süreç receipt'i
+diskte ve intent'i açık bulur — düzeltmenin kendisi o fazladan kayıttır.
+
+### Fatura: "EDM reddetti" diye rapor edilen şey EDM'den gelmemişti
+
+`make verify` üç `INVOICE_*` hatasıyla düşüyordu ve hata metni
+`EDM refused the request.` diyordu. Ben de bunu ilk raporumda **gerçek bir EDM
+gönderimi** sanıp öyle yazdım. Yanlıştı, ve kullanıcı düzeltti.
+
+- `Kuka_Island_Test_WSDL_Interceptor::__doRequest()` SOAP gönderimini yakalar ve
+  mock cevap döndürür. Hiçbir zarf tele çıkmaz. Ölçüm adındaki `real_send`
+  "gerçek ağ yazması" değil, "üretim gönderim kod yolu" demekti — adlar artık
+  `production_send_path_intercepted`.
+- Gerçekten dışarı çıkan şey **okuma**ydı: `SoapClient` constructor'ı ve
+  `DOMDocument::load()` EDM'in canlı test WSDL'ini her koşuda indiriyordu.
+- Üç kırmızının ölçülen kök nedeni ise ne ağdı ne EDM:
+
+  ```text
+  SOAP-ERROR: Encoding: object has no 'OTHER_ENTEGRATION' property
+  ```
+
+  WSDL bu alanı `INVOICE/HEADER` içinde `minOccurs="1"` ilan ediyor, ext-soap
+  `minOccurs`'u **kodlama** anında uyguluyor, üretim istemcisi alanı
+  göndermiyordu. Hiç zarf üretilmediği için bütün XPath'ler "absent" dedi ve
+  fault sınıflandırıcısı EDM'in hiç görmediği bir istek için "EDM reddetti"
+  yazdı.
+
+Düzeltme: WSDL'in gözden geçirilmiş, SHA-256 çivili yerel kopyası; fixture'ın
+ilan ettiği uç noktanın ayrılmış TLD'ye çevrilmesi; eksik zorunlu alanın şemanın
+nötr değeriyle gönderilmesi; ve suite'in kendi izolasyonunu sayan yeni bir ölçüm.
+`edmbilisim.com.tr` konteyner içinde 127.0.0.1'e çivilenerek koşuldu: suite
+birebir aynı sonuçla yeşil.
+
+**Ders — iki tane.** Birincisi: bir test adı bir iddiadır. `real_send` adı, onu
+yazanın kastetmediği bir şeyi bana söyledi ve ben onu bir rapora taşıdım.
+İkincisi: hata metnini teşhis sanma. "EDM reddetti" cümlesi EDM'den gelmiyordu;
+kök nedeni bulmak için tek gereken, üretim istemcisinin güvenlik için yuttuğu
+ham `SoapFault`'u testin saklamasıydı.
 
 ## 16. Bu belgeyi okuyan yapay zekâya
 
