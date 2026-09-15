@@ -252,6 +252,17 @@ final class Kuka_Island_Shipping_Admin {
 		// already looking.
 		echo '<p class="description">' . esc_html( self::module_status_line( self::module_status( $this->manager->get_registry() ) ) ) . '</p>';
 
+		/*
+		 * THE SECOND LINE ANSWERS A DIFFERENT QUESTION.
+		 *
+		 * The line above says which switches are on. This one says what that
+		 * means for THIS order right now: is the shop in manual or automatic
+		 * mode, which environment, is the configuration complete, and -- the
+		 * one an operator actually needs before pressing anything -- is a job
+		 * already booked to do it for them.
+		 */
+		echo '<p class="description">' . esc_html( self::dispatch_status_line( $order ) ) . '</p>';
+
 		if ( '' !== $data['reference'] ) {
 			echo '<p><strong>' . esc_html__( 'Referans:', 'kuka-island-shipping-automation' ) . '</strong> <code>' . esc_html( $data['reference'] ) . '</code></p>';
 		}
@@ -511,6 +522,64 @@ final class Kuka_Island_Shipping_Admin {
 	 *
 	 * @param array{module: string, runtime: string, automation: string, adapters: string} $status Status.
 	 */
+	/**
+	 * Manual or automatic, which environment, and is anything already booked.
+	 *
+	 * Public and static so the exact sentence an operator reads can be asserted
+	 * without rendering an admin screen, exactly like module_status_line().
+	 */
+	public static function dispatch_status_line( WC_Order $order ): string {
+		$readiness = Kuka_Island_Shipping_Settings::readiness();
+		$automatic = Kuka_Island_Shipping_Settings::is_auto_create_enabled();
+		$booked    = Kuka_Island_Shipping_Dispatcher::has_pending_job( (int) $order->get_id() );
+		$data      = Kuka_Island_Shipping_Order_Store::get_shipment_data( $order );
+
+		$line = sprintf(
+			/* translators: 1: manual or automatic, 2: environment, 3: ready or missing. */
+			__( 'Mod: %1$s · Ortam: %2$s · Yapılandırma: %3$s', 'kuka-island-shipping-automation' ),
+			$automatic
+				? __( 'otomatik gönderi oluşturma açık', 'kuka-island-shipping-automation' )
+				: __( 'manuel (gönderi yalnız bu paneldeki düğmelerle oluşur)', 'kuka-island-shipping-automation' ),
+			Kuka_Island_Shipping_Carrier_Interface::ENVIRONMENT_LIVE === Kuka_Island_Shipping_Settings::environment()
+				? __( 'canlı — kapalı, hiçbir çağrı yapılmaz', 'kuka-island-shipping-automation' )
+				: __( 'sandbox', 'kuka-island-shipping-automation' ),
+			$readiness['ready']
+				? __( 'hazır', 'kuka-island-shipping-automation' )
+				: __( 'eksik', 'kuka-island-shipping-automation' )
+		);
+
+		if ( $booked ) {
+			$line .= ' · ' . __( 'Bu sipariş için otomatik gönderi işi planlandı.', 'kuka-island-shipping-automation' );
+		} elseif ( $automatic ) {
+			$eligibility = Kuka_Island_Shipping_Dispatcher::eligibility( $order );
+
+			$line .= ' · ' . (
+				$eligibility['eligible']
+					? __( 'Bu sipariş otomatik oluşturmaya uygun; iş henüz planlanmadı.', 'kuka-island-shipping-automation' )
+					: sprintf(
+						/* translators: %s: allow-listed refusal code. */
+						__( 'Bu sipariş otomatik oluşturulmaz (%s).', 'kuka-island-shipping-automation' ),
+						(string) $eligibility['reason']
+					)
+			);
+		}
+
+		if ( '' !== (string) ( $data['dispatch_reason'] ?? '' ) ) {
+			$line .= ' · ' . sprintf(
+				/* translators: 1: allow-listed reason code, 2: attempts used. */
+				__( 'Son otomatik deneme sonucu: %1$s (deneme %2$d).', 'kuka-island-shipping-automation' ),
+				(string) $data['dispatch_reason'],
+				(int) ( $data['dispatch_attempts'] ?? 0 )
+			);
+		}
+
+		if ( ! $readiness['ready'] && '' !== (string) $readiness['message'] ) {
+			$line .= ' · ' . (string) $readiness['message'];
+		}
+
+		return $line;
+	}
+
 	public static function module_status_line( array $status ): string {
 		$line = sprintf(
 			/* translators: 1: module state, 2: runtime gate state, 3: automation state, 4: registered adapter keys. */

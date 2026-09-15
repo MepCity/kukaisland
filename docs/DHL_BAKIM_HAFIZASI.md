@@ -2663,6 +2663,512 @@ temizlenir; nonretryable bir hata başarı gibi temizlenmez.
 
 ---
 
+## K-63 — Entegrasyonu yapılandırmanın tek yolu wp-config'di
+
+- **Tarih:** 2026-09-14
+- **Belirti:** Müşteriye teslim edilebilir bir kurulum yoktu. Dört kimlik
+  bilgisi, ortam seçimi ve dört anahtar yalnız `wp-config.php` sabitleriyle
+  verilebiliyordu. Site sahibi bu dosyaya erişemez; dolayısıyla entegrasyon
+  ya hiç yapılandırılmayacak ya da her değişiklik için geliştirici
+  gerekecekti.
+- **Kesin kök neden ve neden eski kural doğruydu:** Önceki sözleşme mutlaktı —
+  "sır asla option'a yazılmaz". Gerekçesi hâlâ geçerli: düz bir option sitedeki
+  her eklenti tarafından okunabilir ve veritabanı dökümüne girer. Ama o kural
+  wp-config'i düzenleyebilen birinin varlığını varsayıyordu. Seçenek "sırları
+  dikkatle saklayan bir panel" ile "hiç panel yok" arasındaydı; ikincisi daha
+  güvenli değil, yalnızca kullanılmayan bir entegrasyon demekti.
+- **Uygulanan düzeltme — yasak değil, ÖNCELİK:**
+
+  ```text
+  wp-config sabiti  >  ortam değişkeni  >  şifreli panel kasası
+  ```
+
+  Kasa (`Kuka_Island_Shipping_Secret_Vault`):
+  - Anahtar **saklanmaz**, her okumada sitenin kendi `wp-config` salt'larından
+    HKDF ile türetilir. Veritabanı dökümünde şifreli metin vardır, onu çözecek
+    hiçbir şey yoktur; saldırganın ayrıca dosya sistemine ihtiyacı olur.
+  - `sodium_crypto_secretbox` — **kimliği doğrulanmış** şifreleme. Elle
+    düzenlenmiş bir ciphertext çözülmez; bir sonraki kod yolunun parola sanacağı
+    çöp üretmez. libsodium yoksa kasa kendini kullanılamaz ilan eder ve hiçbir
+    şey saklamaz; ev yapımı bir şifre, eksik özellikten kötüdür.
+  - Salt döndürüldüğünde **susmaz**: anahtar parmak izi satırla birlikte durur,
+    eşleşmezse `credentials_unreadable` der. Boş dönmek "hiç girilmemiş" ile
+    aynı görünürdü ve operatör girdiği ayarı arardı.
+  - Option satırı `autoload=no`.
+  - Panel kayıtlı sırrı **hiçbir biçimde geri basmaz** — maskeli de, uzunluk da,
+    `value` özniteliği olarak da. Boş bırakılan alan mevcut değeri korur; silmek
+    ayrı bir form, ayrı bir nonce ve açık bir onay kutusudur.
+- **Dört anahtar dört ayrı şeydir** ve panelde ayrı ayrı durur:
+
+  | Anahtar | Kapalıyken |
+  | --- | --- |
+  | Modül çalışma anahtarı | Bütün kargo işlemleri durur; uçuştaki worker bile. Bu anahtar `Runtime_Gate`'in kendisidir, ikinci bir bayrak değil |
+  | DHL/MNG adaptörü | İstemci hiç kurulmaz; her işlem ağdan önce `carrier_not_registered` |
+  | Otomatik gönderi oluşturma | Ödenmiş siparişler kendiliğinden gönderi oluşturmaz. **Varsayılan kapalı** |
+  | Otomatik durum sorgusu | Oluşmuş gönderiler kendiliğinden sorgulanmaz |
+
+- **Otomatik oluşturma checkout isteğinin içinde çağrı yapmaz.** Ödeme kancası
+  tek bir Action Scheduler işi planlar ve döner; taşıyıcı yalnız o işin içinden
+  aranır. Uygunluk bir **izin listesidir**: ödeme `date_paid` ile kanıtlanmış,
+  durum `processing`/`completed`, iptal/iade/başarısız değil, en az bir fiziksel
+  ürün, ad/adres/şehir/telefon tam, modül+kapı+adaptör açık, yapılandırma
+  eksiksiz, ve siparişte **hiçbir** taşıyıcı kaydı yok (`state:none`, pending
+  mutation yok). Aklımıza gelmeyen bir koşul listede olmadığı için kapalı kalır.
+- **İki faz korunuyor.** `run()` createOrder yapar, siparişi **veritabanından
+  taze okur**, ve yalnız durum tam olarak `order_created` ise createbarcode'a
+  geçer. Belirsiz bir yazmadan sonra otomatik ikinci yazma yoktur; çıkış yalnız
+  salt-okunur mutabakattır ve kişi gerektirir.
+- **Ölçülen yeşil** (39 ölçüm, `scripts/verify-shipping-admin-settings.php`):
+
+  ```text
+  SHIPPING_SETTINGS_REQUIRE_CAPABILITY=PASS|user:subscriber|outcome:refused|settings_changed:no
+  SHIPPING_SETTINGS_REQUIRE_NONCE=PASS|outcome:refused|settings_changed:no
+  SHIPPING_SETTINGS_SECRET_NOT_PLAINTEXT_IN_OPTIONS=PASS|plaintext_hits:none
+  SHIPPING_SETTINGS_SECRET_OPTIONS_NOT_AUTOLOADED=PASS|vault:off|settings:off
+  SHIPPING_SETTINGS_SECRET_NEVER_RENDERED=PASS|in_html:none|password_inputs_prefilled:no
+  SHIPPING_SETTINGS_VAULT_ROUNDTRIP=PASS|sodium:yes|fields_recovered:4/4|byte_identical:yes
+  SHIPPING_SETTINGS_VAULT_TAMPER_FAILS_CLOSED=PASS|code:credentials_unreadable|ready:no
+  SHIPPING_SETTINGS_SALT_ROTATION_IS_UNREADABLE=PASS|operator_told_to_re_enter:yes
+  SHIPPING_SETTINGS_CONSTANT_BEATS_VAULT=PASS|order:constant>environment>vault
+  SHIPPING_SETTINGS_EMPTY_SECRET_KEEPS_VALUE=PASS|value_after:unchanged
+  SHIPPING_SETTINGS_FORGET_SECRET_IS_GUARDED=PASS|wrong_nonce:refused|no_capability:refused|authorised:ran
+  SHIPPING_AUTO_CREATE_DEFAULTS_OFF=PASS|auto_create:off|auto_poll:off
+  SHIPPING_AUTO_CREATE_BOOKS_ONE_JOB=PASS|jobs:1|http_during_scheduling:0|carrier_writes:0
+  SHIPPING_AUTO_CREATE_IS_IDEMPOTENT=PASS|events:3|jobs_booked:1
+  SHIPPING_AUTO_CREATE_ELIGIBILITY_IS_AN_ALLOWLIST=PASS|cases:9|wrong:none
+  SHIPPING_AUTO_CREATE_IS_TWO_PHASE=PASS|createOrder:1|createbarcode:1|state:shipment_created
+  SHIPPING_AUTO_CREATE_PHASE_ONE_CRASH_IS_SAFE=PASS|retry:createOrder=0/writes=0
+  SHIPPING_AUTO_CREATE_PHASE_TWO_UNCERTAIN_IS_SAFE=PASS|retry:createbarcode=0/writes=0
+  SHIPPING_AUTO_AND_MANUAL_RACE_IS_SERIALISED=PASS|child_started:yes|child_inside_carrier_call:yes
+                                                  |carrier_writes_total_across_processes:1|this_process_writes:0
+  SHIPPING_AUTO_CREATE_NOTIFIES_ONCE=PASS|mails_on_creation:0|mails_on_first_dispatch_status:1
+                                         |mails_after_two_more_polls:1
+  SHIPPING_SETTINGS_CONNECTION_TEST_IS_READ_ONLY=PASS|token:1|cbs_cities:1|carrier_writes:0|secret_leaks:0
+  SHIPPING_SETTINGS_LIVE_IS_REFUSED_WITHOUT_ENDPOINT=PASS|http_calls:0|create:refused/live_environment_blocked
+  SHIPPING_DEACTIVATION_CANCELS_DISPATCH_JOBS=PASS|pending_before:1|pending_after:0
+  SHIPPING_MANUAL_ROUTE_SURVIVES_EVERY_SWITCH_OFF=PASS|tracking_number:MANUAL-TRACK-1|module_claimed_it:no
+  SHIPPING_SETTINGS_NO_SECRET_LEAK=PASS|surfaces:31|leaks:none
+                                       |positive_control:secrets_reached_the_carrier_as_they_must
+  ```
+
+- **Yarış ölçümü gerçek iki süreçtir.** Tek süreçteki iki ardışık çağrı
+  eşzamanlılık değildir: aynı bağlantıyı, dolayısıyla aynı adlandırılmış kilidi
+  paylaşırlar. Ölçüm ikinci bir **PHP sürecini** başlatır, o süreç gerçek
+  Manager üzerinden kilidi alır ve üç saniye süren bir taşıyıcı çağrısının
+  içinde tutar; bu süreç o sırada otomatik yolu çalıştırır. İki süreç de
+  yazmalarını aynı options satırına sayar, yani toplam süreçler arası bir
+  sayıdır: **1**.
+- **İki sözleşme bilerek değişti, gevşetilerek değil:**
+  - `SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES` artık "hiç callback yok" değil,
+    "`Kuka_Island_Shipping_Dispatcher` dışında callback yok" der. Onun o
+    kancalarda yaptığı tek şey iş planlamaktır ve anahtarı kapalıyken onu bile
+    yapmaz; korunan şeyler ayrı ve tam olarak ölçülür.
+  - `SHIPPING_LIFECYCLE_ACTIVATION` aynı şekilde güncellendi ve üstüne
+    `auto_create:off` alanını kazandı: aktivasyon otomatik oluşturmayı açmaz.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-secret-vault.php`,
+  `class-shipment-settings.php`, `class-shipment-settings-page.php`,
+  `class-shipment-dispatcher.php`; `class-shipment-admin.php`
+  (`dispatch_status_line`), `class-shipment-order-store.php`
+  (`META_DISPATCH_*`), `dhl/class-dhl-config.php` (öncelik),
+  `class-shipment-status-poller.php` (anahtar + paylaşılan kilit),
+  `includes/class-activator.php` (deaktivasyon planlanan işi de iptal eder)
+- **Tekrar yaşanırsa ilk bak:**
+  1. Panel "Kayıtlı kimlik bilgileri okunamıyor" diyorsa site salt'ları
+     değişmiştir. Değerleri panelden yeniden girin; eski satır yeni anahtarla
+     yazıldığında temizlenir.
+  2. Sipariş ekranındaki ikinci durum satırı otomatik oluşturmanın neden
+     çalışmadığını **koduyla** yazar (`order_status_not_shippable`,
+     `nothing_to_ship`, `address_incomplete:phone`, `carrier_record_exists:...`).
+     Önce o satırı okuyun; tahmin etmeyin.
+  3. Aynı sipariş için iş planlanmıyorsa `retry_budget_spent` olabilir: üç
+     denemeden sonra otomatik yol durur ve gönderi manuel düğmelerle oluşturulur.
+  4. Bir sır sızdığından şüpheleniyorsanız `SHIPPING_SETTINGS_NO_SECRET_LEAK`
+     ölçümünün **pozitif kontrolü** vardır: aynı tarama giden isteklerde sırları
+     bulmak zorundadır. Kontrol ateşlenmiyorsa tarama boş yere yeşildir.
+
+---
+
+## K-64 — HTML `required` sunucu doğrulaması sanıldı
+
+- **Tarih:** 2026-09-14
+- **Belirti:** Kayıtlı bir kimlik bilgisini silen form bir onay kutusu taşıyordu
+  ve kutuda `required` vardı. Sunucu tarafında o alan **hiç okunmuyordu**.
+- **Kesin kök neden:** `required` tarayıcı kullanan bir insana gösterilen bir
+  nezakettir, bir güvenlik sınırı değil. Alanı hiç göndermeyen bir POST — curl,
+  bir script, tarayıcı eklentisi, ya da devre dışı bırakılmış JavaScript —
+  doğrudan silme yapıyordu. Yetki ve nonce doğruydu; eksik olan, isteğin
+  **niyetinin** doğrulanmasıydı.
+- **Ölçülen kırmızı** (gerçek `admin-post` handler'ı):
+
+  ```text
+  no_confirmation    : ran / secret=erased
+  wrong_confirmation : ran / secret=erased
+  empty_confirmation : ran / secret=erased
+  ```
+
+- **Uygulanan düzeltme:** `handle_forget()` onayı sunucuda, **tam değer**
+  karşılaştırmasıyla arar (`'1' === ...`). "Set mi", "truthy mi" değil: `'on'`,
+  `'0'` ve `''` bir tarayıcının ya da bir script'in gönderebileceği şeylerdir ve
+  hiçbiri sorulan sorunun cevabı değildir. Onay yoksa hiçbir şey silinmez ve
+  `forget_not_confirmed` görünür bir cümleye dönüşür. Kutu artık gerçekten
+  `value="1"` taşıyor.
+- **Ölçülen yeşil:**
+
+  ```text
+  no_confirmation / wrong_confirmation / empty_confirmation : ran   / secret=kept
+  wrong_nonce      / no_capability                          : refused / secret=kept
+  confirmed                                                 : ran   / secret=erased
+  other_three_secrets:unchanged
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-settings-page.php`
+  (`FORGET_CONFIRMATION`, `handle_forget`)
+- **Tekrar yaşanırsa ilk bak:** Bir form alanının varlığına dayanan her karar
+  için "bu alanı göndermeyen bir istek ne yapar?" sorusunu sorun. `required`,
+  `disabled`, `readonly` ve `hidden` istemci tarafı ifadelerdir; hiçbiri sunucu
+  kontrolü değildir.
+
+---
+
+## K-65 — Panel tanılaması ana kapıyı kendi sormuyordu
+
+- **Tarih:** 2026-09-14
+- **Belirti:** İnceleme, ayar sayfasındaki "Bağlantıyı test et" düğmesinin
+  `readiness()` ve taşıyıcı üzerinden gittiğini, ana çalışma kapısını
+  danışmadığını bildirdi.
+- **Ölçülen sonuç — kusur bu biçimde ÜREMEDİ.** Ana kapı kapalı, adaptör açık,
+  dört kimlik tam ve ortam sandbox iken gerçek `run_connection_test()` yolu:
+
+  ```text
+  identity_calls:0 | cbs_calls:0 | total_http:0
+  ok:no | code:shipping_runtime_disabled | secret_leaks:0
+  ```
+
+  Neden: garanti zaten **doğru yerde** duruyordu. Paketle gelen adaptörün
+  istemcisi her isteğin önünde `preflight()` çalıştırıyor ve ilk baktığı şey
+  `Runtime_Gate::is_disabled()`. Panel kapıyı sormasa da ilk ağ sınırı onu
+  soruyordu.
+- **Yine de yapılan:** Ölçüm sözleşme olarak bırakıldı ve panel kapıyı **kendisi**
+  de soruyor. Gerekçesi garantiyi ikiye katlamak değil, onu adaptörden bağımsız
+  kılmak: `kuka_island_shipping_carriers` filtresiyle eklenen ikinci bir taşıyıcı
+  kendi preflight'ında bu kontrolü unutabilir, ve o durumda operatörün kapattığı
+  bir "tanılama" yine de dışarı çıkardı.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-settings-page.php`
+  (`run_connection_test`), `SHIP/includes/shipping/dhl/class-dhl-client.php`
+  (`preflight`)
+- **Tekrar yaşanırsa ilk bak:** Bir kapının nerede uygulandığını **ölçmeden**
+  taşımayın. "Bu kod yolu kapıyı çağırmıyor" doğru olabilir ve davranış yine de
+  doğru olabilir; ikisi farklı iddialardır.
+
+---
+
+## K-66 — Sayaç vardı, retry yoktu; ve retry faz-farkında olmalıydı
+
+- **Tarih:** 2026-09-14
+- **Belirti:** `MAX_ATTEMPTS = 3` ve `dispatch_attempts` metası vardı, belgeler
+  "yerel/ağ öncesi red sınırlı retry alabilir" diyordu. Fakat `Dispatcher::run()`
+  hiçbir başarısız sonuçtan sonra yeni bir Action Scheduler işi planlamıyordu.
+  `retry_budget_spent` normal otomatik akışta **ulaşılamaz** bir koddu.
+- **Kesin kök neden:** Bir sayacın var olması onun harcandığını kanıtlamaz.
+  Sözleşme belgede vardı, kodda yoktu — ve belgeyi koda uydurmak (yani "retry
+  yok" yazmak) gerçek boşluğu kapatır, ihtiyacı kapatmazdı: kilit çekişmesi
+  yüzünden düşen bir sipariş sessizce hiç gönderilmiyordu.
+- **Ölçülen kırmızı** (gerçek worker + siparişin mutasyon kilidini tutan gerçek
+  ikinci MySQL oturumu):
+
+  ```text
+  a_before_create_order   : blocked_writes=0 / retry_jobs=0   <-- hiç retry planlanmadı
+  b_before_create_barcode : entry_state=order_created / createbarcode_total=0
+                            <-- faz iki hiç sürdürülemedi
+  ```
+
+- **Uygulanan düzeltme, dört parça:**
+  1. **Tek merkezî politika.** `Dispatcher::retryable_reasons()` ilan edilmiş
+     listedir (bugün yalnız `lock_contended`), `Dispatcher::retryable()` ise
+     **yapısal kanıtı** arar: sipariş taze okunur, bekleyen mutation yok,
+     gönderi numarası yok ve durum hâlâ o fazın başlangıç durumu. `begin_mutation()`
+     niyeti ve korumalı durumu istekten **önce** yazdığı için bu bir kanıttır.
+     **HTTP kodundan çıkarım yok**, dağınık string kontrolü yok.
+  2. **Faz farkındalığı.** Faz durumdan seçilir: `none` → createOrder,
+     `order_created` → createbarcode. Tamamlanmış bir createOrder tekrarlanmaz.
+  3. **Gönderilen faz işaretlenir.** `_kuka_shipping_dispatch_phases`, çağrıdan
+     **önce** yazılır ve yalnız yapısal kanıt "gönderilmedi" dediğinde geri
+     alınır. Bu gerekli: salt-okunur bir mutabakat siparişi meşru biçimde
+     `order_created`'a geri koyabilir, ve yalnız duruma bakan bir worker bunu
+     ikinci bir `createbarcode` için izin sayardı — ölçümde tam olarak bu oldu.
+  4. **Planlama geri okunur.** `as_schedule_single_action()` bir id döndürmesi
+     deponun satırı tuttuğunu söylemez; `has_pending_job()` ile doğrulanır.
+     Doğrulanmazsa `retry_schedule_failed` yazılır, "retry planlandı" denmez.
+- **Ölçülen yeşil** (`SHIPPING_AUTO_CREATE_RETRY_IS_REAL_AND_PHASE_AWARE`):
+
+  ```text
+  a createOrder öncesi çekişme : blocked_writes=0 retry_jobs=1 createOrder=1 createbarcode=1 state=shipment_created
+  b createbarcode öncesi çekişme: entry=order_created createOrder_total=1 createbarcode_total=1 state=shipment_created
+  c belirsiz createOrder       : createOrder=1 retry_jobs=0 later_writes=0 state=reconcile_required
+  d belirsiz createbarcode     : createbarcode=1 retry_jobs=0 later_writes=0
+  e bütçe                      : turns=4 attempts=3 last=retry_budget_spent retry_jobs=0 writes=0 max_note_repeat=1
+  f planlama başarısız         : claimed_retry=no retry_jobs=0 panel_reason=retry_schedule_failed writes=0
+  g anahtar kapatıldı          : gate=shipping_runtime_disabled switch=auto_create_disabled retry_jobs=0 writes=0
+  ```
+
+  Ayrıca `SHIPPING_AUTO_CREATE_PHASE_TWO_UNCERTAIN_IS_SAFE` artık
+  `reason=phase_already_attempted:create_barcode` ile geçiyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-dispatcher.php`,
+  `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`META_DISPATCH_PHASES`, `mark_dispatch_phase`, `unmark_dispatch_phase`)
+- **Tekrar yaşanırsa ilk bak:** Bir sayaç, bir sabit ya da bir belge cümlesi
+  gördüğünüzde onu **harcayan** kod yolunu arayın. Yoksa sözleşme yoktur. Ve
+  "durum bu fazı kabul ediyor" bir izin değildir: o duruma hangi yoldan
+  gelindiği sorulur.
+
+---
+
+## K-67 — Planlama kilidi ile mutasyon kilidi aynı sanıldı
+
+- **Tarih:** 2026-09-14
+- **Belirti:** `Dispatcher::maybe_schedule()` içindeki yorum "mutasyonların
+  kullandığı aynı adlandırılmış kilit" diyordu. Kod
+  `Status_Poller::acquire_lock()` çağırıyor, o da `kuka_ship_query_<id>`
+  kullanıyor. Manager mutasyonları `kuka_ship_mutate_<id>` kullanıyor. **Aynı
+  kilit değiller.**
+- **Kesin kök neden:** Yorum, kodun yaptığı şeyi değil, yazarın kastettiği şeyi
+  anlatıyordu. Davranış doğruydu; iddia yanlıştı — ve bu belgeye, teknik
+  sözleşmeye ve GECMIS'e taşınmıştı.
+- **Uygulanan düzeltme:** Davranış **değiştirilmedi**; iddia düzeltildi. İkisi
+  ayrı şeyleri korur ve ayrı olmaları gerekir:
+
+  | Kilit | Kim alır | Ne korur |
+  | --- | --- | --- |
+  | `kuka_ship_query_<id>` | Dispatcher ve Poller planlaması | İki isteğin ikisinin de "bekleyen iş yok" görüp iş oluşturması. Altında hiçbir şey gönderilmez |
+  | `kuka_ship_mutate_<id>` | Manager, her dış mutasyonda | İki sürecin aynı sipariş hakkında taşıyıcıyla konuşması |
+
+  Tek kilit kullanmak, planlamanın taşıyıcı çağrısını beklemesi demek olurdu.
+- **Ölçüm korunuyor:** Worker'ın gerçek taşıyıcı mutasyonunda Manager'ın
+  mutasyon kilidini aldığı, ikinci bir MySQL oturumu o kilidi tutarken ölçülüyor
+  (`SHIPPING_AUTO_AND_MANUAL_RACE_IS_SERIALISED`,
+  `SHIPPING_AUTO_CREATE_RETRY_IS_REAL_AND_PHASE_AWARE`). İki eşzamanlı ödeme
+  olayının yine tek iş ürettiği `SHIPPING_AUTO_CREATE_IS_IDEMPOTENT` ile
+  ölçülüyor.
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-dispatcher.php`
+  (yorumlar), `docs/DHL_ENTEGRASYONU.md` §17.2
+- **Tekrar yaşanırsa ilk bak:** Bir yorum bir kilit, bir kapı ya da bir garanti
+  adı veriyorsa, o adı kodda **arayın**. Yorumu doğrulamak için davranışı
+  değiştirmeyin; yanlış olan yorumdur.
+
+---
+
+## K-68 — Faz işareti doğrulanmadan taşıyıcıya çıkılıyordu
+
+- **Tarih:** 2026-09-14
+- **Belirti:** Dispatcher `record_dispatch_attempt()` ve `mark_dispatch_phase()`
+  çağırıyor, sonra doğrudan `create_shipment()` / `resume_barcode()` çağırıyordu.
+  İkisi de `void` idi ve hiçbiri yazdığını geri okumuyordu.
+- **Kesin kök neden:** `update_meta_data()` bir nesneyi doldurur;
+  `save_meta_data()` diske yazar ve **hata vermeden başarısız olabilir**. Bu
+  modül bunu iki kez öğrenmişti — mutation intent (K-29 sınıfı) ve notification
+  claim (K-52) — ve ikisi de artık kendi yazmasını geri okuyor. Dispatcher'ın
+  defteri tam olarak aynı ölçüde geri alınamaz: deneme sayısı retry bütçesidir,
+  faz işareti ise ikinci bir otomatik taşıyıcı yazmasını durduran şeydir.
+- **Ölçülen kırmızı** (WordPress'in kendi `query` filtresiyle, ilgili
+  INSERT/UPDATE `SELECT 1`e çevrilerek):
+
+  ```text
+  a_start_write_dropped: statements=3 | first_write=2   <-- taşıyıcı iki kez arandı
+                         attempts=0 | phases=none | reason=none
+  ```
+
+  Yani hiçbir satır diske inmemişken `createOrder` **ve** `createbarcode`
+  gönderildi; sonraki worker aynı yazmayı tekrar gönderecekti.
+- **Uygulanan düzeltme:** İki doğrulanmamış yazma yerine tek ve **doğrulanan**
+  başlangıç: `Order_Store::begin_dispatch_phase( $order, $phase,
+  $count_attempt )`.
+  - deneme sayısı ve faz listesi **tek persist turunda** yazılır;
+  - bütün sipariş önbellekleri düşürülüp **taze `WC_Order`** ile geri okunur;
+  - beklenen sayı ve beklenen faz listesi **değer eşitliğiyle** karşılaştırılır;
+  - uymazsa `dispatch_intent_unverified` döner ve taşıyıcıya hiçbir şey gitmez.
+- **Güvencenin ne OLMADIĞI — bu kaydın en kolay yanlış okunan yeri.** Tek
+  persist turu **atomik değildir**: `save_meta_data()` birden çok SQL ifadesi
+  çıkarabilir, dolayısıyla iki değer **yarım inebilir**. İddia "bölünmez yazma"
+  değil, şudur: *iki değer tek persist turunda denenir, sonra taze bir
+  veritabanı okuması ikisinin de beklenen değerde olduğunu kanıtlamak
+  zorundadır*. Tam kayıp ve — her iki yönde — yarım kayıp aynı kapıda,
+  taşıyıcıya çıkmadan kapanır. Bu yüzden ölçüm üç ayrı sabotaj kurar: kaydın
+  tamamının düşürülmesi (`a_start_write_dropped`), yalnız faz işaretinin
+  düşürülüp sayacın inmesi (`d_attempt_landed_phase_dropped`) ve yalnız sayacın
+  düşürülüp faz işaretinin inmesi (`e_phase_landed_attempt_dropped`). Üçünde de
+  beklenen: taşıyıcı yazması `0`, retry `0`, neden `dispatch_intent_unverified`.
+  Beklenen çıktının tamamı `scripts/verify.sh` içinde satır satır sabitlidir.
+
+  Deneme **tur başına** sayılır, faz başına değil: aynı turun ikinci fazı
+  `$count_attempt = false` ile açılır, yoksa tek başarılı bir koşu üç turluk
+  bütçenin ikisini yerdi.
+- **Ölçülen yeşil:**
+
+  ```text
+  a_start_write_dropped: statements=2 | first_write=0 | second_write=0
+                         retry_jobs=0 | attempts=0 | phases=none
+                         reason=dispatch_intent_unverified | panel=dispatch_intent_unverified
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`begin_dispatch_phase`, `DISPATCH_INTENT_UNVERIFIED`),
+  `SHIP/includes/shipping/class-shipment-dispatcher.php` (`run_locked`)
+- **Tekrar yaşanırsa ilk bak:** Bir dış çağrıdan önce yazılan her satır için
+  "bu satırın diske indiğini nereden biliyorum?" sorusunu sorun. `void` dönen
+  bir kaydedici, ağ kapısının önünde durmamalıdır.
+
+---
+
+## K-69 — Faz işaretini kaldırmak da doğrulanmalıydı
+
+- **Tarih:** 2026-09-14
+- **Belirti:** `unmark_dispatch_phase()` `void` idi. Yalnız isteğin hiç
+  gönderilmediği yapısal olarak kanıtlandığında çağrılıyordu — ama kaldırmanın
+  kendisi diske inmiş miydi, kimse bakmıyordu.
+- **Kesin kök neden:** Kaldırma inmezse işaret diskte kalır. O inanışla
+  planlanan bir retry, "bu faz zaten gönderildi" diyen bir işaretle karşılaşır:
+  yalnız kendini reddedebilen bir tur. Panelde "retry planlandı" yazarken
+  gerçekte hiçbir şey ilerlemez.
+- **Uygulanan düzeltme:** `Order_Store::clear_dispatch_phase()` kaldırmayı yazar
+  ve **taze `WC_Order`** ile geri okur. Doğrulanamazsa
+  `dispatch_phase_clear_unverified` döner, **retry planlanmaz**, bekleyen action
+  0 kalır ve neden panelde görünür.
+- **Ölçülen yeşil** (yalnız kaldırma yazması sabote edildi; açılış yazması
+  serbest bırakıldı, Manager gerçek bir ikinci MySQL oturumu yüzünden
+  `lock_contended` verdi ve hiçbir şey göndermedi):
+
+  ```text
+  b_phase_clear_dropped: first_write=0 | second_write=0 | retry_jobs=0
+                         attempts=1 | phases=create_order | claimed_retry=no
+                         reason=dispatch_phase_clear_unverified
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-order-store.php`
+  (`clear_dispatch_phase`, `DISPATCH_CLEAR_UNVERIFIED`)
+- **Tekrar yaşanırsa ilk bak:** Bir güvenlik işaretini **kaldıran** kod, onu
+  koyan kod kadar dikkatli olmalıdır. Koyma doğrulanıp kaldırma doğrulanmazsa
+  sistem yalnız bir yönde güvenlidir.
+
+---
+
+## K-70 — İki otomatik worker ortak faz işaretini birbirine siliyordu
+
+- **Tarih:** 2026-09-14
+- **Belirti — tehlikeli sıra:**
+
+  ```text
+  worker A  fazı işaretler, Manager mutasyonuna girer
+  worker B  bir an önce alınmış uygunluk cevabıyla aynı fazı işaretler
+  worker B  Manager'dan lock_contended alır
+  worker B  hiçbir şey göndermediğine inanarak ORTAK faz işaretini kaldırır
+  worker A  yazması belirsiz kalır -- ve ikinci otomatik denemeyi durduracak
+            işaret artık yoktur
+  ```
+
+- **Kesin kök neden:** Mevcut iki kilidin ikisi de bunu kapatamaz. **Planlama
+  kilidi** (`kuka_ship_query_<id>`) iş çalışmadan çok önce bırakılır;
+  **mutasyon kilidi** (`kuka_ship_mutate_<id>`) Manager'ın *içinde* alınır, yani
+  iki worker da kendi defterini çoktan yazmış olur.
+- **Uygulanan düzeltme:** Üçüncü ve ayrı bir kilit —
+  **`kuka_ship_dispatch_<id>`**, worker yürütme kilidi. Kurallar:
+  - taze sipariş okumasından **ve** uygunluk kararından **önce** alınır;
+  - `begin_dispatch_phase` → Manager çağrısı → yerleşim boyunca tutulur;
+  - **bekleme süresi 0**: alamayan ikinci worker kuyruğa girmez, çıkar;
+  - çıkan worker hiçbir faz işaretini, deneme sayısını veya sipariş metasını
+    değiştirmez, taşıyıcıya çıkmaz, ilk worker'ın işaretini silemez;
+  - her çıkışta `finally` ile bırakılır.
+- **Ölçülen yeşil** (gerçek ikinci PHP süreci; çocuk süreç `createOrder`
+  çağrısının içinde dört saniye tutuluyor, bu süreç o sırada aynı sipariş ve
+  faz için kendi worker'ını çalıştırıyor):
+
+  ```text
+  createOrder_across_processes:1 | createbarcode_across_processes:1
+  loser_writes:0 | loser_outcome:refused/dispatch_in_progress
+  attempts_total:1 | phase_record:create_order+create_barcode
+  retry_jobs:0 | dispatch_lock_free_after:yes
+  ```
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-dispatcher.php`
+  (`EXECUTION_LOCK_PREFIX`, `acquire_execution_lock`, `run`, `run_locked`)
+- **Tekrar yaşanırsa ilk bak:** "Bu zaten kilitli" demeden önce **hangi** kilit
+  olduğunu ve **ne zaman** tutulduğunu sorun. Bir kilit, korumak istediğiniz
+  bütün diziyi kapsamıyorsa o diziyi korumaz.
+
+---
+
+## K-71 — Üç kilit vardı, yorum ikisini aynı sanıyordu
+
+- **Tarih:** 2026-09-14
+- **Belirti:** K-67'de düzeltildiği raporlanan iddia üretim dosyasında **hâlâ
+  duruyordu**: sınıf yorumunda "the same named lock the mutations use", ve
+  `maybe_schedule()` içinde "The same named lock the mutations take". Araya
+  giren bir yeniden yazma düzeltmeyi geri almıştı.
+- **Kesin kök neden:** Bir düzeltmenin uygulandığını rapor etmek, uygulandığını
+  kanıtlamaz. İki yorum da kaynakta aranmadan "düzeldi" sayılmıştı.
+- **Uygulanan düzeltme:** Üç kilit, üç amaç, kaynakta ve belgede birebir aynı
+  cümlelerle:
+
+  | Kilit | Kim alır | Ne korur |
+  | --- | --- | --- |
+  | `kuka_ship_query_<id>` | Dispatcher ve Poller **planlaması** | İki isteğin ikisinin de "bekleyen iş yok" görüp iş oluşturması. Altında hiçbir şey gönderilmez; iş çalışmadan önce bırakılır |
+  | `kuka_ship_dispatch_<id>` | Dispatcher **worker yürütmesi** | Bir siparişte aynı anda tek worker turu. Taze okuma → uygunluk → defter → Manager → yerleşim boyunca tutulur, bekleme 0 |
+  | `kuka_ship_mutate_<id>` | Manager, her **dış mutasyonda** | İki sürecin aynı sipariş hakkında taşıyıcıyla konuşması. Operatörün düğmesi de aynısını alır |
+
+- **İlgili dosya:** `SHIP/includes/shipping/class-shipment-dispatcher.php`,
+  `docs/DHL_ENTEGRASYONU.md` §17.2, `GECMIS.md` §15.8
+- **Tekrar yaşanırsa ilk bak:** Bir yorum düzeltmesini `grep` ile doğrulayın.
+  Aynı dosyada sonradan yapılan bir yeniden yazma, bayat metni geri getirebilir.
+
+---
+
+## K-72 — Doğrulama koşusunun kendi gürültüsü
+
+- **Tarih:** 2026-09-15
+- **Belirti:** Gerçek `make verify` çıktısında, beklenen `wp_safe_redirect()`
+  çağrıları için WP-CLI'nin uzun "Some code is trying to do a URL redirect"
+  backtrace'leri ve bir `PHP Warning: Undefined variable $atts` satırı vardı.
+- **Neden önemli:** Bir doğrulama koşusunda uyarı kozmetik değildir. PHP, bir
+  değerin kodun varsaydığı şey olmadığını söylüyordur — ve işi emin olmak olan
+  bir dosyada. Bir koşu rutin olarak uyarı basmaya başladığında bir sonraki
+  uyarı kaydırma geçmişinde kaybolur.
+- **Uygulanan düzeltme, üç parça:**
+  1. **Beklenen redirect susturuldu, gizlenmedi.** Test harness'ı `wp_redirect`
+     filtresini `PHP_INT_MIN` önceliğiyle bağlar ve oradan bir istisna atar;
+     WP-CLI'nin kendi `wp_redirect` işleyicisi (öncelik 10) hiç çalışmaz.
+     Üretim kodu değişmez, filtre yalnız o çağrı boyunca vardır, ve **başka**
+     bir yerdeki beklenmedik bir redirect hâlâ kendini bildirir.
+  2. **Redirect hedefi ölçülüyor.** İstisnadan önce konum kaydedilir, böylece
+     biten bir handler'ın operatörü **nereye** gönderdiği iddia edilebilir:
+     `notice=forget_not_confirmed` ile `notice=forgotten` artık ayrı ayrı
+     doğrulanıyor.
+  3. **Koşunun kendi diagnostikleri sayılıyor.** `set_error_handler` bütün
+     koşuyu sarar, önceki handler'ı çağırmaya devam eder (hiçbir şey
+     yutulmaz) ve tek bir notice koşuyu düşürür:
+     `SHIPPING_SETTINGS_RUN_IS_CLEAN`.
+- **Kapı ilk koşuda gerçek bir şey yakaladı:** ilk yarış testi çocuk betiğini
+  kendi üstüne kopyalıyor ve sonra **iki kez** siliyordu; ikinci `unlink()`
+  `No such file or directory` uyarısı üretiyordu. Kopyalama gereksizdi (suite
+  zaten konteynerin içinde çalışıyor, `sys_get_temp_dir()` onun `/tmp`'i) ve
+  kaldırıldı.
+- **Ölçülen yeşil:**
+
+  ```text
+  SHIPPING_SETTINGS_RUN_IS_CLEAN=PASS|diagnostics:0|distinct:0|first:none
+                                      |expected_redirects_silenced_before_wp_cli:yes
+  gerçek make verify çıktısı: PHP Warning/Notice/Deprecated 0, "URL redirect" 0,
+                              backtrace satırı 0
+  ```
+
+- **İlgili dosya:** `scripts/verify-shipping-admin-settings.php`
+  (`kuka_set_press`, `kuka_set_last_redirect`, `SHIPPING_SETTINGS_RUN_IS_CLEAN`),
+  `scripts/verify.sh`
+- **Tekrar yaşanırsa ilk bak:** Bir uyarıyı "beklenen" diye görmezden gelmeden
+  önce, onu **susturan** mekanizmanın beklenmedik olanı hâlâ gösterdiğini
+  kanıtlayın. Bir çıktı filtresi ikisini de siler; önceliği doğru seçilmiş bir
+  hook yalnız hedefi susturur.
+
+---
+
 ## Bakım sırası
 
 Bir kargo belirtisi geldiğinde izlenecek sıra:

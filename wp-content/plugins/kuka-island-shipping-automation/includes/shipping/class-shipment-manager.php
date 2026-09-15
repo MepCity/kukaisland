@@ -147,6 +147,9 @@ final class Kuka_Island_Shipping_Manager {
 
 			if ( false !== $from_env ) {
 				$configured = (string) $from_env;
+			} elseif ( class_exists( 'Kuka_Island_Shipping_Settings' ) ) {
+				// Lowest source, same precedence as every other setting.
+				$configured = (string) Kuka_Island_Shipping_Settings::get_switch( 'default_carrier' );
 			}
 		}
 

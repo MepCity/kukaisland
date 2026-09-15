@@ -3860,6 +3860,18 @@ $agnostic_files = array(
 	'class-shipment-status-poller.php',
 	'class-fulfillment-writer.php',
 	'class-shipment-admin.php',
+	/*
+	 * The automatic dispatcher is carrier-agnostic by construction: it decides
+	 * WHETHER to book and hands the work to the Manager, which is where the
+	 * courier is resolved. Added to this scan so it stays that way.
+	 *
+	 * class-shipment-settings.php is deliberately NOT on this list. It is the
+	 * configuration mapper, and the four credential constants a site may
+	 * already define in wp-config.php are historically named after the adapter
+	 * (KUKA_DHL_*). Renaming them would break every existing installation, so
+	 * the names live in one declared map there and nowhere else.
+	 */
+	'class-shipment-dispatcher.php',
 	'class-shipment-order-store.php',
 	'class-shipment-notification.php',
 	'class-carrier-registry.php',

@@ -1121,6 +1121,191 @@ kilitlidir. Ayrıntılı ölçüm ve güvenli çıktı sınırı bakım hafızas
 Canlı uçlar hâlâ resmî olarak doğrulanmadığı için canlı ortam blokesi devam
 eder; sandbox başarısı canlı aktivasyon izni değildir.
 
+## 17.2 Yönetici ayar ekranı, şifreli kasa ve otomatik gönderi
+
+14 Eylül 2026'da eklenen, site sahibinin tek başına yapılandırabilmesi için olan
+katman. Bakım kaydı: DHL_BAKIM_HAFIZASI.md **K-63**.
+
+### Ayar kaynaklarının önceliği
+
+```text
+wp-config.php sabiti   >   ortam değişkeni   >   şifreli panel kasası
+```
+
+Bu sıra hem dört kimlik bilgisi hem de anahtarlar için aynıdır ve tek bir yerde
+uygulanır (`Kuka_Island_Shipping_Settings`). Sabit tanımlıysa panel o alanı
+**devre dışı** gösterir ve yanına kaynağını yazar; panelin değeri kullanılmaz.
+Dağıtım hattı olan bir site wp-config'i kullanmaya devam eder, olmayan bir site
+paneli kullanır, ve ikisi birbirini sessizce ezemez.
+
+Sipariş ekranındaki ikinci durum satırı ve ayar sayfası her alanın kaynağını
+adıyla söyler: `wp-config.php sabiti` / `ortam değişkeni` / `şifreli panel
+kasası` / `varsayılan değer`.
+
+### Sır saklama modeli
+
+| Ne | Nasıl |
+| --- | --- |
+| Şifreleme | `sodium_crypto_secretbox` — kimliği doğrulanmış; düzenlenmiş ciphertext **çözülmez** |
+| Anahtar | Saklanmaz. Her okumada `wp-config` salt'larından `hash_hkdf` ile, amaç dizesiyle ayrılmış olarak türetilir |
+| Satır | Tek option, **`autoload=no`**, yalnız `{version, key_fingerprint, fields{nonce, cipher, updated_at}}` |
+| Salt değişimi | Parmak izi eşleşmez → `credentials_unreadable`; panel yeniden girilmesi gerektiğini söyler, sessizce boş dönmez |
+| libsodium yoksa | Kasa kendini kullanılamaz ilan eder ve **hiçbir şey saklamaz**; sabitler tek yol olur |
+| Geri gösterme | **Yok.** Ne tam, ne maskeli, ne uzunluk, ne `value` özniteliği |
+| Boş alan | Mevcut değeri **korur** |
+| Silme | Ayrı form, ayrı nonce ve **sunucuda** doğrulanan onay değeri (`'1'`). HTML `required` güvenlik sınırı değildir; onay gelmezse hiçbir şey silinmez |
+
+Veritabanı dökümü şifreli metin içerir ve onu çözecek hiçbir şey içermez:
+saldırganın ayrıca dosya sistemine ihtiyacı vardır.
+
+### Dört anahtar
+
+| Anahtar | Ne yapar | Kapalıyken |
+| --- | --- | --- |
+| Modül çalışma anahtarı | `Runtime_Gate`'in kendisidir | Hiçbir kargo işlemi yapılmaz; uçuştaki worker bile durur |
+| DHL/MNG adaptörü | Adaptörün registry'ye girmesi | İstemci, token deposu ve transport hiç kurulmaz; her işlem ağdan önce reddedilir |
+| Otomatik gönderi oluşturma | Ödenmiş siparişlerin kendiliğinden gönderi oluşturması | **Varsayılan.** Gönderi yalnız operatörün açık basışıyla oluşur |
+| Otomatik durum sorgusu | Oluşmuş gönderilerin sorgulanması | Hiçbir sorgu planlanmaz; uçuştaki zincir bir sonraki adımda durur |
+
+`Çalışma ortamı` bu anlamda bir anahtar değildir: canlı seçilse bile blok
+yapısaldır (`DHL_Config`'in doğrulanmış bir üretim adresi yoktur) ve panel bunu
+yazar. Ölçüm: `SHIPPING_SETTINGS_LIVE_IS_REFUSED_WITHOUT_ENDPOINT=PASS|http_calls:0`.
+
+### Manuel mod ile otomatik mod farkı
+
+**Manuel (varsayılan).** Gönderi yalnız sipariş ekranındaki düğmelerle oluşur:
+`Gönderiyi oluştur` → `Barkodu oluştur`. Hiçbir sipariş durumu, ödeme veya
+checkout olayı taşıyıcıya ulaşmaz.
+
+**Otomatik.** Ödeme kancası bir taşıyıcı çağrısı **yapmaz**; tek bir Action
+Scheduler işi planlar ve döner. Checkout isteğinin içinde taşıyıcı beklemek,
+mağazanın en yavaş sayfasını kuryenin çalışma süresine bağlamak olurdu.
+
+Uygunluk bir **izin listesidir**; bir koşul sağlanmıyorsa iş hiç planlanmaz ve
+sipariş ekranı nedenini koduyla yazar:
+
+- ödeme `date_paid` ile kanıtlanmış (durumun `processing` olması yetmez)
+- durum `processing` veya `completed`
+- iptal / iade / başarısız değil, kısmi iade yok
+- en az bir **fiziksel** ürün (yalnız sanal/indirilebilir sipariş gönderilmez)
+- alıcı adı, adresi, şehri ve telefonu tam
+- modül anahtarı, çalışma kapısı ve adaptör açık
+- yapılandırma eksiksiz (canlı ortam seçili değil, dört kimlik var, kasa okunur)
+- siparişte **hiçbir** taşıyıcı kaydı yok: durum `none`, bekleyen mutation yok,
+  gönderi numarası yok
+- deneme bütçesi dolmamış (en fazla 3)
+
+Aynı sipariş için checkout, ödeme geri çağrısı ve durum geçişi ayrı ayrı
+tetiklense bile **tek iş** planlanır: planlama, sipariş bazlı **planlama
+kilidini** (`kuka_ship_query_<id>`) alır ve bekleyen satırlara bakar.
+
+**Üç kilit vardır ve hiçbiri diğerinin başka bir yazımı değildir:**
+
+| Kilit | Kim alır | Ne korur |
+| --- | --- | --- |
+| `kuka_ship_query_<id>` | Dispatcher ve Poller **planlaması** | İki isteğin aynı anda "bekleyen iş yok" görüp ikisinin de iş oluşturması. Altında **hiçbir şey gönderilmez**; iş çalışmadan önce bırakılır |
+| `kuka_ship_dispatch_<id>` | Dispatcher **worker yürütmesi** | Bir siparişte aynı anda tek worker turu. Taze okuma → uygunluk kararı → defter → Manager çağrısı → yerleşim boyunca tutulur. **Bekleme süresi 0**: alamayan worker kuyruğa girmez, çıkar ve hiçbir şey yazmaz |
+| `kuka_ship_mutate_<id>` | Manager, her **dış mutasyonda** | İki sürecin aynı sipariş hakkında taşıyıcıyla konuşması. Worker bunu Manager üzerinden alır; operatörün düğmesi de aynısını alır |
+
+Yürütme kilidini diğer ikisi karşılayamaz: planlama kilidi iş çalışmadan çok
+önce bırakılır, mutasyon kilidi ise Manager'ın **içinde** alınır — yani iki
+worker da kendi defterini çoktan yazmış olur, ve kaybeden, hiçbir şey
+göndermediğine inanarak kazananın dayandığı ortak faz işaretini silebilir.
+
+Tek bir kilit kullanmak ise bir planlamanın taşıyıcı çağrısını, bir taşıyıcı
+çağrısının da planlamayı beklemesi demek olurdu.
+
+### Belirsiz yazmada neden yeniden gönderilmez
+
+İş çalıştığında iki faz ayrıdır ve ikincisi birincinin **veritabanından taze
+okunmuş** sonucuna bağlıdır:
+
+1. `createOrder`
+2. sipariş taze okunur; durum tam olarak `order_created` değilse **durulur**
+3. `createbarcode`
+
+Taşıyıcıya ulaşmış belirsiz bir yazma otomatik olarak tekrarlanmaz — ne aynı
+turda, ne sonraki turda. Kaydın var olup olmadığı yalnız salt-okunur mutabakatla
+belirlenir ve o kapıyı bir kişi açar.
+
+### Sınırlı retry: iki koşul, ikisi de zorunlu
+
+Bir red yeniden denenebilir sayılmak için **hem** ilan edilmiş listede olmalı
+**hem de** taşıyıcıya ulaşmadığı yapısal olarak kanıtlanmalıdır.
+
+1. **Liste** (`Dispatcher::retryable_reasons()`): bugün tek bir kod var,
+   `lock_contended` — başka bir süreç siparişin mutasyon kilidini tutuyordu ve
+   Manager hiçbir şey kurmadan döndü. `credentials_missing`,
+   `carrier_not_registered`, `shipping_runtime_disabled` ve durum redleri bu
+   listede **değildir**: hepsi bir kişinin bir şeyi değiştirmesini gerektirir.
+2. **Yapısal kanıt** (`Dispatcher::retryable()`): sipariş veritabanından taze
+   okunur ve bekleyen mutation **yok**, gönderi numarası **yok** ve durum hâlâ o
+   fazın başladığı durum olmalıdır. `begin_mutation()` niyeti ve korumalı durumu
+   istek kurulmadan **önce** yazdığı için, ikisini de taşımayan bir sipariş için
+   istek gönderilmiş olamaz.
+
+**HTTP kodundan çıkarım yapılmaz.** Hesabı verilemeyen bir cevap niyeti geride
+bırakır, ve retry'ı durduran şey odur.
+
+### Faz farkındalığı
+
+Retry, tamamlanmış bir `createOrder`'ı tekrarlamaz; `createbarcode` fazından
+devam eder. Faz, durumdan seçilir (`none` → createOrder, `order_created` →
+createbarcode) ve her fazdan önce sipariş **veritabanından taze okunur**.
+
+Otomatik yolun **çağrı gönderdiği** her faz, çağrıdan önce siparişe işaretlenir
+(`_kuka_shipping_dispatch_phases`) ve bu işaret yalnız yukarıdaki yapısal kanıt
+"gönderilmedi" dediğinde geri alınır.
+
+**Hem işaretleme hem kaldırma geri okunur.** `begin_dispatch_phase()` deneme
+sayısını ve faz listesini **tek persist turunda** yazar, bütün sipariş
+önbelleklerini düşürür, taze bir `WC_Order` ile geri okur ve değerleri
+karşılaştırır; uymazsa `dispatch_intent_unverified` ile durur ve **taşıyıcıya
+hiçbir şey gitmez**.
+
+> Tek persist turu **atomik değildir.** `save_meta_data()` birden çok SQL
+> ifadesi çıkarabilir; iki değer **yarım inebilir**. Sözleşme "bölünmez yazma"
+> değil şudur: iki değer tek persist turunda denenir, ardından **taze bir
+> veritabanı okuması ikisinin de beklenen değerde olduğunu kanıtlamak
+> zorundadır**. Tam kayıp ve her iki yöndeki yarım kayıp — sayaç indi/işaret
+> inmedi, işaret indi/sayaç inmedi — aynı kapıda, taşıyıcıya çıkmadan kapanır.
+> Üç yol da ayrı ayrı sabote edilerek ölçülür.
+
+`clear_dispatch_phase()` aynı şeyi kaldırma için yapar;
+doğrulanamazsa `dispatch_phase_clear_unverified` ile **retry planlanmaz**, çünkü
+diskte duran bir işaretle karşılaşacak bir tur yalnız kendini reddedebilir.
+
+Deneme **tur başına** sayılır, faz başına değil: aynı turun ikinci fazı deneme
+harcamaz. Durum tek başına yetmez: salt-okunur bir
+mutabakat siparişi meşru biçimde `order_created`'a geri koyabilir, ve yalnız
+duruma bakan bir worker bunu ikinci bir `createbarcode` için izin sayardı.
+Operatörün düğmesi bu işaretten etkilenmez — bu, otomatik yolun kendi
+çekingenliğidir, siparişe konmuş bir kilit değil.
+
+### Bütçe ve görünürlük
+
+En fazla **3** worker turu. Planlama, Action Scheduler satırı **geri okunarak**
+doğrulanır; satır yoksa "retry planlandı" denmez, `retry_schedule_failed` yazılır.
+Aynı neden not çoğaltmaz: not yalnız neden **değiştiğinde** düşülür. Modül
+anahtarı veya otomatik oluşturma kapatılırsa yeni retry planlanmaz. Deneme
+sayısı, son güvenli neden ve bekleyen iş durumu sipariş ekranında görünür.
+
+### Bağlantı testi
+
+**İlk olarak ana çalışma kapısı sorulur.** Kapı kapalıysa hiçbir taşıyıcı
+nesnesine dokunulmadan `shipping_runtime_disabled` ile reddedilir; toplam HTTP
+`0`. Paketle gelen adaptörün istemcisi bunu kendi preflight'ında da yapar ve
+garanti orada, her çağıran için durur — fakat bu ekran bir adaptörün hatırlamasına
+bağlı olamaz: filtreyle eklenen ikinci bir taşıyıcı, operatörün kapattığı bir
+"tanılama" ile aranırdı.
+
+Sonra yalnız iki salt-okunur çağrı: Identity `ping()` ve CBS `resolve_location()`.
+`createOrder`, `createbarcode`, `updateorder`, `updateshipment`, `cancelorder`
+ve `cancelshipment` bu ekrandan **erişilebilir değildir** — kapatılmamıştır,
+yoktur. Sonuçta kimlik, token, `Authorization` başlığı, ham yanıt veya kişisel
+veri gösterilmez; yalnız izin listesindeki güvenli kod ve zaman damgası
+saklanır.
+
 ## 18. Dokunulmayacaklar
 
 - `wp-content/plugins/kuka-island-core/assets/admin-orders.css` kargo çekmecesi

@@ -376,8 +376,126 @@ SHIPPING_NO_SCHEDULER_RESIDUE=PASS|pending_by_group:0|pending_by_hook:0|automati
 | --- | --- | --- |
 | Canlı ortam (`KUKA_DHL_ENVIRONMENT=live`) | **bloke** | Doğrulanmış üretim base URL'i `DHL_Config` sınıfına eklenmeli. Boolean çevirerek açılmaz. |
 | Kapıda ödeme (`KUKA_DHL_COD_ENABLED`) | **bloke** | Toplanan paranın mutabakatı, mağazaya ulaşımı ve WooCommerce ödeme kaydının durumu yazılı olarak belirlenmeli. |
-| Otomatik gönderi oluşturma | **yok** | Kapsam dışıdır. Bu tur boyunca gönderi yalnız operatörün açık işlemiyle oluşur. |
+| Otomatik gönderi oluşturma | **kapalı (varsayılan)** | 14 Eylül 2026'da eklendi ve panelden açılır. Açılması Aşama 8'in konusudur; kapalıyken gönderi yalnız operatörün açık işlemiyle oluşur. |
 | SMS tercihleri | **kapalı (0,0,0)** | Taşıyıcı mağaza adına müşteriye mesaj atar; rıza kaydı gerekir. `kuka_island_shipping_request` filtresiyle açılır. |
+
+---
+
+## Aşama 8 — Müşteriye teslim: yönetici panelinden yapılandırma
+
+Bu aşama 14 Eylül 2026'da eklendi. Amacı tek: site sahibi `wp-config.php`
+dosyasına dokunmadan entegrasyonu güvenli biçimde yapılandırabilsin.
+
+Teknik sözleşme: DHL_ENTEGRASYONU.md §17.2. Bakım kaydı:
+DHL_BAKIM_HAFIZASI.md **K-63**.
+
+### 8.1 — Sayfa
+
+**WooCommerce → Kargo Entegrasyonu.** Yetki: `manage_woocommerce`. Her yazma
+ayrı bir nonce taşır; kaydet, sil ve test **farklı** nonce'lardır.
+
+### 8.2 — Sıra
+
+1. **Önce ortam.** `Sandbox (test)` seçili kalsın. Canlı seçilebilir ama
+   çalışmaz: doğrulanmış bir canlı adres yoktur ve her işlem
+   `live_environment_blocked` ile reddedilir. Bu bir görüntü kısıtı değildir.
+2. **Kimlik bilgilerini girin.** Dört alan: Client ID, Client Secret, müşteri
+   numarası, API parolası. Kaydettikten sonra **bir daha gösterilmezler**;
+   panel yalnız "Kayıtlı" ve kaynağını yazar.
+   - `wp-config.php` sabiti varsa o kazanır ve alan devre dışı görünür.
+   - Alanı **boş bırakmak mevcut değeri korur**. Silmek ayrı bir işlemdir.
+3. **Bağlantıyı test edin.** Yalnız salt-okunur: kimlik doğrulama ve il listesi.
+   Hiçbir gönderi oluşturmaz. Sonuç satırı yalnız zaman ve güvenli kod gösterir.
+   Başarısızsa koda göre:
+
+   | Kod | Anlamı |
+   | --- | --- |
+   | `credentials_missing` | Dört alandan biri boş |
+   | `credentials_unreadable` | Site salt'ları değişmiş; bilgileri yeniden girin |
+   | `live_environment_blocked` | Ortam canlıya alınmış; test'e döndürün |
+   | `carrier_not_registered` | Adaptör anahtarı kapalı |
+   | `unauthorized` | Kimlik bilgileri yanlış |
+
+4. **Anahtarları ayarlayın.** Dördü ayrı ayrı:
+   - **Modül çalışma anahtarı** — kapalıyken hiçbir kargo işlemi olmaz.
+   - **DHL/MNG adaptörü** — kapalıyken istemci hiç kurulmaz.
+   - **Otomatik gönderi oluşturma** — **kapalı başlar.** Açmadan önce 8.3'ü
+     okuyun.
+   - **Otomatik durum sorgulama** — gönderi oluşturmaz, yalnız takip eder.
+
+### 8.3 — Otomatik gönderi oluşturmayı açmadan önce
+
+Açıldığı anda ödemesi tamamlanmış ve kargolanabilir **her** sipariş için bir iş
+planlanır. Bu dışa dönük bir işlemdir: etiket basılır, ücret tahakkuk eder,
+yanlışsa birinin iptal etmesi gerekir.
+
+Açmadan önce:
+
+- [ ] Bir sandbox siparişiyle manuel akış uçtan uca çalıştı (Aşama 5).
+- [ ] Gönderici adresi, telefon ve varsayılan taşıyıcı doğru.
+- [ ] Operatör, sipariş ekranındaki `Mod:` satırının ne dediğini biliyor; satır
+      mod, ortam, yapılandırma, bekleyen iş, son güvenli neden ve deneme sayısını
+      birlikte yazar.
+- [ ] Ödeme sonrası iptal/iade refleksi için 5 dakikalık gecikmenin yeterli
+      olduğu kabul edildi (`Dispatcher::DELAY`).
+
+Açtıktan sonra sipariş ekranı her sipariş için ya "otomatik gönderi işi
+planlandı" der ya da **neden planlanmadığını koduyla** yazar:
+
+| Kod | Anlamı |
+| --- | --- |
+| `auto_create_disabled` | Anahtar kapalı |
+| `order_status_not_shippable` | Durum `processing`/`completed` değil |
+| `payment_not_confirmed` | `date_paid` yok — durum elle değiştirilmiş olabilir |
+| `order_not_active` / `order_refunded` | İptal, iade veya başarısız |
+| `nothing_to_ship` | Siparişte fiziksel ürün yok |
+| `address_incomplete:...` | Eksik alanın adı yazılır |
+| `carrier_record_exists:<durum>` | Bu siparişte zaten taşıyıcı kaydı var |
+| `mutation_in_progress` | Bekleyen bir taşıyıcı işlemi var |
+| `retry_budget_spent` | Üç worker turu tükendi; manuel düğmelerle devam edin |
+| `phase_already_attempted:<faz>` | Otomatik yol o fazın çağrısını **bir kez göndermiş**. Sonucu belirsiz kaldığı için ikinci kez göndermez; salt-okunur mutabakat çalıştırın ve gerekiyorsa manuel düğmeyi kullanın |
+| `retry_schedule_failed` | Yeniden deneme işi planlanamadı. Bekleyen iş **yok**; Action Scheduler'ı kontrol edin |
+| `phase_not_bookable_by_event:<faz>` | Ödeme olayı geldi ama sipariş zaten `order_created`. Otomatik yol başkasının başlattığı işi devralmaz |
+
+### 8.3.1 — Yeniden deneme nasıl çalışır
+
+Bir tur başarısızsa **her red** yeniden denenmez. İki koşul birlikte aranır:
+
+1. Red, ilan edilmiş kısa listede olmalı — bugün yalnız `lock_contended`
+   (başka bir süreç o siparişin mutasyon kilidini tutuyordu).
+2. Siparişin kendi satırı, taşıyıcıya **gidilmediğini kanıtlamalı**: bekleyen
+   mutation yok, gönderi numarası yok, durum hâlâ o fazın başlangıç durumu.
+
+İkincisi bir kanıttır, tahmin değil: modül işlem niyetini ve korumalı durumu
+istek kurulmadan **önce** yazar. HTTP koduna bakılmaz.
+
+En fazla **3** worker turu. Yeniden deneme, tamamlanmış bir `createOrder`'ı
+tekrarlamaz; `createbarcode` fazından devam eder. Otomatik yolun çağrısını
+gönderdiği bir faz, sonucu belirsiz kaldıysa bir daha otomatik olarak
+denenmez — o noktadan sonra karar operatörün.
+
+### 8.4 — Kapatma
+
+Herhangi bir anahtarı kapatmak manuel yolu **etkilemez**: WooCommerce kargo
+çekmecesinden takip numarası girmek her durumda çalışır. Ölçüm:
+`SHIPPING_MANUAL_ROUTE_SURVIVES_EVERY_SWITCH_OFF=PASS`.
+
+Eklentiyi tamamen devre dışı bırakmak, bekleyen otomatik gönderi işlerini de
+iptal eder — planlanmış bir iş henüz kimseye ulaşmamış bir niyettir ve
+entegrasyonu kapatan bir mağaza yirmi dakika sonra kargo çıkmasını beklemez.
+Ölçüm: `SHIPPING_DEACTIVATION_CANCELS_DISPATCH_JOBS=PASS|pending_before:1|pending_after:0`.
+
+### 8.5 — Site anahtarları (salt) değişirse
+
+Kayıtlı kimlik bilgileri okunamaz hâle gelir ve panel bunu **söyler**:
+
+> Kayıtlı kimlik bilgileri okunamıyor. Site anahtarları (salt) değişmiş olabilir;
+> bilgileri panelden yeniden girmeniz gerekiyor. Bu sürede hiçbir kargo çağrısı
+> yapılmaz.
+
+Dört alanı yeniden girmek yeterlidir; eski satır yeni anahtarla yazıldığında
+temizlenir. Bu süre boyunca sistem fail-closed davranır: hiçbir çağrı yapılmaz,
+hiçbir varsayım üretilmez.
 
 ---
 

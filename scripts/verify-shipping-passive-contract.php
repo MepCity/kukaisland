@@ -238,9 +238,33 @@ if ( $active ) {
 	/*
 	 * THE HOOKS THAT FIRE BY THEMSELVES. add_meta_boxes and plugins_loaded are
 	 * deliberately NOT in this list: an active module is supposed to draw its
-	 * panel and to boot. What must never happen is a module callback on an
-	 * event WooCommerce raises on its own when an order moves, because that is
-	 * the only route by which a shipment could be booked with no operator.
+	 * panel and to boot.
+	 *
+	 * WHAT CHANGED, AND WHAT DID NOT. This module now has an optional automatic
+	 * booking path, so ONE class is allowed to sit on the payment and status
+	 * events: Kuka_Island_Shipping_Dispatcher. What it is allowed to do there is
+	 * unchanged from "nothing" in every way that matters -- it books an Action
+	 * Scheduler job and returns, its own switch is OFF by default, and with that
+	 * switch off it books nothing at all. The carrier is contacted only from the
+	 * scheduled worker, never from the event.
+	 *
+	 * So the rule is no longer "no callbacks" but "no callbacks EXCEPT that
+	 * one", and the things the old rule was protecting are measured separately
+	 * and exactly:
+	 *
+	 *   SHIPPING_PASSIVE_ORDER_LIFECYCLE            a real processing->completed
+	 *                                               transition writes no shipping
+	 *                                               meta and books no action
+	 *   SHIPPING_AUTO_CREATE_DEFAULTS_OFF           the switch ships closed
+	 *   SHIPPING_AUTO_CREATE_OFF_PAYMENT_WRITES_NOTHING
+	 *                                               with it closed, a paid order
+	 *                                               produces no job and no
+	 *                                               carrier write
+	 *   SHIPPING_RUNTIME_GATE_CLOSED_BOOKS_NOTHING  a closed run gate books none
+	 *                                               either
+	 *
+	 * Any OTHER module class appearing on these hooks is still a failure, and
+	 * that is the part this measurement keeps.
 	 */
 	$automatic_hooks = array(
 		'woocommerce_order_status_changed',
@@ -254,7 +278,8 @@ if ( $active ) {
 		'woocommerce_fulfillment_after_update',
 	);
 
-	$automatic_owners = array();
+	$automatic_owners  = array();
+	$unexpected_owners = array();
 
 	foreach ( $automatic_hooks as $automatic_hook ) {
 		if ( ! isset( $wp_filter[ $automatic_hook ] ) ) {
@@ -274,6 +299,10 @@ if ( $active ) {
 
 				if ( str_starts_with( $owner, 'Kuka_Island_Shipping' ) ) {
 					$automatic_owners[] = $automatic_hook . ':' . $owner;
+
+					if ( 'Kuka_Island_Shipping_Dispatcher' !== $owner ) {
+						$unexpected_owners[] = $automatic_hook . ':' . $owner;
+					}
 				}
 			}
 		}
@@ -281,11 +310,14 @@ if ( $active ) {
 
 	$report(
 		'SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES',
-		array() === $automatic_owners,
+		array() === $unexpected_owners,
 		sprintf(
-			'measured:wordpress_runtime|automatic_hooks_checked:%d|module_callbacks:%s|admin_panel_hook_allowed:add_meta_boxes',
+			'measured:wordpress_runtime|automatic_hooks_checked:%d|module_callbacks:%s|unexpected_owners:%s'
+				. '|allowed_owner:Kuka_Island_Shipping_Dispatcher(books_a_scheduler_job_only)'
+				. '|admin_panel_hook_allowed:add_meta_boxes',
 			count( $automatic_hooks ),
-			array() === $automatic_owners ? 'none' : implode( '+', $automatic_owners )
+			array() === $automatic_owners ? 'none' : implode( '+', $automatic_owners ),
+			array() === $unexpected_owners ? 'none' : implode( '+', $unexpected_owners )
 		)
 	);
 }

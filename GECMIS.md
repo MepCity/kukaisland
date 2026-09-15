@@ -997,6 +997,257 @@ yazanın kastetmediği bir şeyi bana söyledi ve ben onu bir rapora taşıdım.
 kök nedeni bulmak için tek gereken, üretim istemcisinin güvenlik için yuttuğu
 ham `SoapFault`'u testin saklamasıydı.
 
+## 15.6 Kargo entegrasyonunu teslim edilebilir yapmak — 14 Eylül
+
+Bu tur teknik bir sorunu değil, bir **teslim** sorununu çözdü: entegrasyon
+çalışıyordu ama onu yapılandırmanın tek yolu `wp-config.php` idi ve site sahibi
+o dosyaya erişemiyor.
+
+### Değişen tek kural, ve neden değişti
+
+Modülün en eski ve en kesin kurallarından biri şuydu: *sır asla option'a
+yazılmaz*. Gerekçesi hâlâ doğru — düz bir option sitedeki her eklenti
+tarafından okunabilir ve veritabanı dökümüne girer. Ama o kural, `wp-config`
+düzenleyebilen birinin var olduğunu varsayıyordu.
+
+Seçenek "sırları dikkatle saklayan bir panel" ile "hiç panel yok" arasındaydı.
+İkincisi daha güvenli değildi; yalnızca **hiç yapılandırılmamış** bir
+entegrasyon demekti. Yasak bu yüzden bir önceliğe dönüştü:
+
+```text
+wp-config sabiti  >  ortam değişkeni  >  şifreli panel kasası
+```
+
+Düz option hâlâ yasak. Kasa `sodium_crypto_secretbox` kullanıyor — kimliği
+doğrulanmış, yani elle düzenlenmiş bir ciphertext çözülmüyor, sonraki kod
+yolunun parola sanacağı çöp üretmiyor. Anahtar **saklanmıyor**: her okumada
+sitenin kendi salt'larından türetiliyor, dolayısıyla bir veritabanı dökümünde
+şifreli metin var ve onu çözecek hiçbir şey yok.
+
+Salt döndürüldüğünde susmuyor. Anahtarın parmak izi satırla birlikte duruyor ve
+eşleşmezse `credentials_unreadable` diyor. Boş dönmek "hiç girilmemiş" ile aynı
+görünürdü ve operatör girdiği ayarı arardı.
+
+### Otomatik gönderi: makinenin karar verdiği tek yer
+
+Bu modülde şimdiye kadar her şey birinin düğmeye basmasıyla oluyordu. Otomatik
+oluşturma, bir makinenin dışa dönük bir işleme karar verdiği ilk yer — etiket
+basılır, kurye çağrılır, ücret tahakkuk eder — ve bu yüzden açılması en zor
+anahtar oldu: varsayılanı kapalı, uygunluğu bir **izin listesi**, ve ödeme
+kancası taşıyıcıyı aramıyor, tek bir iş planlayıp dönüyor.
+
+Korunan şey iki faz oldu. `createOrder` ile `createbarcode` arasında sipariş
+**veritabanından taze okunuyor** ve durum tam olarak `order_created` değilse
+duruluyor. Taşıyıcıya ulaşmış belirsiz bir yazma otomatik yolda da
+tekrarlanmıyor.
+
+### Yarışı gerçekten ölçmek
+
+Tek süreçte art arda iki çağrı yapıp buna "eşzamanlılık" demek kolaydı ve
+yanlış olurdu: ikisi aynı bağlantıyı, dolayısıyla aynı MySQL adlandırılmış
+kilitlerini paylaşır, ve ikincisi birincinin aynı istekte yaptığı defter
+kaydıyla reddedilir. Bunun, operatörün "Gönderiyi oluştur"a bastığı anda zamanlayıcının
+aynı siparişi başka bir PHP sürecinde eline almasıyla hiçbir ilgisi yok.
+
+Bu yüzden ölçüm **ikinci bir PHP sürecini** başlatıyor. O süreç gerçek Manager
+üzerinden kilidi alıyor ve üç saniye süren bir taşıyıcı çağrısının içinde
+tutuyor; bu süreç o sırada otomatik yolu çalıştırıyor. İki süreç de yazmalarını
+aynı options satırına sayıyor, yani sonuç süreçler arası bir sayı:
+
+```text
+carrier_writes_total_across_processes:1 | this_process_writes:0
+automatic_outcome:refused/lock_contended
+```
+
+### İki sözleşmeyi bilerek değiştirmek
+
+`SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES` "modülün sipariş olaylarında hiçbir
+callback'i yok" diyordu ve bu tur artık doğru değildi. Onu gevşetmek yerine
+daraltarak değiştirdim: *dispatcher dışında* callback yok, ve dispatcher'ın o
+kancalarda yaptığı tek şeyin iş planlamak olduğu — anahtarı kapalıyken onu bile
+yapmadığı — ayrı ölçümlerle kanıtlanıyor. `SHIPPING_LIFECYCLE_ACTIVATION` aynı
+şekilde güncellendi ve üstüne `auto_create:off` alanını kazandı.
+
+**Ders:** bir güvenlik kuralının gerekçesi değişmediği hâlde kapsamı
+değişebilir. "Asla" yerine "hangi sırayla" yazmak, kuralı zayıflatmadan onu
+kullanılabilir kıldı — ama ancak eski kuralın neyi koruduğunu tek tek sayıp
+her birini ayrı bir ölçümle yerine koyduktan sonra.
+
+## 15.7 Üç iddianın ölçülmesi — 14 Eylül, aynı gün
+
+Bir önceki turun hemen ardından gelen inceleme dört şey söyledi. Üçü doğruydu,
+biri değildi, ve dördünün de aynı biçimde ele alınması gerekti: ölçerek.
+
+### `required` bir güvenlik sınırı değildir
+
+Kayıtlı bir kimlik bilgisini silen form bir onay kutusu taşıyordu, kutuda
+`required` vardı, ve sunucu o alanı **hiç okumuyordu**. Yetki doğruydu, nonce
+doğruydu; eksik olan isteğin niyetinin doğrulanmasıydı. Alanı hiç göndermeyen
+bir POST doğrudan siliyordu.
+
+Düzeltme küçük: onay sunucuda ve **tam değer** karşılaştırmasıyla aranıyor.
+"Set mi" ya da "truthy mi" değil — `'on'`, `'0'` ve `''` bir tarayıcının
+gönderebileceği şeyler ve hiçbiri sorulan sorunun cevabı değil.
+
+### Bir sayaç sözleşme değildir
+
+`MAX_ATTEMPTS = 3` vardı, `dispatch_attempts` metası vardı, belge "sınırlı retry
+alabilir" diyordu — ve hiçbir kod yolu ikinci bir iş planlamıyordu. Kilit
+çekişmesi yüzünden düşen bir sipariş sessizce hiç gönderilmiyordu, ve
+`retry_budget_spent` kodu normal akışta ulaşılamazdı.
+
+Burada iki yol vardı: belgeyi koda uydurmak ("retry yok" yazmak) ya da kodu
+gerçekten yazmak. Birincisi boşluğu kapatırdı, ihtiyacı değil.
+
+Yazarken ortaya çıkan asıl mesele retry'ın **ne zaman** güvenli olduğuydu. Cevap
+iki koşullu oldu ve ikisi de zorunlu: kod ilan edilmiş kısa bir listede olacak,
+**ve** siparişin kendi satırı taşıyıcıya gidilmediğini kanıtlayacak — bekleyen
+mutation yok, gönderi numarası yok, durum hâlâ fazın başlangıç durumu.
+`begin_mutation()` niyeti istekten önce yazdığı için bu bir kanıt, bir tahmin
+değil. HTTP koduna hiç bakılmıyor.
+
+Sonra üçüncü bir şey çıktı, ve ölçüm olmasa görülmezdi: **durum tek başına yetmiyor.**
+Belirsiz bir `createbarcode`'dan sonra salt-okunur mutabakat siparişi meşru
+biçimde `order_created`'a geri koyabiliyor. Yalnız duruma bakan bir worker bunu
+ikinci bir `createbarcode` için izin sayıyordu — ve testte tam olarak öyle yaptı.
+Otomatik yolun **gönderdiği** her faz artık çağrıdan önce siparişe işaretleniyor,
+ve işaret yalnız yapısal kanıt "gönderilmedi" dediğinde geri alınıyor. Operatörün
+düğmesi bundan etkilenmiyor: bu, makinenin kendi çekingenliği.
+
+### Yanlış olan yorumdu, davranış değil
+
+`maybe_schedule()` içindeki yorum "mutasyonların kullandığı aynı kilit" diyordu.
+Kod `kuka_ship_query_<id>` alıyor; mutasyonlar `kuka_ship_mutate_<id>` alıyor.
+Aynı kilit değiller — ve olmamaları gerekiyor, çünkü tek kilit planlamanın
+taşıyıcı çağrısını beklemesi demek olurdu.
+
+Davranışı yoruma uydurmak cazip ve yanlış olurdu. İddia düzeltildi, kod
+değişmedi, ve iddia bu belgeye, teknik sözleşmeye ve bakım hafızasına
+taşınmış hâliyle üç yerden birden temizlendi.
+
+### Ve biri üremedi
+
+"Panel bağlantı testi ana kapıyı danışmıyor" iddiası için de bir RED yazdım.
+GREEN çıktı: ana kapı kapalı, adaptör açık, dört kimlik tam iken toplam HTTP
+`0` ve kod `shipping_runtime_disabled`. Garanti zaten doğru yerdeydi — adaptörün
+istemcisi her isteğin önünde `preflight()` çalıştırıyor ve ilk baktığı şey o
+kapı.
+
+Ölçümü yine de bıraktım, ve paneli kapıyı **kendisi** de soracak hâle getirdim —
+garantiyi ikiye katlamak için değil, adaptörden bağımsız kılmak için: filtreyle
+eklenen ikinci bir taşıyıcı kendi preflight'ında bunu unutabilir.
+
+**Ders:** "bu kod yolu kapıyı çağırmıyor" doğru olabilir ve davranış yine de
+doğru olabilir. İkisi farklı iddialar, ve ikisi de ölçülür. Bir kusur
+raporlandığı için var sayılmaz; ölçüldüğü için vardır ya da yoktur.
+
+## 15.8 Ağ kapısının önündeki defter — 14 Eylül, üçüncü tur
+
+Dört sınır daha. Üçü gerçek kusurdu, biri benim önceki turda "düzeltildi" diye
+raporlayıp aslında düzeltmediğim bir şeydi.
+
+### Yazdığını okumadan taşıyıcıyı aramak
+
+Dispatcher denemeyi sayıyor, fazı işaretliyor ve taşıyıcıyı arıyordu. İkisi de
+`void` idi; hiçbiri yazdığını geri okumuyordu. Bu modül `save_meta_data()`'nın
+sessizce başarısız olabileceğini iki kez öğrenmişti — mutation intent ve
+notification claim — ve ikisi de artık kendi yazmasını geri okuyor. Dispatcher'ın
+defteri unutulmuştu.
+
+Sabotaj testi bunu tek satırda gösterdi: ilgili INSERT/UPDATE'ler `SELECT 1`e
+çevrildiğinde **`first_write=2`**. Hiçbir satır diske inmemişken taşıyıcıya
+`createOrder` ve `createbarcode` gitti. Sonraki worker aynı yazmayı tekrar
+gönderecekti.
+
+Düzeltme, doğrulanan tek bir başlangıç: sayaç ve faz listesi **tek persist
+turunda** yazılıyor, sonra önbellekler düşürülüp taze `WC_Order` ile geri
+okunuyor, sonra değer karşılaştırması yapılıyor. Uymazsa
+`dispatch_intent_unverified` ve ağa çıkış yok.
+
+**Güvence atomiklik değil.** Tek persist turu tek SQL ifadesi demek değildir:
+`save_meta_data()` birden çok ifade çıkarabilir, dolayısıyla iki değer **yarım
+inebilir**. Duran şey, yazmanın bölünmezliği değil, **geri okumanın ikisini de
+kanıtlamak zorunda olması**: tam kayıp da, iki yönün hangisi olursa olsun yarım
+kayıp da aynı kapıda, taşıyıcıya çıkmadan kapanıyor. Sabotaj ölçümü üç yolu da
+ayrı ayrı kuruyor — kaydın tamamı düşürülüyor, yalnız faz işareti düşürülüyor
+(sayaç iniyor), yalnız sayaç düşürülüyor (faz işareti iniyor).
+
+Yazarken küçük ama gerçek bir muhasebe hatası çıktı: fazı işaretlerken denemeyi
+de saymak, tek başarılı bir koşuya üç turluk bütçenin ikisini harcatıyordu.
+Deneme artık **tur** başına sayılıyor.
+
+### Kaldırmayı doğrulamamak
+
+Aynı hatanın simetriği. İşaret yalnız "gönderilmedi" kanıtlandığında
+kaldırılıyordu — ama kaldırmanın kendisi diske indi mi, kimse bakmıyordu.
+İnmezse işaret diskte kalır, ve o inanışla planlanan retry "bu faz zaten
+gönderildi" diyen bir işaretle karşılaşır: yalnız kendini reddedebilen bir tur,
+panelde "retry planlandı" yazarken.
+
+### İki worker'ın birbirinin işaretini silmesi
+
+Bu, testi yazarken değil, sırayı kâğıda dökerken çıktı:
+
+```
+A fazı işaretler, Manager mutasyonuna girer
+B eski uygunluk cevabıyla aynı fazı işaretler
+B Manager'dan lock_contended alır
+B hiçbir şey göndermediğine inanarak ORTAK işareti kaldırır
+A'nın yazması belirsiz kalır -- güvenlik işareti yok
+```
+
+Mevcut iki kilit bunu kapatamıyor: planlama kilidi iş çalışmadan önce
+bırakılıyor, mutasyon kilidi Manager'ın **içinde** alınıyor — yani iki worker da
+defterini çoktan yazmış oluyor. Üçüncü bir kilit gerekti:
+`kuka_ship_dispatch_<id>`, taze okumadan önce alınan, yerleşime kadar tutulan,
+bekleme süresi sıfır olan worker yürütme kilidi.
+
+Ölçüm gerçek iki süreçle: çocuk süreç `createOrder` çağrısının içinde dört saniye
+tutuluyor, bu süreç aynı sipariş ve faz için kendi worker'ını çalıştırıyor.
+`createOrder_across_processes:1`, `createbarcode_across_processes:1`,
+kaybedenin yazması 0, denemesi 0, faz kaydı yerinde, kilit sonunda serbest.
+
+### Ve düzelttiğimi sandığım şey
+
+Önceki turda "iki yanlış kilit yorumu düzeltildi" diye rapor etmiştim. Üretim
+dosyasında **ikisi de duruyordu**: araya giren bir yeniden yazma düzeltmeyi geri
+almıştı ve ben `grep` ile bakmamıştım.
+
+**Ders:** bir düzeltmenin uygulandığını **raporlamak**, uygulandığını
+kanıtlamaz. Yorum düzeltmelerinin de bir doğrulaması olmalı — bu turda o
+doğrulama basit bir `grep` oldu, ve iki satırı da geri getirdi.
+
+## 15.9 Koşunun kendi gürültüsü — 15 Eylül
+
+Küçük bir tur, ve içinde bir ders var.
+
+Gerçek `make verify` çıktısı beklenen `wp_safe_redirect()` çağrıları için uzun
+WP-CLI backtrace'leri basıyordu. Kolay refleks çıktıyı filtrelemek olurdu; o,
+beklenmedik bir redirect'i de silerdi. Doğrusu önceliği seçmekti: harness
+`wp_redirect` filtresini `PHP_INT_MIN` ile bağlayıp oradan istisna atıyor, yani
+WP-CLI'nin öncelik 10'daki işleyicisi hiç çalışmıyor — **bu** redirect susuyor,
+başka bir yerdeki hâlâ konuşuyor. Ve istisnadan önce hedef kaydediliyor, böylece
+biten bir handler'ın operatörü nereye gönderdiği artık bir iddia değil ölçüm.
+
+Sonra bir kapı ekledim: koşu kendi PHP diagnostiklerini `set_error_handler` ile
+sayıyor ve tek bir notice koşuyu düşürüyor. Bunu yazarken haklı olup olmadığını
+merak ediyordum; ilk koşuda cevabını verdi. İlk yarış testi çocuk betiğini kendi
+üstüne kopyalıyor ve sonra iki kez siliyordu — ikinci `unlink()` bir uyarı
+basıyordu ve aylardır kimse görmemişti, çünkü görülecek yer zaten gürültülüydü.
+
+Bu turda ayrıca bir şeyi düzeltmedim: gözden geçirme "atomik save" iddiasının
+kaldırılmasını istedi, ve kaynağa baktığımda **zaten kaldırılmıştı** — Order_Store
+yorumu "BOTH ROWS ARE ATTEMPTED IN ONE PERSIST TURN, WHICH IS NOT THE SAME AS
+ATOMIC" diyor, K-68 ve §17.2 aynı cümleyi taşıyor, ve iki kısmi-yazma sabotajı
+(`d_attempt_landed_phase_dropped`, `e_phase_landed_attempt_dropped`) ölçümde
+duruyor. Aynı şey `$atts` uyarısı için de geçerliydi.
+
+**Ders:** bir inceleme bulgusunu düzeltmeden önce, o bulgunun **hâlâ** geçerli
+olduğunu ölçün. Bir önceki turda düzelttiğim bir şeyi ikinci kez "düzeltmek" en
+iyi ihtimalle gürültü, en kötüsünde çalışan bir sözleşmeyi bozmaktır. Geçen tur
+bunun tersini yaşamıştım — düzelttiğimi sanıp düzeltmemiştim (K-71) — ve iki
+hata da aynı kökten geliyor: **rapor kanıt değildir, `grep` kanıttır.**
+
 ## 16. Bu belgeyi okuyan yapay zekâya
 
 1. **Ölç, tahmin etme.** Bu projede her "tamamlandı" iddiası ekran görüntüsü veya sayı ile desteklenir. Desteklenmiyorsa "doğrulanmadı" yaz.

@@ -26,6 +26,15 @@ final class Kuka_Island_Shipping_Activator {
 	/** Only this identifier is ever unscheduled. */
 	public const OWNED_HOOKS = array(
 		'kuka_island_shipping_query_status',
+		/*
+		 * The automatic dispatcher's own hook. A job booked here has not
+		 * contacted anybody yet -- it is an intention to create a shipment --
+		 * so cancelling it on deactivation is the whole point: a shop that
+		 * switches the integration off must not find a parcel booked twenty
+		 * minutes later by work that was already in the queue.
+		 */
+		'kuka_island_shipping_auto_create',
+		'kuka_island_shipping_sync_fulfillment',
 	);
 
 	public const OWNED_GROUP = 'kuka-island-shipping';

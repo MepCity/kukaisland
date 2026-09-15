@@ -140,7 +140,10 @@ $hooks = array(
 $unregistered = array();
 foreach ( $hooks as $name => $present ) { if ( ! $present ) { $unregistered[] = $name; } }
 
-// Activation must not have opened an order-status route to a carrier.
+// Activation must not have opened an order-status route to a CARRIER. The
+// dispatcher is allowed on these hooks -- all it does there is book a scheduler
+// job -- and its own switch must still be OFF, which is checked separately
+// below. Any other module class on them is a route nobody asked for.
 $forbidden = array();
 foreach ( array( "woocommerce_order_status_processing", "woocommerce_order_status_completed", "woocommerce_payment_complete" ) as $hook ) {
   if ( ! isset( $GLOBALS["wp_filter"][ $hook ] ) ) { continue; }
@@ -148,10 +151,13 @@ foreach ( array( "woocommerce_order_status_processing", "woocommerce_order_statu
     foreach ( $callbacks as $callback ) {
       $fn    = $callback["function"] ?? null;
       $owner = is_array( $fn ) && isset( $fn[0] ) ? ( is_object( $fn[0] ) ? get_class( $fn[0] ) : (string) $fn[0] ) : ( is_string( $fn ) ? $fn : "" );
-      if ( str_starts_with( $owner, "Kuka_Island_Shipping" ) ) { $forbidden[] = $hook; }
+      if ( str_starts_with( $owner, "Kuka_Island_Shipping" ) && "Kuka_Island_Shipping_Dispatcher" !== $owner ) { $forbidden[] = $hook . ":" . $owner; }
     }
   }
 }
+
+// And activation did not switch automatic creation on.
+$auto_create = class_exists( "Kuka_Island_Shipping_Settings", false ) && Kuka_Island_Shipping_Settings::is_auto_create_enabled();
 
 $gate_open  = ! Kuka_Island_Shipping_Runtime_Gate::is_disabled();
 $automation = Kuka_Island_Shipping_Status_Poller::automation_enabled();
@@ -160,8 +166,8 @@ global $wpdb;
 $actions = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}actionscheduler_actions WHERE hook = \"kuka_island_shipping_query_status\"" );
 
 printf(
-  "%s|active:%s|composition_root:%s|booted:%s|missing_deps:%s|classes_absent:%s|hooks_unregistered:%s|order_status_routes:%s|runtime_gate_open:%s|automation:%s|poll_actions:%d",
-  ( $active && $root && $booted && array() === $missing && array() === $absent && array() === $unregistered && array() === $forbidden && $gate_open && ! $automation && 0 === $actions ) ? "PASS" : "FAIL",
+  "%s|active:%s|composition_root:%s|booted:%s|missing_deps:%s|classes_absent:%s|hooks_unregistered:%s|order_status_routes:%s|auto_create:%s|runtime_gate_open:%s|automation:%s|poll_actions:%d",
+  ( $active && $root && $booted && array() === $missing && array() === $absent && array() === $unregistered && array() === $forbidden && ! $auto_create && $gate_open && ! $automation && 0 === $actions ) ? "PASS" : "FAIL",
   $active ? "yes" : "no",
   $root ? "loaded" : "ABSENT",
   $booted ? "yes" : "no",
@@ -169,6 +175,7 @@ printf(
   array() === $absent ? "none" : implode( "+", $absent ),
   array() === $unregistered ? "none" : implode( "+", $unregistered ),
   array() === $forbidden ? "none" : implode( "+", array_unique( $forbidden ) ),
+  $auto_create ? "ON" : "off",
   $gate_open ? "yes" : "no",
   $automation ? "ON" : "off",
   $actions

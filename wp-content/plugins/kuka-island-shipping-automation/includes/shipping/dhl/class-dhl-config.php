@@ -2,10 +2,17 @@
 /**
  * DHL eCommerce Türkiye configuration, fail-closed in every direction.
  *
- * Secrets are read ONLY from wp-config constants or the process environment.
- * Never from an option, never from a settings screen, never from source. An
- * option is readable by every plugin in the site and lands in database dumps;
- * a settings screen puts a password in a POST body and in browser history.
+ * Secrets are read by a fixed precedence, and NEVER from plaintext storage:
+ *
+ *     wp-config constant  >  process environment  >  encrypted panel vault
+ *
+ * The first two are unchanged and still preferred. The third exists because the
+ * shop owner this module is delivered to cannot edit wp-config.php, and an
+ * integration nobody can configure is not safer than one configured carefully --
+ * it is simply unused. What the vault stores is authenticated ciphertext under a
+ * key derived from the site's own salts, in a row that is never autoloaded; see
+ * Kuka_Island_Shipping_Secret_Vault. A plain option would still be forbidden:
+ * it is readable by every plugin on the site and it lands in database dumps.
  *
  * There are two independent credential pairs and BOTH are required before any
  * call leaves the process:
@@ -35,8 +42,9 @@ defined( 'ABSPATH' ) || exit;
 
 final class Kuka_Island_Shipping_DHL_Config {
 
-	public const ENV_TEST = 'test';
-	public const ENV_LIVE = 'live';
+	/** Aliases of the carrier contract's own vocabulary, never a second one. */
+	public const ENV_TEST = Kuka_Island_Shipping_Carrier_Interface::ENVIRONMENT_TEST;
+	public const ENV_LIVE = Kuka_Island_Shipping_Carrier_Interface::ENVIRONMENT_LIVE;
 
 	/**
 	 * The official sandbox host, from x-ibm-configuration.servers and from the
@@ -140,14 +148,30 @@ final class Kuka_Island_Shipping_DHL_Config {
 
 		$from_env = getenv( self::ADAPTER_SETTING );
 
-		if ( false === $from_env ) {
-			return array(
-				'enabled' => true,
-				'reason'  => self::ADAPTER_STATE_UNSET,
-			);
+		if ( false !== $from_env ) {
+			return self::classify_adapter_value( $from_env );
 		}
 
-		return self::classify_adapter_value( $from_env );
+		/*
+		 * THE PANEL IS THE LOWEST SOURCE, AND IT IS A BOOLEAN. It cannot produce
+		 * configuration_invalid, because a checkbox cannot be mistyped -- that
+		 * state exists for a hand-edited constant, which is still checked first.
+		 */
+		if ( class_exists( 'Kuka_Island_Shipping_Settings' ) ) {
+			$stored = get_option( Kuka_Island_Shipping_Settings::OPTION, array() );
+
+			if ( is_array( $stored ) && array_key_exists( 'adapter_enabled', $stored ) ) {
+				return array(
+					'enabled' => (bool) $stored['adapter_enabled'],
+					'reason'  => $stored['adapter_enabled'] ? self::ADAPTER_STATE_ON : self::ADAPTER_STATE_OFF,
+				);
+			}
+		}
+
+		return array(
+			'enabled' => true,
+			'reason'  => self::ADAPTER_STATE_UNSET,
+		);
 	}
 
 	/**
@@ -240,13 +264,19 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 * @param array<string, mixed> $overrides Test-only direct values.
 	 */
 	public function __construct( array $overrides = array() ) {
-		$environment = strtolower( trim( (string) ( $overrides['environment'] ?? self::read( 'KUKA_DHL_ENVIRONMENT', self::ENV_TEST ) ) ) );
+		$environment = strtolower( trim( (string) ( $overrides['environment'] ?? self::configured_environment() ) ) );
 		$this->environment = in_array( $environment, array( self::ENV_TEST, self::ENV_LIVE ), true ) ? $environment : self::ENV_TEST;
 
-		$this->client_id       = trim( (string) ( $overrides['client_id'] ?? self::read( 'KUKA_DHL_CLIENT_ID' ) ) );
-		$this->client_secret   = (string) ( $overrides['client_secret'] ?? self::read( 'KUKA_DHL_CLIENT_SECRET' ) );
-		$this->customer_number = trim( (string) ( $overrides['customer_number'] ?? self::read( 'KUKA_DHL_CUSTOMER_NUMBER' ) ) );
-		$this->password        = (string) ( $overrides['password'] ?? self::read( 'KUKA_DHL_PASSWORD' ) );
+		/*
+		 * Each credential is resolved by ONE function so the precedence cannot
+		 * drift between fields: a client id that honoured the panel while the
+		 * password only honoured a constant would produce a half-configured
+		 * integration whose symptom is an authentication failure.
+		 */
+		$this->client_id       = trim( (string) ( $overrides['client_id'] ?? self::secret( 'client_id' ) ) );
+		$this->client_secret   = (string) ( $overrides['client_secret'] ?? self::secret( 'client_secret' ) );
+		$this->customer_number = trim( (string) ( $overrides['customer_number'] ?? self::secret( 'customer_number' ) ) );
+		$this->password        = (string) ( $overrides['password'] ?? self::secret( 'password' ) );
 
 		/*
 		 * ONE automation switch for the whole plugin, not one per carrier. A
@@ -307,6 +337,29 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 */
 	public function get_authorization_scheme(): string {
 		return $this->authorization_scheme;
+	}
+
+	/**
+	 * One credential, by the module's documented precedence.
+	 *
+	 * Delegated rather than duplicated: Settings owns the precedence, and a
+	 * second implementation here is how the two would disagree.
+	 */
+	private static function secret( string $field ): string {
+		if ( ! class_exists( 'Kuka_Island_Shipping_Settings' ) ) {
+			return '';
+		}
+
+		return Kuka_Island_Shipping_Settings::resolve_secret( $field );
+	}
+
+	/** The environment, by the same precedence. */
+	private static function configured_environment(): string {
+		if ( class_exists( 'Kuka_Island_Shipping_Settings' ) ) {
+			return (string) Kuka_Island_Shipping_Settings::get_switch( 'environment' );
+		}
+
+		return (string) self::read( 'KUKA_DHL_ENVIRONMENT', self::ENV_TEST );
 	}
 
 	private static function read( string $name, $default = '' ) {

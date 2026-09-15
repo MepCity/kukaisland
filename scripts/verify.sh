@@ -136,6 +136,12 @@ printf '%s\n' "$shipping_passive"
 shipping_behaviour=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-shipping-automation.php)
 printf '%s\n' "$shipping_behaviour"
 
+# The shop owner's surface: the settings page, the encrypted vault and the
+# optional automatic booking path. Mock transport only; the run starts a SECOND
+# real PHP process for the automatic-versus-manual race.
+shipping_settings=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-shipping-admin-settings.php)
+printf '%s\n' "$shipping_settings"
+
 shipping_lifecycle=$(./scripts/verify-shipping-activation-lifecycle.sh)
 printf '%s\n' "$shipping_lifecycle"
 shipping_race=$(docker compose run --rm -T wp-cli php /project-scripts/verify-shipping-notification-race.php measure)
@@ -495,7 +501,7 @@ expect_sandbox_line() {
 expect_shipping_match() {
   label=$1
   pattern=$2
-  if printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_lifecycle" "$dhl_runner_offline" "$shipping_custodian" "$shipping_race" | grep -Eq "$pattern"; then
+  if printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$dhl_openapi" "$shipping_passive" "$shipping_behaviour" "$shipping_settings" "$shipping_lifecycle" "$dhl_runner_offline" "$shipping_custodian" "$shipping_race" | grep -Eq "$pattern"; then
     echo "PASS $label"
   else
     echo "FAIL $label (expected pattern $pattern)" >&2
@@ -899,7 +905,11 @@ expect_shipping_match "the shipping plugin ships present but inactive, or says w
 expect_shipping_match "the delivery artefact is intact in either state" "^SHIPPING_PASSIVE_DELIVERY_ARTEFACT=PASS\\|measured:wordpress_runtime\\|plugin_file_present:yes\\|core_active:yes\\|woocommerce_active:yes\\|header_declares_dependencies:yes$"
 expect_shipping_match "no shipping class is loaded while the plugin is inactive" "^SHIPPING_PASSIVE_CLASSES_ABSENT=(PASS\\|checked:12\\|declared:none\\|http_client_loadable:no|SKIPPED\\|reason:plugin_active\\|.*\\|measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION)$"
 expect_shipping_match "no shipping hook is registered while the plugin is inactive" "^SHIPPING_PASSIVE_HOOKS_ABSENT=(PASS\\|own_hooks_registered:none\\|module_callbacks_on_shared_hooks:0|SKIPPED\\|reason:plugin_active\\|.*\\|measured_instead_by:SHIPPING_LIFECYCLE_DEACTIVATION)$"
-expect_shipping_match "the module sits on no hook that fires by itself, in either state" "^SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES=PASS\\|measured:wordpress_runtime\\|automatic_hooks_checked:9\\|module_callbacks:none\\|admin_panel_hook_allowed:add_meta_boxes$"
+# The only class allowed on an order event is the dispatcher, and all it does
+# there is book a scheduler job. Any other module class on those nine hooks is
+# still a failure; the "off by default, books nothing" half is pinned by the
+# SHIPPING_AUTO_CREATE_* lines above.
+expect_shipping_match "only the dispatcher sits on a hook that fires by itself, in either state" "^SHIPPING_PASSIVE_NO_AUTOMATIC_ROUTES=PASS\\|measured:wordpress_runtime\\|automatic_hooks_checked:9\\|.*\\|unexpected_owners:none\\|allowed_owner:Kuka_Island_Shipping_Dispatcher\\(books_a_scheduler_job_only\\)\\|admin_panel_hook_allowed:add_meta_boxes$"
 expect_shipping_match "no shipping scheduled action exists while the plugin is inactive" "^SHIPPING_PASSIVE_ACTIONS_ABSENT=PASS\\|by_hook:0\\|by_group:0$"
 expect_shipping_match "a real order lifecycle writes no shipping meta and books no job" "^SHIPPING_PASSIVE_ORDER_LIFECYCLE=PASS\\|transitions:processing->completed\\|shipping_meta_keys:none\\|actions_booked:0$"
 expect_shipping_match "the manual tracking-number route works with the plugin inactive" "^SHIPPING_PASSIVE_MANUAL_ROUTE=PASS\\|created:yes\\|provider:dhl\\|tracking_number:stored\\|fulfilled:yes\\|automation_marker:absent$"
@@ -959,7 +969,7 @@ expect_shipping_match "the poll chains leave no action, no log and no group row"
 # The carrier abstraction, measured on an adapter that has never heard of DHL.
 expect_shipping_match "a second carrier needs only an adapter and the filter" "^SHIPPING_SECOND_CARRIER_ADAPTER_ONLY=PASS\\|carrier:kuka-test-kargo\\|create_order:1\\|create_barcode:1\\|status_reads:1\\|cancel_shipment:1\\|cancel_order:0\\|fulfillment_provider:kuka-test-kargo\\|fulfillment_tracking:FAKE-SHIP-1\\|state:cancelled\\|needs_no_dhl_class:yes\\|dhl_types_in_adapter:0$"
 expect_shipping_match "the default carrier comes from configuration and fails closed" "^SHIPPING_DEFAULT_CARRIER_FAIL_CLOSED=PASS\\|setting:KUKA_SHIPPING_DEFAULT_CARRIER\\|two_registered_none_configured:refused\\|one_registered:kuka-test-kargo\\|filter_selects:kuka-test-kargo\\|unknown_key_returned_verbatim:kargo-yok\\|unknown_key_code:carrier_not_registered\\|carrier_calls_on_unknown:0$"
-expect_shipping_match "the carrier-agnostic core names no adapter class or constant" "^SHIPPING_CORE_NAMES_NO_ADAPTER=PASS\\|files:9\\|dhl_class_or_constant_references:0\\|comments_stripped:yes\\|scan_control_positive:yes$"
+expect_shipping_match "the carrier-agnostic core names no adapter class or constant" "^SHIPPING_CORE_NAMES_NO_ADAPTER=PASS\\|files:10\\|dhl_class_or_constant_references:0\\|comments_stripped:yes\\|scan_control_positive:yes$"
 
 expect_shipping_match "the behavioural suite makes no real carrier request" "^SHIPPING_NO_REAL_CARRIER_REQUEST=PASS\\|guard:pre_http_request\\|carrier_host:mngkargo.com.tr\\|real_requests_attempted:0\\|transport:mock_only$"
 # Every carrier write crosses one boundary, and crosses it twice.
@@ -977,6 +987,59 @@ expect_shipping_match "an amendment is serialised and built from a fresh reading
 expect_shipping_match "every state but the two amendable ones sends nothing" "^SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE=PASS\\|states_checked:10\\|wrong:none\\|carrier_writes:0$"
 
 # The translation catalogue is generated from the source, and matches it.
+# ---------------------------------------------------------------------------
+# The shop owner's own surface. A settings page that stores carrier passwords is
+# the one place in this module where a mistake is silent: nothing fails, the
+# secret is simply readable. Every line below is pinned rather than matched
+# loosely, because "no leak" is only worth asserting exactly.
+# ---------------------------------------------------------------------------
+expect_shipping_match "the settings suite passes as a whole" "^SHIPPING_SETTINGS_VERIFY=PASS$"
+expect_shipping_match "settings writes need the capability" "^SHIPPING_SETTINGS_REQUIRE_CAPABILITY=PASS\\|measured:real_admin_post_handler\\|user:subscriber\\|outcome:refused\\|settings_changed:no$"
+expect_shipping_match "settings writes need this action own nonce" "^SHIPPING_SETTINGS_REQUIRE_NONCE=PASS\\|.*\\|outcome:refused\\|settings_changed:no$"
+expect_shipping_match "no secret is stored in plain text" "^SHIPPING_SETTINGS_SECRET_NOT_PLAINTEXT_IN_OPTIONS=PASS\\|.*\\|plaintext_hits:none$"
+expect_shipping_match "no secret row is autoloaded" "^SHIPPING_SETTINGS_SECRET_OPTIONS_NOT_AUTOLOADED=PASS\\|"
+expect_shipping_match "no secret is printed back into the page" "^SHIPPING_SETTINGS_SECRET_NEVER_RENDERED=PASS\\|.*\\|in_html:none\\|password_inputs_prefilled:no$"
+expect_shipping_match "an edited ciphertext fails closed" "^SHIPPING_SETTINGS_VAULT_TAMPER_FAILS_CLOSED=PASS\\|.*\\|code:credentials_unreadable\\|ready:no$"
+expect_shipping_match "rotated site salts say so instead of going quiet" "^SHIPPING_SETTINGS_SALT_ROTATION_IS_UNREADABLE=PASS\\|.*\\|code:credentials_unreadable\\|operator_told_to_re_enter:yes$"
+expect_shipping_match "a constant outranks the panel" "^SHIPPING_SETTINGS_CONSTANT_BEATS_VAULT=PASS\\|.*\\|order:constant>environment>vault\\|"
+expect_shipping_match "an empty field keeps the stored secret" "^SHIPPING_SETTINGS_EMPTY_SECRET_KEEPS_VALUE=PASS\\|.*\\|value_after:unchanged$"
+# HTML `required` is not a security boundary: the confirmation is checked on the
+# server, strictly, and a POST that simply omits it deletes nothing.
+expect_shipping_match "deleting a secret needs nonce, capability AND the exact confirmation" "^SHIPPING_SETTINGS_FORGET_SECRET_IS_GUARDED=PASS\\|.*\\|no_confirmation:ran/secret=kept/notice=forget_not_confirmed\\|wrong_confirmation:ran/secret=kept/notice=forget_not_confirmed\\|empty_confirmation:ran/secret=kept/notice=forget_not_confirmed\\|wrong_nonce:refused/secret=kept/notice=none\\|no_capability:refused/secret=kept/notice=none\\|confirmed:ran/secret=erased/notice=forgotten\\|other_three_secrets:unchanged\\|"
+expect_shipping_match "a closed main switch stops the panel diagnostic too" "^SHIPPING_SETTINGS_CONNECTION_TEST_RESPECTS_RUN_GATE=PASS\\|.*\\|identity_calls:0\\|cbs_calls:0\\|total_http:0\\|ok:no\\|code:shipping_runtime_disabled\\|secret_leaks:0\\|token_or_authorization_in_result:no$"
+# The dispatcher writes its attempt and its phase mark in ONE persist turn and
+# proves BOTH from a fresh reading before the carrier is contacted. That turn is
+# not one statement, so the pair can land by halves: the record is dropped
+# whole, then each half on its own, in both directions. Nothing may be sent.
+expect_shipping_match "the dispatch intent is proven before the carrier is contacted" "^SHIPPING_AUTO_CREATE_DISPATCH_INTENT_IS_VERIFIED=PASS\\|measured:real_worker_with_wordpress_query_filter_sabotage\\|a_start_write_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=0/phases=none/reason=dispatch_intent_unverified/panel=dispatch_intent_unverified\\|d_attempt_landed_phase_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=1/phases=none/reason=dispatch_intent_unverified/panel=dispatch_intent_unverified\\|e_phase_landed_attempt_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=0/phases=create_order/reason=dispatch_intent_unverified/panel=dispatch_intent_unverified\\|b_phase_clear_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=1/phases=create_order/reason=dispatch_phase_clear_unverified/panel=dispatch_phase_clear_unverified/claimed_retry=no\\|c_order_unreadable:first_write=0/second_write=0/retry_jobs=0/attempts=0/phases=none/reason=dispatch_order_unreadable$"
+# Two automatic workers, two real PHP processes: one execution lock, one
+# createOrder, one createbarcode, and the loser spends no attempt.
+expect_shipping_match "two automatic workers are serialised by the execution lock" "^SHIPPING_AUTO_CREATE_WORKERS_ARE_SERIALISED=PASS\\|measured:second_real_php_process_and_separate_mysql_session\\|child_started:yes\\|child_inside_carrier_call:yes\\|createOrder_across_processes:1\\|createbarcode_across_processes:1\\|carrier_writes_total:2\\|loser_writes:0\\|loser_outcome:refused/dispatch_in_progress\\|attempts_total:1\\|phase_record:create_order\\+create_barcode\\|retry_jobs:0\\|dispatch_lock_free_after:yes\\|"
+expect_shipping_match "the retry budget is a real, phase-aware retry" "^SHIPPING_AUTO_CREATE_RETRY_IS_REAL_AND_PHASE_AWARE=PASS\\|measured:real_worker_with_a_second_mysql_session_holding_the_mutation_lock\\|a_before_create_order:blocked_writes=0/retry_jobs=1/createOrder=1/createbarcode=1/state=shipment_created\\|b_before_create_barcode:entry_state=order_created/createOrder_mid=1/retry_jobs=1/createOrder_total=1/createbarcode_total=1/state=shipment_created\\|c_uncertain_create_order:createOrder=1/retry_jobs=0/later_writes=0/.*\\|d_uncertain_create_barcode:createbarcode=1/retry_jobs=0/later_writes=0/.*\\|e_budget:turns=4/attempts=3/last=retry_budget_spent/retry_jobs=0/writes=0/.*\\|f_schedule_failed:claimed_retry=no/retry_jobs=0/.*\\|g_switched_off:gate=shipping_runtime_disabled/switch=auto_create_disabled/retry_jobs=0/writes=0$"
+expect_shipping_match "automatic creation ships switched off" "^SHIPPING_AUTO_CREATE_DEFAULTS_OFF=PASS\\|measured:declared_defaults\\|auto_create:off\\|auto_poll:off\\|"
+expect_shipping_match "the poll switch and the create switch are separate" "^SHIPPING_POLL_SWITCH_IS_INDEPENDENT=PASS\\|"
+expect_shipping_match "a closed run gate books nothing" "^SHIPPING_RUNTIME_GATE_CLOSED_BOOKS_NOTHING=PASS\\|.*\\|http_calls:0\\|.*\\|jobs_booked:0$"
+expect_shipping_match "an eligible order books exactly one job" "^SHIPPING_AUTO_CREATE_BOOKS_ONE_JOB=PASS\\|.*\\|jobs:1\\|http_during_scheduling:0\\|carrier_writes:0$"
+expect_shipping_match "three events still book one job" "^SHIPPING_AUTO_CREATE_IS_IDEMPOTENT=PASS\\|.*\\|events:3\\|jobs_booked:1\\|"
+expect_shipping_match "automatic eligibility is an allow-list" "^SHIPPING_AUTO_CREATE_ELIGIBILITY_IS_AN_ALLOWLIST=PASS\\|.*\\|wrong:none$"
+expect_shipping_match "the automatic path keeps the two phases apart" "^SHIPPING_AUTO_CREATE_IS_TWO_PHASE=PASS\\|.*\\|createOrder:1\\|createbarcode:1\\|state:shipment_created\\|"
+expect_shipping_match "an uncertain first phase is not retried" "^SHIPPING_AUTO_CREATE_PHASE_ONE_CRASH_IS_SAFE=PASS\\|.*\\|retry:createOrder=0/writes=0/"
+expect_shipping_match "an uncertain second phase is not retried" "^SHIPPING_AUTO_CREATE_PHASE_TWO_UNCERTAIN_IS_SAFE=PASS\\|.*\\|retry:createbarcode=0/writes=0/"
+expect_shipping_match "two real processes still produce one carrier write" "^SHIPPING_AUTO_AND_MANUAL_RACE_IS_SERIALISED=PASS\\|measured:second_real_php_process_and_separate_mysql_session\\|child_started:yes\\|child_inside_carrier_call:yes\\|carrier_writes_total_across_processes:1\\|this_process_writes:0\\|"
+expect_shipping_match "the automatic path stores the carrier shipment id" "^SHIPPING_AUTO_CREATE_STORES_SHIPMENT_ID=PASS\\|.*\\|zpl_in_tracking_number:no$"
+expect_shipping_match "the customer hears once about a real dispatch" "^SHIPPING_AUTO_CREATE_NOTIFIES_ONCE=PASS\\|.*\\|mails_on_creation:0\\|mails_on_first_dispatch_status:1\\|mails_after_two_more_polls:1\\|fulfillment_tracking_number:carrier_shipment_id$"
+expect_shipping_match "the connection test only reads" "^SHIPPING_SETTINGS_CONNECTION_TEST_IS_READ_ONLY=PASS\\|.*\\|carrier_writes:0\\|createOrder:0\\|createbarcode:0\\|cancel:0\\|update:0\\|.*\\|secret_leaks:0\\|authorization_header_in_result:no\\|"
+expect_shipping_match "choosing live in the panel opens nothing" "^SHIPPING_SETTINGS_LIVE_IS_REFUSED_WITHOUT_ENDPOINT=PASS\\|.*\\|http_calls:0\\|create:refused/live_environment_blocked\\|connection_test:refused/live_environment_blocked\\|panel_says_blocked:yes$"
+expect_shipping_match "deactivation cancels the automatic jobs" "^SHIPPING_DEACTIVATION_CANCELS_DISPATCH_JOBS=PASS\\|.*\\|pending_before:1\\|pending_after:0\\|"
+expect_shipping_match "the manual route survives every switch being off" "^SHIPPING_MANUAL_ROUTE_SURVIVES_EVERY_SWITCH_OFF=PASS\\|.*\\|tracking_number:MANUAL-TRACK-1\\|module_state:none\\|module_claimed_it:no$"
+expect_shipping_match "the settings leak scan has a positive control" "^SHIPPING_SETTINGS_NO_SECRET_LEAK=PASS\\|.*\\|leaks:none\\|positive_control:secrets_reached_the_carrier_as_they_must$"
+# A verification run that prints warnings hides the next real one. The suite
+# counts its own diagnostics with set_error_handler and fails on a single
+# notice; the redirects it expects are caught before WP-CLI can backtrace them.
+expect_shipping_match "the settings suite emits no PHP diagnostic at all" "^SHIPPING_SETTINGS_RUN_IS_CLEAN=PASS\\|measured:set_error_handler_over_the_whole_run\\|diagnostics:0\\|distinct:0\\|first:none\\|expected_redirects_silenced_before_wp_cli:yes$"
+expect_shipping_match "the settings suite leaves no fixture, option or account behind" "^SHIPPING_SETTINGS_FIXTURES_REMOVED=PASS\\|.*\\|fixture_orders_left:0\\|owned_option_rows_left:0\\|probe_user_rows_left:0$"
+expect_shipping_match "the settings suite contacted no carrier" "^SHIPPING_SETTINGS_NO_REAL_CARRIER_REQUEST=PASS\\|.*\\|real_requests_attempted:0\\|transport:mock_only$"
+
 expect_shipping_match "the translation catalogue matches the source exactly" "^SHIPPING_POT_CATALOG=PASS\\|pot:readable\\|source_literals:[0-9]+\\|catalog_msgids:[0-9]+\\|missing_from_catalog:0\\|stale_in_catalog:0\\|required_new_strings:63/63\\|retired_hardcoded_carrier_string:removed$"
 
 # An order belongs to ITS carrier, whatever the shop's default becomes.
@@ -1051,7 +1114,7 @@ expect_shipping_match "the behavioural suite passes as a whole" "^SHIPPING_VERIF
 
 # Activation and deactivation, driven for real through WP-CLI.
 expect_shipping_match "the shipping lifecycle test records its starting state and has its dependencies" "^SHIPPING_LIFECYCLE_START=PASS\\|measured:wp_cli\\|plugin:(in)?active\\|core:active\\|woocommerce:active\\|gate_option:(yes|no|absent)\\|.*\\|starting_state:recorded_not_asserted$"
-expect_shipping_match "activation registers every hook and opens no carrier route" "^SHIPPING_LIFECYCLE_ACTIVATION=PASS\\|active:yes\\|composition_root:loaded\\|booted:yes\\|missing_deps:none\\|classes_absent:none\\|hooks_unregistered:none\\|order_status_routes:none\\|runtime_gate_open:yes\\|automation:off\\|poll_actions:0$"
+expect_shipping_match "activation registers every hook and opens no carrier route" "^SHIPPING_LIFECYCLE_ACTIVATION=PASS\\|active:yes\\|composition_root:loaded\\|booted:yes\\|missing_deps:none\\|classes_absent:none\\|hooks_unregistered:none\\|order_status_routes:none\\|auto_create:off\\|runtime_gate_open:yes\\|automation:off\\|poll_actions:0$"
 expect_shipping_match "the local worker clears the visible record only on a real success" "^SHIPPING_SYNC_CLEARS_ONLY_ON_REAL_SUCCESS=PASS\\|measured:real_action_scheduler_worker\\|cases:3\\|owner_changed:ok/reason:claim_other_record/attempts:1/notes:1/pending:0/panel_manual:yes/mails:0/fulfilled:no\\|reference_gone:ok/reason:sync_reference_missing/attempts:1/notes:1/pending:0/panel_manual:yes/mails:0/fulfilled:n/a\\|record_gone:ok/reason:own_fulfillment_absent/attempts:1/notes:1/pending:0/panel_manual:yes/mails:0/fulfilled:missing$"
 expect_shipping_match "a proven booking clears the stale scheduling error and nothing else" "^SHIPPING_SYNC_SCHEDULE_ERROR_CLEARS_ON_PROOF=PASS\\|measured:real_action_scheduler_surfaces\\|first_error:schedule_failed\\|first_pending:0\\|after_error:cleared\\|after_pending:1\\|after_reason:claim_lock_contended\\|after_attempts:[2-9]\\|panel_shows_error:no\\|panel_shows_pending:yes\\|final_reason:cleared\\|final_attempts:0\\|final_error:cleared\\|mails:1$"
 expect_shipping_match "only a proven booking is reported as a retry" "^SHIPPING_SYNC_SCHEDULE_RESULT_IS_PROVEN=PASS\\|measured:real_action_scheduler_surfaces\\|cases:4\\|scheduler_unavailable:policy_only:ok\\|created:ok/follow_up:yes/pending:1/.*\\|already_pending:ok/follow_up:yes/pending:1/.*\\|lock_contended:ok/follow_up:no/pending:0/schedule:lock_contended/error_meta:lock_contended/notes:1/panel_reason:yes/panel_manual:yes/mails:0\\|schedule_failed:ok/follow_up:no/pending:0/schedule:schedule_failed/error_meta:schedule_failed/notes:1/panel_reason:yes/panel_manual:yes/mails:0$"

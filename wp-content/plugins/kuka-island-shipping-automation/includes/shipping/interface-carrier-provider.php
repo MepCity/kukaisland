@@ -40,6 +40,18 @@ interface Kuka_Island_Shipping_Carrier_Interface {
 	 * that does not track is worse than an absent one: it reaches the customer's
 	 * e-mail and the support conversation.
 	 */
+	/**
+	 * The two environments any adapter can be asked to work in.
+	 *
+	 * Declared HERE, on the contract, for the same reason the tracking sources
+	 * are: the settings layer and the order screen both have to name an
+	 * environment, and neither of them is allowed to name a courier. An adapter
+	 * aliases these rather than inventing a second vocabulary.
+	 */
+	public const ENVIRONMENT_TEST = 'test';
+
+	public const ENVIRONMENT_LIVE = 'live';
+
 	public const TRACKING_SOURCE_UNSET = '';
 
 	/** The carrier's own shipment id is the number that tracks. */

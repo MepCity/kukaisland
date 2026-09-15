@@ -111,6 +111,29 @@ final class Kuka_Island_Shipping_Order_Store {
 	/** When the carrier CONFIRMED the order. Not when the parcel started moving. */
 	public const META_ORDER_REGISTERED_AT = '_kuka_shipping_order_registered_at';
 
+	/**
+	 * How many times the automatic dispatcher has taken a turn on this order.
+	 *
+	 * A budget, and a visible one: an order that keeps failing must stop being
+	 * retried and must SAY how many times it was tried, or an operator reading
+	 * the panel cannot tell "never attempted" from "attempted and refused".
+	 */
+	public const META_DISPATCH_ATTEMPTS = '_kuka_shipping_dispatch_attempts';
+
+	/** The last safe code the automatic path stopped on. Empty on success. */
+	public const META_DISPATCH_REASON   = '_kuka_shipping_dispatch_reason';
+
+	/**
+	 * Which carrier phases the AUTOMATIC path has already issued a call for.
+	 *
+	 * Written immediately BEFORE the call and cleared only when the refusal
+	 * proves nothing was sent. It is what stops a machine from making a second
+	 * attempt at a write whose first attempt may have reached the carrier --
+	 * the state alone cannot say that, because a reconciliation can legitimately
+	 * put an order back into a state the phase is allowed from.
+	 */
+	public const META_DISPATCH_PHASES   = '_kuka_shipping_dispatch_phases';
+
 	/** The ZPL list is absent or unusable in an otherwise successful answer. */
 	public const LABEL_RESPONSE_INVALID  = 'label_response_invalid';
 
@@ -817,6 +840,9 @@ final class Kuka_Island_Shipping_Order_Store {
 			'last_operation'    => (string) $order->get_meta( self::META_LAST_OPERATION, true ),
 			'created_at'        => (int) $order->get_meta( self::META_CREATED_AT, true ),
 			'order_registered_at' => (int) $order->get_meta( self::META_ORDER_REGISTERED_AT, true ),
+			'dispatch_attempts' => (int) $order->get_meta( self::META_DISPATCH_ATTEMPTS, true ),
+			'dispatch_reason'   => (string) $order->get_meta( self::META_DISPATCH_REASON, true ),
+			'dispatch_phases'   => self::dispatch_phases( $order ),
 			'last_queried_at'   => (int) $order->get_meta( self::META_LAST_QUERIED_AT, true ),
 			'query_attempts'    => (int) $order->get_meta( self::META_QUERY_ATTEMPTS, true ),
 			'pending_mutation'  => self::pending_mutation( $order ),
@@ -1224,6 +1250,160 @@ final class Kuka_Island_Shipping_Order_Store {
 		}
 
 		return true;
+	}
+
+	/** Safe code: the dispatcher's opening record could not be proven on disk. */
+	public const DISPATCH_INTENT_UNVERIFIED = 'dispatch_intent_unverified';
+
+	/** Safe code: the phase mark could not be proven removed. */
+	public const DISPATCH_CLEAR_UNVERIFIED  = 'dispatch_phase_clear_unverified';
+
+	/**
+	 * OPEN one automatic phase: count the attempt, mark the phase, PROVE both.
+	 *
+	 * ONE PERSIST TURN, THEN ONE READBACK. update_meta_data() fills an object;
+	 * save_meta_data() is what puts it on disk, and it can fail without saying
+	 * so. This module has learned that twice already -- for the mutation intent
+	 * and for the notification claim -- and both now read their own write back
+	 * before anything irreversible happens.
+	 *
+	 * The dispatcher's bookkeeping is exactly as irreversible: the attempt count
+	 * IS the retry budget, and the phase mark is what stops a second automatic
+	 * attempt at a carrier write. Two unverified writes followed by a network
+	 * call meant the carrier could receive a request nothing local remembered
+	 * asking for -- and the next worker would send it again.
+	 *
+	 * BOTH ROWS ARE ATTEMPTED IN ONE PERSIST TURN, WHICH IS NOT THE SAME AS
+	 * ATOMIC. save_meta_data() may issue more than one SQL statement, so the
+	 * attempt count and the phase mark CAN land by halves -- and the safety here
+	 * does not rest on them not doing so. It rests on the readback: the record is
+	 * re-read through a FRESH WC_Order, past every cache this process holds, and
+	 * the attempt must be exactly one higher AND the phase list must match.
+	 * Complete loss and partial loss in either direction fail the same way --
+	 * refused, and nothing is sent.
+	 *
+	 * THE ATTEMPT IS THE TURN, NOT THE PHASE. A worker turn that does both
+	 * phases has spent ONE of its three attempts: the budget counts how many
+	 * times the automatic path has taken a run at this order, and charging it
+	 * twice for a single successful run would exhaust it in one and a half.
+	 * $count_attempt is therefore false for the second phase of the same turn --
+	 * the readback is identical either way.
+	 *
+	 * @return array{ok: bool, code: string, attempts: int}
+	 */
+	public static function begin_dispatch_phase( ?WC_Order $order, string $phase, bool $count_attempt = true ): array {
+		if ( ! $order instanceof WC_Order ) {
+			return array(
+				'ok'       => false,
+				'code'     => self::DISPATCH_INTENT_UNVERIFIED,
+				'attempts' => 0,
+			);
+		}
+
+		$order_id = (int) $order->get_id();
+		$attempts = (int) $order->get_meta( self::META_DISPATCH_ATTEMPTS, true );
+		$phases   = self::dispatch_phases( $order );
+
+		$expected_attempts = $count_attempt ? $attempts + 1 : $attempts;
+		$expected_phases   = in_array( $phase, $phases, true ) ? $phases : array_merge( $phases, array( $phase ) );
+
+		$order->update_meta_data( self::META_DISPATCH_ATTEMPTS, $expected_attempts );
+		$order->update_meta_data( self::META_DISPATCH_PHASES, $expected_phases );
+		self::persist( $order );
+
+		$fresh = self::reload( $order_id );
+
+		if ( ! $fresh instanceof WC_Order ) {
+			return array(
+				'ok'       => false,
+				'code'     => self::DISPATCH_INTENT_UNVERIFIED,
+				'attempts' => 0,
+			);
+		}
+
+		$stored_attempts = (int) $fresh->get_meta( self::META_DISPATCH_ATTEMPTS, true );
+		$stored_phases   = self::dispatch_phases( $fresh );
+
+		if ( $expected_attempts !== $stored_attempts || $expected_phases !== $stored_phases ) {
+			return array(
+				'ok'       => false,
+				'code'     => self::DISPATCH_INTENT_UNVERIFIED,
+				'attempts' => $stored_attempts,
+			);
+		}
+
+		return array(
+			'ok'       => true,
+			'code'     => '',
+			'attempts' => $stored_attempts,
+		);
+	}
+
+	/**
+	 * CLOSE one phase mark, for a call PROVEN not to have been sent.
+	 *
+	 * The proof that nothing went out is the caller's; this only records it --
+	 * and then proves the recording. A clear that did not land leaves the mark
+	 * on disk, and a retry booked in that belief would meet a mark saying the
+	 * phase was already issued: a turn that can only refuse itself. So an
+	 * unverified clear is reported and NO retry follows it.
+	 *
+	 * @return array{ok: bool, code: string}
+	 */
+	public static function clear_dispatch_phase( ?WC_Order $order, string $phase ): array {
+		if ( ! $order instanceof WC_Order ) {
+			return array(
+				'ok'   => false,
+				'code' => self::DISPATCH_CLEAR_UNVERIFIED,
+			);
+		}
+
+		$order_id = (int) $order->get_id();
+		$expected = array_values( array_filter( self::dispatch_phases( $order ), static fn ( string $value ): bool => $value !== $phase ) );
+
+		$order->update_meta_data( self::META_DISPATCH_PHASES, $expected );
+		self::persist( $order );
+
+		$fresh = self::reload( $order_id );
+
+		if ( ! $fresh instanceof WC_Order || $expected !== self::dispatch_phases( $fresh ) ) {
+			return array(
+				'ok'   => false,
+				'code' => self::DISPATCH_CLEAR_UNVERIFIED,
+			);
+		}
+
+		return array(
+			'ok'   => true,
+			'code' => '',
+		);
+	}
+
+	/**
+	 * The phases the automatic path has issued a call for, normalised.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function dispatch_phases( WC_Order $order ): array {
+		return array_values(
+			array_filter(
+				array_map( 'strval', (array) ( $order->get_meta( self::META_DISPATCH_PHASES, true ) ?: array() ) )
+			)
+		);
+	}
+
+	/**
+	 * Why the automatic path stopped, in the operator's own panel.
+	 *
+	 * @param string $code Allow-listed safe code, or '' on success.
+	 */
+	public static function record_dispatch_reason( ?WC_Order $order, string $code ): void {
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$order->update_meta_data( self::META_DISPATCH_REASON, $code );
+		self::persist( $order );
 	}
 
 	/**

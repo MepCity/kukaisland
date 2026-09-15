@@ -119,6 +119,18 @@ final class Kuka_Island_Shipping_Status_Poller {
 	 * string and any word nobody anticipated -- leaves it off.
 	 */
 	public static function automation_enabled(): bool {
+		/*
+		 * The panel owns this switch too, at the bottom of the same precedence
+		 * every other setting uses. Delegated to Settings when it is loaded so
+		 * there is one implementation of "constant beats environment beats
+		 * panel" in the module rather than one per caller.
+		 */
+		if ( ! defined( 'KUKA_SHIPPING_AUTOMATION' )
+			&& false === getenv( 'KUKA_SHIPPING_AUTOMATION' )
+			&& class_exists( 'Kuka_Island_Shipping_Settings' ) ) {
+			return Kuka_Island_Shipping_Settings::is_auto_poll_enabled();
+		}
+
 		if ( ! defined( 'KUKA_SHIPPING_AUTOMATION' ) ) {
 			$from_env = getenv( 'KUKA_SHIPPING_AUTOMATION' );
 
@@ -727,7 +739,7 @@ final class Kuka_Island_Shipping_Status_Poller {
 		return 'sync_not_scheduled:' . (string) $settled['reason'] . ':' . (string) $settled['schedule'];
 	}
 
-	private static function acquire_lock( int $order_id ): bool {
+	public static function acquire_lock( int $order_id ): bool {
 		global $wpdb;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -736,7 +748,7 @@ final class Kuka_Island_Shipping_Status_Poller {
 		return '1' === (string) $acquired;
 	}
 
-	private static function release_lock( int $order_id ): void {
+	public static function release_lock( int $order_id ): void {
 		global $wpdb;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching

@@ -65,6 +65,36 @@ JWT diske veya veritabanına **yazılmaz**; süreç içi tutulur.
 Kimlik dosyası repo dışında, mod `600` kalır:
 `~/.config/kuka-island/dhl-sandbox.env`.
 
+### Saklama önceliği (14 Eylül 2026'da değişti)
+
+Eski kural "sır asla option'a yazılmaz"dı. Gerekçesi hâlâ geçerli ve **düz
+option hâlâ yasak**; değişen, site sahibinin `wp-config.php` düzenleyemediği
+gerçeğidir. Kural artık bir yasak değil, bir **öncelik**:
+
+```text
+wp-config sabiti  >  ortam değişkeni  >  şifreli panel kasası
+```
+
+Kasa hakkında bağlayıcı olanlar:
+
+- Yalnız `Kuka_Island_Shipping_Secret_Vault` yazar ve okur. Başka hiçbir yerde
+  ikinci bir saklama yolu açılmaz.
+- `sodium_crypto_secretbox` — kimliği doğrulanmış şifreleme. libsodium yoksa
+  kasa **hiçbir şey saklamaz**; ev yapımı bir şifre veya base64 "gizleme"
+  eklenmez.
+- Anahtar saklanmaz; `wp-config` salt'larından `hash_hkdf` ile türetilir.
+- Option satırı **`autoload=no`**.
+- Panel kayıtlı sırrı **hiçbir biçimde** geri basmaz: tam, maskeli, uzunluk ve
+  `value` özniteliği dâhil.
+- Çözme başarısızsa `credentials_unreadable` ile **fail-closed**; boş dönüp
+  "hiç girilmemiş" gibi davranmak yasaktır.
+- Boş gönderilen alan mevcut değeri korur; silmek ayrı nonce ve açık onay ister.
+
+Bu sözleşmeyi değiştiren her düzenleme `scripts/verify-shipping-admin-settings.php`
+ölçümleriyle birlikte değişir. Özellikle `SHIPPING_SETTINGS_NO_SECRET_LEAK`
+ölçümünün **pozitif kontrolü** kaldırılamaz: sırları bulması gereken yerde
+bulmayan bir tarama boş yere yeşildir.
+
 ## Dokunulmayacaklar
 
 - `wp-content/plugins/kuka-island-core/assets/admin-orders.css` ve kargo
@@ -88,7 +118,10 @@ kurulmaz.
 
 ## Canlı ortam
 
-`KUKA_DHL_ENVIRONMENT=live` **bloke**dir. Resmî dokümanlarda tek sunucu
+`KUKA_DHL_ENVIRONMENT=live` — ve yönetici panelindeki "canlı" seçimi —
+**bloke**dir. Panelden seçilebilir olması bir kapı değildir: seçim güvenlik
+kapısını aşmaz, `DHL_Config::endpoints()` boş döner ve her işlem
+`live_environment_blocked` ile reddedilir. Resmî dokümanlarda tek sunucu
 sandbox'tır. Blok, doğrulanmış üretim base URL'i bu sınıfa eklenerek kalkar;
 boolean çevirerek değil.
 
@@ -99,9 +132,23 @@ ayrı bir iş kuralı doğrulaması gerektirir.
 
 ## Otomasyon
 
-`KUKA_SHIPPING_AUTOMATION` **açılmaz**. Açılması ayrı bir kullanıcı onayı
-gerektirir ve aktivasyon rehberinin son aşamasıdır. Açık olsa bile hiçbir hook
-gönderi **oluşturmaz**; yalnız sınırlı durum sorgusu zinciri çalışır.
+İki ayrı anahtar vardır ve karıştırılmaz:
+
+- **Otomatik durum sorgusu** (`KUKA_SHIPPING_AUTOMATION` / panel). Gönderi
+  **oluşturmaz**; yalnız sınırlı sorgu zinciri çalışır.
+- **Otomatik gönderi oluşturma** (`KUKA_SHIPPING_AUTO_CREATE` / panel).
+  **Varsayılan kapalı.** Açılması ayrı bir kullanıcı kararıdır.
+
+Otomatik oluşturma açıkken de bağlayıcı olanlar:
+
+- Checkout/ödeme kancası taşıyıcıyı **aramaz**; tek bir Action Scheduler işi
+  planlar ve döner.
+- Uygunluk bir **izin listesidir** (`Dispatcher::eligibility()`). Yeni bir koşul
+  eklemek listeye eklemekle olur; listede olmayan her durum kapalıdır.
+- İki faz ayrı kalır: `createOrder` → **veritabanından taze okuma** →
+  `createbarcode`. Tek zincirde birleştirilmez.
+- Taşıyıcıya ulaşmış belirsiz bir yazma **otomatik olarak tekrarlanmaz**. Bu
+  kuralın otomatik yol için bir istisnası yoktur.
 
 ## Commit ve push
 

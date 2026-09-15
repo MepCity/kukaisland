@@ -23,14 +23,18 @@ final class Kuka_Island_Shipping_Automation {
 	private Kuka_Island_Shipping_Manager $manager;
 	private Kuka_Island_Shipping_Status_Poller $poller;
 	private Kuka_Island_Shipping_Admin $admin;
+	private Kuka_Island_Shipping_Settings_Page $settings_page;
+	private Kuka_Island_Shipping_Dispatcher $dispatcher;
 
 	public function __construct() {
 		self::load_dependencies();
 
-		$this->registry = new Kuka_Island_Shipping_Carrier_Registry();
-		$this->manager  = new Kuka_Island_Shipping_Manager( $this->registry );
-		$this->poller   = new Kuka_Island_Shipping_Status_Poller( $this->manager );
-		$this->admin    = new Kuka_Island_Shipping_Admin( $this->manager );
+		$this->registry      = new Kuka_Island_Shipping_Carrier_Registry();
+		$this->manager       = new Kuka_Island_Shipping_Manager( $this->registry );
+		$this->poller        = new Kuka_Island_Shipping_Status_Poller( $this->manager );
+		$this->admin         = new Kuka_Island_Shipping_Admin( $this->manager );
+		$this->settings_page = new Kuka_Island_Shipping_Settings_Page( $this->manager );
+		$this->dispatcher    = new Kuka_Island_Shipping_Dispatcher( $this->manager );
 	}
 
 	public function register(): void {
@@ -38,7 +42,16 @@ final class Kuka_Island_Shipping_Automation {
 		add_filter( 'kuka_island_shipping_configuration_notices', array( self::class, 'adapter_notice' ) );
 
 		$this->admin->register();
+		$this->settings_page->register();
 		$this->poller->register();
+
+		/*
+		 * THE ONE PLACE AN ORDER EVENT CAN REACH SHIPPING, and it reaches a
+		 * SCHEDULER, never a carrier. The dispatcher's own switch is off by
+		 * default, so on a shop that has not asked for it these hooks decide
+		 * nothing: maybe_schedule() refuses on the first condition it checks.
+		 */
+		$this->dispatcher->register();
 	}
 
 	/**
@@ -147,6 +160,8 @@ final class Kuka_Island_Shipping_Automation {
 			'class-carrier-fault-classifier.php',
 			'class-shipment-status.php',
 			'class-shipment-runtime-gate.php',
+			'class-shipment-secret-vault.php',
+			'class-shipment-settings.php',
 			'class-shipment-reference.php',
 			'class-shipment-order-store.php',
 			'class-carrier-registry.php',
@@ -154,7 +169,9 @@ final class Kuka_Island_Shipping_Automation {
 			'class-shipment-notification.php',
 			'class-shipment-status-poller.php',
 			'class-shipment-manager.php',
+			'class-shipment-dispatcher.php',
 			'class-shipment-admin.php',
+			'class-shipment-settings-page.php',
 			'dhl/class-dhl-config.php',
 			'dhl/class-dhl-http-transport.php',
 			'dhl/class-dhl-token-store.php',
