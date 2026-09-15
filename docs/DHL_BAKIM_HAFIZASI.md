@@ -3169,6 +3169,25 @@ temizlenir; nonretryable bir hata başarı gibi temizlenmez.
 
 ---
 
+## K-73 — Ayar suite'i eklentinin başlangıç durumuna bağlıydı
+
+- **Tarih:** 2026-09-15
+- **Belirti:** Yerelde iki gerçek `make verify` geçerken GitHub Actions temiz
+  kurulumunda `Kuka_Island_Shipping_Activator` sınıfı bulunamadığı için ayar
+  suite'i fatal ile durdu.
+- **Kök neden:** Yerelde eklenti aktifti ve WordPress bootstrap sınıfı zaten
+  yüklemişti. Teslim durumunda eklenti pasif olduğunda çevrimdışı modül
+  yükleyicisi yalnız davranış sınıflarını yüklüyor; aktivatör ise suite'in
+  deaktivasyon temizliği ölçümüne gelene kadar hiç yüklenmiyordu.
+- **Çözüm:** Ayar suite'i gerçek aktivatör dosyasını açıkça yükler. Böylece
+  ölçüm eklentinin başlangıçta aktif veya pasif olmasına bağlı değildir;
+  üretim yükleme sırası ve eklenti davranışı değişmez.
+- **Tekrar yaşanırsa ilk bak:** Yerelde var, temiz CI'da yok olan bir sınıfta
+  önce sınıfın gerçekten suite tarafından mı yüklendiğini, yoksa aktif eklenti
+  durumundan tesadüfen mi miras kaldığını kontrol et.
+
+---
+
 ## Bakım sırası
 
 Bir kargo belirtisi geldiğinde izlenecek sıra:

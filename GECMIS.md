@@ -1248,6 +1248,14 @@ iyi ihtimalle gürültü, en kötüsünde çalışan bir sözleşmeyi bozmaktır
 bunun tersini yaşamıştım — düzelttiğimi sanıp düzeltmemiştim (K-71) — ve iki
 hata da aynı kökten geliyor: **rapor kanıt değildir, `grep` kanıttır.**
 
+## 15.10 Temiz CI başlangıç durumu — 15 Eylül
+
+GitHub Actions temiz kurulumunda kargo eklentisi pasif başlıyordu. Ayar suite'i
+deaktivasyon temizliğini gerçek aktivatörle ölçmesine rağmen o sınıfı yalnız
+aktif yerel eklentinin bootstrap'ından tesadüfen alıyordu; CI bu yüzden sınıf
+bulunamadı fatal'i verdi. Suite aktivatör dosyasını açıkça yükleyecek hâle
+getirildi. Üretim kodunun yükleme sırası değişmedi; ayrıntı K-73'tedir.
+
 ## 16. Bu belgeyi okuyan yapay zekâya
 
 1. **Ölç, tahmin etme.** Bu projede her "tamamlandı" iddiası ekran görüntüsü veya sayı ile desteklenir. Desteklenmiyorsa "doğrulanmadı" yaz.

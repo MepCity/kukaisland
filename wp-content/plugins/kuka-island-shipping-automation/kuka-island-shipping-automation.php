@@ -29,9 +29,10 @@
  *      automation off            order at a time, and continue a half-finished
  *                                one from its barcode stage. Nothing happens on
  *                                its own: no order status hook books anything.
- *   4. Plugin active,         -- the bounded status poller runs for orders that
- *      KUKA_DHL_AUTOMATION       already have a shipment. Even here nothing
- *      on                        CREATES a shipment without an operator.
+ *   4. Plugin active,         -- automatic creation and the bounded status
+ *      automation enabled       poller run only after the shop owner enables
+ *                                their separate panel switches. Automatic
+ *                                creation is OFF by default.
  *
  * The manual route never closes. At every level an operator can type a tracking
  * number into WooCommerce's own fulfilment drawer and be done.

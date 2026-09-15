@@ -94,6 +94,15 @@ require_once __DIR__ . '/lib-shipping-cache-custodian.php';
 $module = kuka_shipping_load_module();
 
 /*
+ * This suite exercises the real deactivation cleanup below. The activator is
+ * bootstrapped by WordPress only when the plugin itself is active, whereas the
+ * suite must mean the same thing when it starts from the delivered inactive
+ * state. Load that production class explicitly instead of inheriting it from
+ * the machine's current plugin state.
+ */
+require_once KUKA_ISLAND_SHIPPING_PATH . 'includes/class-activator.php';
+
+/*
  * THE SHOP'S OWN CBS CACHE IS NOT THIS SUITE'S TO WRITE.
  *
  * Every createOrder in here resolves an address, and the resolver caches the
