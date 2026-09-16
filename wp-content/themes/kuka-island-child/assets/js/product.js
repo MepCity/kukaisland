@@ -152,8 +152,12 @@
   let scale = 1;
   let translateX = 0;
   let translateY = 0;
+  let originX = 50;
+  let originY = 50;
   const pointers = new Map();
   let pinchDistance = 0;
+  let pointerTravel = 0;
+  let suppressImageClick = false;
 
   const applyTransform = () => {
     const image = host?.querySelector("img");
@@ -161,10 +165,23 @@
     image.style.setProperty("--zoom-scale", String(scale));
     image.style.setProperty("--zoom-x", `${translateX}%`);
     image.style.setProperty("--zoom-y", `${translateY}%`);
+    image.style.setProperty("--zoom-origin-x", `${originX}%`);
+    image.style.setProperty("--zoom-origin-y", `${originY}%`);
     viewport?.classList.toggle("is-zoomed", scale > 1);
     lightbox?.querySelector("[data-lightbox-zoom]")?.setAttribute("aria-pressed", String(scale > 1));
   };
-  const resetZoom = () => { scale = 1; translateX = 0; translateY = 0; applyTransform(); };
+  const resetZoom = () => { scale = 1; translateX = 0; translateY = 0; originX = 50; originY = 50; applyTransform(); };
+  const zoomFromPoint = (event, image) => {
+    if (scale > 1) { resetZoom(); return; }
+    const bounds = image.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    originX = Math.max(0, Math.min(100, (event.clientX - bounds.left) / bounds.width * 100));
+    originY = Math.max(0, Math.min(100, (event.clientY - bounds.top) / bounds.height * 100));
+    translateX = 0;
+    translateY = 0;
+    scale = 2;
+    applyTransform();
+  };
   const showLightboxImage = (index) => {
     const items = galleryItems();
     if (!host || !items.length) return;
@@ -182,8 +199,22 @@
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-lightbox-previous]")) showLightboxImage(lightboxIndex - 1);
     if (event.target.closest("[data-lightbox-next]")) showLightboxImage(lightboxIndex + 1);
-    if (event.target.closest("[data-lightbox-zoom]")) { scale = scale > 1 ? 1 : 2; applyTransform(); }
+    if (event.target.closest("[data-lightbox-zoom]")) {
+      if (scale > 1) resetZoom();
+      else { originX = 50; originY = 50; scale = 2; applyTransform(); }
+    }
   });
+	lightbox?.addEventListener("click", (event) => {
+	  const image = event.target.closest("[data-lightbox-image-host] img");
+	  if (image) {
+		if (suppressImageClick) { suppressImageClick = false; return; }
+		zoomFromPoint(event, image);
+		return;
+	  }
+	  if (event.target.matches("[data-lightbox-viewport], [data-lightbox-image-host]")) {
+		lightbox.querySelector("[data-panel-close]")?.click();
+	  }
+	});
 	document.addEventListener("kuka:panel-opened", (event) => {
 	  if (event.detail?.panel !== lightbox) return;
 	  showLightboxImage(Number(event.detail.trigger?.dataset.galleryIndex || 0));
@@ -203,11 +234,16 @@
     scale = Math.max(1, Math.min(4, scale + (event.deltaY < 0 ? 0.25 : -0.25)));
     applyTransform();
   }, { passive: false });
-  viewport?.addEventListener("pointerdown", (event) => { viewport.setPointerCapture(event.pointerId); pointers.set(event.pointerId, event); });
+  viewport?.addEventListener("pointerdown", (event) => {
+    viewport.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, event);
+    pointerTravel = 0;
+  });
   viewport?.addEventListener("pointermove", (event) => {
     if (!pointers.has(event.pointerId)) return;
     const previous = pointers.get(event.pointerId);
     pointers.set(event.pointerId, event);
+    pointerTravel += Math.hypot(event.clientX - previous.clientX, event.clientY - previous.clientY);
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -219,7 +255,11 @@
     }
     applyTransform();
   });
-  const releasePointer = (event) => { pointers.delete(event.pointerId); if (pointers.size < 2) pinchDistance = 0; };
+  const releasePointer = (event) => {
+    if (pointerTravel > 5 || pointers.size > 1) suppressImageClick = true;
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) pinchDistance = 0;
+  };
   viewport?.addEventListener("pointerup", releasePointer);
   viewport?.addEventListener("pointercancel", releasePointer);
 })();

@@ -17,14 +17,35 @@ if ( ! $image_ids ) { $image_ids[] = 0; }
 		<?php foreach ( $image_ids as $index => $image_id ) : ?>
 			<?php
 			$full        = $image_id ? wp_get_attachment_image_url( $image_id, 'full' ) : wc_placeholder_img_src( 'full' );
-			$display     = $image_id ? wp_get_attachment_image_src( $image_id, 'large' ) : false;
+			// This gallery spans roughly two thirds of a desktop viewport. The
+			// default `large` portrait derivative is only 683px wide and becomes
+			// visibly soft when stretched here. Use WordPress' web-scaled full image
+			// (not the multi-megabyte camera original) with a responsive srcset.
+			$display     = $image_id ? wp_get_attachment_image_src( $image_id, 'full' ) : false;
 			$display_url = $display ? $display[0] : wc_placeholder_img_src( 'woocommerce_single' );
 			$width       = $display ? $display[1] : 600;
 			$height      = $display ? $display[2] : 800;
 			$alt         = $image_id ? get_post_meta( $image_id, '_wp_attachment_image_alt', true ) : __( 'Ürün görseli', 'kuka-island' );
 			?>
 			<button class="kuka-product-gallery__item" type="button" data-gallery-item data-gallery-index="<?php echo esc_attr( $index ); ?>" data-full="<?php echo esc_url( $full ); ?>" data-panel-trigger="kuka-product-lightbox" aria-controls="kuka-product-lightbox" aria-expanded="false" aria-label="<?php echo esc_attr( sprintf( __( '%1$s; tam ekran aç (%2$d/%3$d)', 'kuka-island' ), get_post_meta( $image_id, '_wp_attachment_image_alt', true ), $index + 1, count( $image_ids ) ) ); ?>">
-				<img src="<?php echo esc_url( $display_url ); ?>" width="<?php echo esc_attr( $width ); ?>" height="<?php echo esc_attr( $height ); ?>" alt="<?php echo esc_attr( $alt ); ?>" loading="<?php echo 0 === $index ? 'eager' : 'lazy'; ?>" decoding="async">
+				<?php if ( $image_id ) : ?>
+					<?php
+					echo wp_get_attachment_image(
+						$image_id,
+						'full',
+						false,
+						array(
+							'alt'           => $alt,
+							'loading'       => 0 === $index ? 'eager' : 'lazy',
+							'decoding'      => 'async',
+							'fetchpriority' => 0 === $index ? 'high' : 'auto',
+							'sizes'         => '(max-width: 47.99em) 100vw, 67vw',
+						)
+					); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+					?>
+				<?php else : ?>
+					<img src="<?php echo esc_url( $display_url ); ?>" width="<?php echo esc_attr( $width ); ?>" height="<?php echo esc_attr( $height ); ?>" alt="<?php echo esc_attr( $alt ); ?>" loading="<?php echo 0 === $index ? 'eager' : 'lazy'; ?>" decoding="async">
+				<?php endif; ?>
 			</button>
 		<?php endforeach; ?>
 	</div>

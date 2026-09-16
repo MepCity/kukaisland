@@ -108,6 +108,40 @@
 	color: #b32d2e;
 }
 
+/* Keep the two native product draft actions on one calm, shared baseline. */
+.post-type-product #minor-publishing-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+
+.post-type-product #save-action,
+.post-type-product #preview-action {
+	display: flex;
+	align-items: stretch;
+	float: none;
+	margin: 0;
+}
+
+.post-type-product #save-action {
+	flex: 1 1 auto;
+}
+
+.post-type-product #preview-action {
+	flex: 0 0 auto;
+}
+
+.post-type-product #minor-publishing-actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	min-height: 40px;
+	margin: 0;
+	white-space: nowrap;
+}
+
 .taxonomy-product_cat .term-name-wrap,
 .taxonomy-pa_renk .term-name-wrap,
 .taxonomy-pa_kesim .term-name-wrap,

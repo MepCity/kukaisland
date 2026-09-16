@@ -331,7 +331,7 @@ used_tokens=$(mktemp)
 defined_tokens=$(mktemp)
 grep -hoE 'var\(--[a-z0-9-]+' wp-content/themes/kuka-island-child/assets/css/*.css | sed 's/var(--//' | sort -u > "$used_tokens"
 grep -hoE -- '--[a-z0-9-]+[[:space:]]*:' wp-content/themes/kuka-island-child/assets/css/tokens.css | sed -E 's/^--//;s/[[:space:]]*:.*$//' | sort -u > "$defined_tokens"
-undefined_tokens=$(comm -23 "$used_tokens" "$defined_tokens" | grep -Ev '^(hero-desktop|hero-mobile|swatch-color|zoom-scale|zoom-x|zoom-y)$' | wc -l | tr -d ' ')
+undefined_tokens=$(comm -23 "$used_tokens" "$defined_tokens" | grep -Ev '^(hero-desktop|hero-mobile|swatch-color|zoom-origin-x|zoom-origin-y|zoom-scale|zoom-x|zoom-y)$' | wc -l | tr -d ' ')
 rm "$used_tokens" "$defined_tokens"
 newsletter_mail_calls=$(search_count 'wp_mail[[:space:]]*\(' wp-content/plugins/kuka-island-core/includes/class-newsletter.php)
 newsletter_blue=$(search_count '\bblue\b|#(00f|0000ff)\b' wp-content/themes/kuka-island-child/assets/css)
@@ -1587,6 +1587,8 @@ expect_line "mobile Safari arrows use text presentation" "MOBILE_SAFARI_ARROWS=t
 expect_line "hero Est. 2026 is on its own line" "HERO_EST_LINE=separate"
 expect_line "language hover keeps color and adds underline" "LANGUAGE_HOVER=same-color+underline"
 expect_line "story media waits for target image and warms the next" "STORY_MEDIA_HANDOFF=load-guarded+next-warmed"
+expect_line "product lightbox closes on empty space and zooms from the clicked point" "PRODUCT_LIGHTBOX_POINTERS=point-zoom+backdrop-close+drag-guard"
+expect_line "product detail avoids stretching the undersized large derivative" "PRODUCT_DETAIL_IMAGE_QUALITY=responsive-full"
 expect_line "SMTP constant names are absent from the database" "SMTP_CONFIG_DATABASE_ROWS=0"
 expect_value "only the output-suppressed core installer uses a prompt" "$prompted_passwords" "1"
 expect_value "installation passwords never enter process arguments" "$password_argv" "0"

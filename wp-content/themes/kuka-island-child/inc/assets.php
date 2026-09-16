@@ -93,7 +93,10 @@ function kuka_island_coming_soon_assets(): void {
 function kuka_island_child_enqueue_assets(): void {
 	kuka_island_enqueue_style( 'tokens', array( 'ct-main-styles' ) );
 	kuka_island_enqueue_style( 'global', array( 'kuka-island-tokens' ) );
-	if ( is_front_page() || is_shop() || is_product_taxonomy() ) {
+	// Product pages render the same catalog cards inside WooCommerce's related
+	// products section. Without the catalog layer, every gallery image in a
+	// related card participates in normal flow and stretches that card.
+	if ( is_front_page() || is_shop() || is_product_taxonomy() || is_product() ) {
 		kuka_island_enqueue_style( 'catalog', array( 'kuka-island-global' ) );
 	}
 	if ( is_product() ) {
@@ -124,7 +127,7 @@ function kuka_island_child_enqueue_assets(): void {
 	if ( is_page( 'hakkimizda' ) ) {
 		kuka_island_enqueue_script( 'story', array( 'kuka-island-storefront' ) );
 	}
-	if ( is_front_page() || is_shop() || is_product_taxonomy() ) {
+	if ( is_front_page() || is_shop() || is_product_taxonomy() || is_product() ) {
 		kuka_island_enqueue_script( 'catalog', array( 'kuka-island-storefront' ) );
 	}
 	// The cart panel is rendered server-side. Its own mutations refresh only
@@ -153,7 +156,7 @@ function kuka_island_child_enqueue_assets(): void {
 				'stock'     => $variation->get_stock_quantity(),
 				'id'        => $variation->get_id(),
 				'gallery'   => array_map(
-					static fn( int $id ): array => array( 'src' => wp_get_attachment_image_url( $id, 'large' ), 'full' => wp_get_attachment_image_url( $id, 'full' ), 'alt' => get_post_meta( $id, '_wp_attachment_image_alt', true ) ),
+					static fn( int $id ): array => array( 'src' => wp_get_attachment_image_url( $id, 'full' ), 'full' => wp_get_attachment_image_url( $id, 'full' ), 'alt' => get_post_meta( $id, '_wp_attachment_image_alt', true ) ),
 					$gallery_ids
 				),
 			);

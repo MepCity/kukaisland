@@ -325,6 +325,7 @@
   height: auto;
   max-width: 100%;
   max-height: calc(100svh - var(--header-height) - var(--space-8));
+  transform-origin: var(--zoom-origin-x, 50%) var(--zoom-origin-y, 50%);
   transform: translate(var(--zoom-x, 0), var(--zoom-y, 0)) scale(var(--zoom-scale, 1));
   transition: transform var(--duration-fast) var(--ease-out);
   user-select: none;

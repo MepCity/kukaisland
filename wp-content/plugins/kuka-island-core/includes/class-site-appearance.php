@@ -604,7 +604,7 @@ final class Kuka_Island_Core_Site_Appearance {
 		wp_enqueue_style( 'kuka-island-admin-menu', plugins_url( 'assets/admin-menu.css', KUKA_ISLAND_CORE_FILE ), array(), '0.2.1' );
 		$kuka_screen = str_contains( $hook, 'kuka-island' ) || in_array( $hook, array( 'post.php', 'post-new.php', 'edit-tags.php', 'term.php' ), true );
 		if ( ! $kuka_screen ) { return; }
-		wp_enqueue_style( 'kuka-island-admin', plugins_url( 'assets/admin.css', KUKA_ISLAND_CORE_FILE ), array(), '0.2.0' );
+		wp_enqueue_style( 'kuka-island-admin', plugins_url( 'assets/admin.css', KUKA_ISLAND_CORE_FILE ), array(), '0.2.1' );
 		if ( in_array( $hook, array( 'edit-tags.php', 'term.php' ), true ) ) {
 			wp_enqueue_script( 'kuka-island-admin', plugins_url( 'assets/admin.js', KUKA_ISLAND_CORE_FILE ), array(), '0.2.0', true );
 		}
