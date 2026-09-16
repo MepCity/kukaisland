@@ -268,10 +268,11 @@ email_smtp=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email
 email_design=$(docker compose run --rm -T wp-cli php /project-scripts/verify-email-design.php measure)
 printf '%s\n%s\n%s\n%s\n' "$email_throwables" "$email_disabled_mail" "$email_smtp" "$email_design"
 
-response_headers=$(curl -fsS -D - -o /dev/null "$WP_URL/" | tr -d '\r')
-security_txt=$(curl -fsSL --max-redirs 3 "$WP_URL/.well-known/security.txt")
-xmlrpc_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: text/xml' --data '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' "$WP_URL/xmlrpc.php")
-asset_cache_headers=$(curl -fsSI "$WP_URL/wp-content/themes/kuka-island-child/assets/css/global.css" | tr -d '\r')
+verify_base_url=${WP_URL%/}
+response_headers=$(curl -fsS -D - -o /dev/null "$verify_base_url/" | tr -d '\r')
+security_txt=$(curl -fsSL --max-redirs 3 "$verify_base_url/.well-known/security.txt")
+xmlrpc_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: text/xml' --data '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' "$verify_base_url/xmlrpc.php")
+asset_cache_headers=$(curl -fsSI "$verify_base_url/wp-content/themes/kuka-island-child/assets/css/global.css" | tr -d '\r')
 header_present() {
   printf '%s\n' "$response_headers" | grep -Eiq "^$1:"
 }
