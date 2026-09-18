@@ -735,6 +735,7 @@ expect_product_card_line "Turkish variable sale card shows one lira" "PRODUCT_CA
 expect_product_card_line "Turkish variable sale card never invents zero lira" "PRODUCT_CARD_ZERO_LIRA_TR=absent"
 expect_product_card_line "English variable sale card shows one lira" "PRODUCT_CARD_ONE_LIRA_EN=present"
 expect_product_card_line "English variable sale card never invents zero lira" "PRODUCT_CARD_ZERO_LIRA_EN=absent"
+expect_product_card_line "size-only variable card reads variation stock without requiring a color" "PRODUCT_CARD_SIZE_ONLY_STOCK=S:available|M:available|L:available"
 expect_line "three size guide tables" "SIZE_GUIDE_TABLES=3"
 expect_line "size set narrowed to S M L" "SIZE_TERMS=S,M,L"
 expect_line "size term menu order" "SIZE_TERM_ORDER=S:0|M:1|L:2"

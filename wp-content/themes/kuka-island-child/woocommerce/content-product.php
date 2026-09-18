@@ -24,6 +24,7 @@ if ( is_array( $colors ) ) {
 	}
 }
 $color_data = array();
+$size_data = array();
 $variation_images = array();
 if ( $product->is_type( 'variable' ) ) {
 	foreach ( $product->get_children() as $variation_id ) {
@@ -32,6 +33,9 @@ if ( $product->is_type( 'variable' ) ) {
 		$attributes = $variation->get_attributes();
 		$color_slug = (string) ( $attributes['pa_renk'] ?? '' );
 		$size_slug  = (string) ( $attributes['pa_beden'] ?? '' );
+		if ( $size_slug ) {
+			$size_data[ $size_slug ] = ( $size_data[ $size_slug ] ?? false ) || $variation->is_in_stock();
+		}
 		if ( ! $color_slug ) { continue; }
 		$image_id = $variation->get_image_id();
 		if ( $image_id ) { $variation_images[] = $image_id; }
@@ -86,7 +90,7 @@ if ( ! $product->is_in_stock() ) {
 		<p class="kuka-product-card__color"><span data-card-color-name><?php echo esc_html( $selected_color ? $color_data[ $selected_color ]['name'] : ( $colors[0]->name ?? '' ) ); ?></span><?php if ( $colors ) : ?> · <?php echo esc_html( sprintf( _n( '%d renk', '%d renk', count( $colors ), 'kuka-island' ), count( $colors ) ) ); ?><?php endif; ?></p>
 		<?php if ( ! empty( $card_settings['card_stock_enabled'] ) ) : ?><div class="kuka-product-card__stock-row">
 			<span class="kuka-product-card__sku"><?php echo esc_html( $product->get_sku() ); ?></span>
-			<?php if ( $sizes ) : ?><span class="kuka-product-card__sizes" aria-label="<?php esc_attr_e( 'Beden stokları', 'kuka-island' ); ?>"><?php foreach ( $sizes as $size ) : $available = (bool) ( $color_data[ $selected_color ]['sizes'][ $size->slug ] ?? false ); ?><span data-card-size="<?php echo esc_attr( $size->slug ); ?>"<?php echo $available ? '' : ' class="is-sold-out"'; ?>><?php echo esc_html( kuka_island_term_name( $size ) ); ?></span><?php endforeach; ?></span><?php endif; ?>
+			<?php if ( $sizes ) : ?><span class="kuka-product-card__sizes" aria-label="<?php esc_attr_e( 'Beden stokları', 'kuka-island' ); ?>"><?php foreach ( $sizes as $size ) : $available = (bool) ( $selected_color ? ( $color_data[ $selected_color ]['sizes'][ $size->slug ] ?? false ) : ( $size_data[ $size->slug ] ?? false ) ); ?><span data-card-size="<?php echo esc_attr( $size->slug ); ?>"<?php echo $available ? '' : ' class="is-sold-out"'; ?>><?php echo esc_html( kuka_island_term_name( $size ) ); ?></span><?php endforeach; ?></span><?php endif; ?>
 		</div><?php endif; ?>
 	</a>
 </li>
