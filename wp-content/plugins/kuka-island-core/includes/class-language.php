@@ -95,8 +95,8 @@ final class Kuka_Island_Core_Language {
 				'service_3_copy_en' => 'Weekdays 09:00–18:00 · WhatsApp',
 			),
 			'navigation' => array(
-				'main_labels_en' => "New Arrivals\nOur Story",
-				'categories_labels_en' => "Bikinis\nSwimsuits\nBeachwear\nCollections",
+				'main_labels_en' => "NEW\nOUR STORY",
+				'categories_labels_en' => "BIKINI\nSWIMSUITS\nBEACHWEAR\nSETS\nCOLLECTION",
 				'help_labels_en' => "Size Guide\nShipping & Delivery\nReturns\nFrequently Asked Questions\nContact\nOrder Tracking",
 			),
 			'footer' => array(

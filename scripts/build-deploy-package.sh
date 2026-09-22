@@ -32,6 +32,7 @@ tar -czf "$archive" \
 	wp-content/plugins/kuka-island-edm \
 	wp-content/plugins/kuka-island-shipping-automation \
 	docs/DEPLOY_RUNBOOK.md \
+	docs/SIZDEN_GELENLER.md \
 	docs/KARGO_SCROLL_KORUMA_NOTU.md \
 	docs/EDM_AKTIVASYON_REHBERI.md \
 	docs/EDM_BAKIM_HAFIZASI.md \

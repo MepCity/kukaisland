@@ -1266,3 +1266,11 @@ getirildi. Üretim kodunun yükleme sırası değişmedi; ayrıntı K-73'tedir.
 6. **Token dışına çıkma.** px, hex, rgba, gölge — hepsi sıfır.
 7. **Commit mesajına imza atma.**
 8. **Kendi hatanı bulursan düzelt ve devam et.** Bu belgede benim üç hatam yazılı; onları saklamak projeye zarar verirdi.
+
+## 17. Sizden Gelenler — 22 Eylül
+
+Müşteri, ana sayfanın tek fotoğraflı Editoryal alanını sosyal medyadan seçilen müşteri fotoğraflarıyla değiştirmeyi onayladı. Sürekli dönen kartlar yerine kademeli dört fotoğraf ve mobil kaydırma seçildi; ziyaretçi fotoğraf gönderme formu açıkça kapsam dışında bırakıldı. Son kullanıcı düzeltmesiyle fotoğraf altı metinler, modal ve izin/tarih/not alanları kaldırıldı. Fotoğraflar ayrı Kuka Island panelinde taslak/yayın/arşiv ve isteğe bağlı doğrudan ürün URL’iyle yönetiliyor. Başlangıç medyası açık bir içe aktarım eylemiyle WordPress kütüphanesine alınır; mevcut galeri ezilmez.
+
+Docker yeni kurulumda BuildKit disk I/O hatası verdi. Testler ayrı Playground üzerinde yürütüldü; bunun sabitlenmiş üretim yığını olmadığı raporda açıkça ayrıldı. Gerçek tarayıcıda mobil/masaüstü galeri, doğrudan ürün sayfasına tıklama, panel kaydı/sıralama/arşiv/toplu ekleme ve son şemaya uygun 16 sunucu davranış kontrolü ölçüldü. Canlı aktarım yapılmadı. Kullanım ve kanıt sınırları `docs/SIZDEN_GELENLER.md` içinde.
+
+23 Eylül'de canlı üst menü panelden **YENİ, BİKİNİ, PLAJ GİYİM, KOLEKSİYON, HİKAYEMİZ** sırasına alındı. Mayo ve Takımlar silinmedi; yalnız header görünürlükleri kapatıldı. Aynı sözleşme temiz kurulum varsayılanlarına ve doğrulama kapısına işlendi.

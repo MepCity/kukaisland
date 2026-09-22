@@ -58,6 +58,7 @@ for required in \
   'wp-content/plugins/kuka-island-core/kuka-island-core.php' \
   'wp-content/themes/kuka-island-child/style.css' \
   'docs/DEPLOY_RUNBOOK.md' \
+  'docs/SIZDEN_GELENLER.md' \
   'docs/KARGO_SCROLL_KORUMA_NOTU.md' \
   'docs/EDM_AKTIVASYON_REHBERI.md' \
   'docs/EDM_BAKIM_HAFIZASI.md' \
@@ -85,5 +86,5 @@ if [ -n "$missing" ] || [ "$checksum" != 'yes' ] || [ "$leaked" != '0' ]; then
   exit 1
 fi
 
-printf 'DEPLOY_PACKAGE_CONTENTS=PASS|measured:built_archive_listing|required_paths:24|missing:none|edm_entries:%s|shipping_entries:%s|checksum:%s|credential_files:0|built_in_temp_dir:yes\n' \
+printf 'DEPLOY_PACKAGE_CONTENTS=PASS|measured:built_archive_listing|required_paths:25|missing:none|edm_entries:%s|shipping_entries:%s|checksum:%s|credential_files:0|built_in_temp_dir:yes\n' \
   "$edm_entries" "$shipping_entries" "$checksum"

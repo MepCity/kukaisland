@@ -1,0 +1,17 @@
+#kuka-community-admin { max-width: 1200px; }
+#kuka-community-admin details { margin: 24px 0; }
+#kuka-community-admin summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
+.kuka-community-row { border: 1px solid #c3c4c7; background: #fff; margin: 20px 0; }
+.kuka-community-row__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid #ddd; cursor: grab; }
+.kuka-community-row__body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; padding: 20px; }
+.kuka-community-fields--photo { align-content: start; }
+.kuka-community-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.kuka-community-fields--photo { grid-template-columns: 1fr; }
+#kuka-community-admin label { display: flex; flex-direction: column; gap: 6px; }
+#kuka-community-admin label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+#kuka-community-admin input:not([type="checkbox"]), #kuka-community-admin select { width: 100% !important; max-width: 100%; min-width: 0; }
+.kuka-community-preview { aspect-ratio: 2 / 3; background: #f0e9dc; margin-bottom: 12px; }
+.kuka-community-preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.kuka-community-save { position: sticky; bottom: 0; display: flex; gap: 16px; align-items: center; padding: 16px; background: #fff; border-top: 1px solid #c3c4c7; z-index: 2; }
+@media (max-width: 782px) { .kuka-community-row__body, .kuka-community-fields--photo { align-content: start; }
+.kuka-community-fields { grid-template-columns: 1fr; } .kuka-community-preview { max-width: 240px; } .kuka-community-save { flex-wrap: wrap; } }

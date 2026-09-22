@@ -1606,6 +1606,10 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 38. Karar günlüğü
 
+23 Eylül 2026 — Üst menü sadeleştirildi ve sırası **YENİ → BİKİNİ → PLAJ GİYİM → KOLEKSİYON → HİKAYEMİZ** olarak sabitlendi. Mayo ve Takımlar ürün kategorileri ile ana sayfa indeks kayıtları korunur; yalnız üst menü görünürlükleri kapatılır. Canlı panel kaydı ve yerel varsayılan/test sözleşmesi aynı sıraya getirildi.
+
+22 Eylül 2026 — Kullanıcı onayı: Editoryal alan yerine **Sizden Gelenler / #kukagirls🌴**. Fotoğraflar yalnız operatör tarafından sosyal medyadan seçilip panelden yönetilir; ziyaretçi yükleme formu yok. Kademeli masaüstü galeri, mobil kaydırma, otomatik dönüş kapalı, yalnız fotoğraflar ve isteğe bağlı doğrudan ürün bağlantısı. 23 Eylül son isteğiyle fotoğraf altı yazı/numara, modal ve izin/tarih/not alanları kaldırıldı. Ayrıntılar: `docs/SIZDEN_GELENLER.md`.
+
 | Tarih | Karar | Gerekçe |
 |---|---|---|
 | 2026-09-14 | Otomatik kargo worker'ının defteri ağ kapısının önünde doğrulanıyor: `begin_dispatch_phase()` deneme sayısını ve faz listesini tek persist turunda yazıp taze `WC_Order` ile geri okuyor, uymazsa `dispatch_intent_unverified` ile taşıyıcıya çıkmıyor. **Güvence atomiklik değildir** — tek persist turu birden çok SQL ifadesi çıkarabilir ve ikili yarım inebilir; duran şey, taze okumanın iki değeri de kanıtlamak zorunda olmasıdır, ve tam kayıp ile her iki yöndeki yarım kayıp aynı kapıda kapanır; `clear_dispatch_phase()` kaldırmayı aynı şekilde doğruluyor ve doğrulanamazsa retry planlamıyor. Worker yürütmesi üçüncü ve ayrı bir kilitle korunuyor (`kuka_ship_dispatch_<id>`, bekleme 0, taze okumadan önce alınıp yerleşime kadar tutuluyor). Deneme tur başına sayılıyor | `save_meta_data()` hata vermeden başarısız olabilir; sabotaj ölçümü hiçbir satır diske inmemişken taşıyıcıya iki yazma gittiğini gösterdi (`first_write=2`). İki worker senaryosunda kaybeden, hiçbir şey göndermediğine inanarak kazananın dayandığı ortak faz işaretini siliyordu; planlama kilidi iş çalışmadan önce bırakıldığı, mutasyon kilidi ise Manager'ın içinde alındığı için ikisi de bunu kapatamıyordu |
@@ -1851,6 +1855,9 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 ---
 
 ## 39. Mevcut durum
+
+- [x] Sizden Gelenler yerel uygulaması: dört başlangıç görseli, toplu medya seçimi, sıralama, taslak/yayın/arşiv, TR/EN bölüm metinleri ve doğrudan ürün URL’i. Fotoğraf altı metin, modal, izin/tarih/not alanları yok. Playground davranış kontrolleri 16/16; 1280/390/320 genişliklerinde taşma 0.
+- [ ] Sizden Gelenler üretime aktarımı ve sabit Docker sürümlerinde kanonik doğrulama: Docker BuildKit disk I/O engeli nedeniyle açık. Ölçülen alternatif ortam ve sınırlar `docs/SIZDEN_GELENLER.md` içinde.
 
 - [x] Doğrulama koşusunun kendisi sessiz: `SHIPPING_SETTINGS_RUN_IS_CLEAN=PASS|diagnostics:0`; gerçek `make verify` çıktısında PHP Warning/Notice/Deprecated `0`, WP-CLI redirect backtrace `0`. Beklenen admin-post redirect'i `PHP_INT_MIN` önceliğinde yakalanıyor (WP-CLI'nin işleyicisi hiç çalışmıyor), hedefi ölçülüyor (`notice=forget_not_confirmed` / `notice=forgotten`), ve beklenmedik bir redirect hâlâ kendini bildiriyor
 

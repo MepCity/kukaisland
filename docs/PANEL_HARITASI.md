@@ -97,3 +97,7 @@ DHL veya başka bir kargo firması entegrasyonu geldiğinde Kargo İşlemleri
 panelindeki mevcut WooCommerce Fulfillments kaydını kullanır; kendi sipariş veri
 modelini kurmaz. Entegrasyon gerçekten bağlanana kadar çalışmayan bir düğme
 gösterilmez.
+
+## Sizden Gelenler — 22 Eylül 2026
+
+Yeni bağımsız ekran: **Kuka Island → Sizden Gelenler**. Önceki envanter sayıları bu ekranın tekrar eden fotoğraf kayıtlarını içermez. Yönetim Haritası doğrudan bu ekrana bağlanır. Ana Sayfa Bölümleri içindeki eski Editoryal alanları arşiv olarak etiketlendi; artık vitrin kaynağı değildir. Kullanım, alanlar ve ölçümler: [SIZDEN_GELENLER.md](SIZDEN_GELENLER.md).

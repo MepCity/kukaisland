@@ -22,6 +22,9 @@ printf '%s\n' "$fulfillments"
 legal_status=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-legal-status.php)
 printf '%s\n' "$legal_status"
 
+community_gallery=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-community-gallery.php)
+printf '%s\n' "$community_gallery"
+
 iyzico_idempotency=$(docker compose run --rm -T wp-cli wp eval-file /project-scripts/verify-iyzico-idempotency.php)
 printf '%s\n' "$iyzico_idempotency"
 
@@ -650,6 +653,16 @@ expect_legal_status_line() {
     failures=$((failures + 1))
   fi
 }
+expect_community_line() {
+  label=$1
+  line=$2
+  if printf '%s\n' "$community_gallery" | grep -Fqx "$line"; then
+    echo "PASS $label"
+  else
+    echo "FAIL $label (expected $line)" >&2
+    failures=$((failures + 1))
+  fi
+}
 expect_value() {
   label=$1
   actual=$2
@@ -690,7 +703,9 @@ expect_value "HSTS stays off on local HTTP" "$hsts_local" "absent"
 expect_value "RFC 9116 security contact" "$security_txt_contract" "contact:yes|canonical:yes"
 expect_value "XML-RPC endpoint disabled" "$xmlrpc_code" "403"
 expect_value "versioned theme assets are immutable" "$(printf '%s\n' "$asset_cache_headers" | grep -Eiq '^Cache-Control:.*max-age=31536000.*immutable' && echo yes || echo no)" "yes"
-expect_line "six-item header menu" "PRIMARY_MENU_COUNT=6"
+expect_line "five-item header menu" "PRIMARY_MENU_COUNT=5"
+expect_line "header menu order" "PRIMARY_MENU=YENİ|BİKİNİ|PLAJ GİYİM|KOLEKSİYON|HİKAYEMİZ"
+expect_community_line "community gallery contract" "COMMUNITY_CHECKS=16"
 expect_line "daily manager" "DAILY_MANAGER=yes"
 expect_line "Coming Soon remains enabled" "STORE_VISIBILITY=coming-soon"
 expect_line "Coming Soon covers the whole site" "COMING_SOON_SCOPE=whole-site"
@@ -739,7 +754,7 @@ expect_product_card_line "size-only variable card reads variation stock without 
 expect_line "three size guide tables" "SIZE_GUIDE_TABLES=3"
 expect_line "size set narrowed to S M L" "SIZE_TERMS=S,M,L"
 expect_line "size term menu order" "SIZE_TERM_ORDER=S:0|M:1|L:2"
-expect_line "story menu label" "STORY_MENU_LABEL=Hikâyemiz"
+expect_line "story menu label" "STORY_MENU_LABEL=HİKAYEMİZ"
 expect_line "brand story matches source PDF" "BRAND_STORY_PDF_MATCH=yes"
 expect_line "About opening follows panel" "ABOUT_OPENING_PANEL_BOUND=yes"
 expect_line "six story scenes" "STORY_SCENES=6"
@@ -895,7 +910,7 @@ expect_lifecycle_match "the lifecycle test restores the state it found, gate val
 expect_lifecycle_match "the lifecycle suite passes as a whole" "^EDM_LIFECYCLE=PASS\\|activation_and_deactivation_measured_through_wp_cli$"
 
 # A3: the deploy package carries the plugin and the documents AGENTS.md cites.
-expect_deploy_match "the deploy package contains both optional plugins and every document they cite" "^DEPLOY_PACKAGE_CONTENTS=PASS\\|measured:built_archive_listing\\|required_paths:24\\|missing:none\\|edm_entries:[0-9]+\\|shipping_entries:[0-9]+\\|checksum:yes\\|credential_files:0\\|built_in_temp_dir:yes$"
+expect_deploy_match "the deploy package contains both optional plugins and every document they cite" "^DEPLOY_PACKAGE_CONTENTS=PASS\\|measured:built_archive_listing\\|required_paths:25\\|missing:none\\|edm_entries:[0-9]+\\|shipping_entries:[0-9]+\\|checksum:yes\\|credential_files:0\\|built_in_temp_dir:yes$"
 
 # --- Shipping automation ---------------------------------------------------
 # The vendor's own documents are the authority for every path, field and code.

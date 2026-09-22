@@ -92,6 +92,7 @@ final class Kuka_Island_Core_Admin_Experience {
 		}
 		$appearance = admin_url( 'admin.php?page=kuka-island-appearance' );
 		$rows = array(
+			array( __( 'Müşteri fotoğraflarını yönetmek', 'kuka-island-core' ), __( 'Kuka Island → Sizden Gelenler', 'kuka-island-core' ), admin_url( 'admin.php?page=kuka-island-community' ) ),
 			array( __( 'Yeni ürün eklemek', 'kuka-island-core' ), __( 'Ürünler → Yeni ekle', 'kuka-island-core' ), admin_url( 'post-new.php?post_type=product' ) ),
 			array( __( 'Ürün fiyatı veya stoğu değiştirmek', 'kuka-island-core' ), __( 'Ürünler → ilgili ürün', 'kuka-island-core' ), admin_url( 'edit.php?post_type=product' ) ),
 			array( __( 'Ürünün İngilizcesini yazmak', 'kuka-island-core' ), __( 'Aynı ürün ekranında Türkçe alanların yanı', 'kuka-island-core' ), admin_url( 'edit.php?post_type=product' ) ),

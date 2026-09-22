@@ -122,6 +122,8 @@ function kuka_island_child_enqueue_assets(): void {
 
 	kuka_island_enqueue_script( 'storefront' );
 	if ( is_front_page() ) {
+		kuka_island_enqueue_style( 'community', array( 'kuka-island-global' ) );
+		kuka_island_enqueue_script( 'community' );
 		kuka_island_enqueue_script( 'responsive-video' );
 	}
 	if ( is_page( 'hakkimizda' ) ) {
