@@ -182,6 +182,21 @@ foreach ( Kuka_Island_Core_Language::translation_fields() as $group => $fields )
 	}
 }
 WP_CLI::line( 'SITE_APPEARANCE_EN_VALUES=' . $appearance_english_values . '/' . Kuka_Island_Core_Language::translation_field_count() );
+$translated_labels_method = new ReflectionMethod( Kuka_Island_Core_Language::class, 'translated_labels' );
+$translated_labels_method->setAccessible( true );
+$translated_navigation = $translated_labels_method->invoke(
+	null,
+	"Bikini|/bikini/|1|1\nMayo|/mayo/|0|1\nPlaj Giyim|/plaj/|1|1\nTakımlar|/takimlar/|0|1\nKoleksiyon|/magaza/|1|1",
+	array( 'BIKINI', 'SWIMSUITS', 'BEACHWEAR', 'SETS', 'COLLECTION' )
+);
+WP_CLI::line( 'TRANSLATED_LABEL_ARRAYS=' . ( str_contains( $translated_navigation, "COLLECTION|/magaza/|1|1" ) && ! str_contains( $translated_navigation, 'Array' ) ? 'supported' : 'broken' ) );
+$appearance_sanitize_method = new ReflectionMethod( Kuka_Island_Core_Site_Appearance::class, 'sanitize' );
+$appearance_sanitize_method->setAccessible( true );
+$sanitized_navigation = $appearance_sanitize_method->invoke(
+	null,
+	array( 'navigation' => array( 'categories_labels_en' => "BIKINI\nSWIMSUITS\nBEACHWEAR\nSETS\nCOLLECTION" ) )
+);
+WP_CLI::line( 'NAVIGATION_LABEL_CAP=' . count( $sanitized_navigation['navigation']['categories_labels_en'] ?? array() ) );
 $translation_keys = array();
 foreach ( Kuka_Island_Core_Language::translation_fields() as $group => $fields ) {
 	$translation_keys[ $group ] = array_column( $fields, 'key' );

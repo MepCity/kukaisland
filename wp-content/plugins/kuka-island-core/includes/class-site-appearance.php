@@ -1232,7 +1232,8 @@ final class Kuka_Island_Core_Site_Appearance {
 						$value = implode( "\n", array_slice( $rows, 0, 10 ) );
 						break;
 						case 'lines':
-							$value = array_slice( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ), 0, 3, true );
+							$line_limit = str_ends_with( $field_key, '_labels_en' ) ? 40 : 3;
+							$value = array_slice( array_filter( array_map( 'sanitize_text_field', preg_split( '/\R/', (string) $value ) ?: array() ) ), 0, $line_limit );
 						break;
 					case 'url_lines':
 						$value = array_slice( array_map( array( self::class, 'sanitize_url' ), preg_split( '/\R/', (string) $value ) ?: array() ), 0, 3 );

@@ -151,7 +151,7 @@ final class Kuka_Island_Core_Language {
 			foreach ( $fields as $source_key => $config ) {
 				$translated = $content[ $group ][ $config['key'] ] ?? '';
 				if ( 'labels' === $config['mode'] ) {
-					$content[ $group ][ $source_key ] = self::translated_labels( (string) ( $content[ $group ][ $source_key ] ?? '' ), (string) $translated );
+					$content[ $group ][ $source_key ] = self::translated_labels( (string) ( $content[ $group ][ $source_key ] ?? '' ), $translated );
 				} elseif ( is_array( $content[ $group ][ $source_key ] ?? null ) ) {
 					if ( is_array( $translated ) && array_filter( $translated, 'strlen' ) ) { $content[ $group ][ $source_key ] = $translated; }
 				} elseif ( '' !== trim( (string) $translated ) ) {
@@ -162,8 +162,8 @@ final class Kuka_Island_Core_Language {
 		return $content;
 	}
 
-	private static function translated_labels( string $source, string $translations ): string {
-		$labels = preg_split( '/\R/', $translations ) ?: array();
+	private static function translated_labels( string $source, string|array $translations ): string {
+		$labels = is_array( $translations ) ? array_values( $translations ) : ( preg_split( '/\R/', $translations ) ?: array() );
 		$rows   = preg_split( '/\R/', $source ) ?: array();
 		foreach ( $rows as $index => &$row ) {
 			$label = trim( (string) ( $labels[ $index ] ?? '' ) );
