@@ -21,7 +21,7 @@
 
 Core `class-community-gallery.php`, `kuka_island_community_gallery` seçeneğini yönetir (`autoload=false`). Yönetim `manage_woocommerce`, başlangıç içe aktarımı ayrıca `upload_files` yetkisi ve nonce ister. Sunucu görsel kimliğini, kayıt sayısını, durum ve URL protokolünü doğrular. Eksik form ve eski revizyon reddedilir. Revizyon kontrolü ardışık eski pencere yazmalarını engeller; atomik eşzamanlı kilit değildir.
 
-Child tema `template-parts/community-gallery.php` ile eski Editoryal bölümün yerini alır. Eski editoryal değerler korunur, panelde arşiv etiketi taşır. Yeni Gelenler, Manifesto, ürün/sipariş ve kargo çekmecesi akışları değiştirilmez.
+Child tema `template-parts/community-gallery.php` ile eski Editoryal bölümün yerini alır. Ürün bağlantısı bulunan fotoğraflar hem görselden hem de altında gösterilen iki dilli “Ürüne Git / View product” çağrısından aynı ürüne gider; bağlantısız fotoğrafta boş CTA üretilmez. Eski editoryal değerler korunur, panelde arşiv etiketi taşır. Yeni Gelenler, Manifesto, ürün/sipariş ve kargo çekmecesi akışları değiştirilmez.
 
 Fotoğraflar WordPress responsive medya boyutlarıyla, tembel yüklemeyle sunulur. JS kapalıyken ürün bağlantıları ve yatay kaydırma çalışır. Otomatik dönüş yoktur. Mobil yatay kaydırma ve taşma varsa oklar vardır. Azaltılmış hareket tercihinde giriş/zoom efektleri kapalıdır. Modal/büyük fotoğraf JS'si yoktur.
 

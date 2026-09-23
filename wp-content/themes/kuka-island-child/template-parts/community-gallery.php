@@ -23,6 +23,7 @@ $copy = static function ( array $data, string $key ) use ( $english ): string {
 			<?php if ( $url ) : ?><a class="kuka-community__photo" href="<?php echo $url; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above. ?>" aria-label="<?php echo esc_attr( ( $english ? 'Discover the product: ' : 'Ürünü incele: ' ) . $alt ); ?>"><?php else : ?><div class="kuka-community__photo"><?php endif; ?>
 				<?php echo wp_get_attachment_image( $image_id, 'large', false, array( 'alt' => $alt, 'loading' => 'lazy', 'decoding' => 'async', 'sizes' => '(max-width: 760px) 82vw, (max-width: 1024px) 44vw, 23vw' ) ); ?>
 			<?php if ( $url ) : ?></a><?php else : ?></div><?php endif; ?>
+			<?php if ( $url ) : ?><a class="kuka-community__cta" href="<?php echo $url; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above. ?>"><?php echo esc_html( $english ? 'View product' : 'Ürüne Git' ); ?><span aria-hidden="true">→</span></a><?php endif; ?>
 		</div>
 	<?php endforeach; ?>
 	</div>

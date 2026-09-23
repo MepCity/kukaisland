@@ -1608,6 +1608,7 @@ expect_line "language hover keeps color and adds underline" "LANGUAGE_HOVER=same
 expect_line "story media waits for target image and warms the next" "STORY_MEDIA_HANDOFF=load-guarded+next-warmed"
 expect_line "product lightbox closes on empty space and zooms from the clicked point" "PRODUCT_LIGHTBOX_POINTERS=point-zoom+backdrop-close+drag-guard"
 expect_line "product detail avoids stretching the undersized large derivative" "PRODUCT_DETAIL_IMAGE_QUALITY=responsive-full"
+expect_line "community product links expose a bilingual CTA" "COMMUNITY_PRODUCT_CTA=bilingual+linked-only"
 expect_line "SMTP constant names are absent from the database" "SMTP_CONFIG_DATABASE_ROWS=0"
 expect_value "only the output-suppressed core installer uses a prompt" "$prompted_passwords" "1"
 expect_value "installation passwords never enter process arguments" "$password_argv" "0"
