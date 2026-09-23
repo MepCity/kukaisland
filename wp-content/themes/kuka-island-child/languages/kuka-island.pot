@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-30T11:40:46+00:00\n"
+"POT-Creation-Date: 2026-09-23T17:32:00+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island\n"
@@ -29,17 +29,17 @@ msgstr ""
 msgid "MepCity"
 msgstr ""
 
-#: coming-soon.php:82
+#: coming-soon.php:87
 msgid "Çok yakında"
 msgstr ""
 
 #. translators: %s: mağaza sahibinin adı.
-#: coming-soon.php:84
+#: coming-soon.php:89
 #, php-format
 msgid "by %s"
 msgstr ""
 
-#: coming-soon.php:89
+#: coming-soon.php:94
 msgid "Oturum aç"
 msgstr ""
 
@@ -72,35 +72,27 @@ msgstr ""
 msgid "WhatsApp destek"
 msgstr ""
 
-#: front-page.php:41
+#: front-page.php:46
 msgid "Formunu bul"
 msgstr ""
 
-#: front-page.php:42
+#: front-page.php:47
 msgid "Ürün kategorileri"
 msgstr ""
 
-#: front-page.php:58
+#: front-page.php:63
 msgid "Koleksiyon"
 msgstr ""
 
-#: front-page.php:58
+#: front-page.php:63
 msgid "Tümünü gör"
 msgstr ""
 
-#: front-page.php:59
-msgid "Editoryal"
-msgstr ""
-
-#: front-page.php:59
-msgid "Hikâyeyi oku"
-msgstr ""
-
-#: front-page.php:63
+#: front-page.php:68
 msgid "Manifesto"
 msgstr ""
 
-#: front-page.php:76
+#: front-page.php:81
 msgid "Servis güvenceleri"
 msgstr ""
 
@@ -137,86 +129,86 @@ msgstr ""
 msgid "Ürün ara"
 msgstr ""
 
-#: header.php:71
+#: header.php:72
 msgid "Sepeti aç"
 msgstr ""
 
-#: header.php:78
+#: header.php:79
 msgid "Menü"
 msgstr ""
 
-#: header.php:78
+#: header.php:79
 msgid "Menüyü kapat"
 msgstr ""
 
-#: header.php:79
+#: header.php:80
 msgid "Mobil menü"
 msgstr ""
 
-#: header.php:84
-#: header.php:89
+#: header.php:85
+#: header.php:90
 msgid "Ara"
 msgstr ""
 
-#: header.php:84
+#: header.php:85
 msgid "Aramayı kapat"
 msgstr ""
 
-#: header.php:86
+#: header.php:87
 msgid "Ne arıyorsunuz?"
 msgstr ""
 
-#: header.php:87
+#: header.php:88
 msgid "Ürün, renk veya kesim"
 msgstr ""
 
-#: header.php:93
+#: header.php:94
 msgid "Hızlı bağlantılar"
 msgstr ""
 
-#: header.php:94
+#: header.php:95
 msgid "Sık aranan"
 msgstr ""
 
-#: header.php:101
+#: header.php:102
 msgid "Sepeti kapat"
 msgstr ""
 
-#: inc/assets.php:100
-#: inc/checkout.php:385
+#: inc/assets.php:113
+#: inc/checkout.php:403
 msgid "Bu alan zorunludur."
 msgstr ""
 
-#: inc/assets.php:161
-#: woocommerce/content-product.php:55
+#: inc/assets.php:178
+#: woocommerce/content-product.php:59
 msgid "Tükendi"
 msgstr ""
 
-#: inc/assets.php:162
-#: woocommerce/single-product/product-image.php:26
+#: inc/assets.php:179
+#: woocommerce/single-product/product-image.php:30
 #, php-format
 msgid "%1$s; tam ekran aç (%2$d/%3$d)"
 msgstr ""
 
-#: inc/assets.php:163
+#: inc/assets.php:180
 msgid "Renk seçimi"
 msgstr ""
 
-#: inc/assets.php:164
+#: inc/assets.php:181
 #, php-format
 msgid "%s rengini seç"
 msgstr ""
 
-#: inc/assets.php:165
+#: inc/assets.php:182
 msgid "Beden seçimi"
 msgstr ""
 
-#: inc/assets.php:166
+#: inc/assets.php:183
 #, php-format
 msgid "%s beden tükendi"
 msgstr ""
 
-#: inc/assets.php:167
+#: inc/assets.php:184
 #, php-format
 msgid "%s beden stokta"
 msgstr ""
@@ -276,106 +268,115 @@ msgstr ""
 msgid "Sonuçları gör"
 msgstr ""
 
-#: inc/catalog-filters.php:126
+#: inc/catalog-filters.php:143
 msgid "Bu seçimde ürün bulunamadı."
 msgstr ""
 
-#: inc/catalog-filters.php:126
+#: inc/catalog-filters.php:143
 msgid "Filtrelerden birini kaldırarak yeniden deneyin."
 msgstr ""
 
-#: inc/catalog-filters.php:126
+#: inc/catalog-filters.php:143
 msgid "Filtreleri temizle"
 msgstr ""
 
-#: inc/checkout.php:161
-#: inc/checkout.php:243
-#: inc/checkout.php:286
+#: inc/checkout.php:166
+#: inc/checkout.php:252
+#: inc/checkout.php:299
 msgid "Adres"
 msgstr ""
 
-#: inc/checkout.php:162
-#: inc/checkout.php:244
-#: inc/checkout.php:287
+#: inc/checkout.php:167
+#: inc/checkout.php:253
+#: inc/checkout.php:300
 msgid "Cadde, sokak, bina ve kapı numarası"
 msgstr ""
 
-#: inc/checkout.php:166
-#: inc/checkout.php:248
-#: inc/checkout.php:291
+#: inc/checkout.php:171
+#: inc/checkout.php:257
+#: inc/checkout.php:304
 msgid "Adres devamı"
 msgstr ""
 
-#: inc/checkout.php:167
-#: inc/checkout.php:249
-#: inc/checkout.php:292
+#: inc/checkout.php:172
+#: inc/checkout.php:258
+#: inc/checkout.php:305
 msgid "Site, blok, daire vb."
 msgstr ""
 
-#: inc/checkout.php:174
-#: inc/checkout.php:256
-#: inc/checkout.php:299
+#: inc/checkout.php:179
+#: inc/checkout.php:265
+#: inc/checkout.php:312
 msgid "İl"
 msgstr ""
 
-#: inc/checkout.php:322
+#: inc/checkout.php:183
+#: inc/checkout.php:184
+#: inc/checkout.php:269
+#: inc/checkout.php:270
+#: inc/checkout.php:316
+#: inc/checkout.php:317
+msgid "İlçe"
+msgstr ""
+
+#: inc/checkout.php:340
 msgid "Teslimat adresi"
 msgstr ""
 
-#: inc/checkout.php:323
+#: inc/checkout.php:341
 msgid "Fatura bilgileri"
 msgstr ""
 
-#: inc/checkout.php:362
-#: inc/checkout.php:390
+#: inc/checkout.php:380
+#: inc/checkout.php:408
 msgid "Telefon numarası 5XX XXX XX XX biçiminde olmalıdır."
 msgstr ""
 
-#: inc/checkout.php:424
+#: inc/checkout.php:442
 msgid "Kişisel bilgiler"
 msgstr ""
 
-#: inc/checkout.php:520
+#: inc/checkout.php:538
 msgid "Sepet"
 msgstr ""
 
-#: inc/checkout.php:521
+#: inc/checkout.php:539
 msgid "Bilgiler ve ödeme"
 msgstr ""
 
-#: inc/checkout.php:522
+#: inc/checkout.php:540
 msgid "Onay"
 msgstr ""
 
-#: inc/checkout.php:525
+#: inc/checkout.php:543
 msgid "Ödeme adımları"
 msgstr ""
 
 #. translators: 1: current step number, 2: total step count.
-#: inc/checkout.php:528
+#: inc/checkout.php:546
 #, php-format
 msgid "%1$d / %2$d"
 msgstr ""
 
 #. translators: %d is the statutory withdrawal window in days.
-#: inc/checkout.php:571
+#: inc/checkout.php:589
 #, php-format
 msgid "%d gün içinde cayma hakkı"
 msgstr ""
 
-#: inc/checkout.php:575
+#: inc/checkout.php:593
 msgid "Yardım gerekiyor mu?"
 msgstr ""
 
-#: inc/checkout.php:576
+#: inc/checkout.php:594
 msgid "Güvenli ödeme"
 msgstr ""
 
-#: inc/checkout.php:576
+#: inc/checkout.php:594
 msgid "Ödeme iyzico altyapısında alınır ve 3D Secure doğrulamasıyla tamamlanır. Kart bilgileriniz Kuka Island sunucusunda saklanmaz."
 msgstr ""
 
-#: inc/checkout.php:577
+#: inc/checkout.php:595
 msgid "Kargo ve iade"
 msgstr ""
 
@@ -549,41 +550,41 @@ msgstr ""
 msgid "KDV dahil"
 msgstr ""
 
-#: woocommerce/content-product.php:57
+#: woocommerce/content-product.php:61
 msgid "Sınırlı"
 msgstr ""
 
-#: woocommerce/content-product.php:59
+#: woocommerce/content-product.php:63
 msgid "Yeni"
 msgstr ""
 
-#: woocommerce/content-product.php:64
+#: woocommerce/content-product.php:68
 #, php-format
 msgid "%s ürününü incele"
 msgstr ""
 
-#: woocommerce/content-product.php:71
+#: woocommerce/content-product.php:75
 msgid "Renk seçenekleri"
 msgstr ""
 
-#: woocommerce/content-product.php:78
-#: woocommerce/single-product/product-image.php:37
+#: woocommerce/content-product.php:82
+#: woocommerce/single-product/product-image.php:58
 msgid "Önceki fotoğraf"
 msgstr ""
 
-#: woocommerce/content-product.php:78
-#: woocommerce/single-product/product-image.php:37
+#: woocommerce/content-product.php:82
+#: woocommerce/single-product/product-image.php:58
 msgid "Sonraki fotoğraf"
 msgstr ""
 
-#: woocommerce/content-product.php:86
+#: woocommerce/content-product.php:90
 #, php-format
 msgid "%d renk"
 msgid_plural "%d renk"
 msgstr[0] ""
 msgstr[1] ""
 
-#: woocommerce/content-product.php:89
+#: woocommerce/content-product.php:93
 msgid "Beden stokları"
 msgstr ""
 
@@ -592,27 +593,27 @@ msgstr ""
 msgid "%s ürün galerisi"
 msgstr ""
 
-#: woocommerce/single-product/product-image.php:24
+#: woocommerce/single-product/product-image.php:28
 msgid "Ürün görseli"
 msgstr ""
 
-#: woocommerce/single-product/product-image.php:31
+#: woocommerce/single-product/product-image.php:52
 msgid "Önceki ürün fotoğrafı"
 msgstr ""
 
-#: woocommerce/single-product/product-image.php:31
+#: woocommerce/single-product/product-image.php:52
 msgid "Sonraki ürün fotoğrafı"
 msgstr ""
 
-#: woocommerce/single-product/product-image.php:35
+#: woocommerce/single-product/product-image.php:56
 #, php-format
 msgid "%s galerisi"
 msgstr ""
 
-#: woocommerce/single-product/product-image.php:35
+#: woocommerce/single-product/product-image.php:56
 msgid "Galeriyi kapat"
 msgstr ""
 
-#: woocommerce/single-product/product-image.php:37
+#: woocommerce/single-product/product-image.php:58
 msgid "Yakınlaştır"
 msgstr ""

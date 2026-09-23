@@ -743,6 +743,7 @@ expect_line "free shipping discount basis default" "FREE_SHIPPING_IGNORE_DISCOUN
 expect_line "free shipping discount basis sync" "FREE_SHIPPING_IGNORE_DISCOUNTS_SYNC=no"
 expect_line "free shipping threshold or coupon requirement" "FREE_SHIPPING_REQUIREMENT_SYNC=either"
 expect_line "English shipping method labels" "SHIPPING_RATE_LABELS_EN=Free shipping|Flat rate"
+expect_line "English checkout district label" "CHECKOUT_DISTRICT_LABEL_EN=District"
 expect_coupon_line "free shipping coupon test stays below threshold" "FREE_SHIPPING_COUPON_BELOW_THRESHOLD=yes"
 expect_coupon_line "free shipping coupon exposes only free method" "FREE_SHIPPING_COUPON_METHODS=free_shipping"
 expect_coupon_line "free shipping coupon removes shipping cost" "FREE_SHIPPING_COUPON_COST=0.00"
@@ -798,7 +799,7 @@ expect_line "order raw metadata is replaced by a read-only payment summary" "ORD
 expect_line "product caches cover shortcode and single product" "PRODUCT_CACHE_PRIMING=shortcode+single"
 expect_line "cart fragments are not an eager dependency" "CART_FRAGMENT_DEPENDENCY=deferred"
 expect_line "retired panel fields removed" "RETIRED_PANEL_FIELDS="
-expect_line "checkout address uses province-only reference flow" "CHECKOUT_ADDRESS_FLOW=address|address2|postcode+province|phone"
+expect_line "checkout stores province and district independently" "CHECKOUT_ADDRESS_FLOW=address|address2|postcode+province|district|phone"
 expect_line "checkout checkbox and labels share alignment grid" "CHECKOUT_CHECKBOX_ALIGNMENT=shared-grid"
 expect_line "checkout errors use underline-only treatment" "CHECKOUT_ERROR_STYLE=underline-only"
 expect_line "hero overlay layer removed" "HERO_OVERLAY_LAYER=absent"
@@ -1031,9 +1032,9 @@ expect_shipping_match "a closed main switch stops the panel diagnostic too" "^SH
 # not one statement, so the pair can land by halves: the record is dropped
 # whole, then each half on its own, in both directions. Nothing may be sent.
 expect_shipping_match "the dispatch intent is proven before the carrier is contacted" "^SHIPPING_AUTO_CREATE_DISPATCH_INTENT_IS_VERIFIED=PASS\\|measured:real_worker_with_wordpress_query_filter_sabotage\\|a_start_write_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=0/phases=none/reason=dispatch_intent_unverified/panel=dispatch_intent_unverified\\|d_attempt_landed_phase_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=1/phases=none/reason=dispatch_intent_unverified/panel=dispatch_intent_unverified\\|e_phase_landed_attempt_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=0/phases=create_order/reason=dispatch_intent_unverified/panel=dispatch_intent_unverified\\|b_phase_clear_dropped:statements=[1-9][0-9]*/first_write=0/second_write=0/retry_jobs=0/attempts=1/phases=create_order/reason=dispatch_phase_clear_unverified/panel=dispatch_phase_clear_unverified/claimed_retry=no\\|c_order_unreadable:first_write=0/second_write=0/retry_jobs=0/attempts=0/phases=none/reason=dispatch_order_unreadable$"
-# Two automatic workers, two real PHP processes: one execution lock, one
-# createOrder, one createbarcode, and the loser spends no attempt.
-expect_shipping_match "two automatic workers are serialised by the execution lock" "^SHIPPING_AUTO_CREATE_WORKERS_ARE_SERIALISED=PASS\\|measured:second_real_php_process_and_separate_mysql_session\\|child_started:yes\\|child_inside_carrier_call:yes\\|createOrder_across_processes:1\\|createbarcode_across_processes:1\\|carrier_writes_total:2\\|loser_writes:0\\|loser_outcome:refused/dispatch_in_progress\\|attempts_total:1\\|phase_record:create_order\\+create_barcode\\|retry_jobs:0\\|dispatch_lock_free_after:yes\\|"
+# Two automatic workers, two real PHP processes: one execution lock and one
+# createOrder. Barcode is a later job, so it is not issued in this race turn.
+expect_shipping_match "two automatic workers are serialised by the execution lock" "^SHIPPING_AUTO_CREATE_WORKERS_ARE_SERIALISED=PASS\\|measured:second_real_php_process_and_separate_mysql_session\\|child_started:yes\\|child_inside_carrier_call:yes\\|createOrder_across_processes:1\\|createbarcode_across_processes:0\\|carrier_writes_total:1\\|loser_writes:0\\|loser_outcome:refused/dispatch_in_progress\\|attempts_total:1\\|phase_record:create_order\\|retry_jobs:1\\|dispatch_lock_free_after:yes\\|"
 expect_shipping_match "the retry budget is a real, phase-aware retry" "^SHIPPING_AUTO_CREATE_RETRY_IS_REAL_AND_PHASE_AWARE=PASS\\|measured:real_worker_with_a_second_mysql_session_holding_the_mutation_lock\\|a_before_create_order:blocked_writes=0/retry_jobs=1/createOrder=1/createbarcode=1/state=shipment_created\\|b_before_create_barcode:entry_state=order_created/createOrder_mid=1/retry_jobs=1/createOrder_total=1/createbarcode_total=1/state=shipment_created\\|c_uncertain_create_order:createOrder=1/retry_jobs=0/later_writes=0/.*\\|d_uncertain_create_barcode:createbarcode=1/retry_jobs=0/later_writes=0/.*\\|e_budget:turns=4/attempts=3/last=retry_budget_spent/retry_jobs=0/writes=0/.*\\|f_schedule_failed:claimed_retry=no/retry_jobs=0/.*\\|g_switched_off:gate=shipping_runtime_disabled/switch=auto_create_disabled/retry_jobs=0/writes=0$"
 expect_shipping_match "automatic creation ships switched off" "^SHIPPING_AUTO_CREATE_DEFAULTS_OFF=PASS\\|measured:declared_defaults\\|auto_create:off\\|auto_poll:off\\|"
 expect_shipping_match "the poll switch and the create switch are separate" "^SHIPPING_POLL_SWITCH_IS_INDEPENDENT=PASS\\|"
@@ -1041,7 +1042,8 @@ expect_shipping_match "a closed run gate books nothing" "^SHIPPING_RUNTIME_GATE_
 expect_shipping_match "an eligible order books exactly one job" "^SHIPPING_AUTO_CREATE_BOOKS_ONE_JOB=PASS\\|.*\\|jobs:1\\|http_during_scheduling:0\\|carrier_writes:0$"
 expect_shipping_match "three events still book one job" "^SHIPPING_AUTO_CREATE_IS_IDEMPOTENT=PASS\\|.*\\|events:3\\|jobs_booked:1\\|"
 expect_shipping_match "automatic eligibility is an allow-list" "^SHIPPING_AUTO_CREATE_ELIGIBILITY_IS_AN_ALLOWLIST=PASS\\|.*\\|wrong:none$"
-expect_shipping_match "the automatic path keeps the two phases apart" "^SHIPPING_AUTO_CREATE_IS_TWO_PHASE=PASS\\|.*\\|createOrder:1\\|createbarcode:1\\|state:shipment_created\\|"
+expect_shipping_match "checkout province and district map to DHL without abusing address continuation" "^SHIPPING_CHECKOUT_ADDRESS_MAPS_TO_CARRIER=PASS\\|measured:real_woocommerce_order_and_dhl_resolver\\|stored:state=TR34/city=Kadıköy/address_2=Daire_1\\|mapped:city_code=34/district_code=1\\|address_continuation:kept$"
+expect_shipping_match "the automatic path keeps the two phases in separate worker turns" "^SHIPPING_AUTO_CREATE_IS_TWO_PHASE=PASS\\|measured:two_real_dispatcher_turns_and_mock_transport\\|first:createOrder=1/createbarcode=0/state=order_created/follow_up_jobs=1\\|second:createbarcode=1/state=shipment_created/ok=yes\\|phases:create_barcode$"
 expect_shipping_match "an uncertain first phase is not retried" "^SHIPPING_AUTO_CREATE_PHASE_ONE_CRASH_IS_SAFE=PASS\\|.*\\|retry:createOrder=0/writes=0/"
 expect_shipping_match "an uncertain second phase is not retried" "^SHIPPING_AUTO_CREATE_PHASE_TWO_UNCERTAIN_IS_SAFE=PASS\\|.*\\|retry:createbarcode=0/writes=0/"
 expect_shipping_match "two real processes still produce one carrier write" "^SHIPPING_AUTO_AND_MANUAL_RACE_IS_SERIALISED=PASS\\|measured:second_real_php_process_and_separate_mysql_session\\|child_started:yes\\|child_inside_carrier_call:yes\\|carrier_writes_total_across_processes:1\\|this_process_writes:0\\|"

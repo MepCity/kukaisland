@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-03T11:46:27+00:00\n"
+"POT-Creation-Date: 2026-09-23T17:32:04+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island-edm\n"
@@ -30,7 +30,7 @@ msgid "MepCity"
 msgstr ""
 
 #. translators: %s: comma separated plugin slugs.
-#: includes/class-plugin.php:110
+#: includes/class-plugin.php:91
 #, php-format
 msgid "Kuka Island EDM devre dışı: gerekli eklentiler yüklenmedi (%s). Hiçbir fatura işlemi kaydedilmedi."
 msgstr ""
@@ -83,23 +83,23 @@ msgstr ""
 msgid "Geçersiz vergi/kimlik numarası."
 msgstr ""
 
-#: includes/invoice/class-edm-client.php:694
+#: includes/invoice/class-edm-client.php:721
 msgid "EDM servisi ile bağlantı kurulurken hata oluştu."
 msgstr ""
 
-#: includes/invoice/class-edm-client.php:740
+#: includes/invoice/class-edm-client.php:767
 msgid "Fatura EDM tarafından iş kuralı veya şema hatası sebebiyle reddedildi."
 msgstr ""
 
-#: includes/invoice/class-edm-client.php:748
+#: includes/invoice/class-edm-client.php:775
 msgid "EDM isteği kalıcı olarak reddetti."
 msgstr ""
 
-#: includes/invoice/class-edm-client.php:756
+#: includes/invoice/class-edm-client.php:783
 msgid "EDM servisi geçici bir hata bildirdi. İşlem tekrar denenebilir."
 msgstr ""
 
-#: includes/invoice/class-edm-client.php:880
+#: includes/invoice/class-edm-client.php:907
 msgid "EDM isteği kabul etti; belge durumu henüz bildirilmedi."
 msgstr ""
 
@@ -223,73 +223,73 @@ msgstr ""
 msgid "Test veya sandbox siparişleri için gerçek fatura kesilemez."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:185
+#: includes/invoice/class-invoice-manager.php:216
 msgid "Fatura EDM sistemine gönderilmiş olabilir ve durumu doğrulanamadı. Mükerrer gönderim engellendi; lütfen EDM üzerinden fatura durumunu manuel olarak sorgulayın."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:226
+#: includes/invoice/class-invoice-manager.php:257
 msgid "Ödemesi kesinleşmemiş sipariş için fatura oluşturulamaz."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:236
-#: includes/invoice/class-invoice-manager.php:284
+#: includes/invoice/class-invoice-manager.php:267
+#: includes/invoice/class-invoice-manager.php:315
 msgid "Bu siparişin faturası zaten başarıyla kesilmiştir ve mükerrer gönderilemez."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:257
-#: includes/invoice/class-invoice-manager.php:313
+#: includes/invoice/class-invoice-manager.php:288
+#: includes/invoice/class-invoice-manager.php:344
 msgid "Fatura durumu şu anda yeniden gönderime uygun değildir."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:267
+#: includes/invoice/class-invoice-manager.php:298
 msgid "Bu siparişin fatura işlemi şu anda başka bir süreç tarafından yürütülüyor."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:431
+#: includes/invoice/class-invoice-manager.php:462
 msgid "Fatura XML oluşturuldu, EDM gönderimi başlatılıyor."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:668
+#: includes/invoice/class-invoice-manager.php:699
 msgid "Kısmi gönderim var; tüm ürünler kargoya verilmeden fatura oluşturulmaz."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:671
+#: includes/invoice/class-invoice-manager.php:702
 msgid "Fatura için siparişin tamamen kargoya verilmesi bekleniyor."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:691
+#: includes/invoice/class-invoice-manager.php:722
 msgid "Kargo firmasının mali bilgileri (VKN ve unvan) yapılandırılmamış; fatura oluşturulmadı."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:695
+#: includes/invoice/class-invoice-manager.php:726
 msgid "Sipariş birden fazla kargo firmasıyla gönderilmiş; tek faturada tek taşıyıcı bildirilebildiği için manuel inceleme gerekiyor."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:699
+#: includes/invoice/class-invoice-manager.php:730
 msgid "Kargoya verilme tarihi okunamadı; fatura oluşturulmadı."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:703
+#: includes/invoice/class-invoice-manager.php:734
 msgid "Ödeme tarihi bulunamadı; fatura oluşturulmadı."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:708
+#: includes/invoice/class-invoice-manager.php:739
 msgid "Ödeme yöntemi için doğrulanmış mali karşılık tanımlı değil; fatura oluşturulmadı."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:711
+#: includes/invoice/class-invoice-manager.php:742
 msgid "İnternet satış bilgileri eksik olduğu için fatura oluşturulmadı."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:814
+#: includes/invoice/class-invoice-manager.php:845
 msgid "İşlemdeki faturanın UUID kaydı bulunamadı."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:849
+#: includes/invoice/class-invoice-manager.php:880
 msgid "Alıcının e-Fatura mükellefiyeti GİB üzerinden sorgulanamadı. Hatalı belge türü kesilmemesi için işlem durduruldu."
 msgstr ""
 
-#: includes/invoice/class-invoice-manager.php:859
+#: includes/invoice/class-invoice-manager.php:890
 msgid "e-Fatura mükellefinin GİB posta kutusu etiketi (alias) bulunamadı."
 msgstr ""
 
@@ -401,7 +401,7 @@ msgstr ""
 msgid "Bu sipariş için yeni belge oluşturulamaz: yalnızca EDM tarafından reddedilmiş (PACKAGE - FAIL / SEND - FAILED) belgeler yeniden oluşturulabilir."
 msgstr ""
 
-#: includes/invoice/class-invoice-runtime-gate.php:74
+#: includes/invoice/class-invoice-runtime-gate.php:114
 msgid "EDM eklentisi devre dışı bırakıldığı için gönderim yapılmadı. Belge oluşturulmadı."
 msgstr ""
 

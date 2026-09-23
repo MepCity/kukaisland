@@ -438,6 +438,10 @@ Açmadan önce:
       birlikte yazar.
 - [ ] Ödeme sonrası iptal/iade refleksi için 5 dakikalık gecikmenin yeterli
       olduğu kabul edildi (`Dispatcher::DELAY`).
+- [ ] `createOrder` sonrasında `createbarcode` için ayrı worker ve ek 5 dakikalık
+      operasyonel tampon kabul edildi (`Dispatcher::BARCODE_DELAY`). Bu süre
+      şube hazır kanıtı değildir; DHL'nin arka arkaya çağrı uyarısına karşı iki
+      yazmayı aynı turdan ayırır.
 
 Açtıktan sonra sipariş ekranı her sipariş için ya "otomatik gönderi işi
 planlandı" der ya da **neden planlanmadığını koduyla** yazar:

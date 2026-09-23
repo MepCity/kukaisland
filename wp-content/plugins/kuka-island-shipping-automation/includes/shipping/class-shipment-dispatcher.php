@@ -47,12 +47,14 @@
  * an order qualifies only by satisfying every condition in eligibility(), and a
  * condition nobody anticipated fails closed by simply not being on the list.
  *
- * THE TWO PHASES ARE NOT MERGED. run() calls createOrder, reads the order back
- * from the database, and only continues to createbarcode if the state is
- * exactly `order_created`. Anything else -- an uncertain write, a refusal, a
- * state somebody else moved -- stops. There is no automatic second attempt at a
- * write that may already have reached the carrier; the read-only reconciliation
- * path is the only way out of that, and it needs a person.
+ * THE TWO PHASES ARE NOT MERGED. One run() turn calls createOrder, reads the
+ * order back from the database and, only when the state is exactly
+ * `order_created`, books a distinct later worker for createbarcode. DHL says a
+ * back-to-back barcode call can race destination-branch resolution. Anything
+ * else -- an uncertain write, a refusal, a state somebody else moved -- stops.
+ * There is no automatic second attempt at a write that may already have reached
+ * the carrier; the read-only reconciliation path is the only way out of that,
+ * and it needs a person.
  *
  * @package Kuka_Island_Shipping_Automation
  */
@@ -75,6 +77,16 @@ final class Kuka_Island_Shipping_Dispatcher {
 
 	/** How long after a retryable refusal the next turn runs. */
 	public const RETRY_DELAY = 120;
+
+	/**
+	 * Minimum separation between createOrder and createbarcode.
+	 *
+	 * DHL says the destination branch can still be unresolved when the two
+	 * writes are made back to back. The interval is an operational buffer, not
+	 * a claim that branch readiness has been proved; the API exposes no such
+	 * readiness field.
+	 */
+	public const BARCODE_DELAY = 300;
 
 	/** The worker's own per-order execution lock. See the class comment. */
 	private const EXECUTION_LOCK_PREFIX = 'kuka_ship_dispatch_';
@@ -328,8 +340,12 @@ final class Kuka_Island_Shipping_Dispatcher {
 			$gaps[] = 'address';
 		}
 
-		if ( '' === trim( $order->get_shipping_city() ) && '' === trim( $order->get_billing_city() ) ) {
+		if ( '' === trim( $order->get_shipping_state() ) && '' === trim( $order->get_billing_state() ) ) {
 			$gaps[] = 'city';
+		}
+
+		if ( '' === trim( $order->get_shipping_city() ) && '' === trim( $order->get_billing_city() ) ) {
+			$gaps[] = 'district';
 		}
 
 		if ( '' === trim( (string) $order->get_billing_phone() ) ) {
@@ -344,7 +360,7 @@ final class Kuka_Island_Shipping_Dispatcher {
 	 *
 	 * @return array{scheduled: bool, reason: string}
 	 */
-	public function maybe_schedule( int $order_id, bool $is_retry = false ): array {
+	public function maybe_schedule( int $order_id, bool $is_retry = false, ?int $delay = null ): array {
 		$order       = $order_id > 0 ? wc_get_order( $order_id ) : null;
 		$eligibility = self::eligibility( $order instanceof WC_Order ? $order : null );
 
@@ -398,7 +414,7 @@ final class Kuka_Island_Shipping_Dispatcher {
 			}
 
 			$action_id = (int) as_schedule_single_action(
-				time() + ( $is_retry ? self::RETRY_DELAY : self::DELAY ),
+				time() + max( 1, $delay ?? ( $is_retry ? self::RETRY_DELAY : self::DELAY ) ),
 				self::ACTION,
 				array( 'order_id' => $order_id ),
 				self::GROUP
@@ -450,7 +466,7 @@ final class Kuka_Island_Shipping_Dispatcher {
 	}
 
 	/**
-	 * The scheduled worker: two phases, each proven before the next begins.
+	 * The scheduled worker: one proven phase per turn.
 	 *
 	 * @param mixed $order_id Order id as Action Scheduler stored it.
 	 * @return array<string, mixed>
@@ -551,15 +567,33 @@ final class Kuka_Island_Shipping_Dispatcher {
 				return self::outcome( false, 'barcode_not_allowed:' . $state, implode( '+', $phases_run ), false );
 			}
 
-			// The second phase needs its own verified opening record.
-			// Same turn, so no second attempt is charged -- only the mark.
-			$opened_two = Kuka_Island_Shipping_Order_Store::begin_dispatch_phase( self::reload( $order_id ), self::PHASE_CREATE_BARCODE, false );
+			/*
+			 * DHL explicitly warns against sending createbarcode immediately after
+			 * createOrder: destination-branch resolution may still be running. End
+			 * this worker turn and book a distinct phase-two turn. This separation
+			 * is structural; BARCODE_DELAY is only a buffer because the documented
+			 * read APIs expose no branch-ready flag.
+			 */
+			$booking = $this->maybe_schedule( $order_id, true, self::BARCODE_DELAY );
+			$booked  = (bool) $booking['scheduled'] || self::has_pending_job( $order_id );
 
-			if ( ! $opened_two['ok'] ) {
-				$this->record( $order_id, (string) $opened_two['code'] );
+			if ( ! $booked ) {
+				$reason = 'barcode_' . (string) $booking['reason'];
+				$this->record( $order_id, $reason );
 
-				return self::outcome( false, (string) $opened_two['code'], implode( '+', $phases_run ), false );
+				return self::outcome( false, $reason, implode( '+', $phases_run ), false );
 			}
+
+			$this->record( $order_id, '' );
+
+			return array(
+				'ok'                   => true,
+				'reason'               => '',
+				'phases'               => implode( '+', $phases_run ),
+				'retry_scheduled'       => false,
+				'next_phase_scheduled'  => true,
+				'state'                => Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
+			);
 		}
 
 		// PHASE TWO: a separate, deliberate second write.

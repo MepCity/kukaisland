@@ -1304,8 +1304,9 @@ function kuka_ship_fixture_order(): WC_Order {
 	$order->set_shipping_first_name( 'Kuka' );
 	$order->set_shipping_last_name( 'Fixture' );
 	$order->set_shipping_address_1( 'Test sokak 1' );
-	$order->set_shipping_address_2( 'Kadıköy' );
-	$order->set_shipping_city( 'İstanbul' );
+	$order->set_shipping_address_2( 'Daire 1' );
+	$order->set_shipping_state( 'TR34' );
+	$order->set_shipping_city( 'Kadıköy' );
 	$order->set_shipping_country( 'TR' );
 	$order->update_meta_data( '_kuka_shipping_fixture', '1' );
 	$order->save();

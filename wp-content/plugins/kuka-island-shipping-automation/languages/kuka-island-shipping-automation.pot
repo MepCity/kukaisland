@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-14T11:03:24+00:00\n"
+"POT-Creation-Date: 2026-09-23T17:32:07+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: kuka-island-shipping-automation\n"
@@ -353,7 +353,7 @@ msgid "Yetkiniz yetersiz."
 msgstr ""
 
 #. translators: %s: allow-listed safe reason code.
-#: includes/shipping/class-shipment-dispatcher.php:709
+#: includes/shipping/class-shipment-dispatcher.php:743
 #, php-format
 msgid "Otomatik kargo oluşturma bu turda tamamlanmadı (%s). Taşıyıcıya tekrar eden bir istek gönderilmedi."
 msgstr ""
@@ -588,191 +588,191 @@ msgstr ""
 msgid "Sipariş %s"
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2725
+#: includes/shipping/class-shipment-manager.php:2740
 msgid "Tekstil ürünü"
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2808
+#: includes/shipping/class-shipment-manager.php:2823
 msgid "Kapıda ödeme siparişleri için otomatik kargo kapalıdır. İş kuralı ayrıca doğrulanana kadar bu sipariş manuel kargolanmalıdır."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2817
+#: includes/shipping/class-shipment-manager.php:2832
 msgid "Siparişte şehir bilgisi yok."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2818
+#: includes/shipping/class-shipment-manager.php:2833
 msgid "Siparişte ilçe bilgisi yok."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2819
+#: includes/shipping/class-shipment-manager.php:2834
 msgid "Şehir taşıyıcının il listesinde bulunamadı. Tahmin yapılmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2820
+#: includes/shipping/class-shipment-manager.php:2835
 msgid "İlçe taşıyıcının ilçe listesinde bulunamadı. Tahmin yapılmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2821
+#: includes/shipping/class-shipment-manager.php:2836
 msgid "Şehir adı taşıyıcı listesinde birden fazla kayda uyuyor. Seçim yapılmadı; adres elle düzeltilmeli."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2822
+#: includes/shipping/class-shipment-manager.php:2837
 msgid "İlçe adı taşıyıcı listesinde birden fazla kayda uyuyor. Seçim yapılmadı; adres elle düzeltilmeli."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2823
+#: includes/shipping/class-shipment-manager.php:2838
 msgid "Taşıyıcı il/ilçe listesi boş döndü. Adres çözülemedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2824
+#: includes/shipping/class-shipment-manager.php:2839
 msgid "Adres taşıyıcı kodlarına çevrilemedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2833
+#: includes/shipping/class-shipment-manager.php:2848
 msgid "Bu siparişin taşıyıcı kaydı zaten var. Yeni sipariş oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2834
+#: includes/shipping/class-shipment-manager.php:2849
 msgid "Bu siparişin kargo gönderisi zaten oluşturulmuş. Yeni gönderi oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2835
+#: includes/shipping/class-shipment-manager.php:2850
 msgid "Bu siparişte belirsiz bir taşıyıcı yanıtı var. Önce salt-okunur mutabakat yapılmalı; yeniden gönderim yapılmaz."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2836
+#: includes/shipping/class-shipment-manager.php:2851
 msgid "Bu siparişte gönderilmiş bir iptal isteği var ve sonucu doğrulanıyor. Yeni gönderi oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2837
+#: includes/shipping/class-shipment-manager.php:2852
 msgid "Bu siparişte gönderilmiş bir güncelleme isteği var ve sonucu doğrulanıyor. Yeni gönderi oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2838
+#: includes/shipping/class-shipment-manager.php:2853
 msgid "Bu sipariş teslim edilmiş. Yeni gönderi oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2839
+#: includes/shipping/class-shipment-manager.php:2854
 msgid "Bu siparişin kargo durumu manuel inceleme bekliyor. Yeni gönderi oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2840
+#: includes/shipping/class-shipment-manager.php:2855
 msgid "Bu sipariş için yeni gönderi oluşturulmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2855
+#: includes/shipping/class-shipment-manager.php:2870
 msgid "Bu siparişin taşıyıcı kaydı iptal edilmiş ve iptal sorguyla doğrulanmıştı. İptal edilmiş bir kayıt üzerinden gönderi ya da barkod oluşturulmaz; yeni kargo ayrı ve açık bir işlemdir."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2856
+#: includes/shipping/class-shipment-manager.php:2871
 msgid "Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; yeniden oluşturma açık bir işlemdir."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2869
+#: includes/shipping/class-shipment-manager.php:2884
 msgid "Bu siparişin kargo gönderisi zaten oluşturulmuş. Yeni barkod istenmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2870
+#: includes/shipping/class-shipment-manager.php:2885
 msgid "Bu siparişte belirsiz bir taşıyıcı yanıtı var. Barkod aşaması sürdürülmedi; önce salt-okunur mutabakat çalıştırılmalı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2871
+#: includes/shipping/class-shipment-manager.php:2886
 msgid "Bu siparişte gönderilmiş bir iptal isteği doğrulanıyor. Barkod aşaması sürdürülmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2872
+#: includes/shipping/class-shipment-manager.php:2887
 msgid "Bu siparişte gönderilmiş bir güncelleme doğrulanıyor. Barkod aşaması sürdürülmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2873
+#: includes/shipping/class-shipment-manager.php:2888
 msgid "Bu sipariş teslim edilmiş. Barkod aşaması sürdürülmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2874
+#: includes/shipping/class-shipment-manager.php:2889
 msgid "Bu siparişin kargo durumu manuel inceleme bekliyor. Barkod aşaması sürdürülmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2875
+#: includes/shipping/class-shipment-manager.php:2890
 msgid "Bu siparişin taşıyıcı kaydı iptal edilmiş. Barkod aşaması sürdürülmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2876
+#: includes/shipping/class-shipment-manager.php:2891
 msgid "Bu siparişte taşıyıcıda bekleyen bir sipariş kaydı yok; sürdürülecek bir barkod aşaması bulunmuyor."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2892
+#: includes/shipping/class-shipment-manager.php:2907
 msgid "Bu siparişte gönderi var fakat gönderi numarası bilinmiyor; iptal edilecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2896
+#: includes/shipping/class-shipment-manager.php:2911
 msgid "Bu siparişte taşıyıcı kaydı yok; iptal edilecek bir şey bulunmuyor."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2897
+#: includes/shipping/class-shipment-manager.php:2912
 msgid "Bu sipariş için taşıyıcıya hiç çağrı yapılmadı; iptal edilecek bir kayıt yok."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2898
+#: includes/shipping/class-shipment-manager.php:2913
 msgid "Mutabakat taşıyıcıda bu referansla kayıt olmadığını gösterdi; iptal edilecek bir şey yok."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2899
+#: includes/shipping/class-shipment-manager.php:2914
 msgid "Bu siparişte belirsiz bir taşıyıcı yanıtı var. İptal tekrarlanmadı; önce salt-okunur mutabakat çalıştırılmalı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2900
+#: includes/shipping/class-shipment-manager.php:2915
 msgid "Bu siparişte doğrulanmayı bekleyen bir güncelleme var ve güncellemenin hangi kayda gönderildiği okunamadı; iptal edilecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2901
+#: includes/shipping/class-shipment-manager.php:2916
 msgid "Bu sipariş teslim edilmiş. Teslim edilmiş bir gönderi iptal edilmez; iade süreci ayrıdır."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2902
+#: includes/shipping/class-shipment-manager.php:2917
 msgid "Bu siparişin kargo durumu manuel inceleme bekliyor. İptal otomatik yapılmaz."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2903
+#: includes/shipping/class-shipment-manager.php:2918
 msgid "Bu siparişin durumu iptal için tanınmıyor; hiçbir çağrı yapılmadı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2915
+#: includes/shipping/class-shipment-manager.php:2930
 msgid "Bu siparişte gönderi var fakat gönderi numarası bilinmiyor; güncellenecek kayıt adreslenemiyor. Önce salt-okunur mutabakat çalıştırılmalı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2919
+#: includes/shipping/class-shipment-manager.php:2934
 msgid "Bu siparişin taşıyıcı kaydı iptal edilmiş; güncellenecek bir kayıt yok."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2920
+#: includes/shipping/class-shipment-manager.php:2935
 msgid "Bu siparişte gönderilmiş bir iptal isteği doğrulanıyor. Güncelleme gönderilmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2921
+#: includes/shipping/class-shipment-manager.php:2936
 msgid "Bu siparişte gönderilmiş bir güncelleme zaten doğrulanmayı bekliyor. İkinci güncelleme gönderilmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2922
+#: includes/shipping/class-shipment-manager.php:2937
 msgid "Bu siparişte belirsiz bir taşıyıcı yanıtı var. Güncelleme yapılmadı; önce salt-okunur mutabakat çalıştırılmalı."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2923
+#: includes/shipping/class-shipment-manager.php:2938
 msgid "Bu sipariş teslim edilmiş; taşıyıcı kaydı güncellenmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2924
+#: includes/shipping/class-shipment-manager.php:2939
 msgid "Bu siparişin kargo durumu manuel inceleme bekliyor; taşıyıcı kaydı güncellenmedi."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2925
+#: includes/shipping/class-shipment-manager.php:2940
 msgid "Bu siparişte güncellenebilecek bir taşıyıcı kaydı yok."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:2977
+#: includes/shipping/class-shipment-manager.php:2992
 msgid "Taşıyıcı isteği reddedildi. Reddin kayıt oluşturmadığı sözleşmede yazılı olmadığı için yeniden gönderim açılmadı; salt-okunur mutabakat gerekiyor."
 msgstr ""
 
-#: includes/shipping/class-shipment-manager.php:3020
+#: includes/shipping/class-shipment-manager.php:3035
 msgid "Taşıyıcıya hiçbir istek gönderilmedi: adaptör isteği ağa çıkmadan reddetti. Kayıt önceki durumuna döndürüldü."
 msgstr ""
 
@@ -815,27 +815,27 @@ msgid "Taşıyıcı cevabı kaydedildi, manuel inceleme gerekiyor (%s)."
 msgstr ""
 
 #. translators: %s: allow-listed reason code.
-#: includes/shipping/class-shipment-order-store.php:1424
+#: includes/shipping/class-shipment-order-store.php:1428
 #, php-format
 msgid "Manuel inceleme gerekiyor (%s)."
 msgstr ""
 
-#: includes/shipping/class-shipment-order-store.php:1524
+#: includes/shipping/class-shipment-order-store.php:1528
 msgid "Taşıyıcıda gönderi ve barkodlar oluşturuldu."
 msgstr ""
 
 #. translators: 1: status label, 2: numeric status code or 'tanımsız'.
-#: includes/shipping/class-shipment-order-store.php:1576
+#: includes/shipping/class-shipment-order-store.php:1580
 #, php-format
 msgid "Durum okundu: %1$s (kod: %2$s)"
 msgstr ""
 
-#: includes/shipping/class-shipment-order-store.php:1578
+#: includes/shipping/class-shipment-order-store.php:1582
 msgid "tanımsız"
 msgstr ""
 
 #. translators: 1: operation name, 2: safe error code.
-#: includes/shipping/class-shipment-order-store.php:1636
+#: includes/shipping/class-shipment-order-store.php:1640
 #, php-format
 msgid "Belirsiz sonuç (%1$s / %2$s). Gönderi oluşmuş olabilir; yeniden gönderim yapılmadı, salt-okunur mutabakat gerekiyor."
 msgstr ""

@@ -172,8 +172,9 @@ function kuka_set_order( array $overrides = array() ): WC_Order {
 	$order->set_shipping_first_name( 'Kuka' );
 	$order->set_shipping_last_name( 'Fixture' );
 	$order->set_shipping_address_1( (string) ( $overrides['address'] ?? 'Test sokak 1' ) );
-	$order->set_shipping_address_2( 'Kadıköy' );
-	$order->set_shipping_city( (string) ( $overrides['city'] ?? 'İstanbul' ) );
+	$order->set_shipping_address_2( 'Daire 1' );
+	$order->set_shipping_state( (string) ( $overrides['state'] ?? 'TR34' ) );
+	$order->set_shipping_city( (string) ( $overrides['city'] ?? 'Kadıköy' ) );
 	$order->set_shipping_country( 'TR' );
 	$order->update_meta_data( '_kuka_shipping_fixture', '1' );
 
@@ -1217,7 +1218,8 @@ $eligibility_case( 'refunded', array( 'paid' => true, 'status' => 'refunded' ) )
 $eligibility_case( 'failed', array( 'paid' => true, 'status' => 'failed' ) );
 $eligibility_case( 'no_phone', array( 'paid' => true, 'status' => 'processing', 'phone' => '' ) );
 $eligibility_case( 'no_address', array( 'paid' => true, 'status' => 'processing', 'address' => '' ) );
-$eligibility_case( 'no_city', array( 'paid' => true, 'status' => 'processing', 'city' => '' ) );
+$eligibility_case( 'no_city', array( 'paid' => true, 'status' => 'processing', 'state' => '' ) );
+$eligibility_case( 'no_district', array( 'paid' => true, 'status' => 'processing', 'city' => '' ) );
 
 // A download-only order needs a virtual line item, so it is built separately.
 $virtual_transport = new Kuka_Set_Transport();
@@ -1287,7 +1289,7 @@ $report(
 	)
 );
 
-$refused_names = array( 'auto_switch_off', 'unpaid', 'cancelled', 'refunded', 'failed', 'no_phone', 'no_address', 'no_city', 'virtual_only' );
+$refused_names = array( 'auto_switch_off', 'unpaid', 'cancelled', 'refunded', 'failed', 'no_phone', 'no_address', 'no_city', 'no_district', 'virtual_only' );
 $refused_ok    = true;
 
 foreach ( $refused_names as $name ) {
@@ -1353,13 +1355,15 @@ $report(
 	'SHIPPING_AUTO_CREATE_SKIPS_INCOMPLETE_ADDRESS',
 	false === $eligibility_cases['no_phone']['scheduled']
 		&& false === $eligibility_cases['no_address']['scheduled']
-		&& false === $eligibility_cases['no_city']['scheduled'],
+		&& false === $eligibility_cases['no_city']['scheduled']
+		&& false === $eligibility_cases['no_district']['scheduled'],
 	sprintf(
-		'measured:real_dispatcher|no_phone:%s|no_address:%s|no_city:%s|writes:%d',
+		'measured:real_dispatcher|no_phone:%s|no_address:%s|no_city:%s|no_district:%s|writes:%d',
 		$eligibility_cases['no_phone']['reason'],
 		$eligibility_cases['no_address']['reason'],
 		$eligibility_cases['no_city']['reason'],
-		(int) $eligibility_cases['no_phone']['writes'] + (int) $eligibility_cases['no_address']['writes'] + (int) $eligibility_cases['no_city']['writes']
+		$eligibility_cases['no_district']['reason'],
+		(int) $eligibility_cases['no_phone']['writes'] + (int) $eligibility_cases['no_address']['writes'] + (int) $eligibility_cases['no_city']['writes'] + (int) $eligibility_cases['no_district']['writes']
 	)
 );
 
@@ -1382,6 +1386,36 @@ $report(
 	$refused_ok,
 	sprintf( 'measured:real_dispatcher|cases:%d|wrong:%s', count( $refused_names ), $refused_ok ? 'none' : 'SEE_ABOVE' )
 );
+
+/* The checkout stores TR34 + Kadıköy; DHL expects cityCode + districtCode. */
+$address_transport = new Kuka_Set_Transport();
+$address_provider  = kuka_set_provider( $address_transport );
+$address_manager   = kuka_set_manager( $address_provider );
+$address_order     = kuka_set_order( array( 'paid' => true, 'status' => 'processing' ) );
+$address_id        = (int) $address_order->get_id();
+$address_request   = $address_manager->build_request(
+	$address_order,
+	$address_provider,
+	Kuka_Island_Shipping_Order_Store::prepare_reference( $address_order )
+);
+$address_recipient = (array) ( $address_request['shipment']['recipient'] ?? array() );
+
+$report(
+	'SHIPPING_CHECKOUT_ADDRESS_MAPS_TO_CARRIER',
+	true === (bool) ( $address_request['ok'] ?? false )
+		&& 34 === (int) ( $address_recipient['city_code'] ?? 0 )
+		&& 1 === (int) ( $address_recipient['district_code'] ?? 0 )
+		&& str_contains( (string) ( $address_recipient['address'] ?? '' ), 'Test sokak 1' )
+		&& str_contains( (string) ( $address_recipient['address'] ?? '' ), 'Daire 1' ),
+	sprintf(
+		'measured:real_woocommerce_order_and_dhl_resolver|stored:state=TR34/city=Kadıköy/address_2=Daire_1|mapped:city_code=%d/district_code=%d|address_continuation:%s',
+		(int) ( $address_recipient['city_code'] ?? 0 ),
+		(int) ( $address_recipient['district_code'] ?? 0 ),
+		str_contains( (string) ( $address_recipient['address'] ?? '' ), 'Daire 1' ) ? 'kept' : 'MISSING'
+	)
+);
+
+kuka_set_destroy( kuka_set_fresh( $address_id ) );
 
 /* ========================================================================== */
 /* 6. One event, one job. Several events, still one job.                       */
@@ -1432,8 +1466,24 @@ $report(
 );
 
 /* ========================================================================== */
-/* 7. The worker still books TWO phases, and only two                          */
+/* 7. The two carrier writes run in two separate worker turns                 */
 /* ========================================================================== */
+
+$phase_one = kuka_set_with_switch(
+	'auto_create_enabled',
+	true,
+	static function () use ( $idem_manager, $idem_id ): array {
+		return ( new Kuka_Island_Shipping_Dispatcher( $idem_manager ) )->run( $idem_id );
+	}
+);
+
+$phase_one_data    = Kuka_Island_Shipping_Order_Store::get_shipment_data( kuka_set_fresh( $idem_id ) );
+$phase_one_pending = kuka_set_pending( Kuka_Island_Shipping_Dispatcher::ACTION, $idem_id );
+
+// The Action Scheduler runner consumes the current row before invoking the
+// callback. This harness calls run() directly, so remove that simulated row
+// before starting the later barcode turn.
+kuka_set_purge( $idem_id );
 
 $two_phase = kuka_set_with_switch(
 	'auto_create_enabled',
@@ -1449,11 +1499,16 @@ $report(
 	'SHIPPING_AUTO_CREATE_IS_TWO_PHASE',
 	1 === $idem_transport->count_for( '/createOrder' )
 		&& 1 === $idem_transport->count_for( '/createbarcode' )
+		&& 1 === $phase_one_pending
+		&& Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED === (string) $phase_one_data['state']
+		&& true === (bool) ( $phase_one['next_phase_scheduled'] ?? false )
 		&& Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED === (string) $two_phase_data['state']
 		&& true === (bool) ( $two_phase['ok'] ?? false ),
 	sprintf(
-		'measured:real_dispatcher_worker_and_mock_transport|createOrder:%d|createbarcode:%d|state:%s|ok:%s|phases:%s',
+		'measured:two_real_dispatcher_turns_and_mock_transport|first:createOrder=%d/createbarcode=0/state=%s/follow_up_jobs=%d|second:createbarcode=%d/state=%s/ok=%s|phases:%s',
 		$idem_transport->count_for( '/createOrder' ),
+		(string) $phase_one_data['state'],
+		$phase_one_pending,
 		$idem_transport->count_for( '/createbarcode' ),
 		(string) $two_phase_data['state'],
 		! empty( $two_phase['ok'] ) ? 'yes' : 'no',
@@ -1593,6 +1648,16 @@ $silent_order   = kuka_set_order( array( 'paid' => true, 'status' => 'processing
 $silent_id      = (int) $silent_order->get_id();
 
 $silent_first = kuka_set_with_switch(
+	'auto_create_enabled',
+	true,
+	static function () use ( $silent_manager, $silent_id ): array {
+		return ( new Kuka_Island_Shipping_Dispatcher( $silent_manager ) )->run( $silent_id );
+	}
+);
+
+kuka_set_purge( $silent_id );
+
+$silent_second = kuka_set_with_switch(
 	'auto_create_enabled',
 	true,
 	static function () use ( $silent_manager, $silent_id ): array {
@@ -1740,6 +1805,16 @@ $a_second = kuka_set_with_switch(
 	}
 );
 
+kuka_set_purge( $a_id );
+
+$a_third = kuka_set_with_switch(
+	'auto_create_enabled',
+	true,
+	static function () use ( $a_manager, $a_id ): array {
+		return ( new Kuka_Island_Shipping_Dispatcher( $a_manager ) )->run( $a_id );
+	}
+);
+
 $a_state = Kuka_Island_Shipping_Order_Store::get_shipment_data( kuka_set_fresh( $a_id ) );
 
 $retry_cases['a_contention_before_create_order'] = array(
@@ -1750,7 +1825,7 @@ $retry_cases['a_contention_before_create_order'] = array(
 	'create_order'    => $a_transport->count_for( '/createOrder' ),
 	'create_barcode'  => $a_transport->count_for( '/createbarcode' ),
 	'state'           => (string) $a_state['state'],
-	'ok'              => (bool) ( $a_second['ok'] ?? false ),
+	'ok'              => (bool) ( $a_third['ok'] ?? false ),
 	'notes_repeat'    => kuka_set_max_note_repeat( $a_id ),
 );
 
@@ -1840,6 +1915,17 @@ $uncertain_case = static function ( string $name, string $silent_path ) use ( &$
 			return ( new Kuka_Island_Shipping_Dispatcher( $manager ) )->run( $order_id );
 		}
 	);
+
+	if ( '/createbarcode' === $silent_path ) {
+		kuka_set_purge( $order_id );
+		$result = kuka_set_with_switch(
+			'auto_create_enabled',
+			true,
+			static function () use ( $manager, $order_id ): array {
+				return ( new Kuka_Island_Shipping_Dispatcher( $manager ) )->run( $order_id );
+			}
+		);
+	}
 
 	$jobs = kuka_set_retry_jobs( $order_id );
 
@@ -2878,14 +2964,14 @@ $report(
 	$race2_started
 		&& $race2_marker_seen
 		&& 1 === $race2_create_order
-		&& 1 === $race2_create_barcode
+		&& 0 === $race2_create_barcode
 		&& 0 === $race2_transport->writes()
 		&& false === (bool) ( $race2_loser['ok'] ?? false )
 		&& 'dispatch_in_progress' === (string) ( $race2_loser['reason'] ?? '' )
 		&& 1 === (int) $race2_data['dispatch_attempts']
-		&& in_array( Kuka_Island_Shipping_Dispatcher::PHASE_CREATE_BARCODE, $race2_phases, true )
 		&& in_array( Kuka_Island_Shipping_Dispatcher::PHASE_CREATE_ORDER, $race2_phases, true )
-		&& 0 === kuka_set_pending( Kuka_Island_Shipping_Dispatcher::ACTION, $race2_id )
+		&& ! in_array( Kuka_Island_Shipping_Dispatcher::PHASE_CREATE_BARCODE, $race2_phases, true )
+		&& 1 === kuka_set_pending( Kuka_Island_Shipping_Dispatcher::ACTION, $race2_id )
 		&& $race2_free,
 	sprintf(
 		'measured:second_real_php_process_and_separate_mysql_session|child_started:%s|child_inside_carrier_call:%s'
@@ -2947,6 +3033,16 @@ $notify_order     = kuka_set_order( array( 'paid' => true, 'status' => 'processi
 $notify_id        = (int) $notify_order->get_id();
 
 $notify_run = kuka_set_with_switch(
+	'auto_create_enabled',
+	true,
+	static function () use ( $notify_manager, $notify_id ): array {
+		return ( new Kuka_Island_Shipping_Dispatcher( $notify_manager ) )->run( $notify_id );
+	}
+);
+
+kuka_set_purge( $notify_id );
+
+$notify_barcode_run = kuka_set_with_switch(
 	'auto_create_enabled',
 	true,
 	static function () use ( $notify_manager, $notify_id ): array {

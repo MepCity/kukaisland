@@ -286,7 +286,7 @@ final class Kuka_Island_Core_Language {
 			'Renk' => 'Color', 'Beden' => 'Size', 'Temizle' => 'Clear', 'Sonuçları gör' => 'View results',
 			'Bu seçimde ürün bulunamadı.' => 'No products were found for this selection.', 'Filtrelerden birini kaldırarak yeniden deneyin.' => 'Remove a filter and try again.',
 			'Filtreleri temizle' => 'Clear filters', 'Teslimat adresi' => 'Shipping address', 'Fatura bilgileri' => 'Billing details',
-			'Adres' => 'Address', 'Adres devamı' => 'Address line 2', 'İl' => 'Province',
+			'Adres' => 'Address', 'Adres devamı' => 'Address line 2', 'İl' => 'Province', 'İlçe' => 'District',
 			'Cadde, sokak, bina ve kapı numarası' => 'Street, building and door number', 'Site, blok, daire vb.' => 'Complex, block, apartment, etc.',
 			'Kişisel bilgiler' => 'Personal information', 'Sepet' => 'Cart', 'Bilgiler ve ödeme' => 'Details and payment', 'Onay' => 'Confirmation',
 			'Ödeme adımları' => 'Checkout steps', 'Yardım gerekiyor mu?' => 'Need help?', 'Güvenli ödeme' => 'Secure payment',

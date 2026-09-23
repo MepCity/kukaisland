@@ -16,8 +16,9 @@ gönderinin durumunu sınırlı bir zincirle takip eder.
 
 **Yapmaz:**
 
-- Sipariş durumu değiştiğinde kendiliğinden gönderi oluşturmaz. Hiçbir
-  `woocommerce_order_status_*` kancasına bağlı değildir.
+- Varsayılan ayarda sipariş durumu değiştiğinde gönderi oluşturmaz. Operatör
+  **Otomatik gönderi oluşturma** anahtarını ayrıca açarsa ödeme/durum kancaları
+  taşıyıcıyı checkout içinde çağırmadan Action Scheduler işi planlar.
 - Belirsiz bir yanıttan sonra isteği tekrarlamaz.
 - Kapıda ödeme gönderisi oluşturmaz.
 - Canlı ortama çağrı yapmaz.
@@ -1188,7 +1189,7 @@ sipariş ekranı nedenini koduyla yazar:
 - durum `processing` veya `completed`
 - iptal / iade / başarısız değil, kısmi iade yok
 - en az bir **fiziksel** ürün (yalnız sanal/indirilebilir sipariş gönderilmez)
-- alıcı adı, adresi, şehri ve telefonu tam
+- alıcı adı, adresi, ili, ilçesi ve telefonu tam
 - modül anahtarı, çalışma kapısı ve adaptör açık
 - yapılandırma eksiksiz (canlı ortam seçili değil, dört kimlik var, kasa okunur)
 - siparişte **hiçbir** taşıyıcı kaydı yok: durum `none`, bekleyen mutation yok,
@@ -1217,12 +1218,21 @@ Tek bir kilit kullanmak ise bir planlamanın taşıyıcı çağrısını, bir ta
 
 ### Belirsiz yazmada neden yeniden gönderilmez
 
-İş çalıştığında iki faz ayrıdır ve ikincisi birincinin **veritabanından taze
-okunmuş** sonucuna bağlıdır:
+İş çalıştığında iki faz ayrı **worker turlarındadır** ve ikincisi birincinin
+**veritabanından taze okunmuş** sonucuna bağlıdır:
 
 1. `createOrder`
 2. sipariş taze okunur; durum tam olarak `order_created` değilse **durulur**
-3. `createbarcode`
+3. `createbarcode` için ayrı bir Action Scheduler işi 5 dakika sonrasına
+   planlanır; ilk worker burada biter
+4. ikinci worker uygunluğu ve taze durumu yeniden doğrular, sonra
+   `createbarcode` çağrısını yapar
+
+DHL'nin yazılı uyarısı iki çağrının arka arkaya yapılması hâlinde varış
+şubesinin henüz belirlenmemiş olabileceğidir. Beş dakika bir **operasyonel
+tampon**dur; şube hazır kanıtı değildir. Belgelenmiş okuma cevaplarında
+`branch_ready` benzeri bir alan yoktur. Bu nedenle iki çağrı hiçbir zaman aynı
+worker turunda yapılmaz ve ikinci faz başarısız/belirsiz olursa kör retry yoktur.
 
 Taşıyıcıya ulaşmış belirsiz bir yazma otomatik olarak tekrarlanmaz — ne aynı
 turda, ne sonraki turda. Kaydın var olup olmadığı yalnız salt-okunur mutabakatla
@@ -1275,8 +1285,9 @@ hiçbir şey gitmez**.
 doğrulanamazsa `dispatch_phase_clear_unverified` ile **retry planlanmaz**, çünkü
 diskte duran bir işaretle karşılaşacak bir tur yalnız kendini reddedebilir.
 
-Deneme **tur başına** sayılır, faz başına değil: aynı turun ikinci fazı deneme
-harcamaz. Durum tek başına yetmez: salt-okunur bir
+Deneme **worker turu başına** sayılır. Normal otomatik akış createOrder için bir,
+ayrı createbarcode worker'ı için ikinci turu kullanır. Durum tek başına yetmez:
+salt-okunur bir
 mutabakat siparişi meşru biçimde `order_created`'a geri koyabilir, ve yalnız
 duruma bakan bir worker bunu ikinci bir `createbarcode` için izin sayardı.
 Operatörün düğmesi bu işaretten etkilenmez — bu, otomatik yolun kendi

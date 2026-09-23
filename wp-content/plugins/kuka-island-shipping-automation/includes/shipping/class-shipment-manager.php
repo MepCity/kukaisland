@@ -2520,21 +2520,17 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, code: string, message: string, shipment: array<string, mixed>}
 	 */
 	public function build_request( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference ): array {
-		$city     = $order->get_shipping_city() ?: $order->get_billing_city();
-		$district = $order->get_shipping_state() ?: $order->get_billing_state();
-
 		/*
-		 * WooCommerce stores the Turkish district in the state field for TR
-		 * addresses, and the state field can hold a code (TR34) rather than a
-		 * name. address_2 is where a shop's checkout commonly collects the
-		 * district as free text, so it is preferred when present -- and when
-		 * neither yields anything the request is refused rather than sent with
-		 * a guess.
+		 * WooCommerce's Turkish address model is `state` = province and `city`
+		 * = district/town. The state may be stored as a code such as TR34, so it
+		 * is expanded through WooCommerce's own country table before the
+		 * carrier's CBS resolver sees it. `address_2` is address continuation
+		 * (site/block/flat), never a district substitute.
 		 */
-		$address_2 = $order->get_shipping_address_2() ?: $order->get_billing_address_2();
-		if ( '' !== trim( (string) $address_2 ) ) {
-			$district = $address_2;
-		}
+		$country  = $order->get_shipping_country() ?: $order->get_billing_country();
+		$province = $order->get_shipping_state() ?: $order->get_billing_state();
+		$city     = self::state_name( (string) $country, (string) $province );
+		$district = $order->get_shipping_city() ?: $order->get_billing_city();
 
 		$located = $carrier->resolve_location( (string) $city, (string) $district );
 
@@ -2552,7 +2548,11 @@ final class Kuka_Island_Shipping_Manager {
 			$name = trim( $order->get_formatted_billing_full_name() );
 		}
 
-		$address = trim( (string) ( $order->get_shipping_address_1() ?: $order->get_billing_address_1() ) );
+		$address   = trim( (string) ( $order->get_shipping_address_1() ?: $order->get_billing_address_1() ) );
+		$address_2 = trim( (string) ( $order->get_shipping_address_2() ?: $order->get_billing_address_2() ) );
+		if ( '' !== $address_2 ) {
+			$address = trim( $address . ' ' . $address_2 );
+		}
 
 		$shipment = array(
 			'reference'          => $reference,
@@ -2633,6 +2633,21 @@ final class Kuka_Island_Shipping_Manager {
 			'message'  => '',
 			'shipment' => $shipment,
 		);
+	}
+
+	/** Expand WooCommerce's province code without maintaining a second table. */
+	private static function state_name( string $country, string $state ): string {
+		$country = strtoupper( trim( $country ) );
+		$state   = trim( $state );
+
+		if ( '' === $country || '' === $state || ! class_exists( 'WC_Countries' ) ) {
+			return $state;
+		}
+
+		$countries = WC()->countries instanceof WC_Countries ? WC()->countries : new WC_Countries();
+		$states    = (array) $countries->get_states( $country );
+
+		return isset( $states[ $state ] ) ? (string) $states[ $state ] : $state;
 	}
 
 	/**

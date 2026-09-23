@@ -95,6 +95,11 @@ function kuka_island_checkout_required_fields(): array {
 	return array(
 		'billing_phone'     => (bool) ( $settings['require_phone'] ?? true ),
 		'billing_address_2' => (bool) ( $settings['require_address_2'] ?? false ),
+		// DHL/MNG route resolution needs the district independently of the
+		// province. WooCommerce's `city` field is the district/town slot for a
+		// Turkish address; it is therefore part of the address contract, not an
+		// operator-controlled optional field.
+		'billing_city'      => true,
 	);
 }
 
@@ -117,7 +122,8 @@ function kuka_island_checkout_field_order( array $fields ): array {
 		'billing_address_2'     => 60,
 		'billing_postcode'      => 70,
 		'billing_state'         => 75,
-		'billing_phone'         => 80,
+		'billing_city'          => 80,
+		'billing_phone'         => 90,
 		'billing_customer_type' => 110,
 		'billing_company'       => 115,
 		'billing_tax_office'    => 116,
@@ -133,9 +139,8 @@ function kuka_island_checkout_field_order( array $fields ): array {
 			$fields['billing'][ $key ]['required'] = $required;
 		}
 	}
-	// Türkiye teslimatında il, posta koduyla birlikte yeterli bölgesel bilgidir.
-	// Serbest metin "şehir/ilçe" alanı aynı bilgiyi ikinci kez istemesin.
-	unset( $fields['billing']['billing_city'], $fields['shipping']['shipping_city'] );
+	// WooCommerce'in `state` alanı Türkiye'de ili, `city` alanı ilçeyi
+	// taşır. DHL/MNG her ikisini ayrı ister; ikisini de siparişte koru.
 	// Şirket unvanı yalnız kurumsal fatura seçildiğinde görünür ve zorunludur.
 	// Bireysel müşteride gizli bir `required` alan sipariş gönderimini engellemez.
 	if ( isset( $fields['billing']['billing_company'] ) ) {
@@ -174,6 +179,11 @@ function kuka_island_checkout_field_order( array $fields ): array {
 			$fields[ $fieldset ][ $prefix . 'state' ]['label'] = __( 'İl', 'kuka-island' );
 			$fields[ $fieldset ][ $prefix . 'state' ]['class'] = array( 'form-row-last' );
 		}
+		if ( isset( $fields[ $fieldset ][ $prefix . 'city' ] ) ) {
+			$fields[ $fieldset ][ $prefix . 'city' ]['label']       = __( 'İlçe', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'city' ]['placeholder'] = __( 'İlçe', 'kuka-island' );
+			$fields[ $fieldset ][ $prefix . 'city' ]['class']       = array( 'form-row-wide' );
+		}
 	}
 	// Fatura adresi bloğu yalnız adres bileşenlerini sorar; alıcı adı ve şirket
 	// bilgisi kişisel/fatura bölümlerinden gelir ve gönderimde kopyalanır.
@@ -195,7 +205,7 @@ add_filter( 'woocommerce_checkout_fields', 'kuka_island_checkout_field_order', 3
 function kuka_island_checkout_address_priorities(): array {
 	return array(
 		'country' => 40, 'address_1' => 50, 'address_2' => 60,
-		'postcode' => 70, 'state' => 75, 'phone' => 80,
+		'postcode' => 70, 'state' => 75, 'city' => 80, 'phone' => 90,
 	);
 }
 
@@ -228,7 +238,6 @@ function kuka_island_checkout_address_required(): array {
 function kuka_island_checkout_locale( array $locale ): array {
 	$required = kuka_island_checkout_address_required();
 	foreach ( array_keys( $locale ) as $code ) {
-		unset( $locale[ $code ]['city'] );
 		foreach ( kuka_island_checkout_address_priorities() as $field => $priority ) {
 			if ( isset( $locale[ $code ][ $field ] ) ) {
 				$locale[ $code ][ $field ]['priority'] = $priority;
@@ -256,6 +265,11 @@ function kuka_island_checkout_locale( array $locale ): array {
 			$locale[ $code ]['state']['label'] = __( 'İl', 'kuka-island' );
 			$locale[ $code ]['state']['class'] = array( 'form-row-last' );
 		}
+		if ( isset( $locale[ $code ]['city'] ) ) {
+			$locale[ $code ]['city']['label']       = __( 'İlçe', 'kuka-island' );
+			$locale[ $code ]['city']['placeholder'] = __( 'İlçe', 'kuka-island' );
+			$locale[ $code ]['city']['class']       = array( 'form-row-wide' );
+		}
 	}
 	return $locale;
 }
@@ -268,7 +282,6 @@ add_filter( 'woocommerce_get_country_locale', 'kuka_island_checkout_locale', 20 
  * @return array<string, array<string, mixed>>
  */
 function kuka_island_checkout_default_address_fields( array $fields ): array {
-	unset( $fields['city'] );
 	foreach ( kuka_island_checkout_address_priorities() as $field => $priority ) {
 		if ( isset( $fields[ $field ] ) ) {
 			$fields[ $field ]['priority'] = $priority;
@@ -298,6 +311,11 @@ function kuka_island_checkout_default_address_fields( array $fields ): array {
 	if ( isset( $fields['state'] ) ) {
 		$fields['state']['label'] = __( 'İl', 'kuka-island' );
 		$fields['state']['class'] = array( 'form-row-last' );
+	}
+	if ( isset( $fields['city'] ) ) {
+		$fields['city']['label']       = __( 'İlçe', 'kuka-island' );
+		$fields['city']['placeholder'] = __( 'İlçe', 'kuka-island' );
+		$fields['city']['class']       = array( 'form-row-wide' );
 	}
 	return $fields;
 }

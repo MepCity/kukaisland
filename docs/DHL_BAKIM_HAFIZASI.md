@@ -3469,3 +3469,32 @@ autoload durumunu başlangıçtaki baytlarla geri yükler.
   önce bu satırların gerçekten teste mi ait olduğunu sor. Önbellek için
   sahiplik yalnız benzersiz namespace ve açık exact-name listesiyle kurulur;
   üretim namespace'ine test verisi yazılmaz ve `LIKE` ile silme yapılmaz.
+
+## K-63 — Checkout ilçe bilgisini siliyor, otomatik worker çağrıları arka arkaya yapıyordu
+
+- **Tarih:** 2026-09-23
+- **Belirti:** Gerçek sandbox ödemesi tamamlandı fakat otomatik kargo işi
+  `address_incomplete:city` ile durdu; taşıyıcıda sipariş/gönderi oluşmadı.
+- **Kök neden 1:** Tema `billing_city` / `shipping_city` alanlarını checkout'tan
+  kaldırıyordu. WooCommerce'in Türkiye adres modelinde `state` il, `city`
+  ilçe/şehir alanıdır. DHL'nin yazılı akışı ise İl ve İlçe bilgisini ayrı ister.
+  Kargo yöneticisi ayrıca alanları ters yorumluyor, `address_2` değerini ilçe
+  sanıyordu; o alan checkout'ta açıkça site/blok/daire içindir.
+- **Kök neden 2:** Manuel Manager iki çağrıyı ayrı operatör adımında tutarken
+  otomatik Dispatcher başarılı `createOrder` sonrasında aynı worker turunda
+  `createbarcode` çağırıyordu. DHL e-postası arka arkaya çağrıda varış şubesi
+  henüz belirlenmediği için barkod hatası alınabileceğini açıkça bildiriyor.
+- **Çözüm:** Checkout `İl` (`state`) ve zorunlu `İlçe` (`city`) alanlarını ayrı
+  saklıyor. Manager il kodunu WooCommerce'in ülke tablosundan ada çeviriyor,
+  `state → carrier city`, `city → carrier district` eşliyor ve `address_2`yi
+  teslimat adresinde koruyor. Dispatcher `createOrder` sonrasında ayrı bir
+  Action Scheduler işi planlıyor; `createbarcode` en erken 5 dakika sonra ayrı
+  worker'da çalışıyor. Bu süre hazır kanıtı değil, belgelenmiş bir tampondur.
+- **Kanıt:** `CHECKOUT_ADDRESS_FLOW=address|address2|postcode+province|district|phone`;
+  `SHIPPING_CHECKOUT_ADDRESS_MAPS_TO_CARRIER=PASS|...city_code=34/district_code=1|address_continuation:kept`;
+  `SHIPPING_AUTO_CREATE_IS_TWO_PHASE=PASS|...first:createOrder=1/createbarcode=0/...follow_up_jobs=1|second:createbarcode=1/state=shipment_created...`;
+  ayar suite'i `SHIPPING_SETTINGS_VERIFY=PASS`, ana kargo suite'i
+  `SHIPPING_VERIFY=PASS`.
+- **Tekrar yaşanırsa ilk bak:** Checkout'ta `billing_state` ile `billing_city`
+  birlikte saklanıyor mu; `build_request()` state kodunu ada çeviriyor mu;
+  ilk otomatik worker'ın çağrı sayısı `createOrder=1/createbarcode=0` mı.

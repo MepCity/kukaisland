@@ -337,6 +337,7 @@ $_SERVER['REQUEST_URI'] = '/en/odeme/';
 $free_rate = new WC_Shipping_Rate( 'free_shipping:2', 'Ücretsiz kargo', 0, array(), 'free_shipping', 2 );
 $flat_rate = new WC_Shipping_Rate( 'flat_rate:1', 'Sabit ücret', 149, array(), 'flat_rate', 1 );
 WP_CLI::line( 'SHIPPING_RATE_LABELS_EN=' . $free_rate->get_label() . '|' . $flat_rate->get_label() );
+WP_CLI::line( 'CHECKOUT_DISTRICT_LABEL_EN=' . apply_filters( 'gettext', 'İlçe', 'İlçe', 'kuka-island' ) );
 if ( null === $request_uri_before ) {
 	unset( $_SERVER['REQUEST_URI'] );
 } else {
@@ -354,7 +355,7 @@ WP_CLI::line( 'RETIRED_PANEL_FIELDS=' . implode( ',', $retired_panel_fields ) );
 $checkout_fields = WC()->checkout()->get_checkout_fields();
 $billing_fields  = $checkout_fields['billing'] ?? array();
 $shipping_fields = $checkout_fields['shipping'] ?? array();
-WP_CLI::line( 'CHECKOUT_ADDRESS_FLOW=' . ( ! isset( $billing_fields['billing_city'] ) && ! isset( $shipping_fields['shipping_city'] ) && ! isset( $shipping_fields['shipping_phone'] ) && 'Adres' === ( $billing_fields['billing_address_1']['label'] ?? '' ) && 'İl' === ( $billing_fields['billing_state']['label'] ?? '' ) && 70 === ( $billing_fields['billing_postcode']['priority'] ?? 0 ) && 75 === ( $billing_fields['billing_state']['priority'] ?? 0 ) && 80 === ( $billing_fields['billing_phone']['priority'] ?? 0 ) ? 'address|address2|postcode+province|phone' : 'mismatch' ) );
+WP_CLI::line( 'CHECKOUT_ADDRESS_FLOW=' . ( isset( $billing_fields['billing_city'], $shipping_fields['shipping_city'] ) && ! isset( $shipping_fields['shipping_phone'] ) && 'Adres' === ( $billing_fields['billing_address_1']['label'] ?? '' ) && 'İl' === ( $billing_fields['billing_state']['label'] ?? '' ) && 'İlçe' === ( $billing_fields['billing_city']['label'] ?? '' ) && true === ( $billing_fields['billing_city']['required'] ?? false ) && 70 === ( $billing_fields['billing_postcode']['priority'] ?? 0 ) && 75 === ( $billing_fields['billing_state']['priority'] ?? 0 ) && 80 === ( $billing_fields['billing_city']['priority'] ?? 0 ) && 90 === ( $billing_fields['billing_phone']['priority'] ?? 0 ) ? 'address|address2|postcode+province|district|phone' : 'mismatch' ) );
 $theme_css = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/global.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 $theme_tokens = (string) file_get_contents( get_stylesheet_directory() . '/assets/css/tokens.css' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 WP_CLI::line( 'HERO_OVERLAY_LAYER=' . ( str_contains( $theme_css, '.kuka-hero__content::before' ) || str_contains( $theme_tokens, '--hero-overlay-strength' ) ? 'present' : 'absent' ) );

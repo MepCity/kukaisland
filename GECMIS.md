@@ -1274,3 +1274,25 @@ Müşteri, ana sayfanın tek fotoğraflı Editoryal alanını sosyal medyadan se
 Docker yeni kurulumda BuildKit disk I/O hatası verdi. Testler ayrı Playground üzerinde yürütüldü; bunun sabitlenmiş üretim yığını olmadığı raporda açıkça ayrıldı. Gerçek tarayıcıda mobil/masaüstü galeri, doğrudan ürün sayfasına tıklama, panel kaydı/sıralama/arşiv/toplu ekleme ve son şemaya uygun 16 sunucu davranış kontrolü ölçüldü. Canlı aktarım yapılmadı. Kullanım ve kanıt sınırları `docs/SIZDEN_GELENLER.md` içinde.
 
 23 Eylül'de canlı üst menü panelden **YENİ, BİKİNİ, PLAJ GİYİM, KOLEKSİYON, HİKAYEMİZ** sırasına alındı. Mayo ve Takımlar silinmedi; yalnız header görünürlükleri kapatıldı. Aynı sözleşme temiz kurulum varsayılanlarına ve doğrulama kapısına işlendi.
+
+## 18. DHL otomasyonunda gerçek ödeme testinin açtığı iki sözleşme hatası — 23 Eylül
+
+iyzico sandbox ödemesi başarıyla tamamlandı; sipariş `processing` oldu ve stok
+azaldı. Fakat kargo worker'ı taşıyıcıya çıkmadan `address_incomplete:city` ile
+durdu. Bu güvenli bir reddi, fakat gerçek checkout ile kargo modülünün birbirini
+anlamadığını gösterdi.
+
+DHL'nin gönderdiği e-posta yeniden okundu. Taşıyıcı İl ve İlçe bilgisini ayrı
+istiyor; ayrıca `createOrder` ile `createbarcode` arka arkaya çağrılırsa varış
+şubesi henüz çözülmemiş olabileceğini açıkça söylüyor. Kodda iki uyumsuzluk
+vardı: checkout ilçe alanını kaldırıyor ve `address_2`yi site/blok/daire olarak
+topluyordu; kargo kodu ise `address_2`yi ilçe sanıyordu. Üstelik manuel akış iki
+yazmayı ayırdığı hâlde otomatik worker ikisini aynı turda gönderiyordu.
+
+Alan sözleşmesi düzeltildi: WooCommerce `state = İl`, `city = İlçe`; state kodu
+WooCommerce'in kendi ülke tablosundan il adına çevriliyor, `address_2` teslimat
+adresinin devamı olarak kalıyor. Otomatik akış da iki worker turuna bölündü:
+`createOrder` başarılıysa ayrı barkod işi en erken beş dakika sonrasına
+planlanıyor. Bu beş dakika “şube hazır” iddiası değildir; DHL böyle bir hazır
+alanı belgelememiştir. Kanıtlanan şey, iki yazmanın artık arka arkaya aynı
+worker içinde yapılamamasıdır.
