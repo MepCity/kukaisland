@@ -241,6 +241,45 @@ final class Kuka_Island_Shipping_DHL_Client {
 		);
 	}
 
+	/**
+	 * POST /createRecipient
+	 *
+	 * Plus Command. There is no documented read that proves this record later,
+	 * so a timeout or 5xx stays uncertain and is not retried.
+	 *
+	 * @param array<string, mixed> $payload Request body, already in vendor shape.
+	 */
+	public function create_recipient( array $payload ): Kuka_Island_Shipping_Result {
+		return $this->call(
+			'create_recipient',
+			'POST',
+			Kuka_Island_Shipping_DHL_Config::SANDBOX_PLUS_CMD_URL . '/createRecipient',
+			$payload,
+			true,
+			static function ( $decoded ): ?array {
+				$decoded = self::unwrap( $decoded );
+
+				if ( ! is_array( $decoded ) ) {
+					return null;
+				}
+
+				$invoice_id  = trim( (string) ( $decoded['orderInvoiceId'] ?? '' ) );
+				$detail_id   = trim( (string) ( $decoded['orderInvoiceDetailId'] ?? '' ) );
+				$branch_code = trim( (string) ( $decoded['shipperBranchCode'] ?? '' ) );
+
+				if ( '' === $invoice_id && '' === $detail_id && '' === $branch_code ) {
+					return null;
+				}
+
+				return array(
+					'order_invoice_id'        => $invoice_id,
+					'order_invoice_detail_id' => $detail_id,
+					'shipper_branch_code'     => $branch_code,
+				);
+			}
+		);
+	}
+
 	/* ---------------------------------------------------------------------- */
 	/* Barcode Command                                                         */
 	/* ---------------------------------------------------------------------- */

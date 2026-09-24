@@ -93,6 +93,7 @@ docs = {
     'barcode_cmd': 'Barcode_Command_API-1.0.json',
     'standard_query': 'Standard_Query_API-1.0.json',
     'cbs_info': 'CBS_Info_API-1.0.json',
+    'plus_cmd': 'Plus_Command_API-1.0.json',
 }
 
 specs = {}
@@ -117,6 +118,7 @@ expected_urls = {
     'barcode_cmd': 'https://testapi.mngkargo.com.tr' + (base_paths['barcode_cmd'] or ''),
     'standard_query': 'https://testapi.mngkargo.com.tr' + (base_paths['standard_query'] or ''),
     'cbs_info': 'https://testapi.mngkargo.com.tr' + (base_paths['cbs_info'] or ''),
+    'plus_cmd': 'https://testapi.mngkargo.com.tr' + (base_paths['plus_cmd'] or ''),
 }
 for key, url in expected_urls.items():
     if url not in config_src:
@@ -143,6 +145,7 @@ used = [
     ('standard_query', 'GET', '/trackshipment/{referenceId}'),
     ('cbs_info', 'GET', '/getcities'),
     ('cbs_info', 'GET', '/getdistricts/{cityCode}'),
+    ('plus_cmd', 'POST', '/createRecipient'),
 ]
 
 for entry in used:
@@ -213,7 +216,7 @@ if failures:
     sys.exit(1)
 
 print(
-    'DHL_OPENAPI_CONTRACT=PASS|checksums:%s/%s|documents:5|operations_declared:%d|operations_used:%d|status_codes:8|host:pinned|base_paths:matched'
+    'DHL_OPENAPI_CONTRACT=PASS|checksums:%s/%s|documents:6|operations_declared:%d|operations_used:%d|status_codes:8|host:pinned|base_paths:matched'
     % (checked, checked, len(declared), len(used))
 )
 PY

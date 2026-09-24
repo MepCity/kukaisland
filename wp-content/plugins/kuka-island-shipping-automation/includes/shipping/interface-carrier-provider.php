@@ -125,6 +125,16 @@ interface Kuka_Island_Shipping_Carrier_Interface {
 	public function create_order( array $shipment ): Kuka_Island_Shipping_Result;
 
 	/**
+	 * Register the recipient before the order, when the carrier requires it.
+	 *
+	 * A separate write from create_order. An adapter with no such operation
+	 * returns a local refusal and must not contact the network.
+	 *
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
+	public function create_recipient( array $shipment ): Kuka_Island_Shipping_Result;
+
+	/**
 	 * Turn a registered order into a shipment with barcodes.
 	 *
 	 * @param array<string, mixed> $shipment Shipment request.

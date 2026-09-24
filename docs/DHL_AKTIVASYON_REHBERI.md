@@ -438,10 +438,10 @@ Açmadan önce:
       birlikte yazar.
 - [ ] Ödeme sonrası iptal/iade refleksi için 5 dakikalık gecikmenin yeterli
       olduğu kabul edildi (`Dispatcher::DELAY`).
-- [ ] `createOrder` sonrasında `createbarcode` için ayrı worker ve ek 5 dakikalık
-      operasyonel tampon kabul edildi (`Dispatcher::BARCODE_DELAY`). Bu süre
-      şube hazır kanıtı değildir; DHL'nin arka arkaya çağrı uyarısına karşı iki
-      yazmayı aynı turdan ayırır.
+- [ ] Otomatik yol üç ayrı iştir: `createRecipient`, sonra `createOrder`, sonra
+      `createbarcode`. Test ortamında aralarındaki tampon 60 saniye, canlıda
+      300 saniyedir (`Dispatcher::phase_delay()`). Bu süre şube hazır kanıtı
+      değildir. Canlı varsayılan ölçülmeden kısaltılmaz.
 
 Açtıktan sonra sipariş ekranı her sipariş için ya "otomatik gönderi işi
 planlandı" der ya da **neden planlanmadığını koduyla** yazar:
@@ -456,10 +456,10 @@ planlandı" der ya da **neden planlanmadığını koduyla** yazar:
 | `address_incomplete:...` | Eksik alanın adı yazılır |
 | `carrier_record_exists:<durum>` | Bu siparişte zaten taşıyıcı kaydı var |
 | `mutation_in_progress` | Bekleyen bir taşıyıcı işlemi var |
-| `retry_budget_spent` | Üç worker turu tükendi; manuel düğmelerle devam edin |
+| `retry_budget_spent` | Dört worker turu tükendi; manuel düğmelerle devam edin |
 | `phase_already_attempted:<faz>` | Otomatik yol o fazın çağrısını **bir kez göndermiş**. Sonucu belirsiz kaldığı için ikinci kez göndermez; salt-okunur mutabakat çalıştırın ve gerekiyorsa manuel düğmeyi kullanın |
 | `retry_schedule_failed` | Yeniden deneme işi planlanamadı. Bekleyen iş **yok**; Action Scheduler'ı kontrol edin |
-| `phase_not_bookable_by_event:<faz>` | Ödeme olayı geldi ama sipariş zaten `order_created`. Otomatik yol başkasının başlattığı işi devralmaz |
+| `phase_not_bookable_by_event:<faz>` | Ödeme olayı geldi ama sipariş artık `none` değil. Otomatik yol başkasının başlattığı işi devralmaz |
 
 ### 8.3.1 — Yeniden deneme nasıl çalışır
 

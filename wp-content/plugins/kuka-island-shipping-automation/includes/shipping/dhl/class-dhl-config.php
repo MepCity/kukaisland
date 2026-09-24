@@ -60,12 +60,14 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 * Barcode_Command     basePath /mngapi/api/barcodecmdapi
 	 * Standard_Query      basePath /mngapi/api/standardqueryapi
 	 * CBS_Info            basePath /mngapi/api/cbsinfoapi
+	 * Plus_Command        basePath /mngapi/api/pluscmdapi
 	 */
 	public const SANDBOX_IDENTITY_URL       = 'https://testapi.mngkargo.com.tr/mngapi/api/token';
 	public const SANDBOX_STANDARD_CMD_URL   = 'https://testapi.mngkargo.com.tr/mngapi/api/standardcmdapi';
 	public const SANDBOX_BARCODE_CMD_URL    = 'https://testapi.mngkargo.com.tr/mngapi/api/barcodecmdapi';
 	public const SANDBOX_STANDARD_QUERY_URL = 'https://testapi.mngkargo.com.tr/mngapi/api/standardqueryapi';
 	public const SANDBOX_CBS_INFO_URL       = 'https://testapi.mngkargo.com.tr/mngapi/api/cbsinfoapi';
+	public const SANDBOX_PLUS_CMD_URL       = 'https://testapi.mngkargo.com.tr/mngapi/api/pluscmdapi';
 
 	/**
 	 * identityType, fixed at the value the specification documents.
@@ -441,7 +443,7 @@ final class Kuka_Island_Shipping_DHL_Config {
 	}
 
 	/**
-	 * The five endpoints, or an empty array when the environment is blocked.
+	 * The six endpoints, or an empty array when the environment is blocked.
 	 *
 	 * Returning nothing for live is what makes the block structural: a caller
 	 * that ignored is_live_blocked() still has no URL to send anything to.
@@ -459,6 +461,7 @@ final class Kuka_Island_Shipping_DHL_Config {
 			'barcode_cmd'    => self::SANDBOX_BARCODE_CMD_URL,
 			'standard_query' => self::SANDBOX_STANDARD_QUERY_URL,
 			'cbs_info'       => self::SANDBOX_CBS_INFO_URL,
+			'plus_cmd'       => self::SANDBOX_PLUS_CMD_URL,
 		);
 	}
 
@@ -469,7 +472,7 @@ final class Kuka_Island_Shipping_DHL_Config {
 	 * by appending a path, and an appended path is exactly where a traversal or
 	 * an injected host would appear. Scheme, host, port, userinfo and fragment
 	 * are all pinned; the path must start with the base path of one of the five
-	 * documented services.
+	 * documented services, including Plus Command.
 	 *
 	 * @param string $url Absolute URL about to be requested.
 	 */

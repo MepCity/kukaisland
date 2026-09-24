@@ -3497,4 +3497,29 @@ autoload durumunu başlangıçtaki baytlarla geri yükler.
   `SHIPPING_VERIFY=PASS`.
 - **Tekrar yaşanırsa ilk bak:** Checkout'ta `billing_state` ile `billing_city`
   birlikte saklanıyor mu; `build_request()` state kodunu ada çeviriyor mu;
-  ilk otomatik worker'ın çağrı sayısı `createOrder=1/createbarcode=0` mı.
+  ilk otomatik worker'ın çağrı sayısı `createRecipient=1/createOrder=0/createbarcode=0` mı.
+
+## K-74 — createbarcode 500 ve eksik createRecipient
+
+- **Tarih:** 2026-09-24
+- **Belirti:** Sandbox ödeme siparişi #46235 üzerinde `createOrder` başarılı
+  oldu. Beş dakika sonraki `createbarcode` HTTP 500 verdi. Sonuç `uncertain`
+  kaydedildi ve tekrar denenmedi. Sipariş `create_barcode` fazını denenmiş
+  gösteriyor.
+- **Kök neden:** DHL'nin yazılı akışı Plus Command `createRecipient`, sonra
+  Standard Command `createOrder`, sonra Barcode Command `createbarcode`.
+  Kodda `createRecipient` yoktu. Art arda çağrıda varış şubesi belirlenmeden
+  barkod başarısız olabiliyor. #46235 için ikinci barkod yazması gönderilmez.
+- **Çözüm:** `createRecipient` ortak arayüz, Manager, Order Store ve
+  Dispatcher'da ayrı bir faz. Otomatik akış üç ayrı Action Scheduler işi:
+  testte 60 saniye, canlıda 300 saniye ara. Belirsiz alıcı kaydı otomatik
+  tekrarlanmaz. Plus Query'de bu kaydı okuyan uç yok; yokluk tahmin edilmez.
+- **Kanıt:** `DHL_OPENAPI_CONTRACT=PASS|checksums:6/6|documents:6|operations_used:14`.
+  `SHIPPING_AUTO_CREATE_IS_TWO_PHASE` üç tur, her yazma 1, ara `gap=60`.
+  Belirsiz `createRecipient` sonrası yazma 0. Yerel ret sonrası yazma 0.
+  Belirsiz `createOrder` ve `createbarcode` tekrar 0. İki worker'da
+  `createRecipient` 1. Plus Command allow-list `cases:17`.
+  `SHIPPING_VERIFY=PASS`, `SHIPPING_SETTINGS_VERIFY=PASS`.
+- **Tekrar yaşanırsa ilk bak:** Sipariş `reconcile_required` ve son işlem
+  `create_recipient` ise ikinci yazma yok. Faz işareti duruyorsa otomatik yol
+  o fazı tekrar açmaz. #46235'e barkod yeniden gönderme.

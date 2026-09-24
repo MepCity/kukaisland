@@ -144,6 +144,69 @@ final class Kuka_Island_Shipping_DHL_Order_Mapper {
 	}
 
 	/**
+	 * Recipient fields shared by createRecipient. Names are canonical request
+	 * data; codes keep the same numeric rules as createOrder, including 0.
+	 *
+	 * @param array<string, mixed> $shipment Shipment request.
+	 * @return array<int, string>
+	 */
+	public static function validate_recipient( array $shipment ): array {
+		$gaps      = array();
+		$recipient = (array) ( $shipment['recipient'] ?? array() );
+
+		foreach ( array( 'full_name', 'address', 'city_name', 'district_name' ) as $field ) {
+			if ( '' === trim( (string) ( $recipient[ $field ] ?? '' ) ) ) {
+				$gaps[] = 'recipient.' . $field;
+			}
+		}
+
+		$city_code = trim( (string) ( $recipient['city_code'] ?? '' ) );
+		if ( 1 !== preg_match( '/^[0-9]+$/', $city_code ) || (int) $city_code < 1 ) {
+			$gaps[] = 'recipient.city_code';
+		}
+
+		$district_code = trim( (string) ( $recipient['district_code'] ?? '' ) );
+		if ( 1 !== preg_match( '/^[0-9]+$/', $district_code ) ) {
+			$gaps[] = 'recipient.district_code';
+		}
+
+		return array_values( array_unique( $gaps ) );
+	}
+
+	/**
+	 * CreateRecipientRequest.
+	 *
+	 * customerId is omitted: the OpenAPI type is an integer identity number and
+	 * it is not required. cityName and districtName are carried because the
+	 * vendor's written example includes them; the pinned Customer schema does
+	 * not declare them.
+	 *
+	 * @param array<string, mixed> $shipment Shipment request.
+	 * @return array<string, mixed>
+	 */
+	public static function create_recipient_payload( array $shipment ): array {
+		$recipient = (array) ( $shipment['recipient'] ?? array() );
+
+		return array(
+			'recipient' => array(
+				'refCustomerId'        => (string) ( $recipient['ref_customer_id'] ?? '' ),
+				'cityName'             => self::text( (string) ( $recipient['city_name'] ?? '' ), 80 ),
+				'districtName'         => self::text( (string) ( $recipient['district_name'] ?? '' ), 80 ),
+				'cityCode'             => (int) $recipient['city_code'],
+				'districtCode'         => (int) $recipient['district_code'],
+				'address'              => self::text( (string) $recipient['address'], 400 ),
+				'bussinessPhoneNumber' => self::phone( (string) ( $recipient['business_phone'] ?? '' ) ),
+				'email'                => (string) ( $recipient['email'] ?? '' ),
+				'taxOffice'            => (string) ( $recipient['tax_office'] ?? '' ),
+				'taxNumber'            => (string) ( $recipient['tax_number'] ?? '' ),
+				'fullName'             => self::text( (string) $recipient['full_name'], 120 ),
+				'homePhoneNumber'      => self::phone( (string) ( $recipient['home_phone'] ?? '' ) ),
+				'mobilePhoneNumber'    => self::phone( (string) ( $recipient['mobile_phone'] ?? '' ) ),
+			),
+		);
+	}
+
+	/**
 	 * CreateOrderRequest.
 	 *
 	 * barcode is set to referenceId because the vendor requires exactly that:

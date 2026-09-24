@@ -1296,3 +1296,15 @@ adresinin devamı olarak kalıyor. Otomatik akış da iki worker turuna bölünd
 planlanıyor. Bu beş dakika “şube hazır” iddiası değildir; DHL böyle bir hazır
 alanı belgelememiştir. Kanıtlanan şey, iki yazmanın artık arka arkaya aynı
 worker içinde yapılamamasıdır.
+
+## 19. DHL createRecipient — 24 Eylül
+
+#46235 sandbox ödemesinde `createOrder` geçti, beş dakika sonraki
+`createbarcode` HTTP 500 verdi ve belirsiz kaldı. DHL'nin yazılı sırası
+`createRecipient` → `createOrder` → `createbarcode`. Birinci adım kodda yoktu.
+Art arda çağrı varış şubesini beklemeden barkodu düşürebiliyor.
+
+Alıcı kaydı artık ortak kargo katmanında ayrı bir yazma. Otomatik yol üç ayrı
+iş: testte 60 saniye, canlıda 300 saniye. Canlı süre ölçülmeden kısaltılmadı.
+Belirsiz alıcı kaydı tekrarlanmaz; onu okuyan salt-okunur uç olmadığı için
+yokluk da ilan edilmez. #46235'e ikinci barkod gönderilmedi.

@@ -268,11 +268,12 @@ dosyalarıdır:
 ~/.config/kuka-island/dhl-openapi/Barcode_Command_API-1.0.json
 ~/.config/kuka-island/dhl-openapi/Standard_Query_API-1.0.json
 ~/.config/kuka-island/dhl-openapi/CBS_Info_API-1.0.json
+~/.config/kuka-island/dhl-openapi/Plus_Command_API-1.0.json
 ~/.config/kuka-island/dhl-openapi/SHA256SUMS
 ```
 
 `scripts/verify-dhl-openapi-contract.sh` bu dosyaların SHA-256 toplamlarını
-doğrular ve kullanılan 13 operasyonun her birinin dokümanda **beyan edilmiş**
+doğrular ve kullanılan 14 operasyonun her birinin dokümanda **beyan edilmiş**
 olduğunu ölçer.
 
 ### 3.1 Kullanılan uçlar (sandbox)
@@ -292,6 +293,7 @@ olduğunu ölçer.
 | Standard Query | GET | `/mngapi/api/standardqueryapi/trackshipment/{referenceId}` | hayır |
 | CBS Info | GET | `/mngapi/api/cbsinfoapi/getcities` | hayır |
 | CBS Info | GET | `/mngapi/api/cbsinfoapi/getdistricts/{cityCode}` | hayır |
+| Plus Command | POST | `/mngapi/api/pluscmdapi/createRecipient` | **evet** |
 
 Host tek: `testapi.mngkargo.com.tr`.
 
@@ -378,7 +380,7 @@ açıklamalarından birebir alınmıştır:
 ## 6. Durum makinesi
 
 ```
-none ──create_order──▶ order_created ──create_barcode──▶ shipment_created
+none ──create_recipient──▶ recipient_created ──create_order──▶ order_created ──create_barcode──▶ shipment_created
   │                        │                                  │
   │                        │                                  ├─kod 5─▶ delivered
   │                        │                                  ├─kod 6/7/8/? ─▶ manual_review
@@ -393,6 +395,9 @@ none ──create_order──▶ order_created ──create_barcode──▶ shi
                        _created         (yeni deneme          (kapalı kalır)
                                         açık bir işlem)
 ```
+
+`createRecipient` belirsizliğinde bu okuma yolu **çalışmaz**: Plus Query alıcı
+kaydını döndürmez, yokluk tahmin edilmez, durum `reconcile_required` kalır.
 
 `states_blocking_create()` = `order_created`, `shipment_created`,
 `reconcile_required`, `delivered`, `manual_review`. Bu durumlarda yeni gönderi
@@ -1221,16 +1226,16 @@ Tek bir kilit kullanmak ise bir planlamanın taşıyıcı çağrısını, bir ta
 İş çalıştığında iki faz ayrı **worker turlarındadır** ve ikincisi birincinin
 **veritabanından taze okunmuş** sonucuna bağlıdır:
 
-1. `createOrder`
-2. sipariş taze okunur; durum tam olarak `order_created` değilse **durulur**
-3. `createbarcode` için ayrı bir Action Scheduler işi 5 dakika sonrasına
-   planlanır; ilk worker burada biter
-4. ikinci worker uygunluğu ve taze durumu yeniden doğrular, sonra
-   `createbarcode` çağrısını yapar
+1. `createRecipient`
+2. sipariş taze okunur; durum tam olarak `recipient_created` değilse **durulur**
+3. `createOrder` ayrı bir Action Scheduler işidir
+4. sipariş yeniden taze okunur; durum tam olarak `order_created` değilse **durulur**
+5. `createbarcode` ayrı bir Action Scheduler işidir
 
-DHL'nin yazılı uyarısı iki çağrının arka arkaya yapılması hâlinde varış
-şubesinin henüz belirlenmemiş olabileceğidir. Beş dakika bir **operasyonel
-tampon**dur; şube hazır kanıtı değildir. Belgelenmiş okuma cevaplarında
+Aşamalar arası tampon test ortamında **60 saniye**, canlıda **300 saniye**dir.
+`KUKA_SHIPPING_PHASE_DELAY` en az 60 ise her iki varsayılanı ezer. Bir dakika
+canlı için ölçülmedi; canlı varsayılan bu yüzden düşürülmedi. Süre şube hazır
+kanıtı değildir. Belgelenmiş okuma cevaplarında
 `branch_ready` benzeri bir alan yoktur. Bu nedenle iki çağrı hiçbir zaman aynı
 worker turunda yapılmaz ve ikinci faz başarısız/belirsiz olursa kör retry yoktur.
 
@@ -1259,9 +1264,11 @@ bırakır, ve retry'ı durduran şey odur.
 
 ### Faz farkındalığı
 
-Retry, tamamlanmış bir `createOrder`'ı tekrarlamaz; `createbarcode` fazından
-devam eder. Faz, durumdan seçilir (`none` → createOrder, `order_created` →
-createbarcode) ve her fazdan önce sipariş **veritabanından taze okunur**.
+Retry, tamamlanmış bir fazı tekrarlamaz. Faz, durumdan seçilir
+(`none` → createRecipient, `recipient_created` → createOrder,
+`order_created` → createbarcode) ve her fazdan önce sipariş **veritabanından
+taze okunur**. Başarılı üç faz 3 deneme harcar; bütçe 4'tür, bir yerel
+çekişme tekrarına yer bırakır.
 
 Otomatik yolun **çağrı gönderdiği** her faz, çağrıdan önce siparişe işaretlenir
 (`_kuka_shipping_dispatch_phases`) ve bu işaret yalnız yukarıdaki yapısal kanıt
@@ -1295,7 +1302,10 @@ Operatörün düğmesi bu işaretten etkilenmez — bu, otomatik yolun kendi
 
 ### Bütçe ve görünürlük
 
-En fazla **3** worker turu. Planlama, Action Scheduler satırı **geri okunarak**
+En fazla **4** worker turu. `createRecipient` belirsizse veya taşıyıcıya
+ulaşmış bir ret aldıysa otomatik tekrar yoktur. Plus Query'de bu kaydı okuyan
+bir uç yoktur; `getorder`/`getshipment` yokluğu alıcı kaydının yokluğu sayılmaz
+ve mutabakat `recipient_readback_unsupported` ile durur. Planlama, Action Scheduler satırı **geri okunarak**
 doğrulanır; satır yoksa "retry planlandı" denmez, `retry_schedule_failed` yazılır.
 Aynı neden not çoğaltmaz: not yalnız neden **değiştiğinde** düşülür. Modül
 anahtarı veya otomatik oluşturma kapatılırsa yeni retry planlanmaz. Deneme

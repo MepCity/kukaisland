@@ -308,7 +308,7 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	public function write_calls(): int {
 		$total = 0;
 
-		foreach ( array( 'create_order', 'create_barcode', 'update_order', 'update_shipment', 'cancel_order', 'cancel_shipment' ) as $operation ) {
+		foreach ( array( 'create_recipient', 'create_order', 'create_barcode', 'update_order', 'update_shipment', 'cancel_order', 'cancel_shipment' ) as $operation ) {
 			$total += $this->count_for( $operation );
 		}
 
@@ -409,6 +409,22 @@ final class Kuka_Shipping_Fake_Carrier implements Kuka_Island_Shipping_Carrier_I
 	/**
 	 * @param array<string, mixed> $shipment Shipment request.
 	 */
+	public function create_recipient( array $shipment ): Kuka_Island_Shipping_Result {
+		$this->record_write( 'create_recipient' );
+
+		return $this->answer(
+			'create_recipient',
+			Kuka_Island_Shipping_Result::success(
+				'create_recipient',
+				array(
+					'order_invoice_id'        => 'FAKE-RINV-1',
+					'order_invoice_detail_id' => 'FAKE-RDET-1',
+					'shipper_branch_code'     => '034',
+				)
+			)
+		);
+	}
+
 	public function create_order( array $shipment ): Kuka_Island_Shipping_Result {
 		$this->record_write( 'create_order' );
 
@@ -829,6 +845,8 @@ $url_cases  = array(
 	Kuka_Island_Shipping_DHL_Config::SANDBOX_IDENTITY_URL                          => true,
 	Kuka_Island_Shipping_DHL_Config::SANDBOX_STANDARD_CMD_URL . '/createOrder'     => true,
 	Kuka_Island_Shipping_DHL_Config::SANDBOX_CBS_INFO_URL . '/getdistricts/34'     => true,
+	Kuka_Island_Shipping_DHL_Config::SANDBOX_PLUS_CMD_URL . '/createRecipient'   => true,
+	'https://testapi.mngkargo.com.tr/mngapi/api/pluscmdapi.evil/createRecipient' => false,
 	'http://testapi.mngkargo.com.tr/mngapi/api/token'                              => false,
 	'https://testapi.mngkargo.com.tr:443/mngapi/api/token'                         => false,
 	'https://user:pass@testapi.mngkargo.com.tr/mngapi/api/token'                   => false,
@@ -4488,6 +4506,7 @@ $states_id = (int) $states['order']->get_id();
 
 $expected_codes = array(
 	Kuka_Island_Shipping_Order_Store::STATE_NONE               => 'not_cancellable',
+	Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED => 'not_cancellable',
 	Kuka_Island_Shipping_Order_Store::STATE_BLOCKED            => 'not_cancellable',
 	Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED   => 'not_cancellable',
 	Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED => 'not_cancellable',
@@ -4613,6 +4632,7 @@ $amend_wrong     = array();
 foreach (
 	array(
 		Kuka_Island_Shipping_Order_Store::STATE_NONE,
+		Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED,
 		Kuka_Island_Shipping_Order_Store::STATE_BLOCKED,
 		Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED,
 		Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED,
@@ -4636,7 +4656,7 @@ $report(
 	'SHIPPING_UPDATE_REFUSES_EVERY_OTHER_STATE',
 	array() === $amend_wrong && 0 === $amend_states['adapter']->write_calls(),
 	sprintf(
-		'states_checked:10|wrong:%s|carrier_writes:%d',
+		'states_checked:11|wrong:%s|carrier_writes:%d',
 		array() === $amend_wrong ? 'none' : implode( '+', $amend_wrong ),
 		$amend_states['adapter']->write_calls()
 	)
@@ -7698,6 +7718,7 @@ $door_states = array(
 	Kuka_Island_Shipping_Order_Store::STATE_NONE,
 	Kuka_Island_Shipping_Order_Store::STATE_BLOCKED,
 	Kuka_Island_Shipping_Order_Store::STATE_ABSENT_CONFIRMED,
+	Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED,
 	Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
 	Kuka_Island_Shipping_Order_Store::STATE_SHIPMENT_CREATED,
 	Kuka_Island_Shipping_Order_Store::STATE_RECONCILE_REQUIRED,
@@ -7763,7 +7784,7 @@ foreach ( $door_states as $door_state ) {
 $report(
 	'SHIPPING_CREATE_DOORS_ARE_AN_ALLOWLIST',
 	array() === $door_wrong
-		&& 3 === count( Kuka_Island_Shipping_Order_Store::states_allowing_create_order() )
+		&& 4 === count( Kuka_Island_Shipping_Order_Store::states_allowing_create_order() )
 		&& 1 === count( Kuka_Island_Shipping_Order_Store::states_allowing_create_barcode() ),
 	sprintf(
 		'measured:which_door_opened|states:%d|actions:2|createOrder_allowed_from:%s|createbarcode_allowed_from:%s|wrong:%s|carrier_writes:0',

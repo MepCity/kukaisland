@@ -563,6 +563,125 @@ final class Kuka_Island_Shipping_Manager {
 	 * @param string   $carrier_key Carrier key, '' for the default.
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
+	public function create_recipient( WC_Order $order, string $carrier_key = '' ): array {
+		$admitted = $this->admit( $order, $carrier_key );
+
+		if ( array() !== $admitted['refusal'] ) {
+			return $admitted['refusal'];
+		}
+
+		$policy = $this->create_policy( $order );
+
+		if ( array() !== $policy ) {
+			return $policy;
+		}
+
+		if ( ! $this->acquire_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() ) ) {
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+				'code'    => 'lock_contended',
+				'message' => __( 'Bu sipariş için başka bir kargo işlemi sürüyor. Yeni çağrı yapılmadı.', 'kuka-island-shipping-automation' ),
+				'detail'  => '',
+			);
+		}
+
+		try {
+			$order    = wc_get_order( $order->get_id() ) ?: $order;
+			$admitted = $this->admit( $order, $carrier_key );
+
+			if ( array() !== $admitted['refusal'] ) {
+				return $admitted['refusal'];
+			}
+
+			$carrier = $admitted['carrier'];
+			$state   = Kuka_Island_Shipping_Order_Store::get_state( $order );
+
+			if ( ! in_array( $state, Kuka_Island_Shipping_Order_Store::states_allowing_create_recipient(), true ) ) {
+				return array(
+					'ok'      => false,
+					'state'   => $state,
+					'code'    => 'not_creatable',
+					'message' => self::create_refusal_message( $state ),
+					'detail'  => '',
+				);
+			}
+
+			$reference = Kuka_Island_Shipping_Order_Store::prepare_reference( $order );
+			$request   = $this->build_request( $order, $carrier, $reference );
+
+			if ( ! $request['ok'] ) {
+				Kuka_Island_Shipping_Order_Store::save_blocked( $order, $request['code'], $request['message'] );
+				$this->note( $order, $request['message'] );
+
+				return array(
+					'ok'      => false,
+					'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+					'code'    => $request['code'],
+					'message' => $request['message'],
+					'detail'  => '',
+				);
+			}
+
+			$guarded = $this->guarded_write(
+				$order,
+				$carrier,
+				static fn (): Kuka_Island_Shipping_Result => $carrier->create_recipient( $request['shipment'] ),
+				self::intent_writer(
+					$order,
+					array(
+						'kind'      => Kuka_Island_Shipping_Order_Store::MUTATION_CREATE,
+						'operation' => 'create_recipient',
+						'target'    => 'recipient',
+						'provider'  => $carrier->get_key(),
+						'reference' => $reference,
+					)
+				)
+			);
+
+			if ( array() !== $guarded['refusal'] ) {
+				return array(
+					'ok'      => false,
+					'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+					'code'    => $guarded['refusal']['code'],
+					'message' => $guarded['refusal']['message'],
+					'detail'  => '',
+				);
+			}
+
+			$created = $guarded['result'];
+
+			if ( $created->is_uncertain() ) {
+				return $this->handle_uncertain( $order, $carrier, $reference, $created );
+			}
+
+			if ( ! $created->is_success() ) {
+				return $this->record_failure( $order, $created );
+			}
+
+			Kuka_Island_Shipping_Order_Store::save_recipient_created(
+				$order,
+				$carrier->get_key(),
+				array(
+					'order_invoice_id'        => (string) $created->get( 'order_invoice_id', '' ),
+					'order_invoice_detail_id' => (string) $created->get( 'order_invoice_detail_id', '' ),
+					'shipper_branch_code'     => (string) $created->get( 'shipper_branch_code', '' ),
+				)
+			);
+			$this->note( $order, __( 'Taşıyıcıda alıcı kaydı oluşturuldu.', 'kuka-island-shipping-automation' ) . ' ' . $created->to_safe_line() );
+
+			return array(
+				'ok'      => true,
+				'state'   => Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED,
+				'code'    => '',
+				'message' => __( 'Taşıyıcıda alıcı kaydı oluşturuldu. Sipariş kaydı ayrı bir adımdır.', 'kuka-island-shipping-automation' ),
+				'detail'  => $created->to_safe_line(),
+			);
+		} finally {
+			$this->release_lock( self::MUTATION_LOCK_PREFIX . $order->get_id() );
+		}
+	}
+
 	public function create_shipment( WC_Order $order, string $carrier_key = '' ): array {
 		$admitted = $this->admit( $order, $carrier_key );
 
@@ -1339,6 +1458,20 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{ok: bool, state: string, code: string, message: string, detail: string}
 	 */
 	private function handle_uncertain( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference, Kuka_Island_Shipping_Result $result ): array {
+		if ( 'create_recipient' === $result->get_operation() ) {
+			Kuka_Island_Shipping_Order_Store::save_uncertain( $order, $result->get_operation(), $result->get_safe_error_code() );
+			$message = __( 'Alıcı kaydı belirsiz. Yeniden gönderim yapılmadı. Bu işlem için salt-okunur mutabakat ucu yok; yokluk varsayılmadı.', 'kuka-island-shipping-automation' );
+			$this->note( $order, $message . ' ' . $result->to_safe_line() );
+
+			return array(
+				'ok'      => false,
+				'state'   => Kuka_Island_Shipping_Order_Store::get_state( $order ),
+				'code'    => $result->get_safe_error_code(),
+				'message' => $message,
+				'detail'  => $result->to_safe_line() . '|reconcile:recipient_readback_unsupported',
+			);
+		}
+
 		Kuka_Island_Shipping_Order_Store::save_uncertain( $order, $result->get_operation(), $result->get_safe_error_code() );
 		$this->note(
 			$order,
@@ -1370,6 +1503,18 @@ final class Kuka_Island_Shipping_Manager {
 	 * @return array{verdict: string, message: string}
 	 */
 	public function reconcile( WC_Order $order, Kuka_Island_Shipping_Carrier_Interface $carrier, string $reference ): array {
+		$pending = Kuka_Island_Shipping_Order_Store::pending_mutation( $order );
+
+		if ( 'create_recipient' === (string) ( $pending['operation'] ?? '' ) ) {
+			$message = __( 'Alıcı kaydı için salt-okunur mutabakat ucu yok. Kayıt manuel incelemede kalır; yokluk varsayılmadı.', 'kuka-island-shipping-automation' );
+			$this->note( $order, $message );
+
+			return array(
+				'verdict' => 'recipient_readback_unsupported',
+				'message' => $message,
+			);
+		}
+
 		$guarded_shipment = $this->guarded_read(
 			$carrier,
 			static fn (): Kuka_Island_Shipping_Result => $carrier->read_shipment( $reference )
@@ -2596,6 +2741,8 @@ final class Kuka_Island_Shipping_Manager {
 				// "0" remains distinguishable from a missing value.
 				'city_code'       => (string) $located->get( 'city_code', '' ),
 				'district_code'   => (string) $located->get( 'district_code', '' ),
+				'city_name'       => (string) $city,
+				'district_name'   => (string) $district,
 				'email'           => (string) $order->get_billing_email(),
 				'mobile_phone'    => (string) ( $order->get_shipping_phone() ?: $order->get_billing_phone() ),
 				'home_phone'      => '',
@@ -2665,7 +2812,7 @@ final class Kuka_Island_Shipping_Manager {
 
 		$recipient = (array) ( $shipment['recipient'] ?? array() );
 
-		foreach ( array( 'full_name', 'address', 'mobile_phone' ) as $field ) {
+		foreach ( array( 'full_name', 'address', 'mobile_phone', 'city_name', 'district_name' ) as $field ) {
 			$recipient[ $field ] = self::canonical_amendable_value( $recipient[ $field ] ?? '' );
 		}
 

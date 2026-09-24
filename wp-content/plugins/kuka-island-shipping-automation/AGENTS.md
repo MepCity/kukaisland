@@ -26,6 +26,7 @@ dosyalarından alınır:
 ~/.config/kuka-island/dhl-openapi/Barcode_Command_API-1.0.json
 ~/.config/kuka-island/dhl-openapi/Standard_Query_API-1.0.json
 ~/.config/kuka-island/dhl-openapi/CBS_Info_API-1.0.json
+~/.config/kuka-island/dhl-openapi/Plus_Command_API-1.0.json
 ```
 
 `SHA256SUMS` ile doğrulanır; dosyalar değiştiyse önce
@@ -37,8 +38,9 @@ yazımı uygular.
 
 ## Taşıyıcıya yazan çağrılar
 
-`createOrder`, `createbarcode`, `updateorder`, `updateshipment`, `cancelorder`,
-`cancelshipment` — **kullanıcının o tura ait açık izni olmadan çalıştırılmaz.**
+`createRecipient`, `createOrder`, `createbarcode`, `updateorder`,
+`updateshipment`, `cancelorder`, `cancelshipment` — **kullanıcının o tura ait
+açık izni olmadan çalıştırılmaz.**
 Geçmiş bir turda verilmiş izin bu tur için geçerli değildir.
 
 Salt-okunur çağrılar (`/token`, `getorder`, `getshipment`, `getshipmentstatus`,
@@ -145,8 +147,13 @@ Otomatik oluşturma açıkken de bağlayıcı olanlar:
   planlar ve döner.
 - Uygunluk bir **izin listesidir** (`Dispatcher::eligibility()`). Yeni bir koşul
   eklemek listeye eklemekle olur; listede olmayan her durum kapalıdır.
-- İki faz ayrı kalır: `createOrder` → **veritabanından taze okuma** →
-  `createbarcode`. Tek zincirde birleştirilmez.
+- Üç faz ayrı worker turlarıdır: `createRecipient` → taze okuma →
+  `createOrder` → taze okuma → `createbarcode`. Aynı turda birleştirilmez.
+- Aşamalar arası tampon test ortamında 60 saniye, canlıda 300 saniyedir.
+  `KUKA_SHIPPING_PHASE_DELAY` en az 60 ise ikisini de ezer. Canlı varsayılan
+  ölçülmeden düşürülmez.
+- `createRecipient` belirsizse otomatik tekrar yoktur. Plus Query bu kaydı
+  okumaz; yokluk tahmin edilmez, kayıt `reconcile_required` kalır.
 - Taşıyıcıya ulaşmış belirsiz bir yazma **otomatik olarak tekrarlanmaz**. Bu
   kuralın otomatik yol için bir istisnası yoktur.
 

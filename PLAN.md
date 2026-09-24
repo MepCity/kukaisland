@@ -1606,6 +1606,8 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 38. Karar günlüğü
 
+24 Eylül 2026 — Otomatik DHL akışı üç ayrı worker turu oldu: `createRecipient`, sonra `createOrder`, sonra `createbarcode`. Test tamponu 60 saniye, canlı tampon 300 saniye; `KUKA_SHIPPING_PHASE_DELAY` en az 60 ise ikisini ezer. Canlı varsayılan ölçülmeden düşürülmedi. Belirsiz `createRecipient` tekrarlanmaz ve salt-okunur yokluk ilan edilmez. #46235 üzerinde ikinci barkod yazması yok.
+
 23 Eylül 2026 — DHL'nin yazılı entegrasyon akışıyla checkout/kargo alan sözleşmesi yeniden eşleştirildi: WooCommerce `state` alanı **İl**, zorunlu `city` alanı **İlçe** olarak ayrı saklanır; `address_2` site/blok/daire adres devamıdır ve ilçe yerine kullanılmaz. Otomatik `createOrder` ve `createbarcode` aynı worker turunda çağrılmaz; ikinci faz ayrı Action Scheduler işinde en erken 5 dakika sonra çalışır. Süre şube hazır kanıtı değil, DHL'nin arka arkaya çağrı uyarısına karşı operasyonel tampondur.
 
 23 Eylül 2026 — Üst menü sadeleştirildi ve sırası **YENİ → BİKİNİ → PLAJ GİYİM → KOLEKSİYON → HİKAYEMİZ** olarak sabitlendi. Mayo ve Takımlar ürün kategorileri ile ana sayfa indeks kayıtları korunur; yalnız üst menü görünürlükleri kapatılır. Canlı panel kaydı ve yerel varsayılan/test sözleşmesi aynı sıraya getirildi.
@@ -1858,6 +1860,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 ## 39. Mevcut durum
 
+- [x] DHL otomatik oluşturma üç faz: `createRecipient` → 60 sn (test) / 300 sn (canlı) → `createOrder` → aynı tampon → `createbarcode`. Plus Command OpenAPI repo dışında `Plus_Command_API-1.0.json`, sözleşme `6/6`. Belirsiz alıcı kaydı, belirsiz sipariş ve belirsiz barkod otomatik tekrarlanmıyor. #46235'e ikinci barkod gönderilmedi. Canlı portal aboneliği, canlı kod yayını ve yeni sandbox ödemesi bu turda kullanıcı onayı bekliyor.
 - [x] Sizden Gelenler yerel uygulaması: dört başlangıç görseli, toplu medya seçimi, sıralama, taslak/yayın/arşiv, TR/EN bölüm metinleri ve doğrudan ürün URL’i. Fotoğraf altı metin, modal, izin/tarih/not alanları yok. Playground davranış kontrolleri 16/16; 1280/390/320 genişliklerinde taşma 0.
 - [ ] Sizden Gelenler üretime aktarımı ve sabit Docker sürümlerinde kanonik doğrulama: Docker BuildKit disk I/O engeli nedeniyle açık. Ölçülen alternatif ortam ve sınırlar `docs/SIZDEN_GELENLER.md` içinde.
 
@@ -1875,7 +1878,7 @@ Referanslar tasarım ilkelerini ve teknik davranışı anlamak içindir; üçün
 
 - [x] Kargo entegrasyonu yönetici panelinden yapılandırılabilir: WooCommerce → Kargo Entegrasyonu. Dört anahtar ayrı ayrı, ortam seçimi, dört kimlik alanı (şifreli, geri gösterilmez), yapılandırma hazır/eksik göstergesi, salt-okunur bağlantı testi ve son test sonucu. Sipariş ekranı ikinci bir durum satırıyla mod/ortam/yapılandırma ve otomatik işin durumunu yazıyor; otomatik oluşturulmayan siparişin nedeni koduyla görünüyor
 - [x] Şifreli ayar kasası: `sodium_crypto_secretbox`, anahtar wp-config salt'larından HKDF ile türetiliyor ve **saklanmıyor**, satır `autoload=no`, düzenlenmiş ciphertext ve salt değişimi `credentials_unreadable` ile fail-closed, panel sırrı hiçbir biçimde geri basmıyor, boş alan mevcut değeri koruyor, silme ayrı nonce + açık onay. Öncelik `sabit > ortam > kasa` ve panel her alanın kaynağını yazıyor
-- [x] Otomatik gönderi oluşturma eklendi ve **varsayılan kapalı**: ödeme kancası taşıyıcı aramaz, tek Action Scheduler işi planlar; üç olay tek iş üretir; uygunluk il ve ilçeyi ayrı gerektiren izin listesidir; `createOrder` ile `createbarcode` ayrı worker turlarındadır ve aralarında en az 5 dakikalık operasyonel tampon vardır; belirsiz yazma otomatik tekrarlanmaz; deneme bütçesi 3 ve panelde görünür
+- [x] Otomatik gönderi oluşturma eklendi ve **varsayılan kapalı**: ödeme kancası taşıyıcı aramaz, tek Action Scheduler işi planlar; üç olay tek iş üretir; uygunluk il ve ilçeyi ayrı gerektiren izin listesidir; `createRecipient`, `createOrder` ve `createbarcode` ayrı worker turlarıdır; test tamponu 60 saniye, canlı tampon 300 saniyedir; belirsiz yazma otomatik tekrarlanmaz; deneme bütçesi 4 ve panelde görünür
 - [x] Yeni ölçüm suite'i `39/39 PASS`; otomatik/manuel yarışı **gerçek ikinci PHP süreci ve ayrı MySQL oturumuyla**: `carrier_writes_total_across_processes:1|this_process_writes:0|automatic_outcome:refused/lock_contended`. Gerçek `make verify` iki ardışık turda `exit 0`, `VERIFY=PASS`, `SHIPPING_VERIFY=PASS`, `SHIPPING_SETTINGS_VERIFY=PASS`, `INVOICE_VERIFY_NETWORK_ISOLATED=PASS`, keyset PRE==POST, gerçek taşıyıcı isteği `0`
 - [ ] Canlı ortam hâlâ bloke: satıcının resmî dokümanlarında doğrulanmış bir üretim base URL'i yok. Panelden "canlı" seçilebilir, seçim güvenlik kapısını aşmaz ve her işlem `live_environment_blocked` ile reddedilir
 

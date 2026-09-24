@@ -111,6 +111,23 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 	/**
 	 * @param array<string, mixed> $shipment Shipment request.
 	 */
+	public function create_recipient( array $shipment ): Kuka_Island_Shipping_Result {
+		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate_recipient( $shipment );
+
+		if ( array() !== $gaps ) {
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_recipient', self::payload_gap_code( $gaps ) );
+		}
+
+		if ( ! empty( $shipment['cod']['enabled'] ) ) {
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_recipient', 'cod_not_supported' );
+		}
+
+		return $this->client->create_recipient( Kuka_Island_Shipping_DHL_Order_Mapper::create_recipient_payload( $shipment ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $shipment Shipment request.
+	 */
 	public function create_barcode( array $shipment ): Kuka_Island_Shipping_Result {
 		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
 

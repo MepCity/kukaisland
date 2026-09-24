@@ -108,6 +108,12 @@ final class Kuka_Island_Shipping_Order_Store {
 	 */
 	public const META_BARCODE_RECEIPT    = '_kuka_shipping_barcode_receipt';
 
+	/**
+	 * createRecipient answer: invoice ids and shipper branch code only.
+	 * No name, address, phone or e-mail.
+	 */
+	public const META_RECIPIENT_RECEIPT = '_kuka_shipping_recipient_receipt';
+
 	/** When the carrier CONFIRMED the order. Not when the parcel started moving. */
 	public const META_ORDER_REGISTERED_AT = '_kuka_shipping_order_registered_at';
 
@@ -181,6 +187,7 @@ final class Kuka_Island_Shipping_Order_Store {
 	public const MUTATION_CANCEL = 'cancel';
 
 	public const STATE_NONE                = 'none';
+	public const STATE_RECIPIENT_CREATED   = 'recipient_created';
 	public const STATE_ORDER_CREATED       = 'order_created';
 	public const STATE_SHIPMENT_CREATED    = 'shipment_created';
 	public const STATE_RECONCILE_REQUIRED  = 'reconcile_required';
@@ -238,11 +245,20 @@ final class Kuka_Island_Shipping_Order_Store {
 	 *
 	 * @return array<int, string>
 	 */
+	public static function states_allowing_create_recipient(): array {
+		return array(
+			self::STATE_NONE,
+			self::STATE_BLOCKED,
+			self::STATE_ABSENT_CONFIRMED,
+		);
+	}
+
 	public static function states_allowing_create_order(): array {
 		return array(
 			self::STATE_NONE,
 			self::STATE_BLOCKED,
 			self::STATE_ABSENT_CONFIRMED,
+			self::STATE_RECIPIENT_CREATED,
 		);
 	}
 
@@ -404,7 +420,7 @@ final class Kuka_Island_Shipping_Order_Store {
 		if ( '' === $protected
 			|| '' === $operation
 			|| '' === $provider
-			|| ! in_array( $target, array( 'order', 'shipment' ), true )
+			|| ! in_array( $target, array( 'order', 'shipment', 'recipient' ), true )
 			|| ! Kuka_Island_Shipping_Reference::is_valid( $reference )
 			|| ( self::MUTATION_UPDATE === $kind && array() === $expected ) ) {
 
@@ -937,6 +953,31 @@ final class Kuka_Island_Shipping_Order_Store {
 			$state,
 			'' !== $message ? $message : sprintf( 'Durum değişti: %s -> %s', $previous, $state )
 		);
+		self::persist( $order );
+	}
+
+	/**
+	 * Record a confirmed createRecipient. One save, ids only.
+	 *
+	 * @param array<string, string> $receipt order_invoice_id, order_invoice_detail_id, shipper_branch_code.
+	 */
+	public static function save_recipient_created( WC_Order $order, string $provider_key, array $receipt ): void {
+		if ( '' === self::provider( $order ) && '' !== trim( $provider_key ) ) {
+			$order->update_meta_data( self::META_PROVIDER, trim( $provider_key ) );
+		}
+
+		$document = array(
+			'orderInvoiceId'       => (string) ( $receipt['order_invoice_id'] ?? '' ),
+			'orderInvoiceDetailId' => (string) ( $receipt['order_invoice_detail_id'] ?? '' ),
+			'shipperBranchCode'    => (string) ( $receipt['shipper_branch_code'] ?? '' ),
+		);
+
+		$order->update_meta_data( self::META_STATE, self::STATE_RECIPIENT_CREATED );
+		$order->update_meta_data( self::META_LAST_OPERATION, 'create_recipient' );
+		$order->update_meta_data( self::META_LAST_ERROR, '' );
+		$order->update_meta_data( self::META_PENDING_MUTATION, array() );
+		$order->update_meta_data( self::META_RECIPIENT_RECEIPT, (string) wp_json_encode( $document ) );
+		self::add_history_entry( $order, self::STATE_RECIPIENT_CREATED, __( 'Taşıyıcıda alıcı kaydı oluşturuldu.', 'kuka-island-shipping-automation' ) );
 		self::persist( $order );
 	}
 

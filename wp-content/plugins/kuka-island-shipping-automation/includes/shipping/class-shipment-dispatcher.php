@@ -73,7 +73,7 @@ final class Kuka_Island_Shipping_Dispatcher {
 	public const DELAY = 300;
 
 	/** How many worker turns one order may ever get. */
-	public const MAX_ATTEMPTS = 3;
+	public const MAX_ATTEMPTS = 4;
 
 	/** How long after a retryable refusal the next turn runs. */
 	public const RETRY_DELAY = 120;
@@ -88,12 +88,46 @@ final class Kuka_Island_Shipping_Dispatcher {
 	 */
 	public const BARCODE_DELAY = 300;
 
+	/** Inter-phase buffer in the test environment. Live stays at BARCODE_DELAY. */
+	public const PHASE_DELAY_TEST = 60;
+
+	public const PHASE_NONE             = 'none';
+	public const PHASE_CREATE_RECIPIENT = 'create_recipient';
+	public const PHASE_CREATE_ORDER     = 'create_order';
+	public const PHASE_CREATE_BARCODE   = 'create_barcode';
+
 	/** The worker's own per-order execution lock. See the class comment. */
 	private const EXECUTION_LOCK_PREFIX = 'kuka_ship_dispatch_';
 
-	public const PHASE_NONE           = 'none';
-	public const PHASE_CREATE_ORDER   = 'create_order';
-	public const PHASE_CREATE_BARCODE = 'create_barcode';
+	/**
+	 * Seconds between automatic phases.
+	 *
+	 * Test uses 60. Live, and any environment that is not explicitly test,
+	 * stays at 300 until a shorter live buffer is measured. An explicit
+	 * KUKA_SHIPPING_PHASE_DELAY of at least 60 overrides both.
+	 */
+	public static function phase_delay(): int {
+		if ( defined( 'KUKA_SHIPPING_PHASE_DELAY' ) ) {
+			$configured = (int) constant( 'KUKA_SHIPPING_PHASE_DELAY' );
+
+			if ( $configured >= self::PHASE_DELAY_TEST ) {
+				return $configured;
+			}
+		}
+
+		$from_env = getenv( 'KUKA_SHIPPING_PHASE_DELAY' );
+
+		if ( false !== $from_env && '' !== $from_env && (int) $from_env >= self::PHASE_DELAY_TEST ) {
+			return (int) $from_env;
+		}
+
+		if ( class_exists( 'Kuka_Island_Shipping_Settings' )
+			&& Kuka_Island_Shipping_Carrier_Interface::ENVIRONMENT_TEST === Kuka_Island_Shipping_Settings::environment() ) {
+			return self::PHASE_DELAY_TEST;
+		}
+
+		return self::BARCODE_DELAY;
+	}
 
 	/**
 	 * THE ONE PLACE A RETRY IS ALLOWED FROM. Nowhere else may decide this.
@@ -252,6 +286,18 @@ final class Kuka_Island_Shipping_Dispatcher {
 				return self::no( 'shipment_already_recorded' );
 			}
 
+			if ( in_array( self::PHASE_CREATE_RECIPIENT, $issued, true ) ) {
+				return self::no( 'phase_already_attempted:' . self::PHASE_CREATE_RECIPIENT );
+			}
+
+			return array(
+				'eligible' => true,
+				'reason'   => '',
+				'phase'    => self::PHASE_CREATE_RECIPIENT,
+			);
+		}
+
+		if ( Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED === $state ) {
 			if ( in_array( self::PHASE_CREATE_ORDER, $issued, true ) ) {
 				return self::no( 'phase_already_attempted:' . self::PHASE_CREATE_ORDER );
 			}
@@ -378,7 +424,7 @@ final class Kuka_Island_Shipping_Dispatcher {
 		 * write, and a payment hook firing again is not a reason to finish their
 		 * work for them. Only a retry booked by this class may target phase two.
 		 */
-		if ( ! $is_retry && self::PHASE_CREATE_ORDER !== (string) $eligibility['phase'] ) {
+		if ( ! $is_retry && self::PHASE_CREATE_RECIPIENT !== (string) $eligibility['phase'] ) {
 			return array(
 				'scheduled' => false,
 				'reason'    => 'phase_not_bookable_by_event:' . (string) $eligibility['phase'],
@@ -542,8 +588,26 @@ final class Kuka_Island_Shipping_Dispatcher {
 			return self::outcome( false, (string) $opened['code'], self::PHASE_NONE, false );
 		}
 
-		// PHASE ONE: the carrier registers the ORDER, and stops there. Skipped
-		// entirely when a previous turn already completed it.
+		if ( self::PHASE_CREATE_RECIPIENT === $phase ) {
+			$phases_run[] = 'create_recipient';
+			$created      = $this->manager->create_recipient( self::reload( $order_id ) );
+
+			if ( empty( $created['ok'] ) ) {
+				return $this->settle_refusal( $order_id, (string) ( $created['code'] ?? 'create_recipient_refused' ), self::PHASE_CREATE_RECIPIENT, $phases_run );
+			}
+
+			$state = Kuka_Island_Shipping_Order_Store::get_state( self::reload( $order_id ) );
+
+			if ( Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED !== $state ) {
+				$this->record( $order_id, 'order_not_allowed:' . $state );
+
+				return self::outcome( false, 'order_not_allowed:' . $state, implode( '+', $phases_run ), false );
+			}
+
+			return $this->schedule_follow_up( $order_id, $phases_run, Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED );
+		}
+
+		// PHASE TWO: the carrier registers the ORDER, and stops there.
 		if ( self::PHASE_CREATE_ORDER === $phase ) {
 			$phases_run[] = 'create_order';
 
@@ -574,26 +638,7 @@ final class Kuka_Island_Shipping_Dispatcher {
 			 * is structural; BARCODE_DELAY is only a buffer because the documented
 			 * read APIs expose no branch-ready flag.
 			 */
-			$booking = $this->maybe_schedule( $order_id, true, self::BARCODE_DELAY );
-			$booked  = (bool) $booking['scheduled'] || self::has_pending_job( $order_id );
-
-			if ( ! $booked ) {
-				$reason = 'barcode_' . (string) $booking['reason'];
-				$this->record( $order_id, $reason );
-
-				return self::outcome( false, $reason, implode( '+', $phases_run ), false );
-			}
-
-			$this->record( $order_id, '' );
-
-			return array(
-				'ok'                   => true,
-				'reason'               => '',
-				'phases'               => implode( '+', $phases_run ),
-				'retry_scheduled'       => false,
-				'next_phase_scheduled'  => true,
-				'state'                => Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
-			);
+			return $this->schedule_follow_up( $order_id, $phases_run, Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED );
 		}
 
 		// PHASE TWO: a separate, deliberate second write.
@@ -622,6 +667,35 @@ final class Kuka_Island_Shipping_Dispatcher {
 	 * @param array<int, string> $phases_run Phases this turn actually entered.
 	 * @return array<string, mixed>
 	 */
+	/**
+	 * End this worker and book the next phase as its own job.
+	 *
+	 * @param array<int, string> $phases_run Phases this turn entered.
+	 * @return array<string, mixed>
+	 */
+	private function schedule_follow_up( int $order_id, array $phases_run, string $state ): array {
+		$booking = $this->maybe_schedule( $order_id, true, self::phase_delay() );
+		$booked  = (bool) $booking['scheduled'] || self::has_pending_job( $order_id );
+
+		if ( ! $booked ) {
+			$reason = 'next_phase_' . (string) $booking['reason'];
+			$this->record( $order_id, $reason );
+
+			return self::outcome( false, $reason, implode( '+', $phases_run ), false );
+		}
+
+		$this->record( $order_id, '' );
+
+		return array(
+			'ok'                  => true,
+			'reason'              => '',
+			'phases'              => implode( '+', $phases_run ),
+			'retry_scheduled'     => false,
+			'next_phase_scheduled' => true,
+			'state'               => $state,
+		);
+	}
+
 	private function settle_refusal( int $order_id, string $reason, string $phase, array $phases_run ): array {
 		$retry = false;
 
@@ -705,9 +779,11 @@ final class Kuka_Island_Shipping_Dispatcher {
 			return false;
 		}
 
-		$expected = self::PHASE_CREATE_ORDER === $phase
-			? Kuka_Island_Shipping_Order_Store::STATE_NONE
-			: Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED;
+		$expected = match ( $phase ) {
+			self::PHASE_CREATE_RECIPIENT => Kuka_Island_Shipping_Order_Store::STATE_NONE,
+			self::PHASE_CREATE_ORDER     => Kuka_Island_Shipping_Order_Store::STATE_RECIPIENT_CREATED,
+			default                      => Kuka_Island_Shipping_Order_Store::STATE_ORDER_CREATED,
+		};
 
 		return $expected === (string) $data['state'];
 	}
