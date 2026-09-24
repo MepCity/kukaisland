@@ -125,10 +125,18 @@ final class Kuka_Island_Shipping_DHL_Order_Mapper {
 			}
 		}
 
-		if ( (int) ( $recipient['city_code'] ?? 0 ) < 1 ) {
+		$city_code = trim( (string) ( $recipient['city_code'] ?? '' ) );
+		if ( 1 !== preg_match( '/^[0-9]+$/', $city_code ) || (int) $city_code < 1 ) {
 			$gaps[] = 'recipient.city_code';
 		}
-		if ( (int) ( $recipient['district_code'] ?? 0 ) < 1 ) {
+
+		/*
+		 * The CBS service legitimately uses district code 0 for some central
+		 * districts. Missing and zero therefore cannot share the same default:
+		 * require a present numeric token, while accepting its documented value.
+		 */
+		$district_code = trim( (string) ( $recipient['district_code'] ?? '' ) );
+		if ( 1 !== preg_match( '/^[0-9]+$/', $district_code ) ) {
 			$gaps[] = 'recipient.district_code';
 		}
 

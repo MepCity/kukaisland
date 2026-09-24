@@ -2592,8 +2592,10 @@ final class Kuka_Island_Shipping_Manager {
 				'ref_customer_id' => (string) $order->get_id(),
 				'full_name'       => $name,
 				'address'         => $address,
-				'city_code'       => (int) $located->get( 'city_code', 0 ),
-				'district_code'   => (int) $located->get( 'district_code', 0 ),
+				// Keep the CBS token until validation so a legitimate district code
+				// "0" remains distinguishable from a missing value.
+				'city_code'       => (string) $located->get( 'city_code', '' ),
+				'district_code'   => (string) $located->get( 'district_code', '' ),
 				'email'           => (string) $order->get_billing_email(),
 				'mobile_phone'    => (string) ( $order->get_shipping_phone() ?: $order->get_billing_phone() ),
 				'home_phone'      => '',

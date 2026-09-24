@@ -2471,6 +2471,15 @@ $mapper_shipment = array(
 
 $mapped = Kuka_Island_Shipping_DHL_Order_Mapper::create_order_payload( $mapper_shipment );
 
+$central_district_shipment                        = $mapper_shipment;
+$central_district_shipment['pieces'][0]['desi']  = 1;
+$central_district_shipment['pieces'][0]['kg']    = 1;
+$central_district_shipment['recipient']['district_code'] = '0';
+$central_district_gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $central_district_shipment );
+$missing_district_shipment = $central_district_shipment;
+unset( $missing_district_shipment['recipient']['district_code'] );
+$missing_district_gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $missing_district_shipment );
+
 $mapper_ok = 1 === $mapped['order']['shipmentServiceType']
 	&& 3 === $mapped['order']['packagingType']
 	&& 1 === $mapped['order']['paymentType']
@@ -2484,8 +2493,10 @@ $mapper_ok = 1 === $mapped['order']['shipmentServiceType']
 	&& ! str_contains( $mapped['order']['content'], "\n" )
 	&& ! array_key_exists( 'customerId', $mapped['recipient'] )
 	&& 0 === $mapped['order']['smsPreference1']
-	&& 0 === $mapped['order']['smsPreference2']
-	&& 0 === $mapped['order']['smsPreference3'];
+		&& 0 === $mapped['order']['smsPreference2']
+		&& 0 === $mapped['order']['smsPreference3']
+		&& ! in_array( 'recipient.district_code', $central_district_gaps, true )
+		&& in_array( 'recipient.district_code', $missing_district_gaps, true );
 
 // Unmapped tokens are refused, never defaulted.
 $unknown_tokens = Kuka_Island_Shipping_DHL_Order_Mapper::validate(
@@ -2507,7 +2518,7 @@ $report(
 		&& 0 === count( $incomplete_transport->log )
 		&& ! array_key_exists( 'platform', Kuka_Island_Shipping_DHL_Order_Mapper::payment_types() ),
 	sprintf(
-		'enumerations:from_spec|barcode_equals_reference:yes|piece_minimums:1|phone_normalised:yes|sms_default:0,0,0|customerId_omitted:yes|unknown_tokens_refused:%d|gap_code:%s|gap_http_requests:%d|platform_payment_unmappable:yes',
+		'enumerations:from_spec|barcode_equals_reference:yes|piece_minimums:1|phone_normalised:yes|sms_default:0,0,0|customerId_omitted:yes|central_district_code_zero:accepted|missing_district_code:refused|unknown_tokens_refused:%d|gap_code:%s|gap_http_requests:%d|platform_payment_unmappable:yes',
 		count( $unknown_tokens ),
 		$incomplete_result->get_safe_error_code(),
 		count( $incomplete_transport->log )
