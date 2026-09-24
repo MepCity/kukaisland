@@ -95,7 +95,7 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
 
 		if ( array() !== $gaps ) {
-			return Kuka_Island_Shipping_Result::local_refusal( 'create_order', 'payload_incomplete' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_order', self::payload_gap_code( $gaps ) );
 		}
 
 		if ( ! empty( $shipment['cod']['enabled'] ) ) {
@@ -115,7 +115,7 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		$gaps = Kuka_Island_Shipping_DHL_Order_Mapper::validate( $shipment );
 
 		if ( array() !== $gaps ) {
-			return Kuka_Island_Shipping_Result::local_refusal( 'create_barcode', 'payload_incomplete' );
+			return Kuka_Island_Shipping_Result::local_refusal( 'create_barcode', self::payload_gap_code( $gaps ) );
 		}
 
 		if ( ! empty( $shipment['cod']['enabled'] ) ) {
@@ -123,6 +123,33 @@ final class Kuka_Island_Shipping_DHL_Provider implements Kuka_Island_Shipping_Ca
 		}
 
 		return $this->client->create_barcode( Kuka_Island_Shipping_DHL_Order_Mapper::create_barcode_payload( $shipment ) );
+	}
+
+	/**
+	 * Name incomplete fields without exposing any customer value.
+	 *
+	 * The mapper's gap names are a closed, code-owned vocabulary. Keeping them
+	 * in the safe error code lets an operator fix the actual field instead of
+	 * being told only that "something" in the payload was incomplete. Values
+	 * are never included, so the code remains safe for order notes and reports.
+	 *
+	 * @param array<int, string> $gaps Mapper validation gaps.
+	 */
+	private static function payload_gap_code( array $gaps ): string {
+		$gaps = array_values( array_unique( array_map( 'strval', $gaps ) ) );
+		sort( $gaps, SORT_STRING );
+
+		$names = array_map(
+			static function ( string $gap ): string {
+				$clean = preg_replace( '/[^a-z0-9]+/i', '_', $gap );
+
+				return trim( is_string( $clean ) ? strtolower( $clean ) : '', '_' );
+			},
+			$gaps
+		);
+		$names = array_values( array_filter( $names ) );
+
+		return 'payload_incomplete' . ( array() === $names ? '' : '__' . implode( '__', $names ) );
 	}
 
 	/**

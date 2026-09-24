@@ -2491,6 +2491,10 @@ $mapper_ok = 1 === $mapped['order']['shipmentServiceType']
 $unknown_tokens = Kuka_Island_Shipping_DHL_Order_Mapper::validate(
 	array_merge( $mapper_shipment, array( 'packaging' => 'wardrobe', 'payment' => 'platform', 'service' => 'teleport' ) )
 );
+$incomplete_transport = new Kuka_Shipping_Mock_Transport( kuka_ship_happy_responder() );
+$incomplete_result    = kuka_ship_provider( $incomplete_transport )->create_order(
+	array_merge( $mapper_shipment, array( 'packaging' => 'wardrobe', 'payment' => 'platform', 'service' => 'teleport' ) )
+);
 
 $report(
 	'SHIPPING_PAYLOAD_MAPPING',
@@ -2498,10 +2502,15 @@ $report(
 		&& in_array( 'packaging', $unknown_tokens, true )
 		&& in_array( 'payment', $unknown_tokens, true )
 		&& in_array( 'service', $unknown_tokens, true )
+		&& 'payload_incomplete__packaging__payment__pieces__service' === $incomplete_result->get_safe_error_code()
+		&& ! $incomplete_result->reached_carrier()
+		&& 0 === count( $incomplete_transport->log )
 		&& ! array_key_exists( 'platform', Kuka_Island_Shipping_DHL_Order_Mapper::payment_types() ),
 	sprintf(
-		'enumerations:from_spec|barcode_equals_reference:yes|piece_minimums:1|phone_normalised:yes|sms_default:0,0,0|customerId_omitted:yes|unknown_tokens_refused:%d|platform_payment_unmappable:yes',
-		count( $unknown_tokens )
+		'enumerations:from_spec|barcode_equals_reference:yes|piece_minimums:1|phone_normalised:yes|sms_default:0,0,0|customerId_omitted:yes|unknown_tokens_refused:%d|gap_code:%s|gap_http_requests:%d|platform_payment_unmappable:yes',
+		count( $unknown_tokens ),
+		$incomplete_result->get_safe_error_code(),
+		count( $incomplete_transport->log )
 	)
 );
 
