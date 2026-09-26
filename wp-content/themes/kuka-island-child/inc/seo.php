@@ -101,6 +101,16 @@ function kuka_island_seo_current_url(): string {
 add_filter(
 	'document_title_parts',
 	static function ( array $parts ): array {
+		if ( is_front_page() ) {
+			$title = kuka_island_seo_text( (string) ( kuka_island_content()['seo']['home_title'] ?? '' ), 80 );
+			if ( '' !== $title ) {
+				$parts['title'] = $title;
+				// The front page title part is the site name itself. Replacing
+				// it would drop the brand, so the site name is added back.
+				$parts['site'] = get_bloginfo( 'name', 'display' );
+			}
+			return $parts;
+		}
 		if ( ! is_singular( 'product' ) ) {
 			return $parts;
 		}

@@ -18,8 +18,14 @@ $story_value = static function ( array $scene, string $key ) use ( $story_englis
 	return $scene[ $key ] ?? '';
 };
 
-/** Print one decorative responsive story image, deferred unless explicitly eager. */
-$story_picture = static function ( int $desktop_id, int $mobile_id, bool $eager, string $class_name ) {
+/**
+ * Print one responsive story image, deferred unless explicitly eager.
+ *
+ * The scrolling stage is decorative because the article repeats the same
+ * frames. Those copies stay hidden from assistive tech. The article copy
+ * carries the attachment alt text.
+ */
+$story_picture = static function ( int $desktop_id, int $mobile_id, bool $eager, string $class_name, bool $decorative = false ) {
 	$image_id = $desktop_id ?: $mobile_id;
 	if ( ! $image_id ) { ?><div class="<?php echo esc_attr( $class_name ); ?> kuka-story__placeholder" aria-hidden="true"></div><?php return; }
 	$desktop = wp_get_attachment_image_src( $image_id, 'full' );
@@ -29,10 +35,11 @@ $story_picture = static function ( int $desktop_id, int $mobile_id, bool $eager,
 	$mobile_srcset  = wp_get_attachment_image_srcset( $mobile_id ?: $image_id, 'full' ) ?: '';
 	$src_attr       = $eager ? 'src' : 'data-story-src';
 	$srcset_attr    = $eager ? 'srcset' : 'data-story-srcset';
+	$alt            = trim( (string) get_post_meta( $image_id, '_wp_attachment_image_alt', true ) );
 	?>
-	<picture class="<?php echo esc_attr( $class_name ); ?>" aria-hidden="true">
+	<picture class="<?php echo esc_attr( $class_name ); ?>"<?php echo $decorative ? ' aria-hidden="true"' : ''; ?>>
 		<source media="(max-width: 47.99em)" <?php echo esc_attr( $srcset_attr ); ?>="<?php echo esc_attr( $mobile_srcset ?: $mobile[0] ); ?>">
-		<img <?php echo esc_attr( $src_attr ); ?>="<?php echo esc_url( $desktop[0] ); ?>" <?php if ( $desktop_srcset ) : ?><?php echo esc_attr( $srcset_attr ); ?>="<?php echo esc_attr( $desktop_srcset ); ?>"<?php endif; ?> sizes="100vw" alt="" loading="<?php echo $eager ? 'eager' : 'lazy'; ?>" decoding="async" <?php if ( $eager ) : ?>fetchpriority="high"<?php endif; ?>>
+		<img <?php echo esc_attr( $src_attr ); ?>="<?php echo esc_url( $desktop[0] ); ?>" <?php if ( $desktop_srcset ) : ?><?php echo esc_attr( $srcset_attr ); ?>="<?php echo esc_attr( $desktop_srcset ); ?>"<?php endif; ?> sizes="100vw" alt="<?php echo esc_attr( $alt ); ?>" loading="<?php echo $eager ? 'eager' : 'lazy'; ?>" decoding="async" <?php if ( $eager ) : ?>fetchpriority="high"<?php endif; ?>>
 	</picture>
 	<?php
 };
@@ -61,7 +68,7 @@ while ( have_posts() ) : the_post(); ?>
 					$mobile_id  = absint( $story_value( $scene, 'mobile_image_id' ) );
 					$transition = (string) ( $scene['transition_type'] ?? 'fade-center' );
 					$media_class = sprintf( 'kuka-story__media-item kuka-story__media-item--%02d kuka-story__media-item--%s', $index + 1, in_array( $transition, array( 'zoom-out', 'crossfade-left', 'fade-center', 'line-sequence', 'grow-right', 'gather' ), true ) ? $transition : 'fade-center' );
-					$story_picture( $desktop_id, $mobile_id, 0 === $index, $media_class );
+					$story_picture( $desktop_id, $mobile_id, 0 === $index, $media_class, true );
 				endforeach; ?>
 			</div>
 			<div class="kuka-story__panel kuka-brand-story__source">

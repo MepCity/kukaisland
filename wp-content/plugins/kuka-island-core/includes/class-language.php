@@ -49,7 +49,7 @@ final class Kuka_Island_Core_Language {
 				'free_shipping_ready_copy', 'flat_rate_copy', 'hygiene_copy', 'hygiene_defect_copy',
 				'hygiene_try_on_copy', 'secure_payment_copy', 'support_hours',
 			) ),
-			'seo' => self::simple_fields( array( 'home_meta_description', 'shop_meta_description' ) ),
+			'seo' => self::simple_fields( array( 'home_title', 'home_meta_description', 'shop_meta_description' ) ),
 		);
 	}
 
@@ -121,7 +121,8 @@ final class Kuka_Island_Core_Language {
 				'support_hours_en' => 'Weekdays 09:00–18:00',
 			),
 			'seo' => array(
-				'home_meta_description_en' => 'Kuka Island: bikinis, swimsuits and beachwear for women. Discover the new-season pieces.',
+				'home_title_en' => 'Bikinis, Swimsuits and Beachwear',
+				'home_meta_description_en' => 'Kuka Island: bikinis, swimsuits and beachwear for women. Explore the new-season collection, choose your size, and find a piece made for the sun.',
 				'shop_meta_description_en' => 'The Kuka Island shop: bikini tops, bikini bottoms, swimsuits and beachwear. The full collection with size and colour options.',
 			),
 		);
@@ -193,6 +194,9 @@ final class Kuka_Island_Core_Language {
 		add_action( 'wp', array( $this, 'remember_storefront_language' ), 2 );
 		add_action( 'wp_head', array( $this, 'language_metadata' ), 0 );
 		add_filter( 'wp_sitemaps_enabled', '__return_true' );
+		add_filter( 'wp_sitemaps_add_provider', array( $this, 'omit_user_sitemap' ), 10, 2 );
+		add_filter( 'wp_sitemaps_taxonomies', array( $this, 'omit_blog_category_sitemap' ) );
+		add_filter( 'wp_sitemaps_posts_query_args', array( $this, 'exclude_sitemap_posts' ), 10, 2 );
 		add_action( 'init', array( $this, 'register_sitemap_provider' ), 20 );
 		add_filter( 'gettext', array( $this, 'english_interface' ), 20, 3 );
 		add_filter( 'ngettext', array( $this, 'english_plural_interface' ), 20, 5 );
@@ -540,6 +544,73 @@ final class Kuka_Island_Core_Language {
 		echo '<meta property="og:locale" content="' . esc_attr( self::is_english_request() ? 'en_US' : 'tr_TR' ) . '">' . "\n";
 	}
 
+	/**
+	 * Author archives name an account. They are not a storefront page.
+	 *
+	 * @param WP_Sitemaps_Provider|false $provider Provider instance.
+	 * @param string                     $name     Provider name.
+	 * @return WP_Sitemaps_Provider|false
+	 */
+	public function omit_user_sitemap( $provider, $name ) {
+		return 'users' === $name ? false : $provider;
+	}
+
+	/**
+	 * The only blog category on this store is Uncategorized.
+	 *
+	 * @param array<string, WP_Taxonomy> $taxonomies Taxonomies offered to the sitemap.
+	 * @return array<string, WP_Taxonomy>
+	 */
+	public function omit_blog_category_sitemap( array $taxonomies ): array {
+		unset( $taxonomies['category'] );
+		return $taxonomies;
+	}
+
+	/**
+	 * Cart, checkout, account and the install leftovers are not landing pages.
+	 *
+	 * @param array<string, mixed> $args      Query args for one post type.
+	 * @param string               $post_type Post type being mapped.
+	 * @return array<string, mixed>
+	 */
+	public function exclude_sitemap_posts( array $args, string $post_type ): array {
+		if ( ! in_array( $post_type, array( 'page', 'post' ), true ) ) {
+			return $args;
+		}
+		$excluded = self::sitemap_excluded_ids();
+		if ( ! $excluded ) {
+			return $args;
+		}
+		$args['post__not_in'] = array_values( array_unique( array_merge( array_map( 'intval', (array) ( $args['post__not_in'] ?? array() ) ), $excluded ) ) );
+		return $args;
+	}
+
+	/**
+	 * Published pages and posts that must not appear in either sitemap.
+	 *
+	 * @return array<int, int>
+	 */
+	public static function sitemap_excluded_ids(): array {
+		$ids = array();
+		if ( function_exists( 'wc_get_page_id' ) ) {
+			foreach ( array( 'cart', 'checkout', 'myaccount' ) as $key ) {
+				$id = (int) wc_get_page_id( $key );
+				if ( $id > 0 ) {
+					$ids[] = $id;
+				}
+			}
+		}
+		foreach ( array( 'hello-world', 'sample-page', 'tipografi-testi' ) as $slug ) {
+			foreach ( array( 'post', 'page' ) as $type ) {
+				$found = get_page_by_path( $slug, OBJECT, $type );
+				if ( $found instanceof WP_Post ) {
+					$ids[] = (int) $found->ID;
+				}
+			}
+		}
+		return array_values( array_unique( $ids ) );
+	}
+
 	public function register_sitemap_provider(): void {
 		if ( ! function_exists( 'wp_sitemaps_get_server' ) || ! class_exists( 'WP_Sitemaps_Provider' ) ) { return; }
 		$server = wp_sitemaps_get_server();
@@ -573,8 +644,7 @@ final class Kuka_Island_English_Sitemap_Provider extends WP_Sitemaps_Provider {
 		$post_count = self::published_post_count();
 		if ( $remaining && $offset < $post_count ) {
 			$number = min( $remaining, $post_count - $offset );
-			$excluded = function_exists( 'wc_get_page_id' ) ? array_filter( array( wc_get_page_id( 'myaccount' ) ) ) : array();
-			$post_ids = get_posts( array( 'post_type' => array( 'page', 'product' ), 'post_status' => 'publish', 'posts_per_page' => $number, 'offset' => $offset, 'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'ids', 'post__not_in' => $excluded ) );
+			$post_ids = get_posts( array( 'post_type' => array( 'page', 'product' ), 'post_status' => 'publish', 'posts_per_page' => $number, 'offset' => $offset, 'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'ids', 'post__not_in' => Kuka_Island_Core_Language::sitemap_excluded_ids() ) );
 			foreach ( $post_ids as $post_id ) {
 				$urls[] = array( 'loc' => Kuka_Island_Core_Language::url_for_language( get_permalink( $post_id ), 'en' ) );
 			}
@@ -609,14 +679,19 @@ final class Kuka_Island_English_Sitemap_Provider extends WP_Sitemaps_Provider {
 
 	/** @return array<int, string> */
 	private static function sitemap_taxonomies(): array {
-		return array_values( array_filter( array( 'product_cat', 'pa_renk', 'pa_kesim', 'pa_beden' ), 'taxonomy_exists' ) );
+		return array_values( array_filter( array( 'product_cat' ), 'taxonomy_exists' ) );
 	}
 
 	private static function published_post_count(): int {
 		$total = 0;
 		foreach ( array( 'page', 'product' ) as $post_type ) { $total += (int) ( wp_count_posts( $post_type )->publish ?? 0 ); }
-		$account_id = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( 'myaccount' ) : 0;
-		return max( 0, $total - ( $account_id > 0 && 'publish' === get_post_status( $account_id ) ? 1 : 0 ) );
+		$excluded = 0;
+		foreach ( Kuka_Island_Core_Language::sitemap_excluded_ids() as $id ) {
+			if ( 'publish' === get_post_status( $id ) && in_array( get_post_type( $id ), array( 'page', 'product' ), true ) ) {
+				++$excluded;
+			}
+		}
+		return max( 0, $total - $excluded );
 	}
 
 	private static function taxonomy_term_count( string $taxonomy ): int {
